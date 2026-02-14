@@ -56,31 +56,23 @@ def main():
     fig_map.savefig("toy_map.png", bbox_inches="tight", dpi=150)
     print("Saved: toy_map.png")
 
-    # ── MCMC ─────────────────────────────────────────
-    print("\n── MCMC (Full Bayesian) ──")
+    # ── HMC ──────────────────────────────────────────
+    print("\n── HMC (Full Bayesian) ──")
 
-    # Rebuild model fresh — initialize at short lengthscale
-    # so MCMC starts in a good region
+    from bistar_gp.fit import fit_hmc
+
+    # Fresh model
     kernels2, names2 = build_toy_kernels()
     model2, likelihood2 = build_model(x_train, y_train, kernels2, names2)
-    model2.kernel_components[0].base_kernel.lengthscale = 3.0
-    model2.kernel_components[0].outputscale = 2.0
-    likelihood2.noise = 0.3
 
-    # Brief MAP to warm up, then MCMC
-    print("Warm-up MAP (100 iters)...")
-    fit_map(model2, likelihood2, x_train, y_train, n_iter=100, lr=0.05, verbose=False)
-    print_hyperparameters(model2, likelihood2)
-
-    print("Running MCMC (10000 samples, 2000 burnin)...")
-    mcmc_samples = fit_mcmc_simple(
+    print("Running HMC (500 samples, 200 warmup)...")
+    mcmc_samples = fit_hmc(
         model2, likelihood2, x_train, y_train,
-        n_samples=10000,
-        n_burnin=2000,
-        proposal_scale=0.15,  # slightly larger to explore
+        n_samples=500,
+        n_warmup=200,
     )
 
-    # MCMC decomposition
+    # HMC decomposition
     result_mcmc = decompose_model_mcmc(
         model2, likelihood2, x_train, y_train, x_test,
         mcmc_samples,
@@ -89,7 +81,7 @@ def main():
 
     fig_mcmc = plot_decomposition(
         result_mcmc, true_components=true_components, true_combined=true_combined,
-        suptitle="Full Bayesian (MCMC) Decomposition",
+        suptitle="Full Bayesian (HMC) Decomposition",
     )
     fig_mcmc.savefig("toy_mcmc.png", bbox_inches="tight", dpi=150)
     print("Saved: toy_mcmc.png")
