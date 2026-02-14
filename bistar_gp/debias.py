@@ -139,12 +139,13 @@ def decompose_model_mcmc(model, likelihood, x_train, y_train, x_test,
     )
 
 def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
-                        mcmc_samples, n_posterior_samples=200, jitter=1e-4):
+                        mcmc_samples, kernel_builder, n_posterior_samples=200, jitter=1e-4):
     """
     Decomposition using Pyro HMC samples.
-    Builds a fresh model for each sample to avoid Pyro's batch dimensions.
+    kernel_builder: callable that returns (kernel_components, names) — 
+                    e.g. build_toy_kernels or build_mauna_loa_kernels
     """
-    from .model import build_model, build_toy_kernels, build_likelihood
+    from .model import build_model, build_likelihood
     from .decompose import decompose_additive_gp
 
     x_train, y_train, x_test = x_train.double(), y_train.double(), x_test.double()
@@ -154,33 +155,42 @@ def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
     total_mcmc = len(mcmc_samples[first_key])
     indices = np.random.choice(total_mcmc, min(n_posterior_samples, total_mcmc), replace=False)
 
-    # Filter to only kernel_components and noise_covar keys (not covar_module duplicates)
+    # Only use kernel_components and noise_covar keys (not covar_module duplicates)
     relevant_keys = [k for k in mcmc_samples.keys()
                      if k.startswith("kernel_components") or k.startswith("noise_covar")]
 
     all_means = {n: [] for n in model.component_names}
+    n_success = 0
 
     for idx in indices:
-        # Build fresh model each time
-        from .model import build_toy_kernels, build_likelihood
-        kernels, names = build_toy_kernels()
+        kernels, names = kernel_builder()
         fresh_likelihood = build_likelihood()
         fresh_model, fresh_likelihood = build_model(x_train, y_train, kernels, names, fresh_likelihood)
 
         # Set parameters from this MCMC sample
         for pyro_name in relevant_keys:
-            val = mcmc_samples[pyro_name][idx]
-            if isinstance(val, np.ndarray):
-                val = float(val)
+            val = float(mcmc_samples[pyro_name][idx])
 
-            if "kernel_components.0.base_kernel.lengthscale" in pyro_name:
-                fresh_model.kernel_components[0].base_kernel.lengthscale = val
-            elif "kernel_components.0.outputscale" in pyro_name:
-                fresh_model.kernel_components[0].outputscale = val
-            elif "kernel_components.1.variance" in pyro_name:
-                fresh_model.kernel_components[1].variance = val
-            elif "noise_covar.noise" in pyro_name:
-                fresh_likelihood.noise = val
+            try:
+                if "noise_covar.noise" in pyro_name:
+                    fresh_likelihood.noise = val
+                    continue
+
+                # Parse: kernel_components.{idx}.{rest}
+                parts = pyro_name.split(".")
+                comp_idx = int(parts[1])
+                kernel = fresh_model.kernel_components[comp_idx]
+
+                if "base_kernel.lengthscale" in pyro_name:
+                    kernel.base_kernel.lengthscale = val
+                elif "base_kernel.period_length" in pyro_name:
+                    kernel.base_kernel.period_length = val
+                elif "outputscale" in pyro_name:
+                    kernel.outputscale = val
+                elif "variance" in pyro_name:
+                    kernel.variance = val
+            except (IndexError, AttributeError, RuntimeError):
+                continue
 
         fresh_model.eval()
         fresh_likelihood.eval()
@@ -199,8 +209,14 @@ def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
                 )
                 for (mean_i, _), comp_name in zip(results, names):
                     all_means[comp_name].append(mean_i.numpy())
+                n_success += 1
             except RuntimeError:
                 continue
+
+    if n_success == 0:
+        raise RuntimeError("All MCMC samples failed decomposition")
+
+    print(f"  Decomposed {n_success}/{len(indices)} MCMC samples successfully")
 
     components = {}
     full_mean = np.zeros(n_test)
