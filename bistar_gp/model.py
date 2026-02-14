@@ -70,27 +70,31 @@ def build_mauna_loa_kernels():
     """Trend + Seasonal + Medium-term for CO2 decomposition."""
     trend = ScaleKernel(
         RBFKernel(
-            lengthscale_constraint=Interval(10.0, 200.0),
+            lengthscale_constraint=Positive(),
             lengthscale_prior=LogNormalPrior(4.0, 1.0),
         ),
-        outputscale_constraint=Interval(1.0, 500.0),
+        outputscale_constraint=Positive(),
+        outputscale_prior=GammaPrior(4.0, 0.5),
     )
 
     seasonal = ScaleKernel(
         PeriodicKernel(
-            period_length_constraint=Interval(0.99, 1.01),  # fixed at 1 year
-            lengthscale_constraint=Interval(0.05, 5.0),
+            period_length_constraint=Interval(0.99, 1.01),  # keep this one fixed
+            lengthscale_constraint=Positive(),
+            lengthscale_prior=GammaPrior(3.0, 2.0),
         ),
-        outputscale_constraint=Interval(0.1, 50.0),
+        outputscale_constraint=Positive(),
+        outputscale_prior=GammaPrior(3.0, 1.0),
     )
     seasonal.base_kernel.period_length = 1.0
 
     medium = ScaleKernel(
         RBFKernel(
-            lengthscale_constraint=Interval(0.5, 20.0),
+            lengthscale_constraint=Positive(),
             lengthscale_prior=GammaPrior(3.0, 1.0),
         ),
-        outputscale_constraint=Interval(0.01, 10.0),
+        outputscale_constraint=Positive(),
+        outputscale_prior=GammaPrior(2.0, 1.0),
     )
 
     return [trend, seasonal, medium], ["trend", "seasonal", "medium_term"]
