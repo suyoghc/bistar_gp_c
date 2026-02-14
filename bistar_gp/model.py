@@ -111,3 +111,19 @@ def build_model(train_x, train_y, kernel_components, component_names, likelihood
         likelihood = build_likelihood()
     model = AdditiveGPModel(train_x, train_y, likelihood, kernel_components, component_names)
     return model.double(), likelihood.double()
+
+def build_toy_kernels():
+    """SE (truth) + Linear (bias) — thesis toy example."""
+    se = ScaleKernel(
+        RBFKernel(
+            lengthscale_constraint=Positive(),
+            lengthscale_prior=GammaPrior(6.0, 0.85),
+        ),
+        outputscale_constraint=Positive(),
+        outputscale_prior=GammaPrior(6.0, 0.85),
+    )
+    linear = LinearKernel(
+        variance_constraint=Positive(),
+        variance_prior=GammaPrior(6.0, 0.85),
+    )
+    return [se, linear], ["unbiased_se", "bias_linear"]
