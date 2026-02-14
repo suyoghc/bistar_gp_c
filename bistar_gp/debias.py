@@ -138,47 +138,58 @@ def decompose_model_mcmc(model, likelihood, x_train, y_train, x_test,
         components=components, full_mean=full_mean, full_std=full_std, noise_var=likelihood.noise.item(),
     )
 
-
 def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
                         mcmc_samples, n_posterior_samples=200, jitter=1e-4):
     """
     Decomposition using Pyro HMC samples.
-    Uses GPyTorch's pyro_load_from_samples to correctly map
-    constrained parameter names back to the model.
+    Builds a fresh model for each sample to avoid Pyro's batch dimensions.
     """
+    from .model import build_model, build_toy_kernels, build_likelihood
+    from .decompose import decompose_additive_gp
+
     x_train, y_train, x_test = x_train.double(), y_train.double(), x_test.double()
     n_test = x_test.shape[0]
 
-    # Get number of MCMC samples
     first_key = list(mcmc_samples.keys())[0]
     total_mcmc = len(mcmc_samples[first_key])
     indices = np.random.choice(total_mcmc, min(n_posterior_samples, total_mcmc), replace=False)
 
-    # Convert numpy arrays to tensors for pyro_load_from_samples
-    samples_tensor = {k: torch.tensor(v).double() for k, v in mcmc_samples.items()}
+    # Filter to only kernel_components and noise_covar keys (not covar_module duplicates)
+    relevant_keys = [k for k in mcmc_samples.keys()
+                     if k.startswith("kernel_components") or k.startswith("noise_covar")]
 
     all_means = {n: [] for n in model.component_names}
 
     for idx in indices:
-        # Extract single sample
-        single_sample = {k: v[idx].unsqueeze(0) if v[idx].dim() == 0 else v[idx:idx+1]
-                         for k, v in samples_tensor.items()}
+        # Build fresh model each time
+        from .model import build_toy_kernels, build_likelihood
+        kernels, names = build_toy_kernels()
+        fresh_likelihood = build_likelihood()
+        fresh_model, fresh_likelihood = build_model(x_train, y_train, kernels, names, fresh_likelihood)
 
-        # Load into model using GPyTorch's built-in method
-        model.pyro_load_from_samples(single_sample)
-        # Load noise separately
-        likelihood.pyro_load_from_samples(single_sample)
+        # Set parameters from this MCMC sample
+        for pyro_name in relevant_keys:
+            val = mcmc_samples[pyro_name][idx]
+            if isinstance(val, np.ndarray):
+                val = float(val)
 
-        model.eval()
-        likelihood.eval()
+            if "kernel_components.0.base_kernel.lengthscale" in pyro_name:
+                fresh_model.kernel_components[0].base_kernel.lengthscale = val
+            elif "kernel_components.0.outputscale" in pyro_name:
+                fresh_model.kernel_components[0].outputscale = val
+            elif "kernel_components.1.variance" in pyro_name:
+                fresh_model.kernel_components[1].variance = val
+            elif "noise_covar.noise" in pyro_name:
+                fresh_likelihood.noise = val
 
-        noise_var = likelihood.noise.item()
-        km = model.get_component_kernel_matrices(x_train, x_test)
-        names = model.component_names
+        fresh_model.eval()
+        fresh_likelihood.eval()
+
+        noise_var = fresh_likelihood.noise.item()
+        km = fresh_model.get_component_kernel_matrices(x_train, x_test)
 
         with torch.no_grad():
             try:
-                from .decompose import decompose_additive_gp
                 results = decompose_additive_gp(
                     [km[n]["XX"] for n in names],
                     [km[n]["XstarX"] for n in names],
@@ -209,5 +220,5 @@ def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
     return DecompositionResult(
         x_test=x_test.numpy(), x_train=x_train.numpy(), y_train=y_train.numpy(),
         components=components, full_mean=full_mean, full_std=full_std,
-        noise_var=likelihood.noise.item(),
+        noise_var=fresh_likelihood.noise.item(),
     )
