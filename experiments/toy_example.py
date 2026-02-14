@@ -18,6 +18,7 @@ from bistar_gp import (
 )
 from bistar_gp.viz import plot_decomposition, plot_hyperparameter_posteriors
 from bistar_gp.debias import decompose_model_hmc
+from bistar_gp.model import build_toy_kernels
 
 torch.set_default_dtype(torch.float64)
 
@@ -81,9 +82,12 @@ def main():
         print(f"  {k}: mean={v.mean():.4f}, std={v.std():.4f}")
 
     # HMC decomposition
+    
+
     result_mcmc = decompose_model_hmc(
         model2, likelihood2, x_train, y_train, x_test,
         mcmc_samples,
+        kernel_builder=build_toy_kernels,
         n_posterior_samples=200,
     )
 
