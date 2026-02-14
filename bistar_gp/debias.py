@@ -137,3 +137,77 @@ def decompose_model_mcmc(model, likelihood, x_train, y_train, x_test,
         x_test=x_test.numpy(), x_train=x_train.numpy(), y_train=y_train.numpy(),
         components=components, full_mean=full_mean, full_std=full_std, noise_var=likelihood.noise.item(),
     )
+
+
+def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
+                        mcmc_samples, n_posterior_samples=200, jitter=1e-4):
+    """
+    Decomposition using Pyro HMC samples.
+    Uses GPyTorch's pyro_load_from_samples to correctly map
+    constrained parameter names back to the model.
+    """
+    x_train, y_train, x_test = x_train.double(), y_train.double(), x_test.double()
+    n_test = x_test.shape[0]
+
+    # Get number of MCMC samples
+    first_key = list(mcmc_samples.keys())[0]
+    total_mcmc = len(mcmc_samples[first_key])
+    indices = np.random.choice(total_mcmc, min(n_posterior_samples, total_mcmc), replace=False)
+
+    # Convert numpy arrays to tensors for pyro_load_from_samples
+    samples_tensor = {k: torch.tensor(v).double() for k, v in mcmc_samples.items()}
+
+    all_means = {n: [] for n in model.component_names}
+
+    for idx in indices:
+        # Extract single sample
+        single_sample = {k: v[idx].unsqueeze(0) if v[idx].dim() == 0 else v[idx:idx+1]
+                         for k, v in samples_tensor.items()}
+
+        # Load into model using GPyTorch's built-in method
+        model.pyro_load_from_samples(single_sample)
+        # Load noise separately
+        likelihood.pyro_load_from_samples(single_sample)
+
+        model.eval()
+        likelihood.eval()
+
+        noise_var = likelihood.noise.item()
+        km = model.get_component_kernel_matrices(x_train, x_test)
+        names = model.component_names
+
+        with torch.no_grad():
+            try:
+                from .decompose import decompose_additive_gp
+                results = decompose_additive_gp(
+                    [km[n]["XX"] for n in names],
+                    [km[n]["XstarX"] for n in names],
+                    [km[n]["XstarXstar"] for n in names],
+                    [km[n]["XXstar"] for n in names],
+                    noise_var, y_train, jitter,
+                )
+                for (mean_i, _), comp_name in zip(results, names):
+                    all_means[comp_name].append(mean_i.numpy())
+            except RuntimeError:
+                continue
+
+    components = {}
+    full_mean = np.zeros(n_test)
+    for comp_name in model.component_names:
+        means = np.stack(all_means[comp_name])
+        avg = means.mean(0)
+        std = means.std(0)
+        components[comp_name] = ComponentResult(
+            name=comp_name, mean=avg, std=std,
+            cov=np.diag(std**2), samples=means,
+        )
+        full_mean += avg
+
+    all_full = sum(np.stack(all_means[n]) for n in model.component_names)
+    full_std = all_full.std(0)
+
+    return DecompositionResult(
+        x_test=x_test.numpy(), x_train=x_train.numpy(), y_train=y_train.numpy(),
+        components=components, full_mean=full_mean, full_std=full_std,
+        noise_var=likelihood.noise.item(),
+    )

@@ -97,12 +97,10 @@ def build_mauna_loa_kernels():
 
 
 def build_likelihood(noise_constraint=None, noise_prior=None):
-    """Gaussian likelihood with sensible defaults."""
     return gpytorch.likelihoods.GaussianLikelihood(
-        noise_constraint=noise_constraint or Interval(1e-4, 10.0),
+        noise_constraint=noise_constraint or Positive(),
         noise_prior=noise_prior or GammaPrior(1.75, 1.0),
     )
-
 
 def build_model(train_x, train_y, kernel_components, component_names, likelihood=None):
     """Build full model. Enforces float64. Returns (model, likelihood)."""
@@ -117,7 +115,8 @@ def build_toy_kernels():
     se = ScaleKernel(
         RBFKernel(
             lengthscale_constraint=Positive(),
-            lengthscale_prior=GammaPrior(6.0, 0.85),
+            #lengthscale_prior=GammaPrior(6.0, 0.85),
+            lengthscale_prior=GammaPrior(2.0, 2.0),  # mean ~1, favors short lengthscales
         ),
         outputscale_constraint=Positive(),
         outputscale_prior=GammaPrior(6.0, 0.85),

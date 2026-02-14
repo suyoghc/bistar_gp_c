@@ -17,6 +17,7 @@ from bistar_gp import (
     decompose_model, decompose_model_mcmc,
 )
 from bistar_gp.viz import plot_decomposition, plot_hyperparameter_posteriors
+from bistar_gp.debias import decompose_model_hmc
 
 torch.set_default_dtype(torch.float64)
 
@@ -28,7 +29,9 @@ def main():
 
     # 1. Data
     x_train, y_train, info = generate_toy_data(
-        n_points=20, noise_std=0.5, bias_slope=0.25, seed=42,
+        #n_points=20, noise_std=0.5, bias_slope=0.25, seed=42,
+        n_points=50, noise_std=0.3, bias_slope=0.25, seed=42,
+
     )
     x_test = torch.linspace(-11.0, 11.0, 200).double()
     x_np = x_test.numpy()
@@ -72,8 +75,13 @@ def main():
         n_warmup=200,
     )
 
+    # Debug: what did HMC actually sample?
+    print("\nHMC sample keys and means:")
+    for k, v in mcmc_samples.items():
+        print(f"  {k}: mean={v.mean():.4f}, std={v.std():.4f}")
+
     # HMC decomposition
-    result_mcmc = decompose_model_mcmc(
+    result_mcmc = decompose_model_hmc(
         model2, likelihood2, x_train, y_train, x_test,
         mcmc_samples,
         n_posterior_samples=200,
