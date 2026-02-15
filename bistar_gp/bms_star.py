@@ -422,7 +422,7 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
     # score(θ_j) = (1/N) Σ_i exp(-G_ij / τ)
     log_weights = -G_matrix / tau
     # Numerical stability: subtract max per column
-    log_weights_shifted = log_weights - log_weights.max(axis=0, keepdims=True)
+    log_weights_shifted = log_weights - log_weights.max(axis=1, keepdims=True)
     weights = np.exp(log_weights_shifted)
     instance_scores = weights.mean(axis=0)
 
