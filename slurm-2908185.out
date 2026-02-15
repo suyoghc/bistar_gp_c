@@ -1,0 +1,5 @@
+/var/spool/slurmd/job2908185/slurm_script: line 11: conda: command not found
+Traceback (most recent call last):
+  File "/scratch/network/sc8918/bistar_gp_project/experiments/bms_star_mauna_loa.py", line 27, in <module>
+    import torch
+ModuleNotFoundError: No module named 'torch'

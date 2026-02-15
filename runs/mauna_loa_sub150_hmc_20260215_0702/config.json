@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-02-15T07:02:45.630222",
+  "git_hash": "2e5039c",
+  "git_dirty": true,
+  "args": {
+    "mode": "hmc",
+    "force_rerun": false,
+    "tag": null,
+    "run_name": null,
+    "load_run": null,
+    "list_runs": false,
+    "test_years": 5.0,
+    "subsample": 150,
+    "n_eval": 80,
+    "n_hmc": 200,
+    "n_warmup": 100,
+    "n_posterior": 80,
+    "n_taus": 30,
+    "log_tau_min": -1.0,
+    "log_tau_max": 2.0
+  },
+  "extra": {
+    "n_train": 150,
+    "n_test": 60,
+    "y_mean": 336.18776211135213,
+    "y_std": 14.58342466738224
+  }
+}
