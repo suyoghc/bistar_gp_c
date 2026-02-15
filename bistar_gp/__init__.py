@@ -20,6 +20,9 @@ from .bms_star import (
     METRICS,
     plot_bms_star_results, plot_G_heatmaps, plot_candidate_predictions, print_bms_star_table,
 )
+from .mauna_loa_candidates import (
+    QuadSinModel, QuadHarmonic2Model, build_mauna_loa_candidates,
+)
 from .config import PRIOR_CONFIGS, ExperimentConfig, build_kernels_from_config, build_likelihood_from_config
 
 __all__ = [
