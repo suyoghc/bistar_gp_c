@@ -309,6 +309,8 @@ def main():
     parser.add_argument("--log-tau-max", type=float, default=2.0)
     parser.add_argument("--test-years", type=float, default=5.0,
                         help="Years of held-out test data (default: 5)")
+    parser.add_argument("--subsample", type=int, default=None,
+                    help="Subsample training data to this many points (for HMC speed)")
     args = parser.parse_args()
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -329,6 +331,14 @@ def main():
         normalize=True, test_years=args.test_years,
     )
     x_train_np, y_train_np = x_train.numpy(), y_train.numpy()
+    if args.subsample and args.subsample < len(x_train):
+        rng = np.random.RandomState(42)
+        idx = rng.choice(len(x_train), args.subsample, replace=False)
+        idx.sort()
+        x_train = x_train[idx]
+        y_train = y_train[idx]
+        x_train_np, y_train_np = x_train.numpy(), y_train.numpy()
+        print(f"  Subsampled to {len(x_train)} points")
     x_test_np, y_test_np = x_test.numpy(), y_test.numpy()
 
     print(f"  Train: {len(x_train)} points, x=[{x_train_np.min():.1f}, {x_train_np.max():.1f}]")
