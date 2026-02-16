@@ -17,7 +17,7 @@ cd /scratch/gpfs/SUYOGHC/bistar_gp_c/experiments/practice_EvansEtAL
 
 mkdir -p results_hierarchical
 
-python run_hierarchical.py --demo --kernel rbf --kernel matern32 --kernel matern52 \
+python run_hierarchical.py --demo --kernel matern32 --kernel matern52 \
     --n_hmc_samples 200 --n_warmup 100 \
     --output_dir results_hierarchical
 

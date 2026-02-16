@@ -51,16 +51,19 @@ def main():
 
     # ── HMC ──────────────────────────────────────────
     print("\n── HMC ──")
+    step = 3
+    x_hmc, y_hmc = x_train[::step], y_train[::step]
+    print(f"Subsampled for HMC: {len(x_hmc)} points (from {len(x_train)})")
     kernels2, names2 = build_mauna_loa_kernels()
     likelihood2 = build_likelihood()
-    model2, likelihood2 = build_model(x_train, y_train, kernels2, names2, likelihood2)
+    model2, likelihood2 = build_model(x_hmc, y_hmc, kernels2, names2, likelihood2)
 
     print("Running HMC (300 samples, 200 warmup)...")
     print("This will take several minutes with ~500 data points...")
     mcmc_samples = fit_hmc(
-        model2, likelihood2, x_train, y_train,
-        n_samples=300,
-        n_warmup=200,
+        model2, likelihood2, x_hmc, y_hmc,
+        n_samples=100,
+        n_warmup=100,
     )
 
     print("\nDecomposing HMC samples...")

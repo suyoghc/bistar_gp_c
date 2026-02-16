@@ -3,7 +3,7 @@
 #SBATCH --output=logs/mauna_%j.out
 #SBATCH --error=logs/mauna_%j.err
 #SBATCH --time=6:00:00
-#SBATCH --mem=16G
+#SBATCH --mem=128G
 #SBATCH --cpus-per-task=4
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=sc8918@princeton.edu

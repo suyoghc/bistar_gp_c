@@ -1,0 +1,2 @@
+Warmup:   0%|          | 0/200 [00:00, ?it/s]/var/spool/slurmd/job4811473/slurm_script: line 18: 984363 Killed                  python mauna_loa.py
+[2026-02-16T17:40:37.024] error: Detected 1 oom_kill event in StepId=4811473.batch. Some of the step tasks have been OOM Killed.
