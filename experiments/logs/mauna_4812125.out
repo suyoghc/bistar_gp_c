@@ -1,0 +1,64 @@
+==================================================
+  Mauna Loa CO₂: MAP + HMC
+==================================================
+  Columns: ['year', 'month', 'day', 'weight', 'flag', 'station', 'co2']
+  Aggregated to 521 monthly observations
+
+Train: 461, Test: 60
+
+── MAP ──
+  Iter 100/800 — Loss: 0.0800
+  Iter 200/800 — Loss: -0.9517
+  Iter 300/800 — Loss: -1.7659
+  Iter 400/800 — Loss: -1.9993
+  Iter 500/800 — Loss: -2.1124
+  Iter 600/800 — Loss: -2.1362
+  Iter 700/800 — Loss: -2.1471
+  Iter 800/800 — Loss: -2.1504
+
+── Hyperparameters ──
+  Noise variance: 0.000388
+  [trend]
+    raw_outputscale: 3.169040
+    base_kernel.raw_lengthscale: 7.602714
+  [seasonal]
+    raw_outputscale: 0.329600
+    base_kernel.raw_lengthscale: 2.732920
+    base_kernel.raw_period_length: 0.999570
+  [medium_term]
+    raw_outputscale: 0.001124
+    base_kernel.raw_lengthscale: 0.855398
+
+Saved: mauna_loa_map.png
+
+── HMC ──
+Subsampled for HMC: 154 points (from 461)
+Running HMC (300 samples, 200 warmup)...
+This will take several minutes with ~500 data points...
+
+                                                               mean       std    median      5.0%     95.0%     n_eff     r_hat
+covar_module.kernels.0.base_kernel.lengthscale_prior[0,0]    103.98    112.35     55.04      6.82    275.03     71.44      0.99
+                 covar_module.kernels.0.outputscale_prior      7.21      3.63      6.34      1.30     12.34     68.40      1.02
+covar_module.kernels.1.base_kernel.lengthscale_prior[0,0]      1.42      0.85      1.26      0.20      2.64    114.85      0.99
+                 covar_module.kernels.1.outputscale_prior      3.33      1.54      3.06      1.27      6.03    194.34      0.99
+covar_module.kernels.2.base_kernel.lengthscale_prior[0,0]      2.87      1.49      2.61      0.50      5.00     85.19      0.99
+                 covar_module.kernels.2.outputscale_prior      1.79      1.52      1.26      0.16      3.59     36.97      0.99
+   kernel_components.0.base_kernel.lengthscale_prior[0,0]     96.67    124.99     52.47      2.54    236.79    149.72      0.99
+                    kernel_components.0.outputscale_prior      7.90      4.32      7.20      2.54     13.21    213.32      0.99
+   kernel_components.1.base_kernel.lengthscale_prior[0,0]      1.40      0.84      1.26      0.22      2.82    378.36      0.99
+                    kernel_components.1.outputscale_prior      2.81      1.62      2.70      0.35      5.07    121.65      1.00
+   kernel_components.2.base_kernel.lengthscale_prior[0,0]      3.00      2.08      2.46      0.18      5.49    118.75      0.99
+                    kernel_components.2.outputscale_prior      1.94      1.31      1.47      0.22      3.86    275.50      1.00
+                    likelihood.noise_covar.noise_prior[0]      1.92      1.42      1.58      0.29      3.59     69.94      1.00
+                               noise_covar.noise_prior[0]      1.74      1.17      1.47      0.15      3.38    126.83      0.99
+
+Number of divergences: 0
+
+Decomposing HMC samples...
+  Decomposed 100/100 MCMC samples successfully
+Saved: mauna_loa_hmc.png
+Saved: mauna_loa_map_vs_hmc.png
+
+MAP RMSE: 1.52 ppm
+Done!
+Mauna Loa HMC complete

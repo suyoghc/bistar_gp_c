@@ -234,8 +234,8 @@ def run_experiment(kernel_types, n_hmc_samples=200, n_warmup=100,
                 json.dump(subj_result, f, indent=2, default=str)
 
         # Summary
-        n_power = sum(1 for c in curves if "Power" if "power" in c.dataset_id else "Exponential" == "Power")
-        n_exp = sum(1 for c in curves if "Power" if "power" in c.dataset_id else "Exponential" == "Exponential")
+        n_power = sum(1 for c in curves if "power" in c.dataset_id)
+        n_exp = sum(1 for c in curves if "exponential" in c.dataset_id)
 
         print(f"\n{'='*60}")
         print(f"RESULTS: {kernel_type} hierarchical")
