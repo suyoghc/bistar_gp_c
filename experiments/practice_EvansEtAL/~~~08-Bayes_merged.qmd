@@ -1,0 +1,974 @@
+---
+title: "Bayesian Data Analysis in R"
+subtitle: "Princeton University"
+author: "Suyog Chandramouli (adapted from Jason Geller's slides)"
+date: 'Updated:`r Sys.Date()`'
+footer: "PSY 504: Advanced Statistics"
+format: 
+  revealjs:
+    theme: white
+    css: slide-style.css
+    multiplex: false
+    transition: fade
+    slide-number: true
+    incremental: false 
+    chalkboard: true
+    fontsize: "25pt"
+webr:
+  packages: ["tidyverse", "easystats", "broom", "knitr", "emmeans", "ggeffects","brms"]
+filters:
+  - webr
+execute:
+  freeze: auto
+  echo: true
+  message: false
+  warning: false
+  fig-align: center
+  fig-width: 12
+  fig-height: 8
+  editor_options: 
+  chunk_output_type: inline
+  code-overflow: wrap
+  html:
+    code-fold: true
+    code-tools: true
+editor: 
+  markdown: 
+    wrap: sentence
+---
+
+## Packages
+
+```{r}
+library(tidyverse)
+library(tidybayes)
+library(brms)
+library(emoji)
+library(emmeans)
+library(easystats)
+library(ggdist)
+library(marginaleffects)
+library(ggeffects)
+library(knitr)
+library(gghalves)
+library(ggokabeito)
+library(ggbeeswarm)
+
+options(scipen=999)
+```
+
+-   Follow along: <https://github.com/jgeller112/PSY504-Advanced-Stats-S24/blob/main/slides/08-Bayes/08-Bayes.qmd>
+
+::: notes
+The star of the show is `brms` — Bayesian Regression Models in Stan — R-friendly interface, no raw Stan needed.
+tidybayes and ggdist for extracting and visualizing posteriors.
+easystats bundles bayestestR, parameters, performance.
+marginaleffects and ggeffects for predicted values and contrasts.
+The rest — usual visualization and reporting tools.
+:::
+
+## Today
+
+<br> <br>
+
+-   A gentle introduction to Bayesian inference
+
+-   Fit, interpret, and report a Bayesian regression with `brms`
+
+::: notes
+Two goals. What IS Bayesian analysis? Priors, likelihoods, posteriors. Then hands-on — fitting a Bayesian regression in R. We start with something familiar.
+:::
+
+# Models and Data Generating Processes {.center}
+
+## What is a data generating process?
+
+The process that produced your data.
+
+. . .
+
+Last semester — every simulation you wrote was one.
+
+Pick a distribution.
+Pick parameters.
+Generate data.
+
+. . .
+
+Last week — logistic regression was one.
+
+Lead weight → probability → coin flips.
+
+::: notes
+You've been writing DGPs all year. You just didn't always call them that.
+:::
+
+## A model is a *family* of DGPs
+
+A **model** = a structure with free parameters.
+
+. . .
+
+Each choice of parameters → a different member.
+
+. . .
+
+$$Y_i \sim \text{Normal}(\mu_i, \sigma), \quad \mu_i = \beta_0 + \beta_1 X_i$$
+
+. . .
+
+-   $\beta_0 = 50, \beta_1 = 0.3, \sigma = 10$ → one member
+-   $\beta_0 = 40, \beta_1 = 0.8, \sigma = 5$ → another member
+
+. . .
+
+Same family.
+Different members.
+
+::: notes
+Not one DGP — a whole family. Structure fixed. Parameters free. Each choice picks out a member.
+:::
+
+## Two families you already know
+
+::::: columns
+::: {.column width="50%"}
+**Linear model**
+
+$$
+\begin{align}
+Y_i &\sim \text{Normal}(\mu_i, \sigma) \\
+\mu_i &= \beta_0 + \beta_1 X_i
+\end{align}
+$$
+:::
+
+::: {.column width="50%"}
+**Logistic model**
+
+$$
+\begin{align}
+Y_i &\sim \text{Bernoulli}(p_i) \\
+\text{logit}(p_i) &= \beta_0 + \beta_1 X_i
+\end{align}
+$$
+:::
+:::::
+
+. . .
+
+Same structure: **distribution** + **parameters**.
+
+. . .
+
+That first line — the one with the **~** — is doing all the work today.
+
+::: notes
+Normal for continuous. Bernoulli for binary. Same structure. Watch that tilde line. It's the engine of everything that follows.
+:::
+
+## The DGP runs forward (parameters → data)
+
+We fix the parameters.
+And **generate** data.
+
+. . .
+
+"If $\beta_0 = 50$, $\beta_1 = 0.3$, $\sigma = 10$ — what grades would I see?"
+
+```r
+rnorm(n = 33, mean = 50 + 0.3 * avgView, sd = 10)
+```
+
+. . .
+
+-   Parameters are **known** (you chose them)
+-   Data **varies** (different every time you simulate)
+-   This is simulation — `r` functions: `rnorm()`, `rbinom()`
+
+::: notes
+Forward direction. Fix parameters, generate data. The r-family of functions. Parameters in, data out. You've done this a hundred times.
+:::
+
+## What ~ means
+
+$Y_i \sim \text{Binomial}(n, \theta)$ means:
+
+$$p(Y = k \mid \theta) = \binom{n}{k}\theta^k(1-\theta)^{n-k}$$
+
+. . .
+
+"If $\theta = 0.6$ — what can come out, and how often?"
+
+. . .
+
+In R, `dbinom(0:5, size = 5, prob = 0.6)`
+
+. . .
+
+These sum to 1.
+Every outcome covered.
+A proper distribution.
+
+. . .
+
+This is $p(\text{data} \mid \theta)$.
+
+::: notes
+The tilde picks a distribution. That distribution has a formula. Fix θ, ask what can happen. The d-functions compute it. Sum to 1. A real distribution over data. That's p of data given θ.
+:::
+
+## $p(\text{data} \mid \theta)$ for the coin family
+
+5 tosses. Each row = one family member.
+
+|                 | 0 heads | 1 head | 2 heads | 3 heads | 4 heads | 5 heads | **Row sum** |
+|-----------------|---------|--------|---------|---------|---------|---------|-------------|
+| $\theta = 0.2$ | .328    | .410   | .205    | .051    | .006    | .000    | **1.0**     |
+| $\theta = 0.4$ | .078    | .259   | .346    | .230    | .077    | .010    | **1.0**     |
+| $\theta = 0.5$ | .031    | .156   | .312    | .312    | .156    | .031    | **1.0**     |
+| $\theta = 0.6$ | .010    | .077   | .230    | .346    | .259    | .078    | **1.0**     |
+| $\theta = 0.8$ | .000    | .006   | .051    | .205    | .410    | .328    | **1.0**     |
+
+. . .
+
+Every row sums to 1.
+
+Pick a family member → all outcomes covered → proper distribution.
+
+::: notes
+Each row is one coin — one θ. Columns are all possible outcomes. Every row sums to 1. That's probability. Pick a member, get a complete distribution over data.
+:::
+
+## The true DGP is unknown
+
+You observed 3 heads out of 5.
+
+. . .
+
+Which $\theta$ produced the data?
+
+. . .
+
+|                 | 0 heads | 1 head | 2 heads | 3 heads | 4 heads | 5 heads | **Row sum** |
+|-----------------|---------|--------|---------|---------|---------|---------|-------------|
+| $\theta = 0.2$ | .328    | .410   | .205    | .051    | .006    | .000    | **1.0**     |
+| $\theta = 0.4$ | .078    | .259   | .346    | .230    | .077    | .010    | **1.0**     |
+| $\theta = 0.5$ | .031    | .156   | .312    | .312    | .156    | .031    | **1.0**     |
+| $\theta = 0.6$ | .010    | .077   | .230    | .346    | .259    | .078    | **1.0**     |
+| $\theta = 0.8$ | .000    | .006   | .051    | .205    | .410    | .328    | **1.0**     |
+
+. . .
+
+You don't know. You never get to see the true $\theta$.
+
+. . .
+
+**Inference** = using the data to figure out which row produced it.
+
+::: notes
+Which row of that table are you in? Five rows. Five family members. You got 3 heads. Which row are you in? You don't know. That's the problem. Inference is figuring out which row — which θ — generated your data.
+:::
+
+## Inference runs backward (data → parameters)
+
+You observed 3 heads out of 5.
+
+Which member of the family produced them?
+
+. . .
+
+Data are fixed. Parameters are unknown.
+
+. . .
+
+Two strategies:
+
+. . .
+
+-   MLE — find the best-scoring member
+
+. . .
+
+-   Bayes — get a distribution over all plausible members
+
+::: notes
+You got 3 heads. Which coin — which θ — produced that? Two strategies. MLE picks the single best-scoring candidate. Bayes gives you a full distribution — how plausible is every member.
+:::
+
+## How do we score the members?
+
+Fix the data. Ask each member: how well do you explain this?
+
+. . .
+
+You got 3 heads out of 5.
+
+. . .
+
+$\theta = 0.6$ → score: 0.346
+
+$\theta = 0.5$ → score: 0.312
+
+$\theta = 0.2$ → score: 0.051
+
+. . .
+
+Higher score = that member explains the data better.
+
+::: notes
+Fix the data — 3 heads. Now ask each family member: how probable is this data under you? That's a score. Higher means better fit. θ = 0.6 scores highest. θ = 0.2 scores poorly. We're ranking the family.
+:::
+
+## Same table — read it the other way
+
+|                  | 0 heads | 1 head | 2 heads | **3 heads**     | 4 heads | 5 heads |
+|------------------|---------|--------|---------|-----------------|---------|---------|
+| $\theta = 0.2$  |         |        |         | **.051**        |         |         |
+| $\theta = 0.4$  |         |        |         | **.230**        |         |         |
+| $\theta = 0.5$  |         |        |         | **.312**        |         |         |
+| $\theta = 0.6$  |         |        |         | **.346**        |         |         |
+| $\theta = 0.8$  |         |        |         | **.205**        |         |         |
+|                  |         |        |         | **Sum = 1.144** |         |         |
+
+. . .
+
+Data fixed at 3 heads. Read **down** the column.
+
+. . .
+
+Peak at $\theta = 0.6$. That's what MLE does — pick the peak.
+
+. . .
+
+Sum = 1.144. **Not 1.** This column is not a distribution.
+
+::: notes
+Same table from two slides ago. But now fix the data — 3 heads — and read down. That's scoring every family member. Peak at 0.6 — MLE. But the column sums to 1.144. Rows were built to sum to 1. Columns weren't. This column ranks members but can't tell you which are probable.
+:::
+
+## MLE can mislead
+
+True bias: $\theta = 0.5$. You flip 5 times. You get 4 heads.
+
+. . .
+
+Read down the "4 heads" column:
+
+|                  | **4 heads** |
+|------------------|-------------|
+| $\theta = 0.2$  | .006        |
+| $\theta = 0.4$  | .077        |
+| $\theta = 0.5$  | .156        |
+| $\theta = 0.6$  | .259        |
+| $\theta = 0.7$  | .360        |
+| $\theta = 0.8$  | **.410**    |
+
+. . .
+
+MLE picks $\theta = 0.8$. The true value is 0.5.
+
+. . .
+
+With 5 flips — the peak is noisy. The best-scoring member isn't necessarily the true one.
+
+::: notes
+True bias is 0.5. But 4 out of 5 — bad luck. MLE picks the peak — 0.8. Wrong. Small samples make the peak unstable. One more reason a single point isn't enough. A distribution would be more honest.
+:::
+
+## "But it's the same number!"
+
+Yes. 0.346 both times. So why does it matter?
+
+. . .
+
+Try to make a statement:
+
+. . .
+
+Forward: "There's a **35% chance** of getting 3 heads." ✓
+
+. . .
+
+Backward: "There's a **___% chance** that $\theta$ is 0.6."
+
+. . .
+
+You can't fill in the blank.
+
+The scores don't add to 1. 0.346 is not a percentage here.
+
+. . .
+
+That blank is $p(\theta \mid \text{data})$. We don't have it yet.
+
+::: notes
+Same number. But try to use it. Forward — 35% chance of 3 heads. Fine. Rows sum to 1 so percentages work. Backward — you want to fill in the blank but you can't. The column sums to 1.144. 0.346 isn't a probability of θ. It's a score. To fill in the blank we need Bayes' rule.
+:::
+
+## Probability vs. likelihood
+
+Same formula: $p(\text{data} \mid \theta)$. Different direction.
+
+. . .
+
+::::: columns
+::: {.column width="50%"}
+**Read across a row**
+
+-   $\theta$ fixed, data varies
+-   Sums to 1 ✓
+-   Probability
+:::
+
+::: {.column width="50%"}
+**Read down a column**
+
+-   Data fixed, $\theta$ varies
+-   Does **not** sum to 1 ✗
+-   Likelihood $L(\theta)$
+:::
+:::::
+
+. . .
+
+Rows = distribution. Columns = scoring function.
+
+::: notes
+Same formula. Rows — probability, sums to 1. Columns — likelihood, doesn't. We give the column a name: L of θ. It ranks. It finds peaks. But it's not a distribution over θ.
+:::
+
+## The likelihood is not enough
+
+We want $p(\theta \mid \text{data})$ — a distribution.
+
+. . .
+
+The likelihood finds the peak.
+That's MLE.
+
+. . .
+
+But it can't fill in the blank: "___% chance $\theta$ is between 0.4 and 0.8."
+
+. . .
+
+We need one more ingredient.
+
+::: notes
+Likelihood finds peaks. That's MLE. That's what lm() and glm() do. But no probability statements about parameters. We need something more.
+:::
+
+## You know things before seeing data
+
+. . .
+
+You're flipping a coin — not rolling a die, not drawing cards.
+
+. . .
+
+Most coins are roughly fair. $\theta$ is probably near 0.5.
+
+. . .
+
+$\theta = 0.0$ or $\theta = 1.0$? A two-headed or two-tailed coin? Possible — but unlikely.
+
+. . .
+
+The likelihood doesn't have this knowledge. It just scores.
+
+::: notes
+Stay with the coins. You know something before flipping. Most coins are roughly fair. Extreme values — 0 or 1 — are possible but rare. The likelihood doesn't use any of this knowledge. It just scores each θ against the data. What if you could fold in what you know?
+:::
+
+## A prior distribution
+
+Which $\theta$ values are plausible — **before** you flip?
+
+$$p(\theta)$$
+
+. . .
+
+"Most coins are fair-ish" → prior peaked near 0.5
+
+. . .
+
+"I have no idea" → flat prior, all $\theta$ equally plausible
+
+. . .
+
+"This coin came from a magic shop" → prior allows extreme values
+
+. . .
+
+Unlike the likelihood — the prior **is** a distribution. Sums to 1.
+
+::: notes
+A prior says which θ values you find plausible before any data. Most coins fair? Peak near 0.5. No idea? Flat. Magic shop coin? Allow extremes. The prior IS a distribution — sums to 1. That's the ingredient the likelihood was missing.
+:::
+
+## Bayes' rule
+
+$$p(\theta \mid \text{data}) \;\propto\; \underbrace{p(\theta)}_{\text{Prior}} \;\times\; \underbrace{L(\theta)}_{\text{Likelihood}}$$
+
+. . .
+
+Prior (distribution) × Likelihood (scoring function) = **Posterior** (distribution)
+
+. . .
+
+-   Prior — what you believed before
+-   Likelihood — what the data say
+-   Posterior — your updated belief
+
+. . .
+
+The posterior **is** $p(\theta \mid \text{data})$.
+
+Now you can fill in the blank.
+
+::: notes
+Prior times likelihood — posterior. Prior is a distribution. Likelihood is a scoring function. Multiply — you get a distribution. Sums to 1. That IS p of θ given data. Now you can say "90% chance θ is between 0.4 and 0.8." The blank is filled.
+:::
+
+## The coin posterior
+
+3 heads out of 5. Flat prior. Multiply prior × likelihood at each $\theta$:
+
+. . .
+
+| $\theta$ | Prior | Likelihood | Prior × Likelihood | **Posterior** |
+|-----------|-------|------------|---------------------|---------------|
+| 0.2       | .200  | .051       | .010                | **.045**      |
+| 0.4       | .200  | .230       | .046                | **.201**      |
+| 0.5       | .200  | .312       | .062                | **.273**      |
+| 0.6       | .200  | .346       | .069                | **.303**      |
+| 0.8       | .200  | .205       | .041                | **.179**      |
+|           |       |            | Sum = .229          | **1.0**       |
+
+. . .
+
+Posterior sums to 1. Now it's a distribution.
+
+. . .
+
+"There's a **30% chance** $\theta$ is 0.6." The blank is filled.
+
+::: notes
+Flat prior — each θ gets 0.2. Multiply by the likelihood. The products don't sum to 1 yet — 0.229. Divide each by the sum to normalize. Now they sum to 1. A proper distribution. You can make probability statements. 30% chance θ is 0.6. 27% chance it's 0.5. The blank from earlier — filled. This is what Bayes' rule does.
+:::
+
+## Three ingredients
+
+:::::: columns
+::: {.column width="33%"}
+**Prior** $p(\theta)$
+
+Belief before data
+
+Distribution ✓
+:::
+
+::: {.column width="33%"}
+**Likelihood** $L(\theta)$
+
+What data say
+
+Not a distribution ✗
+:::
+
+::: {.column width="33%"}
+**Posterior** $p(\theta \mid \text{data})$
+
+Updated belief
+
+Distribution ✓
+:::
+::::::
+
+. . .
+
+-   Both high → posterior high
+-   Either low → posterior pulled down
+-   With lots of data — likelihood dominates
+-   With little data — prior matters more
+
+::: notes
+Three ingredients. Prior — a distribution, sums to 1. Likelihood — a scoring function, does not sum to 1. Posterior — a distribution again, sums to 1. Where both prior and likelihood are high, posterior is high. Where either is low, posterior drops. Lots of data — likelihood dominates. Little data — prior matters more. A compromise, weighted by how much data you have.
+:::
+
+## Why can't we just compute it?
+
+In principle — just multiply prior × likelihood at every $\theta$.
+
+. . .
+
+For the coin with 5 values of $\theta$? Easy. We just did it by hand.
+
+. . .
+
+But real models have continuous parameters — every $\theta$ between 0 and 1.
+
+$$p(\theta \mid \text{data}) = \frac{p(\theta) \times L(\theta)}{\int p(\theta) \times L(\theta) \, d\theta}$$
+
+. . .
+
+That denominator — integrate over **every possible** $\theta$.
+
+. . .
+
+1 parameter → fine. 3 → hard. 20 → forget it.
+
+. . .
+
+Solution: don't compute it. **Sample from it.**
+
+That's MCMC. That's `brms`.
+
+::: notes
+For 5 candidates — easy, do it by hand. But real parameters are continuous. You need to integrate prior times likelihood across every possible value. One parameter — fine. Twenty — impossible. So we sample. MCMC draws from the posterior without computing the integral. The samples ARE the posterior.
+:::
+
+## What Bayes gives you that MLE doesn't
+
+|                        | MLE               | Bayes                           |
+|------------------------|-------------------|---------------------------------|
+| Point estimate         | ✓ (peak)          | ✓ (posterior mean/median)       |
+| Uncertainty            | SE from curvature | Full distribution               |
+| Probability statements | ✗                 | "95% chance β₁ ∈ [0.1, 0.5]"   |
+| Prior knowledge        | ✗                 | ✓                               |
+| Evidence FOR null      | ✗                 | ✓ (Bayes Factors)               |
+
+::: notes
+What do you gain? Full distribution instead of just a point and SE. Direct probability statements about parameters. Ability to incorporate prior knowledge. Evidence for the null — not just against it. The cost? Computation time and choosing priors.
+:::
+
+# The rise of Bayesian statistics {.center}
+
+## The rise of Bayesian statistics
+
+![](images/bayes_pop.jpg)
+
+::: notes
+This shows the explosion of papers using Bayesian methods over the last couple of decades. Bayesian statistics went from niche to mainstream across psychology, neuroscience, ecology, political science. Why? Technology plus frustration.
+:::
+
+## Why now?
+
+::::: columns
+::: {.column width="50%"}
+**Technology**
+
+-   Faster computers
+-   Better algorithms (HMC)
+-   Accessible software (`brms`, Stan)
+:::
+
+::: {.column width="50%"}
+**Frustration**
+
+-   Can't incorporate prior knowledge
+-   p-values don't answer what we want
+-   Can't find evidence FOR the null
+-   Replication crisis
+:::
+:::::
+
+::: notes
+Two forces. Technology made it possible — faster computers, HMC, brms uses lm() syntax. Frustration made it desirable — p-values only test the null, no priors, no null evidence, replication crisis exposed how easily frequentist tools can be abused.
+:::
+
+## Bayesian statistics as a tool
+
+::::: columns
+::: {.column width="50%"}
+-   Google "Bayesian" → philosophical wars
+
+-   Subjective vs. objective. Frequentist vs. Bayesian.
+
+-   Interesting. Not our focus.
+:::
+
+::: {.column width="50%"}
+```{r}
+#| echo: false
+include_graphics("images/bayespower.jpg")
+```
+:::
+:::::
+
+::: notes
+Online you'll find heated debate — subjective vs. objective probabilities, the "statistical wars." Intellectually interesting but can be paralyzing. For us, the question is: does this tool help you answer your research questions better? You don't have to pick a side.
+:::
+
+# Bayesian belief updating {.center}
+
+## Working example: dog people
+
+What proportion of people are dog people?
+
+. . .
+
+-   Data: 0 = cat person, 1 = dog person
+-   Parameter: $\theta$ = proportion of dog people
+-   Sample: 5 people
+
+. . .
+
+Same structure as the coin — just a different question.
+
+::: notes
+Same binomial setup as the coin. θ is now proportion of dog people. Binary data. We'll walk through the full Bayesian updating cycle with visuals.
+:::
+
+## Step 1: State your prior
+
+```{r, fig.align='center', echo=FALSE}
+knitr::include_graphics("images/diffpriors.png")
+```
+
+. . .
+
+People vary in how strongly they state prior beliefs.
+
+. . .
+
+-   **Informative** → "I'm pretty sure it's near 0.5"
+-   **Weakly informative** → "Probably between 0.2 and 0.8"
+-   **Non-informative** → "I have no idea"
+
+. . .
+
+Most researchers use **weakly informative** priors.
+
+::: notes
+Different priors = different starting beliefs. Informative priors are specific — use with strong prior evidence like a meta-analysis. Non-informative try to let data speak entirely. Weakly informative — the sweet spot. Rule out impossible values without imposing strong claims. Too strong a prior means beliefs dominate with small samples. Too vague risks numerical issues. Practical advice: weakly informative as default.
+:::
+
+## Step 2: Your prior makes predictions
+
+Before seeing data — what does each model predict?
+
+![](images/prior_predictive.png){fig-align="center"}
+
+. . .
+
+Narrow prior → specific predictions.
+
+Wide prior → anything is plausible.
+
+::: notes
+Each prior implies predictions about data. The spike prior predicts 2-3 dog people. The wide prior says anything from 0 to 5 is plausible. After data arrive, we judge models by how well they predicted. This is the prior predictive distribution.
+:::
+
+## Step 3: Collect data
+
+![](images/bayes_data.png){fig-align="center"}
+
+. . .
+
+3 out of 5 are dog people.
+
+Everything before this happened **without data**.
+
+Now we update.
+
+::: notes
+Data arrive. 3 out of 5 dog people. Everything up to now — priors, predictions — happened before seeing data. Now we can ask: which model predicted this better?
+:::
+
+## Step 4: Which model predicted better?
+
+The **marginal likelihood** — how plausible is the observed data under each model?
+
+```{r, fig.align='center', echo=FALSE}
+include_graphics("images/marg_like.png")
+```
+
+. . .
+
+Go back to each model's predictions. Evaluate at the observed data.
+
+The ratio of these = the **Bayes Factor**.
+
+::: notes
+The marginal likelihood tells us: how plausible were the observed data under each model? Go back to each model's prior predictive distribution, evaluate at the outcome. The green model predicted 3 out of 5 better than the blue model. The ratio of these marginal likelihoods is the Bayes Factor.
+:::
+
+## Bayes Factors
+
+How much did the data change your mind?
+
+$$BF_{12} = \frac{P(\text{data} \mid M_1)}{P(\text{data} \mid M_2)}$$
+
+. . .
+
+-   $BF > 1$ → data favor $M_1$
+-   $BF < 1$ → data favor $M_2$
+-   $BF = 1$ → data equally consistent with both
+
+. . .
+
+Unlike p-values — BFs can provide evidence **for** the null.
+
+. . .
+
+```{r, fig.align='center', echo=FALSE, out.width="60%"}
+include_graphics("images/bf.png")
+```
+
+::: notes
+Bayes Factors compare two models directly. Ratio of marginal likelihoods. Greater than 1 favors M1. Less than 1 favors M2. Crucially — they can find evidence FOR the null, not just against it. BF > 3 is a common threshold in psychology. But these are conventions, not laws.
+:::
+
+## Step 5: Update → Posterior
+
+```{r, fig.align='center', echo=FALSE}
+include_graphics("images/step6.png")
+```
+
+. . .
+
+The wide prior (blue) gets reshaped — narrower, pulled toward the data.
+
+. . .
+
+The spike prior (green) doesn't budge.
+
+If you rule something out completely, no data can bring it back.
+
+::: notes
+The blue person's posterior is narrower than their prior — they learned from data. The green person with the spike prior is unchanged. Zero probability on other values means no data can rescue them. This is why dogmatic priors are dangerous. With enough data, the posterior converges toward the likelihood regardless of the prior — Bayesian inference is self-correcting.
+:::
+
+## Prior → Posterior
+
+![](images/priorpost.jpg){fig-align="center"}
+
+. . .
+
+The posterior sits between prior and likelihood.
+
+With more data — pulled toward the likelihood.
+
+With less data — stays closer to the prior.
+
+::: notes
+The prior gets reshaped by data into the posterior. The posterior sits between prior and likelihood, pulled toward whichever is more informative. With more data, the posterior converges toward the likelihood regardless of prior. Bayesian inference is robust to prior misspecification in the long run.
+:::
+
+## Credible intervals
+
+The posterior gives you what you always wanted from confidence intervals:
+
+. . .
+
+"With 95% probability, $\theta$ lies within this interval."
+
+. . .
+
+```{r, fig.align='center', echo=FALSE, out.width="70%"}
+knitr::include_graphics("images/step7.png")
+```
+
+. . .
+
+This is a **direct probability statement** about the parameter.
+
+Not "if we repeated the experiment..."
+
+::: notes
+A credible interval — specifically the Highest Density Interval — has the interpretation people WISH confidence intervals had. 95% probability the true value is in here. The HDI gives the narrowest interval containing 95% of the posterior mass. Every point inside has higher posterior density than every point outside. This is possible because the posterior IS a probability distribution over the parameter.
+:::
+
+# From coins to regression {.center}
+
+## Same recipe, more parameters
+
+| | Coin | Regression |
+|---|---|---|
+| Model | $Y \sim \text{Binomial}(n, \theta)$ | $Y \sim \text{Normal}(\mu_i, \sigma)$ |
+| Parameters | $\theta$ | $\beta_0, \beta_1, \sigma$ |
+| Prior | $p(\theta)$ | $p(\beta_0), p(\beta_1), p(\sigma)$ |
+| Likelihood | Score each $\theta$ | Score each $(\beta_0, \beta_1, \sigma)$ |
+| Posterior | $p(\theta \mid \text{data})$ | $p(\beta_0, \beta_1, \sigma \mid \text{data})$ |
+
+. . .
+
+More parameters. Same recipe.
+
+. . .
+
+`brms` handles all of it.
+
+::: notes
+Everything we did with the coin applies to regression. Just more parameters. Instead of one θ, you have β₀, β₁, σ. Each gets a prior. The likelihood scores each combination. MCMC samples from the posterior. brms handles all of it with lm()-style syntax.
+:::
+
+## You computed a likelihood last week
+
+```r
+compute_ll <- function(b0, b1, data) {
+  p_hat <- plogis(b0 + b1 * data$lead_weight)
+  sum(data$outcomes * log(p_hat) + 
+      (1 - data$outcomes) * log(1 - p_hat))
+}
+```
+
+. . .
+
+Same idea — many parameters, score each combination.
+
+. . .
+
+The linear model has one too — swap in `dnorm()`.
+
+::: notes
+Last week you wrote this. Pick candidate β₀, β₁. Compute predictions. Score against actual outcomes. Sum log-scores. That's the log-likelihood. Linear model — same logic, swap in dnorm.
+:::
+
+## The likelihood for a linear model
+
+$$Y_i \sim \text{Normal}(\mu_i, \sigma), \quad \mu_i = \beta_0 + \beta_1 X_i$$
+
+Say $\beta_0 = 50$, $\beta_1 = 0.3$, $\sigma = 10$:
+
+. . .
+
+-   Student watches 30 min → predicted mean = $50 + 0.3(30) = 59$
+-   Actual grade = 65
+-   Score: `dnorm(65, mean = 59, sd = 10)` ≈ 0.03
+
+. . .
+
+Do this for every student. Multiply. That's the likelihood.
+
+Different parameters → different score.
+
+::: notes
+Concrete. Guess β₀ = 50, β₁ = 0.3, σ = 10. Student watched 30 minutes — predicted mean 59. Actual grade 65. dnorm gives about 0.03. Do it for all students. Multiply. That's the likelihood for this guess. Try different parameters — different score.
+:::
+
+## Priors for regression
+
+Same logic as the coin — just different parameters.
+
+. . .
+
+-   Grades are 0–100. $\beta_0$ can't be 500. → $\beta_0 \sim \text{Normal}(50, 20)$
+
+. . .
+
+-   Watching lectures shouldn't hurt. $\beta_1$ probably isn't −20. → $\beta_1 \sim \text{Normal}(0, 5)$
+
+. . .
+
+-   $\sigma$ must be positive, probably not 1000. → $\sigma \sim \text{Half-Cauchy}(0, 10)$
+
+. . .
+
+MLE ignores all of this. Bayes encodes it.
+
+::: notes
+Same prior logic. Bounded grades — narrow prior on intercept. Small effects expected — prior on slope centered at zero. σ must be positive — half-Cauchy. MLE treats every parameter value as equally plausible. Bayes lets you say what's reasonable before looking at data.
+:::
