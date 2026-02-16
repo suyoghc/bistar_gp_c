@@ -351,7 +351,7 @@ def run_one(ncurve: NormalizedCurve,
     x_eval_raw = x_eval_norm.numpy() * (ncurve.x_max - ncurve.x_min) + ncurve.x_min
 
     # ── Fit candidates on RAW data ──
-    candidates = build_practice_candidates()
+    candidates = build_core_candidates()
     candidate_results = []
     fitted_params = {}
     bic_log_ml = {}

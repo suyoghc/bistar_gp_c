@@ -11,16 +11,16 @@ Output: results
     G stats — min: 0.01, median: 0.01, max: 0.01
 
   Computing G matrix: pw_mse...
-    G stats — min: 184.52, median: 265.79, max: 333.09
+    G stats — min: 184.52, median: 271.10, max: 333.09
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.94, median: 4.95, max: 4.96
+    G stats — min: 4.95, median: 4.95, max: 4.96
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.01, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 249.17, median: 334.55, max: 386.68
+    G stats — min: 249.17, median: 338.88, max: 386.68
 
   Computing G matrix: pw_nll...
     G stats — min: 4.95, median: 4.96, max: 4.98
@@ -29,157 +29,157 @@ Output: results
     G stats — min: 0.02, median: 0.02, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 468.49, median: 538.18, max: 679.41
+    G stats — min: 474.10, median: 539.85, max: 679.41
 
   Computing G matrix: pw_nll...
     G stats — min: 4.97, median: 5.00, max: 5.04
-BIC=Power t=26.9s
+BIC=Power t=18.1s
 [2/50] synth_power/sub1 (27t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.03, median: 0.04, max: 0.05
+    G stats — min: 0.03, median: 0.04, max: 0.04
 
   Computing G matrix: pw_mse...
-    G stats — min: 373.24, median: 490.78, max: 734.83
+    G stats — min: 373.24, median: 429.71, max: 515.01
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.65, median: 4.69, max: 4.78
+    G stats — min: 4.65, median: 4.67, max: 4.70
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.03, median: 0.03, max: 0.05
+    G stats — min: 0.03, median: 0.03, max: 0.04
 
   Computing G matrix: pw_mse...
-    G stats — min: 342.46, median: 374.69, max: 523.32
+    G stats — min: 342.46, median: 363.62, max: 382.70
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.64, median: 4.65, max: 4.70
+    G stats — min: 4.64, median: 4.64, max: 4.65
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.03, median: 0.03, max: 0.05
+    G stats — min: 0.03, median: 0.03, max: 0.04
 
   Computing G matrix: pw_mse...
-    G stats — min: 359.68, median: 383.42, max: 514.50
+    G stats — min: 359.68, median: 376.88, max: 391.01
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.64, median: 4.65, max: 4.70
-BIC=Exponential t=11.3s
+    G stats — min: 4.64, median: 4.65, max: 4.65
+BIC=Exponential t=14.6s
 [3/50] synth_power/sub2 (62t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.03, max: 0.04
+    G stats — min: 0.02, median: 0.03, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 233.02, median: 285.29, max: 352.13
+    G stats — min: 233.02, median: 303.42, max: 352.13
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.44, median: 4.47, max: 4.55
+    G stats — min: 4.45, median: 4.50, max: 4.55
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.02, median: 0.03, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 176.44, median: 215.84, max: 305.04
+    G stats — min: 180.01, median: 250.47, max: 305.04
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.41, median: 4.44, max: 4.52
+    G stats — min: 4.42, median: 4.48, max: 4.52
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.02, median: 0.02, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 158.59, median: 193.67, max: 288.99
+    G stats — min: 168.26, median: 234.23, max: 288.99
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.40, median: 4.42, max: 4.51
-BIC=Exponential t=15.5s
+    G stats — min: 4.41, median: 4.47, max: 4.51
+BIC=Exponential t=23.1s
 [4/50] synth_power/sub3 (59t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.01, max: 0.01
 
   Computing G matrix: pw_mse...
-    G stats — min: 40.04, median: 48.12, max: 66.76
+    G stats — min: 40.04, median: 50.63, max: 66.76
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.11, median: 4.13, max: 4.14
+    G stats — min: 4.12, median: 4.13, max: 4.14
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.01, max: 0.01
 
   Computing G matrix: pw_mse...
-    G stats — min: 40.72, median: 45.15, max: 55.28
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.11, median: 4.12, max: 4.13
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.01
-
-  Computing G matrix: pw_mse...
-    G stats — min: 45.24, median: 50.37, max: 60.02
+    G stats — min: 40.91, median: 49.15, max: 55.28
 
   Computing G matrix: pw_nll...
     G stats — min: 4.12, median: 4.13, max: 4.13
-BIC=Power t=17.4s
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.01, max: 0.01
+
+  Computing G matrix: pw_mse...
+    G stats — min: 45.57, median: 53.99, max: 60.02
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.13, median: 4.13, max: 4.13
+BIC=Power t=15.6s
 [5/50] synth_power/sub4 (59t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.00, median: 0.00, max: 0.02
+    G stats — min: 0.00, median: 0.00, max: 0.00
 
   Computing G matrix: pw_mse...
-    G stats — min: 39.37, median: 47.09, max: 242.04
+    G stats — min: 39.37, median: 44.90, max: 49.53
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.51, median: 4.51, max: 4.58
+    G stats — min: 4.51, median: 4.51, max: 4.52
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.00, median: 0.01, max: 0.02
+    G stats — min: 0.00, median: 0.00, max: 0.01
 
   Computing G matrix: pw_mse...
-    G stats — min: 43.56, median: 54.80, max: 237.89
+    G stats — min: 43.56, median: 50.99, max: 58.30
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.51, median: 4.52, max: 4.58
+    G stats — min: 4.51, median: 4.52, max: 4.52
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.02
+    G stats — min: 0.01, median: 0.01, max: 0.01
 
   Computing G matrix: pw_mse...
-    G stats — min: 61.00, median: 75.71, max: 193.88
+    G stats — min: 61.00, median: 71.37, max: 84.38
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.52, median: 4.52, max: 4.57
-BIC=Power t=18.8s
+    G stats — min: 4.52, median: 4.52, max: 4.53
+BIC=Power t=15.0s
 [6/50] synth_power/sub5 (73t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.02
+    G stats — min: 0.01, median: 0.02, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 123.63, median: 197.06, max: 367.49
+    G stats — min: 123.63, median: 241.76, max: 367.49
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.68, median: 4.69, max: 4.74
+    G stats — min: 4.68, median: 4.71, max: 4.74
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.02, max: 0.02
+
+  Computing G matrix: pw_mse...
+    G stats — min: 114.13, median: 227.27, max: 354.03
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.67, median: 4.70, max: 4.74
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.01, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 114.12, median: 183.71, max: 354.03
+    G stats — min: 90.50, median: 164.70, max: 258.74
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.67, median: 4.69, max: 4.74
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.02
-
-  Computing G matrix: pw_mse...
-    G stats — min: 90.50, median: 127.36, max: 258.74
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.67, median: 4.67, max: 4.71
-BIC=Power t=14.2s
+    G stats — min: 4.67, median: 4.68, max: 4.71
+BIC=Power t=27.6s
 [7/50] synth_power/sub6 (45t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.02, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 211.56, median: 324.11, max: 457.25
+    G stats — min: 211.57, median: 325.31, max: 457.25
 
   Computing G matrix: pw_nll...
     G stats — min: 4.53, median: 4.55, max: 4.58
@@ -188,7 +188,7 @@ BIC=Power t=14.2s
     G stats — min: 0.02, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 202.90, median: 304.37, max: 427.38
+    G stats — min: 202.91, median: 305.38, max: 427.38
 
   Computing G matrix: pw_nll...
     G stats — min: 4.53, median: 4.54, max: 4.56
@@ -197,17 +197,17 @@ BIC=Power t=14.2s
     G stats — min: 0.02, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 202.66, median: 295.95, max: 405.91
+    G stats — min: 202.67, median: 296.83, max: 405.91
 
   Computing G matrix: pw_nll...
     G stats — min: 4.53, median: 4.54, max: 4.55
-BIC=Power t=15.4s
+BIC=Power t=24.2s
 [8/50] synth_power/sub7 (73t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.04, median: 0.05, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 323.06, median: 377.15, max: 476.10
+    G stats — min: 323.06, median: 377.15, max: 473.35
 
   Computing G matrix: pw_nll...
     G stats — min: 4.44, median: 4.48, max: 4.51
@@ -216,7 +216,7 @@ BIC=Power t=15.4s
     G stats — min: 0.04, median: 0.05, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 314.80, median: 355.84, max: 441.76
+    G stats — min: 314.80, median: 355.84, max: 439.11
 
   Computing G matrix: pw_nll...
     G stats — min: 4.42, median: 4.47, max: 4.48
@@ -225,39 +225,39 @@ BIC=Power t=15.4s
     G stats — min: 0.04, median: 0.05, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 307.01, median: 338.81, max: 416.58
+    G stats — min: 307.01, median: 338.81, max: 414.00
 
   Computing G matrix: pw_nll...
     G stats — min: 4.40, median: 4.46, max: 4.47
-BIC=Power t=16.3s
+BIC=Power t=13.8s
 [9/50] synth_power/sub8 (71t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.01, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 75.27, median: 89.47, max: 147.99
+    G stats — min: 77.00, median: 112.23, max: 147.99
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.45, median: 4.46, max: 4.51
+    G stats — min: 4.46, median: 4.48, max: 4.51
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.01, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 100.48, median: 115.78, max: 193.59
+    G stats — min: 101.65, median: 143.18, max: 193.59
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.46, median: 4.47, max: 4.53
+    G stats — min: 4.47, median: 4.49, max: 4.53
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.02
+    G stats — min: 0.01, median: 0.02, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 115.42, median: 134.53, max: 222.84
+    G stats — min: 117.02, median: 164.34, max: 222.84
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.47, median: 4.48, max: 4.54
-BIC=Exponential t=16.5s
+    G stats — min: 4.47, median: 4.50, max: 4.54
+BIC=Exponential t=13.5s
 [10/50] synth_power/sub9 (43t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.05, median: 0.06, max: 0.10
@@ -272,7 +272,7 @@ BIC=Exponential t=16.5s
     G stats — min: 0.04, median: 0.06, max: 0.09
 
   Computing G matrix: pw_mse...
-    G stats — min: 358.41, median: 371.35, max: 433.62
+    G stats — min: 358.42, median: 371.35, max: 433.62
 
   Computing G matrix: pw_nll...
     G stats — min: 4.41, median: 4.49, max: 4.53
@@ -281,17 +281,17 @@ BIC=Exponential t=16.5s
     G stats — min: 0.04, median: 0.06, max: 0.09
 
   Computing G matrix: pw_mse...
-    G stats — min: 339.01, median: 358.24, max: 400.14
+    G stats — min: 339.18, median: 358.25, max: 400.14
 
   Computing G matrix: pw_nll...
     G stats — min: 4.38, median: 4.48, max: 4.52
-BIC=Power t=19.1s
+BIC=Power t=20.1s
 [11/50] synth_power/sub10 (21t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.10, median: 0.13, max: 0.16
 
   Computing G matrix: pw_mse...
-    G stats — min: 1485.37, median: 1776.12, max: 2061.65
+    G stats — min: 1486.03, median: 1776.53, max: 2061.64
 
   Computing G matrix: pw_nll...
     G stats — min: 5.08, median: 5.18, max: 5.24
@@ -300,7 +300,7 @@ BIC=Power t=19.1s
     G stats — min: 0.10, median: 0.13, max: 0.16
 
   Computing G matrix: pw_mse...
-    G stats — min: 1330.05, median: 1610.89, max: 1863.29
+    G stats — min: 1330.64, median: 1610.89, max: 1863.28
 
   Computing G matrix: pw_nll...
     G stats — min: 5.02, median: 5.12, max: 5.18
@@ -309,17 +309,17 @@ BIC=Power t=19.1s
     G stats — min: 0.06, median: 0.07, max: 0.08
 
   Computing G matrix: pw_mse...
-    G stats — min: 776.69, median: 983.15, max: 1263.84
+    G stats — min: 776.92, median: 983.15, max: 1263.84
 
   Computing G matrix: pw_nll...
     G stats — min: 4.80, median: 4.91, max: 5.02
-BIC=Power t=11.9s
+BIC=Power t=9.6s
 [12/50] synth_power/sub11 (75t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.02, median: 0.03, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 441.17, median: 470.14, max: 525.75
+    G stats — min: 441.17, median: 485.61, max: 525.75
 
   Computing G matrix: pw_nll...
     G stats — min: 4.73, median: 4.74, max: 4.75
@@ -328,48 +328,48 @@ BIC=Power t=11.9s
     G stats — min: 0.02, median: 0.03, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 436.50, median: 477.35, max: 539.29
+    G stats — min: 436.50, median: 490.89, max: 539.29
 
   Computing G matrix: pw_nll...
     G stats — min: 4.73, median: 4.74, max: 4.75
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.03
+    G stats — min: 0.02, median: 0.03, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 421.59, median: 462.33, max: 527.43
+    G stats — min: 421.59, median: 477.47, max: 527.43
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.72, median: 4.73, max: 4.75
-BIC=Power t=15.0s
+    G stats — min: 4.72, median: 4.74, max: 4.75
+BIC=Power t=10.7s
 [13/50] synth_power/sub12 (54t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.02, median: 0.02, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 253.35, median: 291.74, max: 352.73
+    G stats — min: 253.35, median: 314.41, max: 352.73
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.65, median: 4.66, max: 4.68
+    G stats — min: 4.65, median: 4.67, max: 4.68
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.02, median: 0.02, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 262.84, median: 302.81, max: 370.72
+    G stats — min: 262.84, median: 325.83, max: 370.72
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.66, median: 4.67, max: 4.69
+    G stats — min: 4.66, median: 4.68, max: 4.69
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.02, median: 0.02, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 267.98, median: 309.37, max: 385.09
+    G stats — min: 267.98, median: 332.54, max: 385.09
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.66, median: 4.67, max: 4.70
-BIC=Power t=20.4s
+    G stats — min: 4.66, median: 4.68, max: 4.70
+BIC=Power t=13.2s
 [14/50] synth_power/sub13 (79t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.03, median: 0.03, max: 0.04
@@ -397,69 +397,69 @@ BIC=Power t=20.4s
 
   Computing G matrix: pw_nll...
     G stats — min: 4.67, median: 4.69, max: 4.70
-BIC=Power t=17.5s
+BIC=Power t=12.8s
 [15/50] synth_power/sub14 (20t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.00, median: 0.01, max: 0.02
+    G stats — min: 0.01, median: 0.02, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 28.91, median: 97.13, max: 184.69
+    G stats — min: 81.28, median: 136.50, max: 184.69
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.48, median: 4.53, max: 4.58
+    G stats — min: 4.52, median: 4.56, max: 4.58
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.01, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 56.96, median: 112.02, max: 167.86
+    G stats — min: 100.06, median: 137.86, max: 167.86
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.49, median: 4.54, max: 4.58
+    G stats — min: 4.53, median: 4.56, max: 4.58
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.01, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 107.04, median: 142.49, max: 166.40
+    G stats — min: 136.17, median: 152.67, max: 166.40
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.51, median: 4.55, max: 4.58
-BIC=Exponential t=13.6s
+    G stats — min: 4.55, median: 4.56, max: 4.58
+BIC=Exponential t=25.7s
 [16/50] synth_power/sub15 (66t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.03
+    G stats — min: 0.02, median: 0.02, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 189.56, median: 264.29, max: 354.77
+    G stats — min: 189.56, median: 234.22, max: 286.08
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.63, median: 4.63, max: 4.64
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.02, max: 0.02
+
+  Computing G matrix: pw_mse...
+    G stats — min: 206.75, median: 256.48, max: 314.72
 
   Computing G matrix: pw_nll...
     G stats — min: 4.63, median: 4.64, max: 4.65
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.03
+    G stats — min: 0.02, median: 0.02, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 206.75, median: 294.14, max: 344.52
+    G stats — min: 224.80, median: 276.42, max: 335.59
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.63, median: 4.64, max: 4.65
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.03
-
-  Computing G matrix: pw_mse...
-    G stats — min: 224.80, median: 317.91, max: 341.22
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.63, median: 4.65, max: 4.66
-BIC=Power t=14.5s
+    G stats — min: 4.64, median: 4.65, max: 4.66
+BIC=Power t=13.9s
 [17/50] synth_power/sub16 (51t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.08, median: 0.09, max: 0.10
 
   Computing G matrix: pw_mse...
-    G stats — min: 1635.42, median: 1971.34, max: 2361.87
+    G stats — min: 1645.19, median: 1971.35, max: 2361.87
 
   Computing G matrix: pw_nll...
     G stats — min: 5.14, median: 5.23, max: 5.31
@@ -468,26 +468,26 @@ BIC=Power t=14.5s
     G stats — min: 0.07, median: 0.08, max: 0.10
 
   Computing G matrix: pw_mse...
-    G stats — min: 1447.25, median: 1766.66, max: 2137.66
+    G stats — min: 1456.27, median: 1766.67, max: 2137.66
 
   Computing G matrix: pw_nll...
-    G stats — min: 5.06, median: 5.17, max: 5.25
+    G stats — min: 5.07, median: 5.17, max: 5.25
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.06, median: 0.07, max: 0.08
 
   Computing G matrix: pw_mse...
-    G stats — min: 1068.14, median: 1320.04, max: 1597.87
+    G stats — min: 1075.40, median: 1320.04, max: 1597.87
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.91, median: 5.03, max: 5.12
-BIC=Power t=19.9s
+    G stats — min: 4.92, median: 5.03, max: 5.12
+BIC=Power t=18.1s
 [18/50] synth_power/sub17 (57t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.04, median: 0.04, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 800.61, median: 922.05, max: 1060.13
+    G stats — min: 808.18, median: 924.67, max: 1060.11
 
   Computing G matrix: pw_nll...
     G stats — min: 4.88, median: 4.95, max: 5.02
@@ -496,26 +496,26 @@ BIC=Power t=19.9s
     G stats — min: 0.04, median: 0.04, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 785.59, median: 885.38, max: 987.53
+    G stats — min: 792.65, median: 885.38, max: 987.51
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.87, median: 4.94, max: 5.00
+    G stats — min: 4.88, median: 4.94, max: 5.00
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.04, median: 0.04, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 777.51, median: 869.88, max: 960.30
+    G stats — min: 784.32, median: 869.88, max: 960.29
 
   Computing G matrix: pw_nll...
     G stats — min: 4.87, median: 4.94, max: 4.99
-BIC=Power t=17.1s
+BIC=Power t=16.9s
 [19/50] synth_power/sub18 (69t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.04, median: 0.06, max: 0.08
 
   Computing G matrix: pw_mse...
-    G stats — min: 698.23, median: 1072.16, max: 1494.41
+    G stats — min: 698.25, median: 1072.16, max: 1493.08
 
   Computing G matrix: pw_nll...
     G stats — min: 4.84, median: 4.94, max: 5.09
@@ -524,7 +524,7 @@ BIC=Power t=17.1s
     G stats — min: 0.03, median: 0.05, max: 0.07
 
   Computing G matrix: pw_mse...
-    G stats — min: 450.50, median: 613.97, max: 928.75
+    G stats — min: 450.51, median: 613.97, max: 926.90
 
   Computing G matrix: pw_nll...
     G stats — min: 4.75, median: 4.78, max: 4.85
@@ -533,11 +533,11 @@ BIC=Power t=17.1s
     G stats — min: 0.03, median: 0.04, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 431.66, median: 546.50, max: 817.98
+    G stats — min: 431.67, median: 546.50, max: 816.14
 
   Computing G matrix: pw_nll...
     G stats — min: 4.71, median: 4.76, max: 4.80
-BIC=Power t=14.4s
+BIC=Power t=13.2s
 [20/50] synth_power/sub19 (51t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.04, median: 0.05, max: 0.06
@@ -565,106 +565,106 @@ BIC=Power t=14.4s
 
   Computing G matrix: pw_nll...
     G stats — min: 4.30, median: 4.31, max: 4.31
-BIC=Power t=22.8s
+BIC=Power t=18.3s
 [21/50] synth_power/sub20 (65t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.03, median: 0.04, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 112.99, median: 126.24, max: 268.43
+    G stats — min: 115.15, median: 184.15, max: 268.43
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.03, median: 4.04, max: 4.26
+    G stats — min: 4.03, median: 4.14, max: 4.26
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.03, median: 0.04, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 110.88, median: 122.20, max: 257.27
+    G stats — min: 112.95, median: 178.91, max: 257.27
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.03, median: 4.04, max: 4.25
+    G stats — min: 4.03, median: 4.13, max: 4.25
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.03, median: 0.04, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 107.71, median: 117.60, max: 248.28
+    G stats — min: 109.58, median: 173.01, max: 248.28
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.02, median: 4.03, max: 4.24
-BIC=Exponential t=15.6s
+    G stats — min: 4.03, median: 4.13, max: 4.24
+BIC=Exponential t=14.0s
 [22/50] synth_power/sub21 (21t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.01, max: 0.01
 
   Computing G matrix: pw_mse...
-    G stats — min: 100.34, median: 113.18, max: 173.77
+    G stats — min: 105.92, median: 134.90, max: 173.77
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.71, median: 4.73, max: 4.75
+    G stats — min: 4.72, median: 4.74, max: 4.75
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.01, max: 0.01
 
   Computing G matrix: pw_mse...
-    G stats — min: 140.51, median: 156.29, max: 201.85
+    G stats — min: 145.47, median: 173.04, max: 201.85
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.73, median: 4.74, max: 4.76
+    G stats — min: 4.74, median: 4.75, max: 4.76
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.02, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 207.88, median: 230.47, max: 256.77
+    G stats — min: 207.88, median: 236.02, max: 256.77
 
   Computing G matrix: pw_nll...
     G stats — min: 4.75, median: 4.76, max: 4.77
-BIC=Exponential t=12.1s
+BIC=Exponential t=10.0s
 [23/50] synth_power/sub22 (22t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.02, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 93.05, median: 145.76, max: 418.40
+    G stats — min: 105.33, median: 250.81, max: 418.40
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.46, median: 4.57, max: 4.74
+    G stats — min: 4.55, median: 4.65, max: 4.74
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.04
+    G stats — min: 0.02, median: 0.03, max: 0.04
 
   Computing G matrix: pw_mse...
-    G stats — min: 117.42, median: 209.45, max: 472.86
+    G stats — min: 161.40, median: 308.74, max: 472.86
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.47, median: 4.59, max: 4.76
+    G stats — min: 4.57, median: 4.67, max: 4.76
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.04
+    G stats — min: 0.02, median: 0.03, max: 0.04
 
   Computing G matrix: pw_mse...
-    G stats — min: 147.42, median: 261.90, max: 509.88
+    G stats — min: 216.75, median: 358.17, max: 509.88
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.48, median: 4.61, max: 4.77
-BIC=DelayedExp t=12.0s
+    G stats — min: 4.59, median: 4.68, max: 4.77
+BIC=Exponential t=10.0s
 [24/50] synth_power/sub23 (58t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.05, median: 0.05, max: 0.07
 
   Computing G matrix: pw_mse...
-    G stats — min: 898.14, median: 1091.85, max: 1290.96
+    G stats — min: 909.82, median: 1094.12, max: 1290.95
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.86, median: 4.97, max: 5.05
+    G stats — min: 4.87, median: 4.97, max: 5.05
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.05, median: 0.05, max: 0.07
 
   Computing G matrix: pw_mse...
-    G stats — min: 821.73, median: 1006.84, max: 1178.71
+    G stats — min: 832.71, median: 1006.84, max: 1178.71
 
   Computing G matrix: pw_nll...
     G stats — min: 4.84, median: 4.94, max: 5.03
@@ -673,771 +673,769 @@ BIC=DelayedExp t=12.0s
     G stats — min: 0.03, median: 0.04, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 451.18, median: 639.49, max: 870.92
+    G stats — min: 458.79, median: 639.49, max: 870.92
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.70, median: 4.83, max: 4.95
-BIC=Power t=17.3s
+    G stats — min: 4.71, median: 4.83, max: 4.95
+BIC=Power t=12.8s
 [25/50] synth_power/sub24 (40t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.02, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 71.94, median: 83.53, max: 155.38
+    G stats — min: 71.94, median: 116.92, max: 155.38
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.19, median: 4.20, max: 4.28
+    G stats — min: 4.19, median: 4.24, max: 4.28
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.02, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 74.49, median: 87.44, max: 160.98
+    G stats — min: 74.49, median: 121.21, max: 160.98
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.20, median: 4.21, max: 4.28
+    G stats — min: 4.20, median: 4.24, max: 4.28
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.02, max: 0.03
 
   Computing G matrix: pw_mse...
-    G stats — min: 75.10, median: 88.11, max: 164.88
+    G stats — min: 75.10, median: 122.72, max: 164.88
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.20, median: 4.21, max: 4.29
-BIC=Exponential t=17.7s
+    G stats — min: 4.20, median: 4.24, max: 4.29
+BIC=Exponential t=18.8s
 [26/50] synth_exponential/sub25 (20t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.03, max: 0.04
+    G stats — min: 0.03, median: 0.03, max: 0.04
 
   Computing G matrix: pw_mse...
-    G stats — min: 369.65, median: 518.00, max: 658.03
+    G stats — min: 438.60, median: 549.64, max: 658.03
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.80, median: 4.87, max: 4.90
+    G stats — min: 4.85, median: 4.87, max: 4.90
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.03, median: 0.03, max: 0.04
 
   Computing G matrix: pw_mse...
-    G stats — min: 416.34, median: 551.12, max: 675.36
+    G stats — min: 482.89, median: 583.98, max: 675.36
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.81, median: 4.87, max: 4.90
+    G stats — min: 4.86, median: 4.88, max: 4.90
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.03, median: 0.04, max: 0.04
 
   Computing G matrix: pw_mse...
-    G stats — min: 488.79, median: 606.83, max: 716.70
+    G stats — min: 556.62, median: 637.04, max: 716.70
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.83, median: 4.89, max: 4.91
-BIC=Power t=13.2s
+    G stats — min: 4.88, median: 4.89, max: 4.91
+BIC=Power t=10.5s
 [27/50] synth_exponential/sub26 (55t)... 
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.06
-
-  Computing G matrix: pw_mse...
-    G stats — min: 109.10, median: 159.44, max: 525.09
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.37, median: 4.43, max: 4.72
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.06
-
-  Computing G matrix: pw_mse...
-    G stats — min: 117.75, median: 184.69, max: 575.95
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.37, median: 4.44, max: 4.74
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.03, max: 0.07
-
-  Computing G matrix: pw_mse...
-    G stats — min: 124.54, median: 198.35, max: 591.00
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.37, median: 4.45, max: 4.74
-BIC=DelayedExp t=21.2s
-[28/50] synth_exponential/sub27 (43t)... 
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.05
-
-  Computing G matrix: pw_mse...
-    G stats — min: 62.91, median: 100.37, max: 955.53
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.60, median: 4.62, max: 4.95
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.05
-
-  Computing G matrix: pw_mse...
-    G stats — min: 67.04, median: 101.65, max: 944.72
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.60, median: 4.62, max: 4.95
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.05
-
-  Computing G matrix: pw_mse...
-    G stats — min: 73.87, median: 101.01, max: 908.62
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.59, median: 4.62, max: 4.94
-BIC=APEX t=20.3s
-[29/50] synth_exponential/sub28 (22t)... 
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.04, median: 0.05, max: 0.10
-
-  Computing G matrix: pw_mse...
-    G stats — min: 216.82, median: 293.22, max: 584.45
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.35, median: 4.43, max: 4.68
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.05, median: 0.06, max: 0.10
-
-  Computing G matrix: pw_mse...
-    G stats — min: 243.93, median: 312.12, max: 593.74
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.37, median: 4.45, max: 4.69
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.05, median: 0.06, max: 0.10
-
-  Computing G matrix: pw_mse...
-    G stats — min: 266.81, median: 326.66, max: 599.90
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.39, median: 4.46, max: 4.69
-BIC=Exponential t=12.2s
-[30/50] synth_exponential/sub29 (30t)... 
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.09
-
-  Computing G matrix: pw_mse...
-    G stats — min: 51.78, median: 91.39, max: 2000.19
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.66, median: 4.68, max: 5.29
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.09
-
-  Computing G matrix: pw_mse...
-    G stats — min: 55.11, median: 100.02, max: 2009.01
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.66, median: 4.68, max: 5.29
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.09
-
-  Computing G matrix: pw_mse...
-    G stats — min: 59.73, median: 115.49, max: 2025.86
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.66, median: 4.68, max: 5.29
-BIC=Exponential t=12.2s
-[31/50] synth_exponential/sub30 (50t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.02, median: 0.03, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 35.60, median: 72.42, max: 476.44
+    G stats — min: 153.98, median: 337.13, max: 525.09
 
   Computing G matrix: pw_nll...
-    G stats — min: 3.95, median: 3.99, max: 4.50
+    G stats — min: 4.43, median: 4.57, max: 4.72
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.06
+    G stats — min: 0.02, median: 0.04, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 24.59, median: 42.99, max: 390.26
+    G stats — min: 165.06, median: 361.49, max: 575.95
 
   Computing G matrix: pw_nll...
-    G stats — min: 3.94, median: 3.95, max: 4.42
+    G stats — min: 4.43, median: 4.59, max: 4.74
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.05
+    G stats — min: 0.02, median: 0.04, max: 0.07
 
   Computing G matrix: pw_mse...
-    G stats — min: 24.28, median: 37.94, max: 365.24
+    G stats — min: 176.44, median: 374.71, max: 591.00
 
   Computing G matrix: pw_nll...
-    G stats — min: 3.94, median: 3.94, max: 4.40
-BIC=Exponential t=24.5s
+    G stats — min: 4.44, median: 4.59, max: 4.74
+BIC=Exponential t=15.9s
+[28/50] synth_exponential/sub27 (43t)... 
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.03, max: 0.05
+
+  Computing G matrix: pw_mse...
+    G stats — min: 62.91, median: 463.32, max: 955.53
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.62, median: 4.77, max: 4.95
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.03, max: 0.05
+
+  Computing G matrix: pw_mse...
+    G stats — min: 67.04, median: 460.26, max: 944.72
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.62, median: 4.77, max: 4.95
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.03, max: 0.05
+
+  Computing G matrix: pw_mse...
+    G stats — min: 73.87, median: 447.97, max: 908.62
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.62, median: 4.77, max: 4.94
+BIC=Exponential t=23.2s
+[29/50] synth_exponential/sub28 (22t)... 
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.04, median: 0.07, max: 0.10
+
+  Computing G matrix: pw_mse...
+    G stats — min: 231.43, median: 402.40, max: 584.45
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.40, median: 4.55, max: 4.68
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.05, median: 0.07, max: 0.10
+
+  Computing G matrix: pw_mse...
+    G stats — min: 261.82, median: 424.44, max: 593.74
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.42, median: 4.56, max: 4.69
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.05, median: 0.07, max: 0.10
+
+  Computing G matrix: pw_mse...
+    G stats — min: 287.29, median: 442.08, max: 599.90
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.43, median: 4.57, max: 4.69
+BIC=Exponential t=10.3s
+[30/50] synth_exponential/sub29 (30t)... 
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.09
+
+  Computing G matrix: pw_mse...
+    G stats — min: 84.16, median: 1040.65, max: 2000.19
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.67, median: 4.98, max: 5.29
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.09
+
+  Computing G matrix: pw_mse...
+    G stats — min: 91.63, median: 1050.35, max: 2009.01
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.68, median: 4.98, max: 5.29
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.09
+
+  Computing G matrix: pw_mse...
+    G stats — min: 103.42, median: 1064.77, max: 2025.86
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.68, median: 4.99, max: 5.29
+BIC=Exponential t=9.9s
+[31/50] synth_exponential/sub30 (50t)... 
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.04, max: 0.06
+
+  Computing G matrix: pw_mse...
+    G stats — min: 35.60, median: 231.65, max: 476.44
+
+  Computing G matrix: pw_nll...
+    G stats — min: 3.95, median: 4.21, max: 4.50
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.04, max: 0.06
+
+  Computing G matrix: pw_mse...
+    G stats — min: 24.59, median: 179.44, max: 390.26
+
+  Computing G matrix: pw_nll...
+    G stats — min: 3.94, median: 4.16, max: 4.42
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.03, max: 0.05
+
+  Computing G matrix: pw_mse...
+    G stats — min: 24.29, median: 168.31, max: 365.24
+
+  Computing G matrix: pw_nll...
+    G stats — min: 3.94, median: 4.15, max: 4.40
+BIC=Exponential t=20.4s
 [32/50] synth_exponential/sub31 (23t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.14
+    G stats — min: 0.01, median: 0.07, max: 0.14
 
   Computing G matrix: pw_mse...
-    G stats — min: 24.08, median: 51.02, max: 1438.06
+    G stats — min: 41.99, median: 718.75, max: 1438.06
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.13, median: 4.19, max: 5.09
+    G stats — min: 4.18, median: 4.63, max: 5.09
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.14
+    G stats — min: 0.01, median: 0.07, max: 0.14
 
   Computing G matrix: pw_mse...
-    G stats — min: 23.40, median: 51.39, max: 1435.63
+    G stats — min: 42.43, median: 716.97, max: 1435.63
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.13, median: 4.19, max: 5.09
+    G stats — min: 4.18, median: 4.63, max: 5.09
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.16
+    G stats — min: 0.02, median: 0.08, max: 0.16
 
   Computing G matrix: pw_mse...
-    G stats — min: 43.06, median: 113.05, max: 1454.54
+    G stats — min: 79.97, median: 767.00, max: 1454.54
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.14, median: 4.23, max: 5.09
-BIC=Exponential t=12.5s
+    G stats — min: 4.21, median: 4.67, max: 5.09
+BIC=Exponential t=14.8s
 [33/50] synth_exponential/sub32 (59t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.08
+    G stats — min: 0.01, median: 0.04, max: 0.08
 
   Computing G matrix: pw_mse...
-    G stats — min: 85.51, median: 102.15, max: 1054.50
+    G stats — min: 85.51, median: 555.49, max: 1054.50
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.34, median: 4.35, max: 4.91
+    G stats — min: 4.34, median: 4.62, max: 4.91
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.08
+    G stats — min: 0.01, median: 0.04, max: 0.08
 
   Computing G matrix: pw_mse...
-    G stats — min: 83.31, median: 100.39, max: 1051.60
+    G stats — min: 83.31, median: 551.14, max: 1051.60
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.34, median: 4.35, max: 4.91
+    G stats — min: 4.34, median: 4.62, max: 4.91
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.08
+    G stats — min: 0.01, median: 0.04, max: 0.08
 
   Computing G matrix: pw_mse...
-    G stats — min: 74.62, median: 90.87, max: 1022.46
+    G stats — min: 74.62, median: 512.98, max: 1022.46
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.33, median: 4.34, max: 4.90
-BIC=Exponential t=15.9s
+    G stats — min: 4.33, median: 4.61, max: 4.90
+BIC=Exponential t=15.5s
 [34/50] synth_exponential/sub33 (36t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.06
+    G stats — min: 0.02, median: 0.04, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 144.09, median: 163.35, max: 1092.59
+    G stats — min: 155.98, median: 602.71, max: 1092.59
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.53, median: 4.54, max: 5.00
+    G stats — min: 4.54, median: 4.76, max: 5.00
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.06
+    G stats — min: 0.02, median: 0.04, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 144.83, median: 164.44, max: 1077.31
+    G stats — min: 157.57, median: 616.46, max: 1077.31
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.53, median: 4.54, max: 4.99
+    G stats — min: 4.54, median: 4.77, max: 4.99
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.07
+    G stats — min: 0.02, median: 0.04, max: 0.07
 
   Computing G matrix: pw_mse...
-    G stats — min: 150.65, median: 181.78, max: 1112.41
+    G stats — min: 164.53, median: 634.40, max: 1112.41
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.54, median: 4.55, max: 5.00
-BIC=Exponential t=12.1s
+    G stats — min: 4.54, median: 4.78, max: 5.00
+BIC=Exponential t=10.2s
 [35/50] synth_exponential/sub34 (60t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.06
+    G stats — min: 0.01, median: 0.04, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 142.06, median: 300.07, max: 1935.00
+    G stats — min: 142.06, median: 944.66, max: 1935.00
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.69, median: 4.72, max: 5.21
+    G stats — min: 4.69, median: 4.93, max: 5.21
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.06
+    G stats — min: 0.01, median: 0.04, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 135.62, median: 271.90, max: 1828.01
+    G stats — min: 135.62, median: 898.75, max: 1828.01
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.69, median: 4.71, max: 5.18
+    G stats — min: 4.69, median: 4.91, max: 5.18
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.06
+    G stats — min: 0.01, median: 0.04, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 133.22, median: 257.75, max: 1769.07
+    G stats — min: 133.22, median: 874.24, max: 1769.07
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.68, median: 4.71, max: 5.17
-BIC=Exponential t=15.7s
+    G stats — min: 4.68, median: 4.91, max: 5.17
+BIC=Exponential t=13.5s
 [36/50] synth_exponential/sub35 (64t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.05
+    G stats — min: 0.01, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 101.65, median: 227.39, max: 1701.19
+    G stats — min: 101.65, median: 857.90, max: 1701.19
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.82, median: 4.84, max: 5.19
+    G stats — min: 4.82, median: 5.00, max: 5.19
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.05
+    G stats — min: 0.01, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 105.46, median: 231.16, max: 1702.57
+    G stats — min: 105.46, median: 862.24, max: 1702.57
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.82, median: 4.84, max: 5.20
+    G stats — min: 4.82, median: 5.00, max: 5.20
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.05
+    G stats — min: 0.01, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 107.01, median: 230.43, max: 1688.10
+    G stats — min: 107.01, median: 857.96, max: 1688.10
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.82, median: 4.84, max: 5.19
-BIC=Exponential t=14.5s
+    G stats — min: 4.82, median: 5.00, max: 5.19
+BIC=Exponential t=13.8s
 [37/50] synth_exponential/sub36 (64t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.08
+    G stats — min: 0.01, median: 0.04, max: 0.08
 
   Computing G matrix: pw_mse...
-    G stats — min: 122.66, median: 158.90, max: 1896.04
+    G stats — min: 122.66, median: 1017.02, max: 1896.04
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.73, median: 4.74, max: 5.27
+    G stats — min: 4.73, median: 5.00, max: 5.27
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.08
+    G stats — min: 0.01, median: 0.04, max: 0.08
 
   Computing G matrix: pw_mse...
-    G stats — min: 140.68, median: 179.19, max: 1940.54
+    G stats — min: 140.68, median: 1036.59, max: 1940.54
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.74, median: 4.75, max: 5.27
+    G stats — min: 4.74, median: 5.01, max: 5.27
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.08
+    G stats — min: 0.01, median: 0.04, max: 0.08
 
   Computing G matrix: pw_mse...
-    G stats — min: 159.17, median: 197.68, max: 1980.86
+    G stats — min: 159.17, median: 1058.35, max: 1980.86
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.74, median: 4.75, max: 5.28
-BIC=Exponential t=16.9s
+    G stats — min: 4.74, median: 5.01, max: 5.28
+BIC=Exponential t=12.7s
 [38/50] synth_exponential/sub37 (71t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.10
+    G stats — min: 0.02, median: 0.05, max: 0.10
 
   Computing G matrix: pw_mse...
-    G stats — min: 162.57, median: 168.92, max: 1748.81
+    G stats — min: 162.57, median: 946.83, max: 1748.81
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.48, median: 4.49, max: 5.16
+    G stats — min: 4.48, median: 4.82, max: 5.16
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.10
+    G stats — min: 0.02, median: 0.05, max: 0.10
 
   Computing G matrix: pw_mse...
-    G stats — min: 160.09, median: 167.46, max: 1743.96
+    G stats — min: 160.09, median: 943.28, max: 1743.96
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.48, median: 4.49, max: 5.16
+    G stats — min: 4.48, median: 4.82, max: 5.16
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.10
+    G stats — min: 0.02, median: 0.05, max: 0.10
 
   Computing G matrix: pw_mse...
-    G stats — min: 157.64, median: 167.38, max: 1742.72
+    G stats — min: 157.64, median: 940.19, max: 1742.72
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.48, median: 4.49, max: 5.16
-BIC=Exponential t=14.7s
+    G stats — min: 4.48, median: 4.82, max: 5.16
+BIC=Exponential t=13.5s
 [39/50] synth_exponential/sub38 (72t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.06
+    G stats — min: 0.01, median: 0.04, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 66.90, median: 81.48, max: 510.25
+    G stats — min: 73.23, median: 280.88, max: 510.25
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.20, median: 4.21, max: 4.61
+    G stats — min: 4.20, median: 4.40, max: 4.61
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.06
+    G stats — min: 0.01, median: 0.04, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 64.88, median: 76.81, max: 497.36
+    G stats — min: 71.07, median: 274.00, max: 497.36
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.20, median: 4.21, max: 4.60
+    G stats — min: 4.20, median: 4.40, max: 4.60
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.06
+    G stats — min: 0.01, median: 0.04, max: 0.06
 
   Computing G matrix: pw_mse...
-    G stats — min: 63.66, median: 73.64, max: 487.83
+    G stats — min: 69.70, median: 270.03, max: 487.83
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.20, median: 4.20, max: 4.60
-BIC=Exponential t=17.1s
+    G stats — min: 4.20, median: 4.40, max: 4.60
+BIC=Exponential t=12.6s
 [40/50] synth_exponential/sub39 (20t)... 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.00, median: 0.01, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 92.64, median: 136.15, max: 591.22
+    G stats — min: 92.64, median: 365.44, max: 591.22
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.89, median: 4.89, max: 5.06
+    G stats — min: 4.89, median: 4.98, max: 5.06
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.02
+    G stats — min: 0.01, median: 0.02, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 143.47, median: 193.26, max: 594.84
+    G stats — min: 143.89, median: 390.12, max: 594.84
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.90, median: 4.90, max: 5.06
+    G stats — min: 4.90, median: 4.99, max: 5.06
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.02
+    G stats — min: 0.01, median: 0.02, max: 0.02
 
   Computing G matrix: pw_mse...
-    G stats — min: 217.21, median: 270.94, max: 606.71
+    G stats — min: 220.68, median: 433.78, max: 606.71
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.91, median: 4.92, max: 5.07
-BIC=Exponential t=13.3s
+    G stats — min: 4.91, median: 4.99, max: 5.07
+BIC=Exponential t=9.7s
 [41/50] synth_exponential/sub40 (25t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.14
+    G stats — min: 0.02, median: 0.07, max: 0.14
 
   Computing G matrix: pw_mse...
-    G stats — min: 29.35, median: 202.26, max: 1915.56
+    G stats — min: 182.99, median: 1012.17, max: 1915.56
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.35, median: 4.58, max: 5.27
+    G stats — min: 4.57, median: 4.92, max: 5.27
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.14
+    G stats — min: 0.02, median: 0.07, max: 0.14
 
   Computing G matrix: pw_mse...
-    G stats — min: 31.65, median: 219.46, max: 1922.38
+    G stats — min: 198.51, median: 1026.48, max: 1922.38
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.35, median: 4.58, max: 5.27
+    G stats — min: 4.58, median: 4.92, max: 5.27
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.03, max: 0.17
+    G stats — min: 0.03, median: 0.09, max: 0.17
 
   Computing G matrix: pw_mse...
-    G stats — min: 72.70, median: 349.74, max: 2189.82
+    G stats — min: 305.43, median: 1223.55, max: 2189.82
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.37, median: 4.64, max: 5.31
-BIC=DelayedExp t=12.6s
+    G stats — min: 4.62, median: 4.97, max: 5.31
+BIC=Exponential t=10.0s
 [42/50] synth_exponential/sub41 (51t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.04
+    G stats — min: 0.01, median: 0.03, max: 0.04
 
   Computing G matrix: pw_mse...
-    G stats — min: 23.24, median: 45.91, max: 416.13
+    G stats — min: 23.24, median: 203.70, max: 416.13
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.22, median: 4.23, max: 4.55
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.04
-
-  Computing G matrix: pw_mse...
-    G stats — min: 23.08, median: 42.30, max: 398.72
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.22, median: 4.23, max: 4.54
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.00, median: 0.01, max: 0.04
-
-  Computing G matrix: pw_mse...
-    G stats — min: 24.44, median: 40.51, max: 379.66
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.22, median: 4.23, max: 4.52
-BIC=Exponential t=19.8s
-[43/50] synth_exponential/sub42 (43t)... 
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.03, max: 0.05
-
-  Computing G matrix: pw_mse...
-    G stats — min: 200.73, median: 268.59, max: 1131.67
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.65, median: 4.68, max: 5.00
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.05
-
-  Computing G matrix: pw_mse...
-    G stats — min: 189.57, median: 256.17, max: 1115.24
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.65, median: 4.67, max: 4.99
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.02, median: 0.02, max: 0.05
-
-  Computing G matrix: pw_mse...
-    G stats — min: 171.94, median: 238.06, max: 1091.46
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.65, median: 4.67, max: 4.99
-BIC=Exponential t=20.5s
-[44/50] synth_exponential/sub43 (64t)... 
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.11
-
-  Computing G matrix: pw_mse...
-    G stats — min: 61.32, median: 64.90, max: 1803.43
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.45, median: 4.46, max: 5.19
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.11
-
-  Computing G matrix: pw_mse...
-    G stats — min: 62.99, median: 67.54, max: 1805.53
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.45, median: 4.46, max: 5.19
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.11
-
-  Computing G matrix: pw_mse...
-    G stats — min: 66.64, median: 74.44, max: 1830.88
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.46, median: 4.46, max: 5.19
-BIC=Exponential t=15.6s
-[45/50] synth_exponential/sub44 (66t)... 
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.06
-
-  Computing G matrix: pw_mse...
-    G stats — min: 75.05, median: 150.45, max: 981.63
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.40, median: 4.43, max: 4.88
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.06
-
-  Computing G matrix: pw_mse...
-    G stats — min: 70.03, median: 141.08, max: 959.17
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.40, median: 4.43, max: 4.87
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.06
-
-  Computing G matrix: pw_mse...
-    G stats — min: 65.26, median: 131.80, max: 934.95
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.40, median: 4.42, max: 4.86
-BIC=Exponential t=15.4s
-[46/50] synth_exponential/sub45 (53t)... 
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.15
-
-  Computing G matrix: pw_mse...
-    G stats — min: 33.60, median: 47.98, max: 1661.03
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.28, median: 4.30, max: 5.15
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.15
-
-  Computing G matrix: pw_mse...
-    G stats — min: 34.24, median: 49.02, max: 1664.22
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.28, median: 4.30, max: 5.15
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.15
-
-  Computing G matrix: pw_mse...
-    G stats — min: 33.77, median: 50.29, max: 1667.02
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.28, median: 4.30, max: 5.15
-BIC=Exponential t=19.1s
-[47/50] synth_exponential/sub46 (24t)... 
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.04
-
-  Computing G matrix: pw_mse...
-    G stats — min: 61.41, median: 112.15, max: 215.08
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.32, median: 4.42, max: 4.57
-
-  Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.04
-
-  Computing G matrix: pw_mse...
-    G stats — min: 72.59, median: 112.03, max: 197.51
-
-  Computing G matrix: pw_nll...
-    G stats — min: 4.31, median: 4.43, max: 4.57
+    G stats — min: 4.22, median: 4.37, max: 4.55
 
   Computing G matrix: pw_hellinger...
     G stats — min: 0.01, median: 0.02, max: 0.04
 
   Computing G matrix: pw_mse...
-    G stats — min: 93.86, median: 109.70, max: 235.88
+    G stats — min: 23.08, median: 196.06, max: 398.72
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.29, median: 4.44, max: 4.59
-BIC=DelayedExp t=11.8s
+    G stats — min: 4.22, median: 4.37, max: 4.54
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.02, max: 0.04
+
+  Computing G matrix: pw_mse...
+    G stats — min: 24.44, median: 193.06, max: 379.66
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.22, median: 4.37, max: 4.52
+BIC=Exponential t=14.9s
+[43/50] synth_exponential/sub42 (43t)... 
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.04, max: 0.05
+
+  Computing G matrix: pw_mse...
+    G stats — min: 200.73, median: 652.37, max: 1131.67
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.65, median: 4.83, max: 5.00
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.04, max: 0.05
+
+  Computing G matrix: pw_mse...
+    G stats — min: 189.57, median: 635.66, max: 1115.24
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.65, median: 4.82, max: 4.99
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.04, max: 0.05
+
+  Computing G matrix: pw_mse...
+    G stats — min: 171.94, median: 609.35, max: 1091.46
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.65, median: 4.81, max: 4.99
+BIC=Exponential t=13.8s
+[44/50] synth_exponential/sub43 (64t)... 
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.11
+
+  Computing G matrix: pw_mse...
+    G stats — min: 61.32, median: 922.05, max: 1803.43
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.45, median: 4.82, max: 5.19
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.11
+
+  Computing G matrix: pw_mse...
+    G stats — min: 62.99, median: 928.96, max: 1805.53
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.45, median: 4.82, max: 5.19
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.11
+
+  Computing G matrix: pw_mse...
+    G stats — min: 66.64, median: 939.33, max: 1830.88
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.46, median: 4.83, max: 5.19
+BIC=Exponential t=13.7s
+[45/50] synth_exponential/sub44 (66t)... 
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.04, max: 0.06
+
+  Computing G matrix: pw_mse...
+    G stats — min: 75.05, median: 501.15, max: 981.63
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.40, median: 4.63, max: 4.88
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.04, max: 0.06
+
+  Computing G matrix: pw_mse...
+    G stats — min: 70.03, median: 487.89, max: 959.17
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.40, median: 4.62, max: 4.87
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.03, max: 0.06
+
+  Computing G matrix: pw_mse...
+    G stats — min: 65.26, median: 474.37, max: 934.95
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.40, median: 4.62, max: 4.86
+BIC=Exponential t=14.2s
+[46/50] synth_exponential/sub45 (53t)... 
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.07, max: 0.15
+
+  Computing G matrix: pw_mse...
+    G stats — min: 44.43, median: 844.50, max: 1661.03
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.29, median: 4.72, max: 5.15
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.07, max: 0.15
+
+  Computing G matrix: pw_mse...
+    G stats — min: 45.24, median: 846.28, max: 1664.22
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.29, median: 4.72, max: 5.15
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.07, max: 0.15
+
+  Computing G matrix: pw_mse...
+    G stats — min: 45.33, median: 846.62, max: 1667.02
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.29, median: 4.72, max: 5.15
+BIC=Exponential t=16.1s
+[47/50] synth_exponential/sub46 (24t)... 
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.01, max: 0.02
+
+  Computing G matrix: pw_mse...
+    G stats — min: 61.41, median: 121.33, max: 188.73
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.42, median: 4.49, max: 4.57
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.01, max: 0.02
+
+  Computing G matrix: pw_mse...
+    G stats — min: 72.59, median: 131.59, max: 197.51
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.42, median: 4.50, max: 4.57
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.02, max: 0.02
+
+  Computing G matrix: pw_mse...
+    G stats — min: 93.86, median: 160.83, max: 235.88
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.43, median: 4.51, max: 4.59
+BIC=Exponential t=10.0s
 [48/50] synth_exponential/sub47 (59t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.01, max: 0.05
+    G stats — min: 0.01, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 84.92, median: 195.65, max: 685.80
+    G stats — min: 190.31, median: 434.68, max: 685.80
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.57, median: 4.65, max: 4.88
+    G stats — min: 4.65, median: 4.77, max: 4.88
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.05
+    G stats — min: 0.01, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 77.70, median: 199.09, max: 703.74
+    G stats — min: 194.31, median: 442.39, max: 703.74
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.57, median: 4.65, max: 4.89
+    G stats — min: 4.65, median: 4.77, max: 4.89
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.05
+    G stats — min: 0.02, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 73.16, median: 206.08, max: 726.77
+    G stats — min: 200.45, median: 453.42, max: 726.77
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.57, median: 4.65, max: 4.89
-BIC=DelayedExp t=22.8s
+    G stats — min: 4.65, median: 4.77, max: 4.89
+BIC=Exponential t=30.3s
 [49/50] synth_exponential/sub48 (38t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.05
+    G stats — min: 0.01, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 47.57, median: 83.12, max: 387.04
+    G stats — min: 79.24, median: 230.39, max: 387.04
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.16, median: 4.22, max: 4.56
+    G stats — min: 4.22, median: 4.39, max: 4.56
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.05
+    G stats — min: 0.02, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 46.48, median: 85.96, max: 391.84
+    G stats — min: 82.41, median: 234.56, max: 391.84
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.16, median: 4.23, max: 4.56
+    G stats — min: 4.22, median: 4.39, max: 4.56
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.05
+    G stats — min: 0.02, median: 0.03, max: 0.05
 
   Computing G matrix: pw_mse...
-    G stats — min: 43.82, median: 89.61, max: 397.82
+    G stats — min: 86.89, median: 240.37, max: 397.82
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.16, median: 4.23, max: 4.56
-BIC=Exponential t=22.0s
+    G stats — min: 4.23, median: 4.39, max: 4.56
+BIC=Exponential t=42.0s
 [50/50] synth_exponential/sub49 (73t)... 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.13
+    G stats — min: 0.02, median: 0.06, max: 0.13
 
   Computing G matrix: pw_mse...
-    G stats — min: 69.25, median: 85.84, max: 1394.51
+    G stats — min: 83.51, median: 725.81, max: 1394.51
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.20, median: 4.22, max: 5.05
+    G stats — min: 4.22, median: 4.63, max: 5.05
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.13
+    G stats — min: 0.02, median: 0.06, max: 0.13
 
   Computing G matrix: pw_mse...
-    G stats — min: 69.13, median: 85.62, max: 1383.55
+    G stats — min: 82.80, median: 724.70, max: 1383.55
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.20, median: 4.22, max: 5.04
+    G stats — min: 4.22, median: 4.63, max: 5.04
 
   Computing G matrix: pw_hellinger...
-    G stats — min: 0.01, median: 0.02, max: 0.13
+    G stats — min: 0.02, median: 0.06, max: 0.13
 
   Computing G matrix: pw_mse...
-    G stats — min: 69.09, median: 86.55, max: 1379.35
+    G stats — min: 83.07, median: 725.20, max: 1379.35
 
   Computing G matrix: pw_nll...
-    G stats — min: 4.20, median: 4.22, max: 5.04
-BIC=Exponential t=19.3s
+    G stats — min: 4.22, median: 4.63, max: 5.04
+BIC=Exponential t=31.0s
 
 ============================================================
 RESULTS (50 subjects)
 ============================================================
 
 BIC winners:
-  Exponential: 26/50 (52.0%)
+  Exponential: 32/50 (64.0%)
   Power: 18/50 (36.0%)
-  DelayedExp: 5/50 (10.0%)
-  APEX: 1/50 (2.0%)
 
 BI* winners (median τ):
 
   [practitioner]
-    pw_hellinger: DelayedExp:23, Exponential:14, APEX:11, Power:2
-    pw_mse: DelayedExp:24, Exponential:15, APEX:10, Power:1
-    pw_nll: DelayedExp:27, APEX:13, Exponential:8, Power:2
+    pw_hellinger: Exponential:46, Power:4
+    pw_mse: Exponential:45, Power:5
+    pw_nll: Exponential:40, Power:10
 
   [moderate]
-    pw_hellinger: DelayedExp:21, Exponential:16, APEX:12, Power:1
-    pw_mse: DelayedExp:25, Exponential:15, APEX:9, Power:1
-    pw_nll: DelayedExp:28, APEX:12, Exponential:8, Power:2
+    pw_hellinger: Exponential:47, Power:3
+    pw_mse: Exponential:45, Power:5
+    pw_nll: Exponential:39, Power:11
 
   [agnostic]
-    pw_hellinger: DelayedExp:23, Exponential:15, APEX:11, Power:1
-    pw_mse: DelayedExp:25, Exponential:13, APEX:11, Power:1
-    pw_nll: DelayedExp:29, APEX:13, Exponential:5, Power:3
+    pw_hellinger: Exponential:45, Power:5
+    pw_mse: Exponential:44, Power:6
+    pw_nll: Exponential:38, Power:12
 
 Robustness (all configs agree):
-  pw_hellinger: 84.0%
-  pw_mse: 88.0%
-  pw_nll: 88.0%
+  pw_hellinger: 94.0%
+  pw_mse: 98.0%
+  pw_nll: 96.0%
 
 ============================================================
 

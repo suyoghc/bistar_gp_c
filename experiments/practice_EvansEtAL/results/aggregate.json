@@ -2,84 +2,64 @@
   "n": 50,
   "bic": {
     "Power": 18,
-    "Exponential": 26,
-    "DelayedExp": 5,
-    "APEX": 1
+    "Exponential": 32
   },
   "bistar": {
     "practitioner": {
       "pw_hellinger": {
-        "Exponential": 14,
-        "Power": 2,
-        "APEX": 11,
-        "DelayedExp": 23
+        "Exponential": 46,
+        "Power": 4
       },
       "pw_mse": {
-        "Exponential": 15,
-        "Power": 1,
-        "DelayedExp": 24,
-        "APEX": 10
+        "Exponential": 45,
+        "Power": 5
       },
       "pw_nll": {
-        "APEX": 13,
-        "Power": 2,
-        "DelayedExp": 27,
-        "Exponential": 8
+        "Power": 10,
+        "Exponential": 40
       }
     },
     "moderate": {
       "pw_hellinger": {
-        "Exponential": 16,
-        "Power": 1,
-        "APEX": 12,
-        "DelayedExp": 21
+        "Exponential": 47,
+        "Power": 3
       },
       "pw_mse": {
-        "Exponential": 15,
-        "Power": 1,
-        "APEX": 9,
-        "DelayedExp": 25
+        "Exponential": 45,
+        "Power": 5
       },
       "pw_nll": {
-        "APEX": 12,
-        "Power": 2,
-        "DelayedExp": 28,
-        "Exponential": 8
+        "Power": 11,
+        "Exponential": 39
       }
     },
     "agnostic": {
       "pw_hellinger": {
-        "APEX": 11,
-        "Power": 1,
-        "Exponential": 15,
-        "DelayedExp": 23
+        "Power": 5,
+        "Exponential": 45
       },
       "pw_mse": {
-        "APEX": 11,
-        "Power": 1,
-        "DelayedExp": 25,
-        "Exponential": 13
+        "Power": 6,
+        "Exponential": 44
       },
       "pw_nll": {
-        "APEX": 13,
-        "Power": 3,
-        "DelayedExp": 29,
-        "Exponential": 5
+        "Power": 12,
+        "Exponential": 38
       }
     }
   },
   "robustness": {
     "pw_hellinger": {
-      "agree": 42,
-      "disagree": 8
+      "agree": 47,
+      "disagree": 3
     },
     "pw_mse": {
-      "agree": 44,
-      "disagree": 6
+      "agree": 49,
+      "disagree": 1
     },
     "pw_nll": {
-      "agree": 44,
-      "disagree": 6
+      "agree": 48,
+      "disagree": 2
     }
   }
 }
