@@ -185,7 +185,7 @@ def run_experiment(kernel_types, n_hmc_samples=200, n_warmup=100,
 
             # Determine ground truth
             curve = curves[i]
-            true_model = curve.true_model
+            true_model = "Power" if "power" in curve.dataset_id else "Exponential"
 
             # Track accuracy (use pw_nll, median tau)
             taus = sorted(bistar_results["pw_nll"].keys())

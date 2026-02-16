@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/scratch/gpfs/SUYOGHC/bistar_gp_c/experiments/practice_EvansEtAL/run_hierarchical.py", line 303, in <module>
+    run_experiment(
+  File "/scratch/gpfs/SUYOGHC/bistar_gp_c/experiments/practice_EvansEtAL/run_hierarchical.py", line 237, in run_experiment
+    n_power = sum(1 for c in curves if c.true_model == "Power")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/gpfs/SUYOGHC/bistar_gp_c/experiments/practice_EvansEtAL/run_hierarchical.py", line 237, in <genexpr>
+    n_power = sum(1 for c in curves if c.true_model == "Power")
+                                       ^^^^^^^^^^^^
+AttributeError: 'LearningCurve' object has no attribute 'true_model'

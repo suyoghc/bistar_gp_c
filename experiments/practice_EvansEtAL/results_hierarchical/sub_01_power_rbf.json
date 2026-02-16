@@ -1,0 +1,445 @@
+{
+  "subject_id": 1,
+  "true_model": "Power",
+  "n_trials": 27,
+  "kernel_type": "rbf",
+  "bic_winner": "Exponential",
+  "bic_scores": {
+    "Power": 283.57854480602543,
+    "Exponential": 283.2868484021617
+  },
+  "bistar_winners": {
+    "pw_mse": {
+      "0.1": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.9198192171557622,
+          "Exponential": 0.08018078284423784
+        }
+      },
+      "0.14384498882876628": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.9194148392262168,
+          "Exponential": 0.0805851607737831
+        }
+      },
+      "0.20691380811147897": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.918680262077361,
+          "Exponential": 0.08131973792263913
+        }
+      },
+      "0.29763514416313175": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.9176829412435281,
+          "Exponential": 0.08231705875647193
+        }
+      },
+      "0.42813323987193935": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.9165788813795767,
+          "Exponential": 0.08342111862042335
+        }
+      },
+      "0.6158482110660264": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.9155083395114546,
+          "Exponential": 0.08449166048854534
+        }
+      },
+      "0.8858667904100825": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.9145060772296102,
+          "Exponential": 0.08549392277038971
+        }
+      },
+      "1.2742749857031335": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.9134723676027,
+          "Exponential": 0.08652763239730002
+        }
+      },
+      "1.8329807108324356": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.9122543979642029,
+          "Exponential": 0.08774560203579712
+        }
+      },
+      "2.636650898730358": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.9106805408772608,
+          "Exponential": 0.08931945912273927
+        }
+      },
+      "3.79269019073225": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.9083863644434098,
+          "Exponential": 0.09161363555659024
+        }
+      },
+      "5.455594781168517": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.9046464224400229,
+          "Exponential": 0.09535357755997709
+        }
+      },
+      "7.847599703514611": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.8982848758087769,
+          "Exponential": 0.10171512419122317
+        }
+      },
+      "11.288378916846883": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.8873183450180839,
+          "Exponential": 0.11268165498191599
+        }
+      },
+      "16.23776739188721": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.8685504161201892,
+          "Exponential": 0.13144958387981065
+        }
+      },
+      "23.357214690901213": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.8385589041235211,
+          "Exponential": 0.1614410958764789
+        }
+      },
+      "33.59818286283781": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.7966319189825926,
+          "Exponential": 0.20336808101740744
+        }
+      },
+      "48.32930238571752": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.7466763156174904,
+          "Exponential": 0.2533236843825096
+        }
+      },
+      "69.51927961775606": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.6954064480295691,
+          "Exponential": 0.3045935519704309
+        }
+      },
+      "100.0": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.6487858368406157,
+          "Exponential": 0.3512141631593843
+        }
+      }
+    },
+    "pw_hellinger": {
+      "0.1": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5168621980705393,
+          "Exponential": 0.4831378019294606
+        }
+      },
+      "0.14384498882876628": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5117804734546583,
+          "Exponential": 0.4882195265453416
+        }
+      },
+      "0.20691380811147897": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.50821754916129,
+          "Exponential": 0.49178245083871
+        }
+      },
+      "0.29763514416313175": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5057261762884638,
+          "Exponential": 0.49427382371153616
+        }
+      },
+      "0.42813323987193935": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5039872480758577,
+          "Exponential": 0.4960127519241422
+        }
+      },
+      "0.6158482110660264": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5027750164525218,
+          "Exponential": 0.4972249835474782
+        }
+      },
+      "0.8858667904100825": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5019306720115183,
+          "Exponential": 0.49806932798848164
+        }
+      },
+      "1.2742749857031335": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5013429135925586,
+          "Exponential": 0.4986570864074415
+        }
+      },
+      "1.8329807108324356": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5009339336105504,
+          "Exponential": 0.49906606638944967
+        }
+      },
+      "2.636650898730358": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5006494328500048,
+          "Exponential": 0.49935056714999515
+        }
+      },
+      "3.79269019073225": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5004515626479732,
+          "Exponential": 0.49954843735202686
+        }
+      },
+      "5.455594781168517": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5003139625293427,
+          "Exponential": 0.4996860374706572
+        }
+      },
+      "7.847599703514611": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5002182835407298,
+          "Exponential": 0.4997817164592702
+        }
+      },
+      "11.288378916846883": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5001517583514501,
+          "Exponential": 0.49984824164854996
+        }
+      },
+      "16.23776739188721": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5001055057616386,
+          "Exponential": 0.4998944942383614
+        }
+      },
+      "23.357214690901213": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5000733489954443,
+          "Exponential": 0.4999266510045557
+        }
+      },
+      "33.59818286283781": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5000509927322686,
+          "Exponential": 0.4999490072677314
+        }
+      },
+      "48.32930238571752": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.500035450282269,
+          "Exponential": 0.49996454971773097
+        }
+      },
+      "69.51927961775606": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5000246450235305,
+          "Exponential": 0.4999753549764695
+        }
+      },
+      "100.0": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.500017133160101,
+          "Exponential": 0.49998286683989906
+        }
+      }
+    },
+    "pw_nll": {
+      "0.1": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5553747162987128,
+          "Exponential": 0.44462528370128723
+        }
+      },
+      "0.14384498882876628": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5393785445327413,
+          "Exponential": 0.4606214554672588
+        }
+      },
+      "0.20691380811147897": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5278026179955443,
+          "Exponential": 0.4721973820044557
+        }
+      },
+      "0.29763514416313175": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5195341667267462,
+          "Exponential": 0.48046583327325376
+        }
+      },
+      "0.42813323987193935": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5136793173653368,
+          "Exponential": 0.48632068263466327
+        }
+      },
+      "0.6158482110660264": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5095576413851883,
+          "Exponential": 0.4904423586148118
+        }
+      },
+      "0.8858667904100825": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5066674962605765,
+          "Exponential": 0.4933325037394235
+        }
+      },
+      "1.2742749857031335": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5046463384507135,
+          "Exponential": 0.49535366154928656
+        }
+      },
+      "1.8329807108324356": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5032354800582367,
+          "Exponential": 0.49676451994176335
+        }
+      },
+      "2.636650898730358": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5022518798457027,
+          "Exponential": 0.4977481201542972
+        }
+      },
+      "3.79269019073225": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5015667451841817,
+          "Exponential": 0.4984332548158183
+        }
+      },
+      "5.455594781168517": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5010897960081568,
+          "Exponential": 0.4989102039918431
+        }
+      },
+      "7.847599703514611": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5007579111394123,
+          "Exponential": 0.49924208886058774
+        }
+      },
+      "11.288378916846883": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.500527035844108,
+          "Exponential": 0.49947296415589204
+        }
+      },
+      "16.23776739188721": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5003664598879216,
+          "Exponential": 0.4996335401120784
+        }
+      },
+      "23.357214690901213": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5002547933113415,
+          "Exponential": 0.49974520668865846
+        }
+      },
+      "33.59818286283781": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.500177146440003,
+          "Exponential": 0.499822853559997
+        }
+      },
+      "48.32930238571752": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5001231586445455,
+          "Exponential": 0.4998768413554546
+        }
+      },
+      "69.51927961775606": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5000856227312296,
+          "Exponential": 0.49991437726877047
+        }
+      },
+      "100.0": {
+        "winner": "Power",
+        "posteriors": {
+          "Power": 0.5000595261079755,
+          "Exponential": 0.49994047389202445
+        }
+      }
+    }
+  },
+  "hmc_lengthscale": {
+    "mean": 0.2631522241437023,
+    "std": 0.1058638289195713,
+    "min": 0.07119327644617363,
+    "max": 0.6740641682019874
+  }
+}
