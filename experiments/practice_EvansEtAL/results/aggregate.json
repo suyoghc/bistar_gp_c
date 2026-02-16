@@ -1,74 +1,85 @@
 {
   "n": 50,
   "bic": {
-    "Exponential": 49,
-    "Power": 1
+    "Power": 18,
+    "Exponential": 26,
+    "DelayedExp": 5,
+    "APEX": 1
   },
   "bistar": {
     "practitioner": {
       "pw_hellinger": {
-        "Exponential": 31,
-        "DelayedExp": 18,
-        "APEX": 1
+        "Exponential": 14,
+        "Power": 2,
+        "APEX": 11,
+        "DelayedExp": 23
       },
       "pw_mse": {
-        "Exponential": 32,
-        "DelayedExp": 17,
-        "APEX": 1
+        "Exponential": 15,
+        "Power": 1,
+        "DelayedExp": 24,
+        "APEX": 10
       },
       "pw_nll": {
-        "Exponential": 31,
-        "DelayedExp": 18,
-        "APEX": 1
+        "APEX": 13,
+        "Power": 2,
+        "DelayedExp": 27,
+        "Exponential": 8
       }
     },
     "moderate": {
       "pw_hellinger": {
-        "Exponential": 30,
-        "DelayedExp": 19,
-        "APEX": 1
+        "Exponential": 16,
+        "Power": 1,
+        "APEX": 12,
+        "DelayedExp": 21
       },
       "pw_mse": {
-        "Exponential": 30,
-        "DelayedExp": 19,
-        "APEX": 1
+        "Exponential": 15,
+        "Power": 1,
+        "APEX": 9,
+        "DelayedExp": 25
       },
       "pw_nll": {
-        "Exponential": 31,
-        "DelayedExp": 18,
-        "APEX": 1
+        "APEX": 12,
+        "Power": 2,
+        "DelayedExp": 28,
+        "Exponential": 8
       }
     },
     "agnostic": {
       "pw_hellinger": {
-        "Exponential": 32,
-        "DelayedExp": 17,
-        "APEX": 1
+        "APEX": 11,
+        "Power": 1,
+        "Exponential": 15,
+        "DelayedExp": 23
       },
       "pw_mse": {
-        "Exponential": 30,
-        "DelayedExp": 19,
-        "APEX": 1
+        "APEX": 11,
+        "Power": 1,
+        "DelayedExp": 25,
+        "Exponential": 13
       },
       "pw_nll": {
-        "Exponential": 31,
-        "DelayedExp": 18,
-        "APEX": 1
+        "APEX": 13,
+        "Power": 3,
+        "DelayedExp": 29,
+        "Exponential": 5
       }
     }
   },
   "robustness": {
     "pw_hellinger": {
-      "agree": 47,
-      "disagree": 3
+      "agree": 42,
+      "disagree": 8
     },
     "pw_mse": {
-      "agree": 48,
-      "disagree": 2
+      "agree": 44,
+      "disagree": 6
     },
     "pw_nll": {
-      "agree": 50,
-      "disagree": 0
+      "agree": 44,
+      "disagree": 6
     }
   }
 }
