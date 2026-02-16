@@ -45,7 +45,7 @@
     "noise": 0.18580077026841016
   },
   "n_gp_samples": 100,
-  "elapsed_seconds": 18.69026494026184,
+  "elapsed_seconds": 16.27060055732727,
   "bistar_winners": {
     "practitioner": {
       "pw_hellinger": {
