@@ -86,6 +86,7 @@ class SubjectResult:
     n_trials: int
     bistar_winners: Dict
     bistar_probs: Dict
+    bistar_G_diagnostics: Dict
     bic_log_ml: Dict[str, float]
     bic_winner: str
     fitted_params: Dict[str, Dict]
@@ -329,7 +330,8 @@ def run_one(ncurve: NormalizedCurve,
             prior_configs=None, mode="map",
             n_hmc_samples=200, n_warmup=100,
             n_eval=50, n_posterior_samples=100,
-            metrics=None, taus=None, verbose=False) -> SubjectResult:
+            metrics=None, taus=None, verbose=False,
+            normalize_per_draw=False) -> SubjectResult:
     """Full BI* pipeline for one subject."""
 
     t0 = time.time()
@@ -378,6 +380,7 @@ def run_one(ncurve: NormalizedCurve,
     # ── Run BI* across prior configs ──
     bistar_winners = {}
     bistar_probs = {}
+    bistar_G_diagnostics = {}
     gp_hp = {}
     n_gp = 0
 
@@ -432,16 +435,43 @@ def run_one(ncurve: NormalizedCurve,
 
         # BMS* — both GP draws and candidates now in raw space
         try:
-            results = run_bms_star(gp_samples_raw, candidate_results, metric_names=metrics, taus=taus)
+            results = run_bms_star(gp_samples_raw, candidate_results,
+                                   metric_names=metrics, taus=taus,
+                                   normalize_per_draw=normalize_per_draw)
         except Exception:
             continue
 
         bistar_winners[cfg_name] = {}
         bistar_probs[cfg_name] = {}
+        bistar_G_diagnostics[cfg_name] = {}
 
         for metric_name, tau_results in results.items():
             bistar_winners[cfg_name][metric_name] = {}
             bistar_probs[cfg_name][metric_name] = {}
+
+            # G matrix diagnostics (same G for all taus within a metric)
+            first_tau = sorted(tau_results.keys())[0]
+            G = tau_results[first_tau].G_matrix
+            model_names = tau_results[first_tau].instance_names
+            raw_winners = np.argmin(G, axis=1)
+            row_deltas = G - G.min(axis=1, keepdims=True)
+
+            bistar_G_diagnostics[cfg_name][metric_name] = {
+                "per_model": {
+                    name: {
+                        "mean_G": float(G[:, m_idx].mean()),
+                        "std_G": float(G[:, m_idx].std()),
+                        "mean_delta_from_best": float(row_deltas[:, m_idx].mean()),
+                        "median_delta_from_best": float(np.median(row_deltas[:, m_idx])),
+                        "raw_draw_wins": int(np.sum(raw_winners == m_idx)),
+                    }
+                    for m_idx, name in enumerate(model_names)
+                },
+                "n_draws": int(G.shape[0]),
+                "G_min": float(G.min()),
+                "G_max": float(G.max()),
+                "G_median": float(np.median(G)),
+            }
             for tau, bms_r in tau_results.items():
                 winner_idx = np.argmax(bms_r.class_posteriors)
                 bistar_winners[cfg_name][metric_name][float(tau)] = bms_r.instance_names[winner_idx]
@@ -454,6 +484,7 @@ def run_one(ncurve: NormalizedCurve,
         condition=curve.condition, task_type=curve.task_type,
         n_trials=curve.n_trials,
         bistar_winners=bistar_winners, bistar_probs=bistar_probs,
+        bistar_G_diagnostics=bistar_G_diagnostics,
         bic_log_ml=bic_log_ml, bic_winner=bic_winner,
         fitted_params=fitted_params, gp_hyperparameters=gp_hp,
         n_gp_samples=n_gp, elapsed_seconds=time.time() - t0,
@@ -512,6 +543,7 @@ def _save_json(result: SubjectResult, path: Path):
         "n_gp_samples": result.n_gp_samples, "elapsed_seconds": result.elapsed_seconds,
         "bistar_winners": _strkeys(result.bistar_winners),
         "bistar_probs": _strkeys(result.bistar_probs),
+        "bistar_G_diagnostics": _strkeys(result.bistar_G_diagnostics),
     }
     with open(path, 'w') as f:
         json.dump(d, f, indent=2, default=str)
@@ -610,6 +642,8 @@ def main():
     p.add_argument("--n_posterior_samples", type=int, default=100)
     p.add_argument("--configs", nargs="+", default=["practitioner", "moderate", "agnostic"])
     p.add_argument("--demo", action="store_true", help="Synthetic test data")
+    p.add_argument("--normalize_per_draw", action="store_true",
+                   help="Subtract per-draw min G before Boltzmann (removes systematic bias)")
     args = p.parse_args()
 
     curves = generate_demo_data(50) if args.demo else load_data(args.data_dir)
@@ -619,7 +653,8 @@ def main():
     print(f"Loaded {len(curves)} learning curves")
     run_all(curves, args.output_dir, prior_configs=args.configs, mode=args.mode,
             n_hmc_samples=args.n_hmc_samples, n_eval=args.n_eval,
-            n_posterior_samples=args.n_posterior_samples)
+            n_posterior_samples=args.n_posterior_samples,
+            normalize_per_draw=args.normalize_per_draw)
 
 
 if __name__ == "__main__":

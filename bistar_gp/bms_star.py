@@ -396,7 +396,8 @@ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
 
 def soft_transfer(G_matrix: np.ndarray, tau: float,
                   instance_names: List[str],
-                  class_names: Optional[List[str]] = None) -> BMSStarResult:
+                  class_names: Optional[List[str]] = None,
+                  normalize_per_draw: bool = False) -> BMSStarResult:
     """
     Soft BMS* scoring.
 
@@ -409,6 +410,11 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
         tau: temperature parameter
         instance_names: names for each θ
         class_names: if None, each instance is its own class
+        normalize_per_draw: if True, subtract per-row minimum before
+            Boltzmann weighting. This removes systematic offset so that
+            only *relative* divergence within each GP draw matters.
+            Prevents microscopic absolute bias from being amplified
+            into false certainty across many draws.
 
     Returns:
         BMSStarResult with normalized posteriors
@@ -418,9 +424,15 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
     if class_names is None:
         class_names = instance_names
 
+    # Optionally normalize: subtract best-model score per draw
+    G_effective = G_matrix.copy()
+    if normalize_per_draw:
+        row_mins = G_effective.min(axis=1, keepdims=True)
+        G_effective -= row_mins
+
     # Instance scores: average Boltzmann weight across GP samples
     # score(θ_j) = (1/N) Σ_i exp(-G_ij / τ)
-    log_weights = -G_matrix / tau
+    log_weights = -G_effective / tau
     # Numerical stability: subtract max per column
     log_weights_shifted = log_weights - log_weights.max(axis=1, keepdims=True)
     weights = np.exp(log_weights_shifted)
@@ -452,9 +464,14 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
 def run_bms_star(gp_samples: List[GPPosteriorSample],
                  candidate_results: list,
                  metric_names: List[str] = None,
-                 taus: np.ndarray = None) -> Dict[str, Dict[float, BMSStarResult]]:
+                 taus: np.ndarray = None,
+                 normalize_per_draw: bool = False) -> Dict[str, Dict[float, BMSStarResult]]:
     """
     Run full BMS* analysis across metrics and temperatures.
+
+    Args:
+        normalize_per_draw: if True, subtract per-draw minimum G before
+            Boltzmann. Eliminates systematic absolute-score bias.
 
     Returns:
         results[metric_name][tau] = BMSStarResult
@@ -473,9 +490,22 @@ def run_bms_star(gp_samples: List[GPPosteriorSample],
 
         print(f"    G stats — min: {G.min():.2f}, median: {np.median(G):.2f}, max: {G.max():.2f}")
 
+        # Per-draw diagnostic: how often does each model win raw?
+        raw_winners = np.argmin(G, axis=1)
+        for m_idx, name in enumerate(instance_names):
+            n_wins = np.sum(raw_winners == m_idx)
+            print(f"    {name} wins {n_wins}/{len(raw_winners)} draws (raw G)")
+
+        if normalize_per_draw:
+            row_deltas = G - G.min(axis=1, keepdims=True)
+            for m_idx, name in enumerate(instance_names):
+                mean_delta = row_deltas[:, m_idx].mean()
+                print(f"    {name} mean Δ from best: {mean_delta:.4f}")
+
         results[metric_name] = {}
         for tau in taus:
-            bms_result = soft_transfer(G, tau, instance_names)
+            bms_result = soft_transfer(G, tau, instance_names,
+                                       normalize_per_draw=normalize_per_draw)
             bms_result.metric_name = metric_name
             results[metric_name][tau] = bms_result
 
