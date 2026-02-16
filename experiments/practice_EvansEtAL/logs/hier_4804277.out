@@ -1,0 +1,78 @@
+Generating demo data...
+
+############################################################
+# Kernel: rbf
+############################################################
+============================================================
+Stage 1: MAP fit all subjects
+============================================================
+  MAP fitting subject 0/50...
+  MAP fitting subject 10/50...
+  MAP fitting subject 20/50...
+  MAP fitting subject 30/50...
+  MAP fitting subject 40/50...
+
+============================================================
+Stage 2: Fit population priors
+============================================================
+
+==================================================
+Population Prior (n=50 subjects)
+==================================================
+  lengthscale:
+    LogNormal(mu=-1.410, sigma=0.440)
+    median=0.2442, mean=0.2690
+    raw range: [0.0863, 0.5374]
+  outputscale:
+    LogNormal(mu=-0.107, sigma=0.288)
+    median=0.8981, mean=0.9360
+    raw range: [0.4125, 1.5223]
+  noise:
+    LogNormal(mu=-1.499, sigma=0.757)
+    median=0.2234, mean=0.2976
+    raw range: [0.0502, 0.8393]
+
+============================================================
+Stage 3: HMC with population priors
+============================================================
+
+  HMC subject 0/50...
+
+  HMC subject 5/50...
+
+  HMC subject 10/50...
+
+  HMC subject 15/50...
+
+  HMC subject 20/50...
+
+  HMC subject 25/50...
+
+  HMC subject 30/50...
+
+  HMC subject 35/50...
+
+  HMC subject 40/50...
+
+  HMC subject 45/50...
+
+==================================================
+Population Prior (n=50 subjects)
+==================================================
+  lengthscale:
+    LogNormal(mu=-1.410, sigma=0.440)
+    median=0.2442, mean=0.2690
+    raw range: [0.0863, 0.5374]
+  outputscale:
+    LogNormal(mu=-0.107, sigma=0.288)
+    median=0.8981, mean=0.9360
+    raw range: [0.4125, 1.5223]
+  noise:
+    LogNormal(mu=-1.499, sigma=0.757)
+    median=0.2234, mean=0.2976
+    raw range: [0.0502, 0.8393]
+
+
+  Scoring subject 0/50...
+  Extracted 100/100 GP predictives
+Hierarchical run complete

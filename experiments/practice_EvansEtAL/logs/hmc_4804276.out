@@ -1,0 +1,2492 @@
+Loaded 50 learning curves
+
+============================================================
+BMS* for Law of Practice: 50 learning curves
+Mode: hmc | Configs: ['practitioner', 'moderate', 'agnostic']
+Output: results_hmc
+============================================================
+
+[1/50] synth_power/sub0 (58t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.04, max: 0.22
+    Power wins 62/100 draws (raw G)
+    Exponential wins 38/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 124.62, median: 336.01, max: 1219.48
+    Power wins 6/100 draws (raw G)
+    Exponential wins 94/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.93, median: 4.97, max: 5.12
+    Power wins 80/100 draws (raw G)
+    Exponential wins 20/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.04, max: 0.50
+    Power wins 48/100 draws (raw G)
+    Exponential wins 52/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 124.51, median: 407.63, max: 2055.85
+    Power wins 13/100 draws (raw G)
+    Exponential wins 87/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.92, median: 4.98, max: 5.26
+    Power wins 80/100 draws (raw G)
+    Exponential wins 20/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.06, max: 0.35
+    Power wins 54/100 draws (raw G)
+    Exponential wins 46/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 122.67, median: 444.32, max: 2361.21
+    Power wins 30/100 draws (raw G)
+    Exponential wins 70/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.92, median: 4.98, max: 5.31
+    Power wins 82/100 draws (raw G)
+    Exponential wins 18/100 draws (raw G)
+BIC=Power t=118.9s
+[2/50] synth_power/sub1 (27t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.06, max: 0.42
+    Power wins 94/100 draws (raw G)
+    Exponential wins 6/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 227.90, median: 413.38, max: 1059.13
+    Power wins 95/100 draws (raw G)
+    Exponential wins 5/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.59, median: 4.66, max: 4.91
+    Power wins 93/100 draws (raw G)
+    Exponential wins 7/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.05, max: 0.58
+    Power wins 90/100 draws (raw G)
+    Exponential wins 10/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 219.97, median: 481.75, max: 1059.68
+    Power wins 90/100 draws (raw G)
+    Exponential wins 10/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.59, median: 4.69, max: 4.91
+    Power wins 89/100 draws (raw G)
+    Exponential wins 11/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.07, max: 0.36
+    Power wins 75/100 draws (raw G)
+    Exponential wins 25/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 236.95, median: 434.48, max: 1091.92
+    Power wins 73/100 draws (raw G)
+    Exponential wins 27/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.59, median: 4.67, max: 4.92
+    Power wins 69/100 draws (raw G)
+    Exponential wins 31/100 draws (raw G)
+BIC=Exponential t=70.5s
+[3/50] synth_power/sub2 (62t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.06, max: 0.35
+    Power wins 28/100 draws (raw G)
+    Exponential wins 72/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 61.55, median: 296.63, max: 609.08
+    Power wins 22/100 draws (raw G)
+    Exponential wins 78/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.35, median: 4.51, max: 4.66
+    Power wins 4/100 draws (raw G)
+    Exponential wins 96/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.06, max: 0.33
+    Power wins 49/100 draws (raw G)
+    Exponential wins 51/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 50.06, median: 342.12, max: 942.46
+    Power wins 36/100 draws (raw G)
+    Exponential wins 64/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.35, median: 4.53, max: 4.84
+    Power wins 27/100 draws (raw G)
+    Exponential wins 73/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.06, max: 0.42
+    Power wins 38/100 draws (raw G)
+    Exponential wins 62/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 37.56, median: 258.49, max: 1039.07
+    Power wins 21/100 draws (raw G)
+    Exponential wins 79/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.34, median: 4.49, max: 4.90
+    Power wins 11/100 draws (raw G)
+    Exponential wins 89/100 draws (raw G)
+BIC=Exponential t=104.3s
+[4/50] synth_power/sub3 (59t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.03, max: 0.49
+    Power wins 51/100 draws (raw G)
+    Exponential wins 49/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 30.85, median: 54.16, max: 186.48
+    Power wins 18/100 draws (raw G)
+    Exponential wins 82/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.10, median: 4.13, max: 4.25
+    Power wins 40/100 draws (raw G)
+    Exponential wins 60/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.03, max: 0.51
+    Power wins 48/100 draws (raw G)
+    Exponential wins 52/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 30.43, median: 66.90, max: 472.86
+    Power wins 25/100 draws (raw G)
+    Exponential wins 75/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.10, median: 4.14, max: 4.51
+    Power wins 45/100 draws (raw G)
+    Exponential wins 55/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.32
+    Power wins 66/100 draws (raw G)
+    Exponential wins 34/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 32.37, median: 84.99, max: 452.46
+    Power wins 46/100 draws (raw G)
+    Exponential wins 54/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.11, median: 4.16, max: 4.49
+    Power wins 58/100 draws (raw G)
+    Exponential wins 42/100 draws (raw G)
+BIC=Power t=105.3s
+[5/50] synth_power/sub4 (59t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.07, max: 0.38
+    Power wins 95/100 draws (raw G)
+    Exponential wins 5/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 31.70, median: 39.02, max: 176.80
+    Power wins 65/100 draws (raw G)
+    Exponential wins 35/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.50, median: 4.51, max: 4.57
+    Power wins 100/100 draws (raw G)
+    Exponential wins 0/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.41
+    Power wins 90/100 draws (raw G)
+    Exponential wins 10/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 29.46, median: 50.59, max: 218.62
+    Power wins 66/100 draws (raw G)
+    Exponential wins 34/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.50, median: 4.52, max: 4.58
+    Power wins 100/100 draws (raw G)
+    Exponential wins 0/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.08, max: 0.51
+    Power wins 86/100 draws (raw G)
+    Exponential wins 14/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 26.64, median: 79.24, max: 872.28
+    Power wins 78/100 draws (raw G)
+    Exponential wins 22/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.50, median: 4.53, max: 4.84
+    Power wins 100/100 draws (raw G)
+    Exponential wins 0/100 draws (raw G)
+BIC=Power t=100.8s
+[6/50] synth_power/sub5 (73t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.03, max: 0.40
+    Power wins 11/100 draws (raw G)
+    Exponential wins 89/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 32.66, median: 218.59, max: 1123.30
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.65, median: 4.70, max: 4.97
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.70
+    Power wins 24/100 draws (raw G)
+    Exponential wins 76/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 33.16, median: 281.27, max: 1215.49
+    Power wins 6/100 draws (raw G)
+    Exponential wins 94/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.65, median: 4.72, max: 5.00
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.05, max: 0.31
+    Power wins 24/100 draws (raw G)
+    Exponential wins 76/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 32.95, median: 252.37, max: 2471.29
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.65, median: 4.71, max: 5.37
+    Power wins 14/100 draws (raw G)
+    Exponential wins 86/100 draws (raw G)
+BIC=Power t=152.6s
+[7/50] synth_power/sub6 (45t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.06, max: 0.27
+    Power wins 41/100 draws (raw G)
+    Exponential wins 59/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 134.25, median: 458.93, max: 1619.71
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.44, median: 4.61, max: 5.21
+    Power wins 17/100 draws (raw G)
+    Exponential wins 83/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.06, max: 0.28
+    Power wins 38/100 draws (raw G)
+    Exponential wins 62/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 138.34, median: 576.07, max: 1847.06
+    Power wins 4/100 draws (raw G)
+    Exponential wins 96/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.43, median: 4.68, max: 5.33
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.07, max: 0.30
+    Power wins 48/100 draws (raw G)
+    Exponential wins 52/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 136.04, median: 339.49, max: 2325.26
+    Power wins 9/100 draws (raw G)
+    Exponential wins 91/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.42, median: 4.56, max: 5.59
+    Power wins 42/100 draws (raw G)
+    Exponential wins 58/100 draws (raw G)
+BIC=Power t=81.1s
+[8/50] synth_power/sub7 (73t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.04, median: 0.09, max: 0.41
+    Power wins 73/100 draws (raw G)
+    Exponential wins 27/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 187.42, median: 1095.22, max: 2518.27
+    Power wins 35/100 draws (raw G)
+    Exponential wins 65/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.26, median: 5.01, max: 6.21
+    Power wins 6/100 draws (raw G)
+    Exponential wins 94/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.04, median: 0.13, max: 0.29
+    Power wins 50/100 draws (raw G)
+    Exponential wins 50/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 303.31, median: 1392.78, max: 3942.59
+    Power wins 45/100 draws (raw G)
+    Exponential wins 55/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.36, median: 5.22, max: 7.52
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.04, median: 0.12, max: 0.40
+    Power wins 53/100 draws (raw G)
+    Exponential wins 47/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 204.86, median: 1185.65, max: 4338.42
+    Power wins 39/100 draws (raw G)
+    Exponential wins 61/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.27, median: 5.03, max: 7.87
+    Power wins 12/100 draws (raw G)
+    Exponential wins 88/100 draws (raw G)
+BIC=Power t=150.9s
+[9/50] synth_power/sub8 (71t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.03, max: 0.45
+    Power wins 22/100 draws (raw G)
+    Exponential wins 78/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 46.18, median: 144.60, max: 679.39
+    Power wins 8/100 draws (raw G)
+    Exponential wins 92/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.44, median: 4.50, max: 4.73
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.56
+    Power wins 50/100 draws (raw G)
+    Exponential wins 50/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 47.74, median: 187.22, max: 1224.93
+    Power wins 18/100 draws (raw G)
+    Exponential wins 82/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.44, median: 4.51, max: 4.98
+    Power wins 13/100 draws (raw G)
+    Exponential wins 87/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.06, max: 0.32
+    Power wins 39/100 draws (raw G)
+    Exponential wins 61/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 44.81, median: 196.41, max: 1197.24
+    Power wins 19/100 draws (raw G)
+    Exponential wins 81/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.44, median: 4.52, max: 4.96
+    Power wins 13/100 draws (raw G)
+    Exponential wins 87/100 draws (raw G)
+BIC=Exponential t=119.1s
+[10/50] synth_power/sub9 (43t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.05, median: 0.13, max: 0.43
+    Power wins 30/100 draws (raw G)
+    Exponential wins 70/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 248.88, median: 1200.89, max: 3283.91
+    Power wins 48/100 draws (raw G)
+    Exponential wins 52/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.30, median: 5.05, max: 6.64
+    Power wins 12/100 draws (raw G)
+    Exponential wins 88/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.05, median: 0.15, max: 0.38
+    Power wins 25/100 draws (raw G)
+    Exponential wins 75/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 294.13, median: 1509.20, max: 4128.29
+    Power wins 58/100 draws (raw G)
+    Exponential wins 42/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.35, median: 5.26, max: 7.64
+    Power wins 13/100 draws (raw G)
+    Exponential wins 87/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.04, median: 0.14, max: 0.41
+    Power wins 26/100 draws (raw G)
+    Exponential wins 74/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 233.34, median: 1031.70, max: 5811.96
+    Power wins 54/100 draws (raw G)
+    Exponential wins 46/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.29, median: 4.98, max: 9.34
+    Power wins 22/100 draws (raw G)
+    Exponential wins 78/100 draws (raw G)
+BIC=Power t=88.2s
+[11/50] synth_power/sub10 (21t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.05, median: 0.12, max: 0.34
+    Power wins 25/100 draws (raw G)
+    Exponential wins 75/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 498.30, median: 1820.78, max: 3957.53
+    Power wins 96/100 draws (raw G)
+    Exponential wins 4/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.69, median: 5.19, max: 5.76
+    Power wins 88/100 draws (raw G)
+    Exponential wins 12/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.05, median: 0.15, max: 0.42
+    Power wins 20/100 draws (raw G)
+    Exponential wins 80/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 608.81, median: 2103.43, max: 6149.56
+    Power wins 98/100 draws (raw G)
+    Exponential wins 2/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.73, median: 5.29, max: 6.73
+    Power wins 72/100 draws (raw G)
+    Exponential wins 28/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.04, median: 0.12, max: 0.39
+    Power wins 23/100 draws (raw G)
+    Exponential wins 77/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 504.04, median: 1423.92, max: 8893.98
+    Power wins 97/100 draws (raw G)
+    Exponential wins 3/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.69, median: 5.06, max: 7.81
+    Power wins 81/100 draws (raw G)
+    Exponential wins 19/100 draws (raw G)
+BIC=Power t=88.1s
+[12/50] synth_power/sub11 (75t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.09, max: 0.49
+    Power wins 94/100 draws (raw G)
+    Exponential wins 6/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 192.84, median: 430.96, max: 707.63
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.65, median: 4.72, max: 4.81
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.06, max: 0.45
+    Power wins 77/100 draws (raw G)
+    Exponential wins 23/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 202.00, median: 424.85, max: 729.55
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.65, median: 4.72, max: 4.82
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.09, max: 0.44
+    Power wins 59/100 draws (raw G)
+    Exponential wins 41/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 177.88, median: 410.19, max: 961.56
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.65, median: 4.72, max: 4.90
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+BIC=Power t=131.1s
+[13/50] synth_power/sub12 (54t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.05, max: 0.27
+    Power wins 64/100 draws (raw G)
+    Exponential wins 36/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 125.53, median: 418.70, max: 1206.72
+    Power wins 44/100 draws (raw G)
+    Exponential wins 56/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.71, max: 4.98
+    Power wins 48/100 draws (raw G)
+    Exponential wins 52/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.06, max: 0.29
+    Power wins 64/100 draws (raw G)
+    Exponential wins 36/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 129.16, median: 448.05, max: 1357.11
+    Power wins 46/100 draws (raw G)
+    Exponential wins 54/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.72, max: 5.03
+    Power wins 49/100 draws (raw G)
+    Exponential wins 51/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.06, max: 0.35
+    Power wins 52/100 draws (raw G)
+    Exponential wins 48/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 129.71, median: 367.66, max: 1708.55
+    Power wins 36/100 draws (raw G)
+    Exponential wins 64/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.69, max: 5.15
+    Power wins 41/100 draws (raw G)
+    Exponential wins 59/100 draws (raw G)
+BIC=Power t=94.1s
+[14/50] synth_power/sub13 (79t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.06, max: 0.32
+    Power wins 82/100 draws (raw G)
+    Exponential wins 18/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 369.05, median: 845.17, max: 2503.16
+    Power wins 26/100 draws (raw G)
+    Exponential wins 74/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.64, median: 4.84, max: 5.42
+    Power wins 80/100 draws (raw G)
+    Exponential wins 20/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.09, max: 0.29
+    Power wins 58/100 draws (raw G)
+    Exponential wins 42/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 375.47, median: 1060.76, max: 3568.23
+    Power wins 42/100 draws (raw G)
+    Exponential wins 58/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.65, median: 4.92, max: 5.87
+    Power wins 64/100 draws (raw G)
+    Exponential wins 36/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.07, max: 0.36
+    Power wins 58/100 draws (raw G)
+    Exponential wins 42/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 293.24, median: 649.38, max: 4550.49
+    Power wins 46/100 draws (raw G)
+    Exponential wins 54/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.76, max: 6.29
+    Power wins 74/100 draws (raw G)
+    Exponential wins 26/100 draws (raw G)
+BIC=Power t=124.0s
+[15/50] synth_power/sub14 (20t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.11, max: 0.37
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 9.01, median: 146.98, max: 415.23
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.50, median: 4.56, max: 4.67
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.07, max: 0.43
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 10.56, median: 136.13, max: 1088.60
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.50, median: 4.56, max: 4.92
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.12, max: 0.53
+    Power wins 4/100 draws (raw G)
+    Exponential wins 96/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 10.41, median: 198.37, max: 1271.80
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.50, median: 4.58, max: 4.99
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+BIC=Exponential t=75.4s
+[16/50] synth_power/sub15 (66t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.06, max: 0.27
+    Power wins 71/100 draws (raw G)
+    Exponential wins 29/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 138.09, median: 285.56, max: 755.48
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.65, max: 4.82
+    Power wins 21/100 draws (raw G)
+    Exponential wins 79/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.36
+    Power wins 58/100 draws (raw G)
+    Exponential wins 42/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 120.66, median: 330.50, max: 788.90
+    Power wins 8/100 draws (raw G)
+    Exponential wins 92/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.60, median: 4.67, max: 4.83
+    Power wins 30/100 draws (raw G)
+    Exponential wins 70/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.08, max: 0.49
+    Power wins 55/100 draws (raw G)
+    Exponential wins 45/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 129.07, median: 283.97, max: 1102.13
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.65, max: 4.94
+    Power wins 21/100 draws (raw G)
+    Exponential wins 79/100 draws (raw G)
+BIC=Power t=118.2s
+[17/50] synth_power/sub16 (51t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.05, median: 0.09, max: 0.31
+    Power wins 75/100 draws (raw G)
+    Exponential wins 25/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 679.03, median: 2220.85, max: 4194.39
+    Power wins 100/100 draws (raw G)
+    Exponential wins 0/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.76, median: 5.32, max: 5.89
+    Power wins 87/100 draws (raw G)
+    Exponential wins 13/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.05, median: 0.10, max: 0.52
+    Power wins 54/100 draws (raw G)
+    Exponential wins 46/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 575.64, median: 2214.76, max: 4474.15
+    Power wins 100/100 draws (raw G)
+    Exponential wins 0/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.72, median: 5.32, max: 6.17
+    Power wins 72/100 draws (raw G)
+    Exponential wins 28/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.04, median: 0.11, max: 0.38
+    Power wins 57/100 draws (raw G)
+    Exponential wins 43/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 506.49, median: 1994.92, max: 4979.94
+    Power wins 98/100 draws (raw G)
+    Exponential wins 2/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.69, median: 5.25, max: 6.46
+    Power wins 70/100 draws (raw G)
+    Exponential wins 30/100 draws (raw G)
+BIC=Power t=85.6s
+[18/50] synth_power/sub17 (57t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.04, median: 0.08, max: 0.38
+    Power wins 87/100 draws (raw G)
+    Exponential wins 13/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 487.95, median: 1418.60, max: 3409.35
+    Power wins 100/100 draws (raw G)
+    Exponential wins 0/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.79, median: 5.08, max: 5.53
+    Power wins 100/100 draws (raw G)
+    Exponential wins 0/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.04, median: 0.08, max: 0.58
+    Power wins 67/100 draws (raw G)
+    Exponential wins 33/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 461.55, median: 1610.30, max: 4073.52
+    Power wins 100/100 draws (raw G)
+    Exponential wins 0/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.78, median: 5.11, max: 5.81
+    Power wins 95/100 draws (raw G)
+    Exponential wins 5/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.04, median: 0.08, max: 0.45
+    Power wins 77/100 draws (raw G)
+    Exponential wins 23/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 516.07, median: 1192.81, max: 3917.19
+    Power wins 99/100 draws (raw G)
+    Exponential wins 1/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.80, median: 5.02, max: 5.70
+    Power wins 95/100 draws (raw G)
+    Exponential wins 5/100 draws (raw G)
+BIC=Power t=88.8s
+[19/50] synth_power/sub18 (69t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.08, max: 0.23
+    Power wins 50/100 draws (raw G)
+    Exponential wins 50/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 434.52, median: 2055.68, max: 4344.23
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.66, median: 5.27, max: 6.33
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.11, max: 0.32
+    Power wins 45/100 draws (raw G)
+    Exponential wins 55/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 335.47, median: 2166.89, max: 5406.85
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.60, median: 5.34, max: 6.77
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.11, max: 0.36
+    Power wins 41/100 draws (raw G)
+    Exponential wins 59/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 281.43, median: 2114.26, max: 6934.75
+    Power wins 14/100 draws (raw G)
+    Exponential wins 86/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.56, median: 5.29, max: 7.46
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+BIC=Power t=130.8s
+[20/50] synth_power/sub19 (51t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.07, max: 0.47
+    Power wins 72/100 draws (raw G)
+    Exponential wins 28/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 93.45, median: 434.34, max: 1162.59
+    Power wins 29/100 draws (raw G)
+    Exponential wins 71/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.25, median: 4.49, max: 5.03
+    Power wins 42/100 draws (raw G)
+    Exponential wins 58/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.08, max: 0.26
+    Power wins 64/100 draws (raw G)
+    Exponential wins 36/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 108.95, median: 462.48, max: 1212.93
+    Power wins 37/100 draws (raw G)
+    Exponential wins 63/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.25, median: 4.51, max: 5.07
+    Power wins 50/100 draws (raw G)
+    Exponential wins 50/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.08, max: 0.31
+    Power wins 69/100 draws (raw G)
+    Exponential wins 31/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 72.54, median: 439.53, max: 1577.26
+    Power wins 38/100 draws (raw G)
+    Exponential wins 62/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.22, median: 4.50, max: 5.42
+    Power wins 48/100 draws (raw G)
+    Exponential wins 52/100 draws (raw G)
+BIC=Power t=85.0s
+[21/50] synth_power/sub20 (65t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.13, max: 0.48
+    Power wins 88/100 draws (raw G)
+    Exponential wins 12/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 123.23, median: 909.24, max: 2224.91
+    Power wins 40/100 draws (raw G)
+    Exponential wins 60/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.04, median: 5.03, max: 6.87
+    Power wins 55/100 draws (raw G)
+    Exponential wins 45/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.14, max: 0.48
+    Power wins 88/100 draws (raw G)
+    Exponential wins 12/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 115.05, median: 862.00, max: 2905.58
+    Power wins 37/100 draws (raw G)
+    Exponential wins 63/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.03, median: 5.01, max: 7.79
+    Power wins 48/100 draws (raw G)
+    Exponential wins 52/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.12, max: 0.40
+    Power wins 85/100 draws (raw G)
+    Exponential wins 15/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 100.86, median: 813.96, max: 2708.08
+    Power wins 39/100 draws (raw G)
+    Exponential wins 61/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.01, median: 4.90, max: 7.52
+    Power wins 45/100 draws (raw G)
+    Exponential wins 55/100 draws (raw G)
+BIC=Exponential t=101.4s
+[22/50] synth_power/sub21 (21t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.45
+    Power wins 13/100 draws (raw G)
+    Exponential wins 87/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 47.61, median: 139.85, max: 1260.25
+    Power wins 11/100 draws (raw G)
+    Exponential wins 89/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.71, median: 4.74, max: 5.03
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.04, max: 0.36
+    Power wins 24/100 draws (raw G)
+    Exponential wins 76/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 41.21, median: 175.58, max: 1301.77
+    Power wins 23/100 draws (raw G)
+    Exponential wins 77/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.71, median: 4.75, max: 5.04
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.06, max: 0.43
+    Power wins 21/100 draws (raw G)
+    Exponential wins 79/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 40.40, median: 180.95, max: 1265.33
+    Power wins 16/100 draws (raw G)
+    Exponential wins 84/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.71, median: 4.75, max: 5.03
+    Power wins 8/100 draws (raw G)
+    Exponential wins 92/100 draws (raw G)
+BIC=Exponential t=77.0s
+[23/50] synth_power/sub22 (22t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.04, max: 0.24
+    Power wins 36/100 draws (raw G)
+    Exponential wins 64/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 32.86, median: 255.68, max: 791.53
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.52, median: 4.68, max: 4.83
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.22
+    Power wins 61/100 draws (raw G)
+    Exponential wins 39/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 39.60, median: 377.01, max: 1321.52
+    Power wins 19/100 draws (raw G)
+    Exponential wins 81/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.53, median: 4.71, max: 5.01
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.07, max: 0.29
+    Power wins 48/100 draws (raw G)
+    Exponential wins 52/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 23.79, median: 408.85, max: 3469.00
+    Power wins 18/100 draws (raw G)
+    Exponential wins 82/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.52, median: 4.71, max: 5.83
+    Power wins 12/100 draws (raw G)
+    Exponential wins 88/100 draws (raw G)
+BIC=Exponential t=75.0s
+[24/50] synth_power/sub23 (58t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.08, max: 0.30
+    Power wins 84/100 draws (raw G)
+    Exponential wins 16/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 277.64, median: 1542.50, max: 3967.18
+    Power wins 100/100 draws (raw G)
+    Exponential wins 0/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.64, median: 5.10, max: 5.79
+    Power wins 94/100 draws (raw G)
+    Exponential wins 6/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.09, max: 0.28
+    Power wins 60/100 draws (raw G)
+    Exponential wins 40/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 447.21, median: 1967.59, max: 3804.56
+    Power wins 100/100 draws (raw G)
+    Exponential wins 0/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.70, median: 5.22, max: 5.77
+    Power wins 82/100 draws (raw G)
+    Exponential wins 18/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.03, median: 0.10, max: 0.48
+    Power wins 63/100 draws (raw G)
+    Exponential wins 37/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 293.27, median: 1365.81, max: 4294.06
+    Power wins 96/100 draws (raw G)
+    Exponential wins 4/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.65, median: 5.05, max: 6.04
+    Power wins 85/100 draws (raw G)
+    Exponential wins 15/100 draws (raw G)
+BIC=Power t=101.5s
+[25/50] synth_power/sub24 (40t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.34
+    Power wins 19/100 draws (raw G)
+    Exponential wins 81/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 26.31, median: 126.36, max: 328.10
+    Power wins 4/100 draws (raw G)
+    Exponential wins 96/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.16, median: 4.25, max: 4.40
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.49
+    Power wins 46/100 draws (raw G)
+    Exponential wins 54/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 34.95, median: 169.01, max: 882.31
+    Power wins 24/100 draws (raw G)
+    Exponential wins 76/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.16, median: 4.28, max: 4.84
+    Power wins 21/100 draws (raw G)
+    Exponential wins 79/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.33
+    Power wins 39/100 draws (raw G)
+    Exponential wins 61/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 31.05, median: 152.14, max: 1210.64
+    Power wins 23/100 draws (raw G)
+    Exponential wins 77/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.16, median: 4.27, max: 5.11
+    Power wins 21/100 draws (raw G)
+    Exponential wins 79/100 draws (raw G)
+BIC=Exponential t=86.8s
+[26/50] synth_exponential/sub25 (20t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.40
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 91.76, median: 521.38, max: 1436.65
+    Power wins 8/100 draws (raw G)
+    Exponential wins 92/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.76, median: 4.87, max: 5.09
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.38
+    Power wins 13/100 draws (raw G)
+    Exponential wins 87/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 89.21, median: 568.64, max: 2189.88
+    Power wins 9/100 draws (raw G)
+    Exponential wins 91/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.76, median: 4.88, max: 5.27
+    Power wins 16/100 draws (raw G)
+    Exponential wins 84/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.06, max: 0.31
+    Power wins 19/100 draws (raw G)
+    Exponential wins 81/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 81.55, median: 720.56, max: 3008.59
+    Power wins 23/100 draws (raw G)
+    Exponential wins 77/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.76, median: 4.91, max: 5.46
+    Power wins 33/100 draws (raw G)
+    Exponential wins 67/100 draws (raw G)
+BIC=Power t=72.5s
+[27/50] synth_exponential/sub26 (55t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.05, max: 0.30
+    Power wins 36/100 draws (raw G)
+    Exponential wins 64/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 87.36, median: 450.00, max: 769.56
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.39, median: 4.68, max: 4.81
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.07, max: 0.36
+    Power wins 50/100 draws (raw G)
+    Exponential wins 50/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 103.28, median: 473.32, max: 2288.11
+    Power wins 7/100 draws (raw G)
+    Exponential wins 93/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.40, median: 4.69, max: 5.55
+    Power wins 7/100 draws (raw G)
+    Exponential wins 93/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.06, max: 0.29
+    Power wins 40/100 draws (raw G)
+    Exponential wins 60/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 108.38, median: 464.49, max: 1592.72
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.40, median: 4.69, max: 5.19
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+BIC=Exponential t=94.4s
+[28/50] synth_exponential/sub27 (43t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.06, max: 0.27
+    Power wins 9/100 draws (raw G)
+    Exponential wins 91/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 40.19, median: 694.29, max: 1687.01
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.86, max: 5.14
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.07, max: 0.36
+    Power wins 34/100 draws (raw G)
+    Exponential wins 66/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 37.17, median: 741.14, max: 5082.52
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.89, max: 6.22
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.07, max: 0.35
+    Power wins 32/100 draws (raw G)
+    Exponential wins 68/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 40.71, median: 727.87, max: 2269.63
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.89, max: 5.29
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+BIC=Exponential t=91.3s
+[29/50] synth_exponential/sub28 (22t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.06, max: 0.34
+    Power wins 50/100 draws (raw G)
+    Exponential wins 50/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 16.66, median: 343.63, max: 783.07
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.26, median: 4.53, max: 4.78
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.08, max: 0.37
+    Power wins 65/100 draws (raw G)
+    Exponential wins 35/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 23.61, median: 398.77, max: 1421.69
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.26, median: 4.58, max: 5.16
+    Power wins 4/100 draws (raw G)
+    Exponential wins 96/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.07, max: 0.43
+    Power wins 64/100 draws (raw G)
+    Exponential wins 36/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 14.84, median: 437.28, max: 2833.63
+    Power wins 11/100 draws (raw G)
+    Exponential wins 89/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.26, median: 4.59, max: 6.06
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+BIC=Exponential t=80.1s
+[30/50] synth_exponential/sub29 (30t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.07, max: 0.25
+    Power wins 44/100 draws (raw G)
+    Exponential wins 56/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 38.14, median: 1418.95, max: 2592.56
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.66, median: 5.10, max: 5.37
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.10, max: 0.37
+    Power wins 70/100 draws (raw G)
+    Exponential wins 30/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 54.44, median: 1861.47, max: 3252.50
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.67, median: 5.27, max: 5.58
+    Power wins 4/100 draws (raw G)
+    Exponential wins 96/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.09, max: 0.37
+    Power wins 54/100 draws (raw G)
+    Exponential wins 46/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 34.94, median: 1902.86, max: 13190.36
+    Power wins 6/100 draws (raw G)
+    Exponential wins 94/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.66, median: 5.27, max: 8.44
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+BIC=Exponential t=72.5s
+[31/50] synth_exponential/sub30 (50t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.14, max: 0.31
+    Power wins 72/100 draws (raw G)
+    Exponential wins 28/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 15.59, median: 507.40, max: 1822.94
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 3.93, median: 4.54, max: 6.16
+    Power wins 4/100 draws (raw G)
+    Exponential wins 96/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.17, max: 0.34
+    Power wins 77/100 draws (raw G)
+    Exponential wins 23/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 14.77, median: 622.67, max: 2560.01
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 3.93, median: 4.65, max: 7.03
+    Power wins 7/100 draws (raw G)
+    Exponential wins 93/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.15, max: 0.54
+    Power wins 76/100 draws (raw G)
+    Exponential wins 24/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 27.39, median: 519.39, max: 2646.89
+    Power wins 7/100 draws (raw G)
+    Exponential wins 93/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 3.94, median: 4.55, max: 7.25
+    Power wins 13/100 draws (raw G)
+    Exponential wins 87/100 draws (raw G)
+BIC=Exponential t=90.7s
+[32/50] synth_exponential/sub31 (23t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.10, max: 0.37
+    Power wins 65/100 draws (raw G)
+    Exponential wins 35/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 23.73, median: 1326.38, max: 1819.08
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.16, median: 5.06, max: 5.32
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.13, max: 0.43
+    Power wins 84/100 draws (raw G)
+    Exponential wins 16/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 22.12, median: 1330.27, max: 4696.29
+    Power wins 4/100 draws (raw G)
+    Exponential wins 96/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.16, median: 5.06, max: 7.85
+    Power wins 8/100 draws (raw G)
+    Exponential wins 92/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.12, max: 0.58
+    Power wins 78/100 draws (raw G)
+    Exponential wins 22/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 18.28, median: 1324.86, max: 8591.04
+    Power wins 8/100 draws (raw G)
+    Exponential wins 92/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.16, median: 5.06, max: 10.91
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+BIC=Exponential t=80.2s
+[33/50] synth_exponential/sub32 (59t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.08, max: 0.36
+    Power wins 46/100 draws (raw G)
+    Exponential wins 54/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 44.11, median: 808.38, max: 2046.00
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.31, median: 4.82, max: 5.28
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.10, max: 0.46
+    Power wins 69/100 draws (raw G)
+    Exponential wins 31/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 57.56, median: 884.80, max: 2772.51
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.32, median: 4.85, max: 5.69
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.09, max: 0.51
+    Power wins 52/100 draws (raw G)
+    Exponential wins 48/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 50.01, median: 806.60, max: 4401.12
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.32, median: 4.82, max: 6.90
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+BIC=Exponential t=119.1s
+[34/50] synth_exponential/sub33 (36t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.10, max: 0.30
+    Power wins 70/100 draws (raw G)
+    Exponential wins 30/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 117.64, median: 1094.82, max: 2955.17
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.53, median: 4.98, max: 5.48
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.13, max: 0.44
+    Power wins 76/100 draws (raw G)
+    Exponential wins 24/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 162.03, median: 1207.76, max: 8321.02
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.54, median: 5.02, max: 7.85
+    Power wins 6/100 draws (raw G)
+    Exponential wins 94/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.10, max: 0.52
+    Power wins 76/100 draws (raw G)
+    Exponential wins 24/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 111.03, median: 1152.11, max: 4763.37
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.52, median: 5.01, max: 6.41
+    Power wins 9/100 draws (raw G)
+    Exponential wins 91/100 draws (raw G)
+BIC=Exponential t=78.7s
+[35/50] synth_exponential/sub34 (60t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.10, max: 0.27
+    Power wins 40/100 draws (raw G)
+    Exponential wins 60/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 120.20, median: 1766.81, max: 5883.74
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.68, median: 5.16, max: 6.12
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.13, max: 0.42
+    Power wins 60/100 draws (raw G)
+    Exponential wins 40/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 141.43, median: 2269.09, max: 8720.46
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.69, median: 5.29, max: 7.12
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.13, max: 0.43
+    Power wins 64/100 draws (raw G)
+    Exponential wins 36/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 90.61, median: 1921.18, max: 10288.09
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.67, median: 5.20, max: 7.63
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+BIC=Exponential t=120.5s
+[36/50] synth_exponential/sub35 (64t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.05, max: 0.28
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 41.24, median: 1101.58, max: 2770.08
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.81, median: 5.06, max: 5.38
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.06, max: 0.34
+    Power wins 26/100 draws (raw G)
+    Exponential wins 74/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 44.03, median: 1210.57, max: 4592.38
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.81, median: 5.11, max: 5.70
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.07, max: 0.27
+    Power wins 25/100 draws (raw G)
+    Exponential wins 75/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 34.12, median: 1142.11, max: 4347.63
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.81, median: 5.09, max: 5.66
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+BIC=Exponential t=121.4s
+[37/50] synth_exponential/sub36 (64t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.07, max: 0.44
+    Power wins 45/100 draws (raw G)
+    Exponential wins 55/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 77.70, median: 1672.01, max: 4153.58
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.72, median: 5.22, max: 5.59
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.08, max: 0.26
+    Power wins 69/100 draws (raw G)
+    Exponential wins 31/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 81.04, median: 1908.92, max: 4928.19
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.72, median: 5.26, max: 5.91
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.08, max: 0.35
+    Power wins 51/100 draws (raw G)
+    Exponential wins 49/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 66.32, median: 1928.87, max: 7099.53
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.72, median: 5.26, max: 6.50
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+BIC=Exponential t=112.4s
+[38/50] synth_exponential/sub37 (71t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.09, max: 0.35
+    Power wins 61/100 draws (raw G)
+    Exponential wins 39/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 115.90, median: 1638.73, max: 4156.02
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.46, median: 5.13, max: 5.94
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.11, max: 0.54
+    Power wins 67/100 draws (raw G)
+    Exponential wins 33/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 97.45, median: 1757.11, max: 6966.61
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.45, median: 5.17, max: 7.65
+    Power wins 6/100 draws (raw G)
+    Exponential wins 94/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.10, max: 0.35
+    Power wins 62/100 draws (raw G)
+    Exponential wins 38/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 88.06, median: 1616.08, max: 5801.62
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.45, median: 5.13, max: 7.07
+    Power wins 7/100 draws (raw G)
+    Exponential wins 93/100 draws (raw G)
+BIC=Exponential t=119.8s
+[39/50] synth_exponential/sub38 (72t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.09, max: 0.29
+    Power wins 71/100 draws (raw G)
+    Exponential wins 29/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 59.03, median: 744.05, max: 1778.79
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.19, median: 4.73, max: 5.55
+    Power wins 9/100 draws (raw G)
+    Exponential wins 91/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.10, max: 0.44
+    Power wins 71/100 draws (raw G)
+    Exponential wins 29/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 72.69, median: 762.20, max: 3353.75
+    Power wins 15/100 draws (raw G)
+    Exponential wins 85/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.20, median: 4.75, max: 6.79
+    Power wins 21/100 draws (raw G)
+    Exponential wins 79/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.12, max: 0.47
+    Power wins 74/100 draws (raw G)
+    Exponential wins 26/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 64.55, median: 742.82, max: 3884.16
+    Power wins 25/100 draws (raw G)
+    Exponential wins 75/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.20, median: 4.74, max: 7.21
+    Power wins 31/100 draws (raw G)
+    Exponential wins 69/100 draws (raw G)
+BIC=Exponential t=127.0s
+[40/50] synth_exponential/sub39 (20t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.04, max: 0.46
+    Power wins 8/100 draws (raw G)
+    Exponential wins 92/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 24.58, median: 548.24, max: 1808.40
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.88, median: 5.06, max: 5.25
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.04, max: 0.43
+    Power wins 35/100 draws (raw G)
+    Exponential wins 65/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 19.50, median: 583.38, max: 3097.48
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.87, median: 5.06, max: 5.44
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.07, max: 0.35
+    Power wins 31/100 draws (raw G)
+    Exponential wins 69/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 13.31, median: 608.58, max: 2426.54
+    Power wins 12/100 draws (raw G)
+    Exponential wins 88/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.87, median: 5.06, max: 5.33
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+BIC=Exponential t=74.3s
+[41/50] synth_exponential/sub40 (25t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.07, max: 0.54
+    Power wins 38/100 draws (raw G)
+    Exponential wins 62/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 57.62, median: 920.18, max: 2436.34
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.52, median: 4.95, max: 5.34
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.08, max: 0.36
+    Power wins 57/100 draws (raw G)
+    Exponential wins 43/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 34.07, median: 1156.61, max: 2962.74
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.51, median: 5.15, max: 5.42
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.10, max: 0.47
+    Power wins 43/100 draws (raw G)
+    Exponential wins 57/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 21.35, median: 1326.69, max: 5820.25
+    Power wins 8/100 draws (raw G)
+    Exponential wins 92/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.51, median: 5.18, max: 6.76
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+BIC=Exponential t=95.5s
+[42/50] synth_exponential/sub41 (51t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.05, max: 0.27
+    Power wins 17/100 draws (raw G)
+    Exponential wins 83/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 4.19, median: 297.29, max: 1201.60
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.21, median: 4.47, max: 4.99
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.07, max: 0.30
+    Power wins 37/100 draws (raw G)
+    Exponential wins 63/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 8.31, median: 330.18, max: 1161.66
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.21, median: 4.49, max: 4.97
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.06, max: 0.36
+    Power wins 34/100 draws (raw G)
+    Exponential wins 66/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 2.90, median: 300.10, max: 2865.10
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.21, median: 4.47, max: 6.21
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+BIC=Exponential t=104.6s
+[43/50] synth_exponential/sub42 (43t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.07, max: 0.29
+    Power wins 48/100 draws (raw G)
+    Exponential wins 52/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 46.50, median: 1048.98, max: 2699.69
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.60, median: 4.97, max: 5.40
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.10, max: 0.31
+    Power wins 64/100 draws (raw G)
+    Exponential wins 36/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 62.25, median: 1257.87, max: 10017.09
+    Power wins 4/100 draws (raw G)
+    Exponential wins 96/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 5.03, max: 7.84
+    Power wins 6/100 draws (raw G)
+    Exponential wins 94/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.09, max: 0.34
+    Power wins 56/100 draws (raw G)
+    Exponential wins 44/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 59.30, median: 971.15, max: 4431.91
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.95, max: 6.03
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+BIC=Exponential t=79.7s
+[44/50] synth_exponential/sub43 (64t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.08, max: 0.36
+    Power wins 47/100 draws (raw G)
+    Exponential wins 53/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 41.74, median: 1308.25, max: 2995.94
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.45, median: 5.01, max: 5.43
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.10, max: 0.42
+    Power wins 74/100 draws (raw G)
+    Exponential wins 26/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 41.45, median: 1793.84, max: 7655.90
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.44, median: 5.19, max: 7.87
+    Power wins 4/100 draws (raw G)
+    Exponential wins 96/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.10, max: 0.44
+    Power wins 61/100 draws (raw G)
+    Exponential wins 39/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 37.79, median: 1741.39, max: 5187.82
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.44, median: 5.18, max: 6.76
+    Power wins 2/100 draws (raw G)
+    Exponential wins 98/100 draws (raw G)
+BIC=Exponential t=106.4s
+[45/50] synth_exponential/sub44 (66t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.07, max: 0.48
+    Power wins 24/100 draws (raw G)
+    Exponential wins 76/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 16.40, median: 719.74, max: 2443.66
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.37, median: 4.75, max: 5.47
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.09, max: 0.36
+    Power wins 51/100 draws (raw G)
+    Exponential wins 49/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 17.65, median: 774.96, max: 2458.58
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.37, median: 4.79, max: 5.47
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.08, max: 0.40
+    Power wins 41/100 draws (raw G)
+    Exponential wins 59/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 19.24, median: 721.65, max: 4075.61
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.37, median: 4.77, max: 6.41
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+BIC=Exponential t=130.3s
+[46/50] synth_exponential/sub45 (53t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.09, max: 0.32
+    Power wins 48/100 draws (raw G)
+    Exponential wins 52/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 29.35, median: 1349.03, max: 2228.25
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.28, median: 5.06, max: 5.27
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.11, max: 0.45
+    Power wins 64/100 draws (raw G)
+    Exponential wins 36/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 25.35, median: 1599.84, max: 5425.70
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.28, median: 5.14, max: 7.62
+    Power wins 7/100 draws (raw G)
+    Exponential wins 93/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.00, median: 0.10, max: 0.40
+    Power wins 56/100 draws (raw G)
+    Exponential wins 44/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 23.15, median: 1481.92, max: 2459.53
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.28, median: 5.11, max: 5.49
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+BIC=Exponential t=99.3s
+[47/50] synth_exponential/sub46 (24t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.03, max: 0.25
+    Power wins 14/100 draws (raw G)
+    Exponential wins 86/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 37.09, median: 160.57, max: 800.21
+    Power wins 4/100 draws (raw G)
+    Exponential wins 96/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.41, median: 4.56, max: 4.78
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.52
+    Power wins 44/100 draws (raw G)
+    Exponential wins 56/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 31.06, median: 179.24, max: 1040.01
+    Power wins 17/100 draws (raw G)
+    Exponential wins 83/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.40, median: 4.56, max: 4.90
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.06, max: 0.35
+    Power wins 32/100 draws (raw G)
+    Exponential wins 68/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 35.50, median: 213.00, max: 1130.44
+    Power wins 14/100 draws (raw G)
+    Exponential wins 86/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.40, median: 4.57, max: 4.94
+    Power wins 8/100 draws (raw G)
+    Exponential wins 92/100 draws (raw G)
+BIC=Exponential t=85.1s
+[48/50] synth_exponential/sub47 (59t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.04, max: 0.55
+    Power wins 18/100 draws (raw G)
+    Exponential wins 82/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 100.59, median: 592.55, max: 1058.13
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.62, median: 4.86, max: 4.98
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.07, max: 0.44
+    Power wins 47/100 draws (raw G)
+    Exponential wins 53/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 74.83, median: 675.54, max: 1834.92
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.87, max: 5.18
+    Power wins 1/100 draws (raw G)
+    Exponential wins 99/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.05, max: 0.30
+    Power wins 33/100 draws (raw G)
+    Exponential wins 67/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 81.89, median: 626.33, max: 3189.11
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.61, median: 4.87, max: 5.62
+    Power wins 9/100 draws (raw G)
+    Exponential wins 91/100 draws (raw G)
+BIC=Exponential t=108.7s
+[49/50] synth_exponential/sub48 (38t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.06, max: 0.20
+    Power wins 58/100 draws (raw G)
+    Exponential wins 42/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 62.40, median: 377.90, max: 802.99
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.21, median: 4.55, max: 4.77
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.10, max: 0.32
+    Power wins 77/100 draws (raw G)
+    Exponential wins 23/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 54.03, median: 430.65, max: 3911.20
+    Power wins 10/100 draws (raw G)
+    Exponential wins 90/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.20, median: 4.58, max: 7.16
+    Power wins 11/100 draws (raw G)
+    Exponential wins 89/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.07, max: 0.44
+    Power wins 53/100 draws (raw G)
+    Exponential wins 47/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 40.23, median: 377.02, max: 2851.78
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.19, median: 4.55, max: 6.35
+    Power wins 5/100 draws (raw G)
+    Exponential wins 95/100 draws (raw G)
+BIC=Exponential t=95.9s
+[50/50] synth_exponential/sub49 (73t)...   Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.02, median: 0.11, max: 0.36
+    Power wins 76/100 draws (raw G)
+    Exponential wins 24/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 59.77, median: 1412.33, max: 3505.18
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.20, median: 5.06, max: 6.05
+    Power wins 3/100 draws (raw G)
+    Exponential wins 97/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.14, max: 0.43
+    Power wins 81/100 draws (raw G)
+    Exponential wins 19/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 73.50, median: 1554.03, max: 4875.97
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.21, median: 5.10, max: 7.70
+    Power wins 12/100 draws (raw G)
+    Exponential wins 88/100 draws (raw G)
+  Extracted 100/100 GP predictives
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.01, median: 0.12, max: 0.46
+    Power wins 79/100 draws (raw G)
+    Exponential wins 21/100 draws (raw G)
+
+  Computing G matrix: pw_mse...
+    G stats — min: 64.89, median: 1471.03, max: 5851.06
+    Power wins 0/100 draws (raw G)
+    Exponential wins 100/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: 4.20, median: 5.08, max: 8.59
+    Power wins 11/100 draws (raw G)
+    Exponential wins 89/100 draws (raw G)
+BIC=Exponential t=155.5s
+
+============================================================
+RESULTS (50 subjects)
+============================================================
+
+BIC winners:
+  Exponential: 32/50 (64.0%)
+  Power: 18/50 (36.0%)
+
+BI* winners (median τ):
+
+  [practitioner]
+    pw_hellinger: Exponential:28, Power:22
+    pw_mse: Exponential:44, Power:6
+    pw_nll: Exponential:40, Power:10
+
+  [moderate]
+    pw_hellinger: Power:32, Exponential:18
+    pw_mse: Exponential:43, Power:7
+    pw_nll: Exponential:38, Power:12
+
+  [agnostic]
+    pw_hellinger: Power:27, Exponential:23
+    pw_mse: Exponential:43, Power:7
+    pw_nll: Exponential:38, Power:12
+
+Robustness (all configs agree):
+  pw_hellinger: 78.0%
+  pw_mse: 98.0%
+  pw_nll: 96.0%
+
+============================================================
+
+HMC run complete

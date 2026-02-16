@@ -1,0 +1,65 @@
+{
+  "n": 50,
+  "bic": {
+    "Power": 18,
+    "Exponential": 32
+  },
+  "bistar": {
+    "practitioner": {
+      "pw_hellinger": {
+        "Power": 22,
+        "Exponential": 28
+      },
+      "pw_mse": {
+        "Exponential": 44,
+        "Power": 6
+      },
+      "pw_nll": {
+        "Power": 10,
+        "Exponential": 40
+      }
+    },
+    "moderate": {
+      "pw_hellinger": {
+        "Power": 32,
+        "Exponential": 18
+      },
+      "pw_mse": {
+        "Exponential": 43,
+        "Power": 7
+      },
+      "pw_nll": {
+        "Power": 12,
+        "Exponential": 38
+      }
+    },
+    "agnostic": {
+      "pw_hellinger": {
+        "Power": 27,
+        "Exponential": 23
+      },
+      "pw_mse": {
+        "Exponential": 43,
+        "Power": 7
+      },
+      "pw_nll": {
+        "Power": 12,
+        "Exponential": 38
+      }
+    }
+  },
+  "robustness": {
+    "pw_hellinger": {
+      "agree": 39,
+      "disagree": 11
+    },
+    "pw_mse": {
+      "agree": 49,
+      "disagree": 1
+    },
+    "pw_nll": {
+      "agree": 48,
+      "disagree": 2
+    }
+  }
+}

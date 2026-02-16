@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/scratch/gpfs/SUYOGHC/bistar_gp_c/experiments/practice_EvansEtAL/run_hierarchical.py", line 303, in <module>
+    run_experiment(
+  File "/scratch/gpfs/SUYOGHC/bistar_gp_c/experiments/practice_EvansEtAL/run_hierarchical.py", line 188, in run_experiment
+    true_model = curve.true_model
+                 ^^^^^^^^^^^^^^^^
+AttributeError: 'LearningCurve' object has no attribute 'true_model'

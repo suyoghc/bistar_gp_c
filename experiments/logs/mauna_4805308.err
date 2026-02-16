@@ -1,0 +1,84 @@
+/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/site-packages/sklearn/datasets/_openml.py:109: UserWarning: A network error occurred while downloading https://api.openml.org/api/v1/json/data/41187. Retrying...
+  warn(
+Traceback (most recent call last):
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/urllib/request.py", line 1348, in do_open
+    h.request(req.get_method(), req.selector, req.data, headers,
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/http/client.py", line 1303, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/http/client.py", line 1349, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/http/client.py", line 1298, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/http/client.py", line 1058, in _send_output
+    self.send(msg)
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/http/client.py", line 996, in send
+    self.connect()
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/http/client.py", line 1468, in connect
+    super().connect()
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/http/client.py", line 962, in connect
+    self.sock = self._create_connection(
+                ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/socket.py", line 839, in create_connection
+    for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/socket.py", line 974, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/scratch/gpfs/SUYOGHC/bistar_gp_c/experiments/../bistar_gp/data.py", line 46, in load_mauna_loa
+    co2 = fetch_openml(data_id=41187, as_frame=True)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/site-packages/sklearn/utils/_param_validation.py", line 218, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/site-packages/sklearn/datasets/_openml.py", line 1033, in fetch_openml
+    data_description = _get_data_description_by_id(data_id, data_home)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/site-packages/sklearn/datasets/_openml.py", line 368, in _get_data_description_by_id
+    json_data = _get_json_content_from_openml_api(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/site-packages/sklearn/datasets/_openml.py", line 251, in _get_json_content_from_openml_api
+    return _load_json()
+           ^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/site-packages/sklearn/datasets/_openml.py", line 66, in wrapper
+    return f(*args, **kw)
+           ^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/site-packages/sklearn/datasets/_openml.py", line 246, in _load_json
+    _open_openml_url(url, data_home, n_retries=n_retries, delay=delay)
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/site-packages/sklearn/datasets/_openml.py", line 178, in _open_openml_url
+    _retry_on_network_error(n_retries, delay, req.full_url)(urlopen)(
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/site-packages/sklearn/datasets/_openml.py", line 102, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/urllib/request.py", line 216, in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/urllib/request.py", line 519, in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/urllib/request.py", line 536, in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/urllib/request.py", line 496, in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/urllib/request.py", line 1391, in https_open
+    return self.do_open(http.client.HTTPSConnection, req,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sc8918/.conda/envs/bistar_gp/lib/python3.11/urllib/request.py", line 1351, in do_open
+    raise URLError(err)
+urllib.error.URLError: <urlopen error [Errno -2] Name or service not known>
+Traceback (most recent call last):
+  File "/scratch/gpfs/SUYOGHC/bistar_gp_c/experiments/mauna_loa.py", line 99, in <module>
+    main()
+  File "/scratch/gpfs/SUYOGHC/bistar_gp_c/experiments/mauna_loa.py", line 31, in main
+    x_train, y_train, x_test, y_test, info = load_mauna_loa(normalize=True, test_years=5.0)
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/gpfs/SUYOGHC/bistar_gp_c/experiments/../bistar_gp/data.py", line 127, in load_mauna_loa
+    idx = np.argsort(x_all)
+                     ^^^^^
+UnboundLocalError: cannot access local variable 'x_all' where it is not associated with a value
