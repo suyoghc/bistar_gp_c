@@ -341,12 +341,16 @@ def run_one(ncurve: NormalizedCurve,
         taus = np.logspace(-1, 1.5, 15)
 
     curve = ncurve.curve
+
+    # GP works in normalized space
     x_train = torch.tensor(ncurve.x).double()
     y_train = torch.tensor(ncurve.y).double()
-    x_eval_t = torch.linspace(0, 1, n_eval).double()
-    x_eval_np = x_eval_t.numpy()
+    x_eval_norm = torch.linspace(0, 1, n_eval).double()
 
-    # ── Fit candidates ──
+    # Candidates work in raw space
+    x_eval_raw = x_eval_norm.numpy() * (ncurve.x_max - ncurve.x_min) + ncurve.x_min
+
+    # ── Fit candidates on RAW data ──
     candidates = build_practice_candidates()
     candidate_results = []
     fitted_params = {}
@@ -354,17 +358,17 @@ def run_one(ncurve: NormalizedCurve,
 
     for cand in candidates:
         try:
-            cand.fit(ncurve.x, ncurve.y)
-            pred = cand.predict(x_eval_np)
+            cand.fit(ncurve.x_raw, ncurve.y_raw)
+            pred = cand.predict(x_eval_raw)
             candidate_results.append(pred)
             fitted_params[cand.name] = pred.parameters
-            bic_log_ml[cand.name] = cand.log_marginal_likelihood(ncurve.x, ncurve.y)
+            bic_log_ml[cand.name] = cand.log_marginal_likelihood(ncurve.x_raw, ncurve.y_raw)
         except Exception as e:
             if verbose: print(f"    {cand.name} failed: {e}")
-            mean = np.full(n_eval, ncurve.y.mean())
+            mean = np.full(n_eval, ncurve.y_raw.mean())
             candidate_results.append(CandidateResult(
-                name=cand.name, mean=mean, cov=np.eye(n_eval) * ncurve.y.var(),
-                noise_var=ncurve.y.var(), parameters={}, n_params=cand.n_free_params + 1,
+                name=cand.name, mean=mean, cov=np.eye(n_eval) * ncurve.y_raw.var(),
+                noise_var=ncurve.y_raw.var(), parameters={}, n_params=cand.n_free_params + 1,
             ))
             fitted_params[cand.name] = {}
             bic_log_ml[cand.name] = -np.inf
@@ -396,17 +400,17 @@ def run_one(ncurve: NormalizedCurve,
                 "noise": lik.noise.item(),
             }
 
-        # Extract ψ's
+        # Extract ψ's (in normalized space)
         if mode == "map":
             gp_samples = extract_map_predictives(
-                model, lik, x_train, y_train, x_eval_t, n_samples=n_posterior_samples,
+                model, lik, x_train, y_train, x_eval_norm, n_samples=n_posterior_samples,
             )
         else:
             try:
                 mcmc_samples = fit_hmc(model, lik, x_train, y_train,
                                        n_samples=n_hmc_samples, n_warmup=n_warmup, verbose=False)
                 gp_samples = extract_gp_predictives(
-                    model, lik, x_train, y_train, x_eval_t, mcmc_samples,
+                    model, lik, x_train, y_train, x_eval_norm, mcmc_samples,
                     get_kernel_builder(cfg_name), get_likelihood_builder(cfg_name),
                     n_posterior_samples=n_posterior_samples,
                 )
@@ -417,9 +421,18 @@ def run_one(ncurve: NormalizedCurve,
             continue
         n_gp = max(n_gp, len(gp_samples))
 
-        # BMS*
+        # Denormalize GP draws to raw (trial, RT) space for candidate comparison
+        gp_samples_raw = []
+        for s in gp_samples:
+            raw_mean = s.mean * ncurve.y_std + ncurve.y_mean
+            raw_cov = s.cov * (ncurve.y_std ** 2)
+            gp_samples_raw.append(GPPosteriorSample(
+                mean=raw_mean, cov=raw_cov, hyperparameters=s.hyperparameters,
+            ))
+
+        # BMS* — both GP draws and candidates now in raw space
         try:
-            results = run_bms_star(gp_samples, candidate_results, metric_names=metrics, taus=taus)
+            results = run_bms_star(gp_samples_raw, candidate_results, metric_names=metrics, taus=taus)
         except Exception:
             continue
 
