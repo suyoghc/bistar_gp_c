@@ -1,0 +1,39 @@
+{
+  "kernel_type": "matern32",
+  "n_subjects": 50,
+  "n_hmc_samples": 200,
+  "bistar_pw_nll": {
+    "power_correct": 9,
+    "power_total": 25,
+    "exp_correct": 25,
+    "exp_total": 25,
+    "total_correct": 34
+  },
+  "bic": {
+    "power_correct": 17,
+    "exp_correct": 24,
+    "total_correct": 41
+  },
+  "population_prior": {
+    "kernel_type": "matern32",
+    "ls_mu": -1.1484487065612297,
+    "ls_sigma": 0.35828581947390425,
+    "os_mu": -0.11565717442784139,
+    "os_sigma": 0.2738978929188373,
+    "noise_mu": -1.5540268648536233,
+    "noise_sigma": 0.7629723864016724,
+    "n_subjects": 50,
+    "ls_range": [
+      0.136206200305115,
+      0.6070433035869649
+    ],
+    "os_range": [
+      0.4066767633541161,
+      1.4897070021641132
+    ],
+    "noise_range": [
+      0.0496542891390101,
+      0.8204387584859109
+    ]
+  }
+}

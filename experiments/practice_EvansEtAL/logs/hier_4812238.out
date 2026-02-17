@@ -1,0 +1,292 @@
+Generating demo data...
+
+############################################################
+# Kernel: matern32
+############################################################
+============================================================
+Stage 1: MAP fit all subjects
+============================================================
+  MAP fitting subject 0/50...
+  MAP fitting subject 10/50...
+  MAP fitting subject 20/50...
+  MAP fitting subject 30/50...
+  MAP fitting subject 40/50...
+
+============================================================
+Stage 2: Fit population priors
+============================================================
+
+==================================================
+Population Prior (n=50 subjects)
+==================================================
+  lengthscale:
+    LogNormal(mu=-1.148, sigma=0.358)
+    median=0.3171, mean=0.3382
+    raw range: [0.1362, 0.6070]
+  outputscale:
+    LogNormal(mu=-0.116, sigma=0.274)
+    median=0.8908, mean=0.9248
+    raw range: [0.4067, 1.4897]
+  noise:
+    LogNormal(mu=-1.554, sigma=0.763)
+    median=0.2114, mean=0.2828
+    raw range: [0.0497, 0.8204]
+
+============================================================
+Stage 3: HMC with population priors
+============================================================
+
+  HMC subject 0/50...
+
+  HMC subject 5/50...
+
+  HMC subject 10/50...
+
+  HMC subject 15/50...
+
+  HMC subject 20/50...
+
+  HMC subject 25/50...
+
+  HMC subject 30/50...
+
+  HMC subject 35/50...
+
+  HMC subject 40/50...
+
+  HMC subject 45/50...
+
+==================================================
+Population Prior (n=50 subjects)
+==================================================
+  lengthscale:
+    LogNormal(mu=-1.148, sigma=0.358)
+    median=0.3171, mean=0.3382
+    raw range: [0.1362, 0.6070]
+  outputscale:
+    LogNormal(mu=-0.116, sigma=0.274)
+    median=0.8908, mean=0.9248
+    raw range: [0.4067, 1.4897]
+  noise:
+    LogNormal(mu=-1.554, sigma=0.763)
+    median=0.2114, mean=0.2828
+    raw range: [0.0497, 0.8204]
+
+
+  Scoring subject 0/50...
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+
+  Scoring subject 10/50...
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+
+  Scoring subject 20/50...
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+
+  Scoring subject 30/50...
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+
+  Scoring subject 40/50...
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+
+============================================================
+RESULTS: matern32 hierarchical
+============================================================
+Power recovery:       9/25
+Exponential recovery: 25/25
+Total accuracy:       34/50
+
+BIC baseline:
+  Power:       17/25
+  Exponential: 24/25
+  Total:       41/50
+
+############################################################
+# Kernel: matern52
+############################################################
+============================================================
+Stage 1: MAP fit all subjects
+============================================================
+  MAP fitting subject 0/50...
+  MAP fitting subject 10/50...
+  MAP fitting subject 20/50...
+  MAP fitting subject 30/50...
+  MAP fitting subject 40/50...
+
+============================================================
+Stage 2: Fit population priors
+============================================================
+
+==================================================
+Population Prior (n=50 subjects)
+==================================================
+  lengthscale:
+    LogNormal(mu=-1.253, sigma=0.378)
+    median=0.2857, mean=0.3068
+    raw range: [0.1194, 0.5239]
+  outputscale:
+    LogNormal(mu=-0.108, sigma=0.278)
+    median=0.8975, mean=0.9328
+    raw range: [0.4071, 1.5198]
+  noise:
+    LogNormal(mu=-1.523, sigma=0.751)
+    median=0.2180, mean=0.2889
+    raw range: [0.0499, 0.8289]
+
+============================================================
+Stage 3: HMC with population priors
+============================================================
+
+  HMC subject 0/50...
+
+  HMC subject 5/50...
+
+  HMC subject 10/50...
+
+  HMC subject 15/50...
+
+  HMC subject 20/50...
+
+  HMC subject 25/50...
+
+  HMC subject 30/50...
+
+  HMC subject 35/50...
+
+  HMC subject 40/50...
+
+  HMC subject 45/50...
+
+==================================================
+Population Prior (n=50 subjects)
+==================================================
+  lengthscale:
+    LogNormal(mu=-1.253, sigma=0.378)
+    median=0.2857, mean=0.3068
+    raw range: [0.1194, 0.5239]
+  outputscale:
+    LogNormal(mu=-0.108, sigma=0.278)
+    median=0.8975, mean=0.9328
+    raw range: [0.4071, 1.5198]
+  noise:
+    LogNormal(mu=-1.523, sigma=0.751)
+    median=0.2180, mean=0.2889
+    raw range: [0.0499, 0.8289]
+
+
+  Scoring subject 0/50...
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+
+  Scoring subject 10/50...
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+
+  Scoring subject 20/50...
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+
+  Scoring subject 30/50...
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+
+  Scoring subject 40/50...
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+  Extracted 100/100 GP predictives
+
+============================================================
+RESULTS: matern52 hierarchical
+============================================================
+Power recovery:       9/25
+Exponential recovery: 25/25
+Total accuracy:       34/50
+
+BIC baseline:
+  Power:       17/25
+  Exponential: 24/25
+  Total:       41/50
+Hierarchical run complete
