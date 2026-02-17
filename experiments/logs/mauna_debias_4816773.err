@@ -1,0 +1,2 @@
+/scratch/gpfs/SUYOGHC/bistar_gp_c/experiments/bistar_debias_mauna_loa.py:218: UserWarning: No artists with labels found to put in legend.  Note that artists whose label start with an underscore are ignored when legend() is called with no argument.
+  ax2.legend(fontsize=7, loc='best')
