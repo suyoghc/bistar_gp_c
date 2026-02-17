@@ -158,12 +158,12 @@ def plot_three_interpretations(result, x_test_held=None, y_test_held=None,
 
         # Train/test boundary
         x_split = result.x_train.max()
-        ax0.axvline(x_split, color='gray', linestyle=':', linewidth=1.5, alpha=0.7)
+        ax0.axvline(x_split, color='black', linestyle='--', linewidth=1.5, alpha=0.85)
         ylims = ax0.get_ylim()
         ax0.text(x_split, ylims[1] * 0.95, ' forecast →', fontsize=7,
-                 color='gray', ha='left', va='top')
+                 color='black', ha='left', va='top')
         ax0.text(x_split, ylims[1] * 0.95, '← train ', fontsize=7,
-                 color='gray', ha='right', va='top')
+                 color='black', ha='right', va='top')
 
         ax0.set_title(f"{interp_name}", fontsize=14, fontweight='bold')
         ax0.legend(fontsize=7, loc='upper left')
@@ -258,10 +258,10 @@ def plot_debiased_comparison(result, info, figsize=(16, 5)):
 
         # Train/test boundary
         x_boundary = (result.x_train.max() + info["x_offset"]) if info else result.x_train.max()
-        ax.axvline(x_boundary, color='gray', linestyle=':', linewidth=1.5, alpha=0.7)
+        ax.axvline(x_boundary, color='black', linestyle='--', linewidth=1.5, alpha=0.85)
         ylims = ax.get_ylim()
         ax.text(x_boundary, ylims[1] - (ylims[1]-ylims[0])*0.05,
-                ' forecast →', fontsize=7, color='gray', ha='left', va='top')
+                ' forecast →', fontsize=7, color='black', ha='left', va='top')
 
         ax.set_title(f"{interp_name}", fontsize=13, fontweight='bold')
         ax.set_xlabel("Year")
@@ -320,7 +320,7 @@ def plot_residuals_comparison(result, info, figsize=(16, 5)):
 
         # Train/test boundary
         x_boundary = (result.x_train.max() + info["x_offset"]) if info else result.x_train.max()
-        ax.axvline(x_boundary, color='gray', linestyle=':', linewidth=1.5, alpha=0.7)
+        ax.axvline(x_boundary, color='black', linestyle='--', linewidth=1.5, alpha=0.85)
 
         # Scale annotation
         bias_range = bias_ppm.max() - bias_ppm.min()
