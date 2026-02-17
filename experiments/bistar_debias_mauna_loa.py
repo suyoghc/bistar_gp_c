@@ -362,7 +362,7 @@ def main():
         # ── HMC decomposition ────────────────────────────────
         if args.use_cache and os.path.exists(args.use_cache):
             print(f"\n  Loading cached HMC samples: {args.use_cache}")
-            mcmc_samples = torch.load(args.use_cache)
+            mcmc_samples = torch.load(args.use_cache, weights_only=False)
         else:
             print(f"\n── Running HMC ({args.n_hmc} samples, {args.n_warmup} warmup) ──")
             kernels, names = build_mauna_loa_kernels()

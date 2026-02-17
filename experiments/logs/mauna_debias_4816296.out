@@ -1,0 +1,11 @@
+Reusing cached HMC samples from BMS* run
+============================================================
+  BI* Debiasing: Three Interpretations of Mauna Loa CO₂
+============================================================
+  Columns: ['year', 'month', 'day', 'weight', 'flag', 'station', 'co2']
+  Aggregated to 521 monthly observations
+
+  Train: 461, Test: 60
+
+  Loading cached HMC samples: results_bms_mauna_loa/hmc_samples.pt
+BI* debiasing complete

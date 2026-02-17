@@ -1,0 +1,68 @@
+Reusing cached HMC samples from BMS* run
+============================================================
+  BI* Debiasing: Three Interpretations of Mauna Loa CO₂
+============================================================
+  Columns: ['year', 'month', 'day', 'weight', 'flag', 'station', 'co2']
+  Aggregated to 521 monthly observations
+
+  Train: 461, Test: 60
+
+  Loading cached HMC samples: results_bms_mauna_loa/hmc_samples.pt
+
+── Decomposing HMC samples ──
+  Decomposed 100/100 MCMC samples successfully
+
+── Component Summaries (HMC) ──
+  trend          : range = 1.8742 (normalized) = 27.33 ppm
+  seasonal       : range = 0.4123 (normalized) = 6.01 ppm
+  medium_term    : range = 1.3631 (normalized) = 19.88 ppm
+
+── Interpretations ──
+
+  Believer:
+    k_truth = ['trend', 'seasonal', 'medium_term']
+    k_bias  = []
+    Debiased signal range: 51.60 ppm
+    Removed bias range:    0.00 ppm
+
+  Moderate:
+    k_truth = ['trend', 'seasonal']
+    k_bias  = ['medium_term']
+    Debiased signal range: 33.12 ppm
+    Removed bias range:    19.88 ppm
+
+  Skeptic:
+    k_truth = ['seasonal']
+    k_bias  = ['trend', 'medium_term']
+    Debiased signal range: 6.01 ppm
+    Removed bias range:    45.73 ppm
+
+── Generating Plots ──
+  Saved: results_debias_mauna_loa/bistar_three_interpretations_hmc.png
+  Saved: results_debias_mauna_loa/bistar_debiased_ppm_hmc.png
+  Saved: results_debias_mauna_loa/bistar_removed_bias_hmc.png
+
+============================================================
+  Key Point for Paper
+============================================================
+
+  The GP decomposition is IDENTICAL across all three panels.
+  Same data, same kernel, same posterior, same HMC samples.
+
+  The ONLY difference is which components the analyst labels
+  as "truth" (k_truth) vs "bias" (k_bias).
+
+  BI* contribution: this labeling is now EXPLICIT.
+  - Traditional analysis: bias assumptions are buried in
+    preprocessing, model specification, or unstated beliefs
+  - BI*: the decomposition separates components, and the
+    analyst must explicitly choose which to trust
+
+  The skeptic's interpretation removes ~27 ppm of "bias"
+  (the entire upward trend). Whether that's scientifically
+  defensible is a separate question — but BI* forces it
+  into the open where it can be examined and debated.
+    
+  Results in: results_debias_mauna_loa/
+  Done!
+BI* debiasing complete
