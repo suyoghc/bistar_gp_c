@@ -1,0 +1,183 @@
+============================================================
+  BMS* on Mauna Loa CO₂
+  Candidates: Linear, Quadratic, Exponential (all + Seasonal)
+============================================================
+  Columns: ['year', 'month', 'day', 'weight', 'flag', 'station', 'co2']
+  Aggregated to 521 monthly observations
+
+  Train: 461, Test: 60
+  Normalization: y_mean=336.19, y_std=14.58
+
+── Fitting Candidate Models ──
+  Fitting Linear+Seasonal...
+    σ = 0.114053
+    p0 = 0.088391
+    p1 = 0.000633
+    p2 = 0.189001
+    p3 = 0.999542
+    p4 = -1.958680
+    p5 = 0.049886
+    p6 = -2.546700
+  Fitting Quadratic+Seasonal...
+    σ = 0.049625
+    p0 = 0.000918
+    p1 = 0.088523
+    p2 = -0.113477
+    p3 = 0.189363
+    p4 = 0.999566
+    p5 = -1.952384
+    p6 = 0.049849
+    p7 = -2.562902
+  Fitting Exponential+Seasonal...
+    σ = 0.054493
+    p0 = 4.411007
+    p1 = 0.019781
+    p2 = -4.518305
+    p3 = 0.189644
+    p4 = 0.999564
+    p5 = -1.952470
+    p6 = 0.049699
+    p7 = -2.563316
+
+  Candidate residual RMSEs (train):
+    Linear+Seasonal: 0.114053 (normalized), 1.66 ppm
+    Quadratic+Seasonal: 0.049624 (normalized), 0.72 ppm
+    Exponential+Seasonal: 0.054494 (normalized), 0.79 ppm
+
+── MAP GP Fit ──
+  Iter 200/800 — Loss: -0.9517
+  Iter 400/800 — Loss: -1.9993
+  Iter 600/800 — Loss: -2.1362
+  Iter 800/800 — Loss: -2.1504
+
+── Hyperparameters ──
+  Noise variance: 0.000388
+  [trend]
+    raw_outputscale: 3.169040
+    base_kernel.raw_lengthscale: 7.602714
+  [seasonal]
+    raw_outputscale: 0.329600
+    base_kernel.raw_lengthscale: 2.732920
+    base_kernel.raw_period_length: 0.999570
+  [medium_term]
+    raw_outputscale: 0.001124
+    base_kernel.raw_lengthscale: 0.855398
+
+
+── HMC (100 samples, 100 warmup) ──
+
+                                                               mean       std    median      5.0%     95.0%     n_eff     r_hat
+covar_module.kernels.0.base_kernel.lengthscale_prior[0,0]     80.12     58.37     64.35      5.41    165.18     71.27      1.00
+                 covar_module.kernels.0.outputscale_prior      7.83      4.75      6.53      1.32     14.77    292.01      0.99
+covar_module.kernels.1.base_kernel.lengthscale_prior[0,0]      1.53      0.89      1.29      0.44      2.81    133.93      0.99
+                 covar_module.kernels.1.outputscale_prior      3.13      1.54      2.92      0.49      5.39    150.51      1.01
+covar_module.kernels.2.base_kernel.lengthscale_prior[0,0]      3.05      1.91      2.64      0.48      5.74    225.48      0.99
+                 covar_module.kernels.2.outputscale_prior      1.94      1.45      1.53      0.26      3.87    236.18      1.03
+   kernel_components.0.base_kernel.lengthscale_prior[0,0]    101.34    142.30     45.16      3.14    249.22    101.23      1.00
+                    kernel_components.0.outputscale_prior      8.47      3.90      7.71      2.54     14.00    212.29      0.99
+   kernel_components.1.base_kernel.lengthscale_prior[0,0]      1.47      0.69      1.32      0.43      2.52    287.13      0.99
+                    kernel_components.1.outputscale_prior      2.86      1.56      2.40      1.06      5.58    443.49      0.99
+   kernel_components.2.base_kernel.lengthscale_prior[0,0]      3.10      1.82      2.59      0.54      5.79    220.13      0.99
+                    kernel_components.2.outputscale_prior      1.98      1.36      1.64      0.26      3.96    120.17      0.99
+                    likelihood.noise_covar.noise_prior[0]      1.73      1.01      1.61      0.28      3.15     54.15      1.00
+                               noise_covar.noise_prior[0]      1.67      1.03      1.47      0.25      3.11    313.23      1.00
+
+Number of divergences: 0
+  Cached HMC samples: results_bms_mauna_loa/hmc_samples.pt
+
+── Extracting GP Predictives ──
+  Extracted 100/100 GP predictives
+
+── Running BMS* ──
+
+  Computing G matrix: pw_mse...
+    G stats — min: 0.01, median: 0.06, max: 0.43
+    Linear+Seasonal wins 100/100 draws (raw G)
+    Quadratic+Seasonal wins 0/100 draws (raw G)
+    Exponential+Seasonal wins 0/100 draws (raw G)
+
+  Computing G matrix: pw_nll...
+    G stats — min: -0.83, median: 6.01, max: 82.67
+    Linear+Seasonal wins 100/100 draws (raw G)
+    Quadratic+Seasonal wins 0/100 draws (raw G)
+    Exponential+Seasonal wins 0/100 draws (raw G)
+
+  Computing G matrix: pw_hellinger...
+    G stats — min: 0.34, median: 0.68, max: 0.80
+    Linear+Seasonal wins 100/100 draws (raw G)
+    Quadratic+Seasonal wins 0/100 draws (raw G)
+    Exponential+Seasonal wins 0/100 draws (raw G)
+
+  Computing G matrix: pw_kl_forward...
+    G stats — min: 8.34, median: 221.82, max: 1279.64
+    Linear+Seasonal wins 100/100 draws (raw G)
+    Quadratic+Seasonal wins 0/100 draws (raw G)
+    Exponential+Seasonal wins 0/100 draws (raw G)
+
+  Computing G matrix: pw_kl_symmetric...
+    G stats — min: 4.68, median: 112.13, max: 641.53
+    Linear+Seasonal wins 100/100 draws (raw G)
+    Quadratic+Seasonal wins 0/100 draws (raw G)
+    Exponential+Seasonal wins 0/100 draws (raw G)
+
+  BMS* Posteriors at τ = 0.56
+  ────────────────────────────────────────────────────────────────────────────────────────────────────
+  Model            pw_mse           pw_nll           pw_hellinger     pw_kl_forward    pw_kl_symmetric
+  ────────────────────────────────────────────────────────────────────────────────────────────────────
+  Linear+Seasonal  0.3499           0.9955           0.3901           1.0000           1.0000         
+  Quadratic+Seasonal  0.3263           0.0021           0.3013           0.0000           0.0000         
+  Exponential+Seasonal  0.3237           0.0024           0.3086           0.0000           0.0000         
+
+
+  BMS* Posteriors at τ = 1.00
+  ────────────────────────────────────────────────────────────────────────────────────────────────────
+  Model            pw_mse           pw_nll           pw_hellinger     pw_kl_forward    pw_kl_symmetric
+  ────────────────────────────────────────────────────────────────────────────────────────────────────
+  Linear+Seasonal  0.3427           0.9792           0.3648           1.0000           1.0000         
+  Quadratic+Seasonal  0.3294           0.0096           0.3155           0.0000           0.0000         
+  Exponential+Seasonal  0.3279           0.0113           0.3197           0.0000           0.0000         
+
+
+  BMS* Posteriors at τ = 5.62
+  ────────────────────────────────────────────────────────────────────────────────────────────────────
+  Model            pw_mse           pw_nll           pw_hellinger     pw_kl_forward    pw_kl_symmetric
+  ────────────────────────────────────────────────────────────────────────────────────────────────────
+  Linear+Seasonal  0.3350           0.7099           0.3388           1.0000           0.9993         
+  Quadratic+Seasonal  0.3326           0.1351           0.3302           0.0000           0.0002         
+  Exponential+Seasonal  0.3324           0.1551           0.3310           0.0000           0.0005         
+
+
+  BMS* Posteriors at τ = 10.00
+  ────────────────────────────────────────────────────────────────────────────────────────────────────
+  Model            pw_mse           pw_nll           pw_hellinger     pw_kl_forward    pw_kl_symmetric
+  ────────────────────────────────────────────────────────────────────────────────────────────────────
+  Linear+Seasonal  0.3343           0.5882           0.3364           0.9995           0.9946         
+  Quadratic+Seasonal  0.3329           0.1948           0.3316           0.0001           0.0018         
+  Exponential+Seasonal  0.3328           0.2170           0.3320           0.0004           0.0036         
+
+
+── Saving Results ──
+
+── Generating Plots ──
+  Saved: results_bms_mauna_loa/bms_tau_curves.png
+  Saved: results_bms_mauna_loa/bms_G_heatmaps.png
+  Saved: results_bms_mauna_loa/bms_candidates_vs_gp.png
+  Saved: results_bms_mauna_loa/all_candidates_vs_gp.png
+
+============================================================
+  BMS* Mauna Loa — Summary
+============================================================
+  pw_mse (τ=3.2): Winner = Linear+Seasonal
+    [Linear+Seasonal: 0.336, Quadratic+Seasonal: 0.332, Exponential+Seasonal: 0.332]
+  pw_nll (τ=3.2): Winner = Linear+Seasonal
+    [Linear+Seasonal: 0.836, Quadratic+Seasonal: 0.075, Exponential+Seasonal: 0.089]
+  pw_hellinger (τ=3.2): Winner = Linear+Seasonal
+    [Linear+Seasonal: 0.343, Quadratic+Seasonal: 0.328, Exponential+Seasonal: 0.329]
+  pw_kl_forward (τ=3.2): Winner = Linear+Seasonal
+    [Linear+Seasonal: 1.000, Quadratic+Seasonal: 0.000, Exponential+Seasonal: 0.000]
+  pw_kl_symmetric (τ=3.2): Winner = Linear+Seasonal
+    [Linear+Seasonal: 1.000, Quadratic+Seasonal: 0.000, Exponential+Seasonal: 0.000]
+
+  Results in: results_bms_mauna_loa/
+  Done!
+Mauna Loa BMS* complete

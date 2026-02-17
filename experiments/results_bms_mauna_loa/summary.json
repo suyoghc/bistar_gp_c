@@ -1,0 +1,49 @@
+{
+  "n_gp_samples": 100,
+  "n_candidates": 3,
+  "pw_mse": {
+    "tau": 3.1622776601683795,
+    "posteriors": {
+      "Linear+Seasonal": 0.3362952552296626,
+      "Quadratic+Seasonal": 0.3320879802659116,
+      "Exponential+Seasonal": 0.3316167645044259
+    },
+    "winner": "Linear+Seasonal"
+  },
+  "pw_nll": {
+    "tau": 3.1622776601683795,
+    "posteriors": {
+      "Linear+Seasonal": 0.8364372316895333,
+      "Quadratic+Seasonal": 0.07504519995365956,
+      "Exponential+Seasonal": 0.08851756835680702
+    },
+    "winner": "Linear+Seasonal"
+  },
+  "pw_hellinger": {
+    "tau": 3.1622776601683795,
+    "posteriors": {
+      "Linear+Seasonal": 0.3431552193368287,
+      "Quadratic+Seasonal": 0.3277234218032414,
+      "Exponential+Seasonal": 0.32912135885992994
+    },
+    "winner": "Linear+Seasonal"
+  },
+  "pw_kl_forward": {
+    "tau": 3.1622776601683795,
+    "posteriors": {
+      "Linear+Seasonal": 0.9999998331111369,
+      "Quadratic+Seasonal": 9.324017144409714e-09,
+      "Exponential+Seasonal": 1.5756484588335546e-07
+    },
+    "winner": "Linear+Seasonal"
+  },
+  "pw_kl_symmetric": {
+    "tau": 3.1622776601683795,
+    "posteriors": {
+      "Linear+Seasonal": 0.9999549058275133,
+      "Quadratic+Seasonal": 8.585618239246086e-06,
+      "Exponential+Seasonal": 3.650855424741524e-05
+    },
+    "winner": "Linear+Seasonal"
+  }
+}
