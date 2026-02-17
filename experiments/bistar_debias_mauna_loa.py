@@ -156,6 +156,15 @@ def plot_three_interpretations(result, x_test_held=None, y_test_held=None,
                          debiased["truth_mean"] + 2 * debiased["truth_std"],
                          alpha=0.2, color=ct)
 
+        # Train/test boundary
+        x_split = result.x_train.max()
+        ax0.axvline(x_split, color='gray', linestyle=':', linewidth=1.5, alpha=0.7)
+        ylims = ax0.get_ylim()
+        ax0.text(x_split, ylims[1] * 0.95, ' forecast →', fontsize=7,
+                 color='gray', ha='left', va='top')
+        ax0.text(x_split, ylims[1] * 0.95, '← train ', fontsize=7,
+                 color='gray', ha='right', va='top')
+
         ax0.set_title(f"{interp_name}", fontsize=14, fontweight='bold')
         ax0.legend(fontsize=7, loc='upper left')
         ax0.set_ylabel("CO₂ (normalized)")
@@ -247,6 +256,13 @@ def plot_debiased_comparison(result, info, figsize=(16, 5)):
         ax.fill_between(x_years, mean_ppm - 2*std_ppm, mean_ppm + 2*std_ppm,
                          alpha=0.2, color=ct)
 
+        # Train/test boundary
+        x_boundary = (result.x_train.max() + info["x_offset"]) if info else result.x_train.max()
+        ax.axvline(x_boundary, color='gray', linestyle=':', linewidth=1.5, alpha=0.7)
+        ylims = ax.get_ylim()
+        ax.text(x_boundary, ylims[1] - (ylims[1]-ylims[0])*0.05,
+                ' forecast →', fontsize=7, color='gray', ha='left', va='top')
+
         ax.set_title(f"{interp_name}", fontsize=13, fontweight='bold')
         ax.set_xlabel("Year")
         ax.grid(True, alpha=0.2)
@@ -301,6 +317,10 @@ def plot_residuals_comparison(result, info, figsize=(16, 5)):
         ax.fill_between(x_years, bias_ppm - 2*bias_std_ppm,
                          bias_ppm + 2*bias_std_ppm, alpha=0.2, color=cb)
         ax.axhline(0, color='gray', linestyle='--', alpha=0.5)
+
+        # Train/test boundary
+        x_boundary = (result.x_train.max() + info["x_offset"]) if info else result.x_train.max()
+        ax.axvline(x_boundary, color='gray', linestyle=':', linewidth=1.5, alpha=0.7)
 
         # Scale annotation
         bias_range = bias_ppm.max() - bias_ppm.min()
