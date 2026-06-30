@@ -1,50 +1,0 @@
-============================================================
-  BMS* Experiment: Mauna Loa CO₂
-============================================================
-  Mode:      hmc
-  Eval pts:  80
-  HMC:       200 samples, 100 warmup
-  Posterior: 80 GP samples for BMS*
-
-── Loading Data ──
-  Columns: ['year', 'month', 'day', 'weight', 'flag', 'station', 'co2']
-  Aggregated to 521 monthly observations
-  Subsampled to 150 points
-  Train: 150 points, x=[-19.5, 18.9]
-  Test:  60 points
-  Normalization: y_mean=336.2 ppm, y_std=14.6 ppm
-
-── Fitting Candidate Models ──
-  Linear          σ=0.1736  (2 params)
-         a = 0.087987
-         b = 0.019749
-  Quadratic       σ=0.1363  (3 params)
-         a = 0.000914
-         b = 0.088475
-         c = -0.113503
-  Quad+Sin        σ=0.0626  (5 params)
-         a = 0.000918
-         b = 0.087936
-         c = -0.114960
-         A = 0.179730
-       phi = 4.329060
-  Quad+2Harm      σ=0.0501  (7 params)
-         a = 0.000939
-         b = 0.087781
-         c = -0.121505
-        A1 = 0.178557
-      phi1 = 4.320171
-        A2 = -0.053578
-      phi2 = 2.220812
-
-── GP Predictives (HMC) ──
-
-  Running HMC (200 samples, 100 warmup)...
-  This will take a while with ~150 data points.
-  MAP initialization...
-  Iter 100/500 — Loss: 0.3877
-  Iter 200/500 — Loss: -0.6107
-  Iter 300/500 — Loss: -1.3592
-  Iter 400/500 — Loss: -1.5236
-  Iter 500/500 — Loss: -1.5535
-Warmup:   0%|          | 0/300 [00:00, ?it/s]Warmup:   0%|          | 1/300 [00:01,  1.57s/it, step size=1.80e-01, acc. prob=1.000]Warmup:   1%|          | 2/300 [00:01,  1.40it/s, step size=3.04e-02, acc. prob=0.500]Warmup:   1%|          | 3/300 [00:01,  2.26it/s, step size=3.00e-03, acc. prob=0.333]Warmup:   1%|▏         | 4/300 [00:03,  1.28it/s, step size=4.05e-03, acc. prob=0.500]Warmup:   2%|▏         | 5/300 [00:56, 19.76s/it, step size=6.28e-03, acc. prob=0.599]Warmup:   2%|▏         | 6/300 [01:51, 31.61s/it, step size=9.90e-03, acc. prob=0.662]Warmup:   2%|▏         | 7/300 [02:17, 29.87s/it, step size=1.77e-02, acc. prob=0.710]Warmup:   3%|▎         | 8/300 [02:30, 24.51s/it, step size=3.00e-03, acc. prob=0.652]Warmup:   3%|▎         | 9/300 [04:13, 48.98s/it, step size=5.10e-03, acc. prob=0.687]Warmup:   3%|▎         | 10/300 [05:04, 49.80s/it, step size=9.37e-03, acc. prob=0.718]Warmup:   4%|▎         | 11/300 [05:31, 42.68s/it, step size=1.77e-02, acc. prob=0.744]Warmup:   4%|▍         | 12/300 [05:44, 33.77s/it, step size=6.09e-03, acc. prob=0.720][2026-02-15T06:52:19.799] error: *** JOB 2908186 ON adroit-h11n6 CANCELLED AT 2026-02-15T06:52:19 DUE to SIGNAL Terminated ***
