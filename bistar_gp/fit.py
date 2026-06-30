@@ -87,9 +87,15 @@ def fit_mcmc_simple(model, likelihood, train_x, train_y,
             p.data.copy_(vals[idx])
 
     def log_posterior():
+        # gpytorch's ExactMarginalLogLikelihood returns (log p(y|theta) +
+        # sum of registered prior log-probs) divided by num_data, i.e. a
+        # PER-DATUM average of the log joint. Using it directly tempers the MH
+        # target to posterior^(1/n) — a badly over-flattened posterior.
+        # Multiply back by n to recover the true (summed) log joint, which is
+        # the correct un-normalized log posterior to sample.
         with gpytorch.settings.cholesky_jitter(DEFAULT_JITTER):
             try:
-                return mll(model(train_x), train_y).item()
+                return (mll(model(train_x), train_y) * train_y.numel()).item()
             except RuntimeError:
                 return -float("inf")
 

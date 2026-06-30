@@ -22,9 +22,14 @@ class AdditiveGPModel(gpytorch.models.ExactGP):
         super().__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ZeroMean()
         self.component_names = component_names or [f"comp_{i}" for i in range(len(kernel_components))]
-        self.kernel_components = torch.nn.ModuleList(kernel_components)
 
-        # Build sum kernel
+        # Build sum kernel. The component kernels are registered ONLY through
+        # covar_module (a plain list here, not an nn.ModuleList) so each kernel
+        # prior is registered exactly once. Registering them a second time via a
+        # ModuleList made pyro_sample_from_prior create a duplicate HMC latent
+        # site per hyperparameter and add the kernel priors to the NUTS target
+        # twice, biasing every HMC posterior.
+        self.kernel_components = list(kernel_components)
         self.covar_module = self.kernel_components[0]
         for k in self.kernel_components[1:]:
             self.covar_module = self.covar_module + k
