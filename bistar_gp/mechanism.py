@@ -267,7 +267,7 @@ def extract_hp_values(gp_samples, channel: TransferChannel) -> np.ndarray:
 # ═══════════════════════════════════════════════════════════════════
 
 @dataclass
-class InducedPriorResult:
+class CandidateInducedSamples:
     """Induced parameter samples from fitting candidates to GP draws."""
     candidate_name: str
     param_names: List[str]
@@ -285,7 +285,7 @@ class MechanismResult:
     x_eval: np.ndarray
 
     # Induced priors per candidate
-    induced: Dict[str, InducedPriorResult]
+    induced: Dict[str, CandidateInducedSamples]
 
     # Metadata
     label: str = ""
@@ -364,7 +364,7 @@ def compute_mechanism(
                 continue
 
         param_samples = {k: np.array(v) for k, v in all_params.items()}
-        induced[cand_name] = InducedPriorResult(
+        induced[cand_name] = CandidateInducedSamples(
             candidate_name=cand_name,
             param_names=list(param_samples.keys()),
             param_samples=param_samples,

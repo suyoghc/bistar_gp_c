@@ -54,23 +54,6 @@ class AdditiveGPModel(gpytorch.models.ExactGP):
 
 # ── Kernel builders ──────────────────────────────────────────────
 
-def build_toy_kernels():
-    """SE (truth) + Linear (bias) — thesis toy example."""
-    se = ScaleKernel(
-        RBFKernel(
-            lengthscale_constraint=Interval(0.5, 30.0),
-            lengthscale_prior=GammaPrior(6.0, 0.85),
-        ),
-        outputscale_constraint=Interval(0.1, 20.0),
-        outputscale_prior=GammaPrior(6.0, 0.85),
-    )
-    linear = LinearKernel(
-        variance_constraint=Interval(0.01, 20.0),
-        variance_prior=GammaPrior(6.0, 0.85),
-    )
-    return [se, linear], ["unbiased_se", "bias_linear"]
-
-
 def build_mauna_loa_kernels():
     """Trend + Seasonal + Medium-term for CO2 decomposition."""
     trend = ScaleKernel(

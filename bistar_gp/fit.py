@@ -61,13 +61,18 @@ def print_hyperparameters(model, likelihood):
     print()
 
 
-def fit_mcmc_simple(model, likelihood, train_x, train_y, 
-                    n_samples=10000, n_burnin=1000, proposal_scale=0.1, verbose=True):
+def fit_mcmc_simple(model, likelihood, train_x, train_y,
+                    n_samples=10000, n_burnin=1000, proposal_scale=0.1, verbose=True,
+                    seed=None):
     """
     Random-walk Metropolis-Hastings over log hyperparameters.
     For production use NumPyro — this is a starting point.
     Returns dict of parameter name -> posterior samples array.
+    Pass seed for a reproducible chain (seeds both torch and numpy RNGs).
     """
+    if seed is not None:
+        torch.manual_seed(seed)
+        np.random.seed(seed)
     train_x, train_y = train_x.double(), train_y.double()
     model.eval()
     likelihood.eval()
@@ -131,7 +136,7 @@ def fit_mcmc_simple(model, likelihood, train_x, train_y,
     return {k: np.array(v) for k, v in samples.items()}
 
 def fit_hmc(model, likelihood, train_x, train_y,
-            n_samples=500, n_warmup=200, verbose=True):
+            n_samples=500, n_warmup=200, verbose=True, seed=None):
     """
     Hamiltonian Monte Carlo via Pyro's NUTS sampler.
     
@@ -143,6 +148,9 @@ def fit_hmc(model, likelihood, train_x, train_y,
     import pyro
     from pyro.infer.mcmc import NUTS, MCMC
     from functools import partial
+
+    if seed is not None:
+        pyro.set_rng_seed(seed)
 
     train_x, train_y = train_x.double(), train_y.double()
     model.train()
