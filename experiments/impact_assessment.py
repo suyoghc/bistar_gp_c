@@ -126,6 +126,98 @@ def collect(seed=0, n_points=40):
     return out
 
 
+def mauna(seed=0, sub=120, n_hmc=100, n_warmup=100):
+    """Heavy real-data section: HMC + BMS* + decomposition on Mauna Loa CO2.
+
+    Stable-API-only (runs on both trees). Seeds are set globally before fit_hmc
+    (pyro/torch/numpy) rather than via a seed= kwarg, so it works on the old tree.
+    All keys are prefixed 'mauna_'.
+    """
+    import torch
+    torch.set_default_dtype(torch.float64)
+    import bistar_gp.metrics_v2  # noqa: F401
+    from bistar_gp import load_mauna_loa, build_model, build_mauna_loa_candidates
+    from bistar_gp.model import build_mauna_loa_kernels
+    from bistar_gp.fit import fit_map, fit_hmc
+    from bistar_gp.bms_star import extract_gp_predictives, run_bms_star
+    from bistar_gp.debias import decompose_model
+
+    out = {"mauna_sub": sub, "mauna_n_hmc": n_hmc, "mauna_n_warmup": n_warmup}
+
+    # data + deterministic even subsample (identical on both trees)
+    x_train, y_train, x_test, y_test, info = load_mauna_loa(normalize=True, test_years=5.0)
+    N = len(x_train)
+    if sub and sub < N:
+        idx = np.linspace(0, N - 1, sub).astype(int)
+        x_train, y_train = x_train[idx], y_train[idx]
+    x_np, y_np = x_train.numpy(), y_train.numpy()
+    x_eval = torch.linspace(float(x_train.min()), float(x_train.max()), 60)
+    x_eval_np = x_eval.numpy()
+    out["mauna_n_train"] = int(len(x_train))
+
+    # 1) HMC latent-site count (double prior registration; ~13 vs 7 for 3 components)
+    try:
+        import pyro
+        mm, _ = build_model(x_train, y_train, *build_mauna_loa_kernels())
+        tr = pyro.poutine.trace(mm.pyro_sample_from_prior).get_trace()
+        sites = sorted(nm for nm, s in tr.nodes.items() if s["type"] == "sample")
+        out["mauna_hmc_latent_sites"] = {"count": len(sites), "names": sites}
+    except Exception as e:
+        out["mauna_hmc_latent_sites"] = {"error": repr(e)[:300]}
+
+    # 2) fit candidates
+    candidate_results = []
+    try:
+        for cand in build_mauna_loa_candidates():
+            cand.fit(x_np, y_np)
+            candidate_results.append(cand.predict(x_eval_np))
+    except Exception as e:
+        out["mauna_candidates_error"] = repr(e)[:300]
+
+    # 3) HMC -> GP predictives -> BMS* (soft_transfer + compute_G_matrix on real data)
+    try:
+        import pyro
+        pyro.set_rng_seed(seed); torch.manual_seed(seed); np.random.seed(seed)
+        m2, l2 = build_model(x_train, y_train, *build_mauna_loa_kernels())
+        fit_map(m2, l2, x_train, y_train, n_iter=300, lr=0.02, verbose=False)
+        mcmc = fit_hmc(m2, l2, x_train, y_train, n_samples=n_hmc, n_warmup=n_warmup)
+        out["mauna_hmc_nsamples"] = int(len(next(iter(mcmc.values()))))
+        out["mauna_hmc_hyper_mean"] = {k: round(float(np.mean(v)), 5) for k, v in mcmc.items()}
+        out["mauna_hmc_hyper_std"] = {k: round(float(np.std(v)), 5) for k, v in mcmc.items()}
+        gp_samples = extract_gp_predictives(
+            m2, l2, x_train, y_train, x_eval, mcmc,
+            kernel_builder=lambda: build_mauna_loa_kernels(),
+            n_posterior_samples=min(80, n_hmc), jitter=1e-4)
+        out["mauna_n_gp_samples"] = int(len(gp_samples))
+        if gp_samples and candidate_results:
+            res = run_bms_star(gp_samples, candidate_results,
+                               ["pw_mse", "pw_nll", "pw_kl_forward"], np.array([1.0, 5.0]))
+            bms = {}
+            for metric, by_tau in res.items():
+                for tau, r in by_tau.items():
+                    bms[f"{metric}@tau{float(tau):g}"] = {
+                        nm: round(float(p), 5) for nm, p in zip(r.instance_names, r.instance_posteriors)}
+            out["mauna_bms_star_posteriors"] = bms
+    except Exception as e:
+        out["mauna_bms_star_posteriors"] = {"error": repr(e)[:300]}
+
+    # 4) decompose full_std on the MAP model (3-component cross-covariance)
+    try:
+        m3, l3 = build_model(x_train, y_train, *build_mauna_loa_kernels())
+        torch.manual_seed(seed)
+        fit_map(m3, l3, x_train, y_train, n_iter=300, lr=0.02, verbose=False)
+        dec = decompose_model(m3, l3, x_train, y_train, x_eval, n_samples=5)
+        idx = np.linspace(0, len(x_eval) - 1, 5).astype(int)
+        out["mauna_decompose_full_std"] = {
+            "x": [round(float(x_eval[i]), 3) for i in idx],
+            "full_std": [round(float(dec.full_std[i]), 5) for i in idx],
+        }
+    except Exception as e:
+        out["mauna_decompose_full_std"] = {"error": repr(e)[:300]}
+
+    return out
+
+
 def _fmt(v):
     return f"{v:.4f}" if isinstance(v, float) else str(v)
 
@@ -170,6 +262,10 @@ def main():
     ap.add_argument("--compare", nargs=2, metavar=("OLD", "NEW"), help="diff two metrics JSONs")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--n-points", type=int, default=40)
+    ap.add_argument("--mauna", action="store_true", help="also run the heavy Mauna Loa HMC section")
+    ap.add_argument("--sub", type=int, default=120, help="Mauna Loa subsample size")
+    ap.add_argument("--n-hmc", type=int, default=100)
+    ap.add_argument("--n-warmup", type=int, default=100)
     args = ap.parse_args()
 
     if args.compare:
@@ -177,6 +273,8 @@ def main():
         return
 
     metrics = collect(seed=args.seed, n_points=args.n_points)
+    if args.mauna:
+        metrics.update(mauna(seed=args.seed, sub=args.sub, n_hmc=args.n_hmc, n_warmup=args.n_warmup))
     metrics["git_sha"] = _git_sha()
     text = json.dumps(metrics, indent=2)
     if args.out:
