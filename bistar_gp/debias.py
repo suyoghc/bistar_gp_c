@@ -8,7 +8,9 @@ import numpy as np
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 
-from .decompose import decompose_additive_gp, sample_from_component
+from .decompose import (
+    decompose_additive_gp, decompose_component, compute_cholesky, sample_from_component,
+)
 
 
 @dataclass
@@ -65,7 +67,20 @@ def decompose_model(model, likelihood, x_train, y_train, x_test, n_samples=25, j
         )
         full_mean += mean_i
 
-    full_cov = sum(c.cov for c in components.values())
+    # Full posterior covariance of f = sum_i f_i is NOT the sum of the
+    # component covariances: that drops every inter-component cross-covariance
+    # term Cov(f_i, f_j). Compute it directly as the posterior of the sum
+    # kernel, reusing one Cholesky of (K_sum(X,X) + sigma^2 I).
+    with torch.no_grad():
+        K_sum_XX = sum(km[n]["XX"] for n in names)
+        K_sum_XstarX = sum(km[n]["XstarX"] for n in names)
+        K_sum_XstarXstar = sum(km[n]["XstarXstar"] for n in names)
+        K_sum_XXstar = sum(km[n]["XXstar"] for n in names)
+        L_sum = compute_cholesky(K_sum_XX, noise_var, jitter)
+        _, full_cov_t = decompose_component(
+            K_sum_XstarX, K_sum_XstarXstar, K_sum_XXstar, L_sum, y_train,
+        )
+    full_cov = full_cov_t.numpy()
     full_std = np.sqrt(np.clip(np.diag(full_cov), 1e-10, None))
 
     return DecompositionResult(

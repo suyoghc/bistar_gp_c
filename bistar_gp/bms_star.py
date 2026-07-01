@@ -387,9 +387,17 @@ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
             except (np.linalg.LinAlgError, ValueError):
                 G[i, j] = np.inf
 
-    # Replace any inf/nan with large finite value
-    max_finite = np.nanmax(G[np.isfinite(G)]) if np.any(np.isfinite(G)) else 1e6
-    G = np.where(np.isfinite(G), G, 10 * max_finite)
+    # Replace any inf/nan with a value guaranteed to be WORSE (larger) than any
+    # finite divergence. A plain `10 * max_finite` is wrong when the metric can
+    # be negative (e.g. pw_nll, whose 0.5*log(2*pi*sigma^2) term goes negative):
+    # 10*max_finite would then be the *smallest* G, so a failed computation would
+    # win the comparison. This penalty is always strictly greater than max_finite.
+    if np.any(np.isfinite(G)):
+        max_finite = np.nanmax(G[np.isfinite(G)])
+        penalty = max_finite + 10.0 * (abs(max_finite) + 1.0)
+    else:
+        penalty = 1e6
+    G = np.where(np.isfinite(G), G, penalty)
 
     return G
 
@@ -433,8 +441,12 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
     # Instance scores: average Boltzmann weight across GP samples
     # score(θ_j) = (1/N) Σ_i exp(-G_ij / τ)
     log_weights = -G_effective / tau
-    # Numerical stability: subtract max per column
-    log_weights_shifted = log_weights - log_weights.max(axis=1, keepdims=True)
+    # Numerical stability: subtract a single GLOBAL scalar. This cancels exactly
+    # in the cross-candidate normalization below, so the posterior is unchanged.
+    # A per-row (axis=1) max does NOT cancel — it is a per-draw constant applied
+    # before the over-draw mean, so it reweights GP draws and silently behaves
+    # like normalize_per_draw even when that flag is False.
+    log_weights_shifted = log_weights - log_weights.max()
     weights = np.exp(log_weights_shifted)
     instance_scores = weights.mean(axis=0)
 

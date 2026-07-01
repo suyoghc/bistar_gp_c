@@ -327,7 +327,9 @@ def compute_log_marginal_likelihoods(
                     parts = pyro_name.split(".")
                     comp_idx = int(parts[1])
                     kernel = fresh_model.kernel_components[comp_idx]
-                    if "base_kernel.lengthscale" in pyro_name:
+                    if "period_length" in pyro_name:
+                        kernel.base_kernel.period_length = val
+                    elif "base_kernel.lengthscale" in pyro_name:
                         kernel.base_kernel.lengthscale = val
                     elif "outputscale" in pyro_name:
                         kernel.outputscale = val

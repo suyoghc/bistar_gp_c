@@ -1,50 +1,0 @@
-/var/spool/slurmd/job2906968/slurm_script: line 11: conda: command not found
-============================================================
-  BMS* Experiment: Mauna Loa CO₂
-============================================================
-  Mode:      hmc
-  Eval pts:  120
-  HMC:       300 samples, 200 warmup
-  Posterior: 100 GP samples for BMS*
-
-── Loading Data ──
-  Columns: ['year', 'month', 'day', 'weight', 'flag', 'station', 'co2']
-  Aggregated to 521 monthly observations
-  Train: 461 points, x=[-19.5, 19.2]
-  Test:  60 points
-  Normalization: y_mean=336.2 ppm, y_std=14.6 ppm
-
-── Fitting Candidate Models ──
-  Linear          σ=0.1793  (2 params)
-         a = 0.088248
-         b = 0.000000
-  Quadratic       σ=0.1472  (3 params)
-         a = 0.000915
-         b = 0.088381
-         c = -0.113755
-  Quad+Sin        σ=0.0611  (5 params)
-         a = 0.000918
-         b = 0.088521
-         c = -0.113251
-         A = 0.189420
-       phi = 4.334713
-  Quad+2Harm      σ=0.0499  (7 params)
-         a = 0.000918
-         b = 0.088519
-         c = -0.113430
-        A1 = -0.189185
-      phi1 = 1.191234
-        A2 = 0.049801
-      phi2 = -0.990294
-
-── GP Predictives (HMC) ──
-
-  Running HMC (300 samples, 200 warmup)...
-  This will take a while with ~461 data points.
-  MAP initialization...
-  Iter 100/500 — Loss: 0.0632
-  Iter 200/500 — Loss: -0.9620
-  Iter 300/500 — Loss: -1.7319
-  Iter 400/500 — Loss: -1.9949
-  Iter 500/500 — Loss: -2.0231
-Warmup:   0%|          | 0/500 [00:00, ?it/s]Warmup:   0%|          | 1/500 [00:32, 32.86s/it, step size=1.80e-01, acc. prob=1.000]Warmup:   0%|          | 2/500 [00:35, 14.90s/it, step size=3.04e-02, acc. prob=0.500]Warmup:   1%|          | 3/500 [00:37,  9.16s/it, step size=3.00e-03, acc. prob=0.333]Warmup:   1%|          | 4/500 [00:44,  8.30s/it, step size=4.05e-03, acc. prob=0.500]Warmup:   1%|          | 5/500 [00:51,  7.81s/it, step size=6.34e-03, acc. prob=0.600]Warmup:   1%|          | 6/500 [01:08, 10.81s/it, step size=1.08e-02, acc. prob=0.667]Warmup:   1%|▏         | 7/500 [01:34, 16.05s/it, step size=1.93e-02, acc. prob=0.714]Warmup:   2%|▏         | 8/500 [04:05, 58.93s/it, step size=4.46e-03, acc. prob=0.667]Warmup:   2%|▏         | 9/500 [24:29, 423.08s/it, step size=7.83e-03, acc. prob=0.703]Warmup:   2%|▏         | 10/500 [44:53, 670.39s/it, step size=1.43e-02, acc. prob=0.731]Warmup:   2%|▏         | 11/500 [49:59, 558.92s/it, step size=1.44e-02, acc. prob=0.738]Warmup:   2%|▏         | 12/500 [55:03, 481.44s/it, step size=4.43e-03, acc. prob=0.712]Warmup:   3%|▎         | 13/500 [1:15:09, 700.66s/it, step size=8.40e-03, acc. prob=0.734]Warmup:   3%|▎         | 14/500 [1:25:01, 667.83s/it, step size=1.29e-02, acc. prob=0.748]Warmup:   3%|▎         | 15/500 [1:34:49, 643.98s/it, step size=1.83e-02, acc. prob=0.759]Warmup:   3%|▎         | 16/500 [1:39:48, 540.07s/it, step size=1.25e-02, acc. prob=0.753]Warmup:   3%|▎         | 17/500 [1:49:34, 553.96s/it, step size=2.34e-02, acc. prob=0.768]Warmup:   4%|▎         | 18/500 [1:49:46, 390.90s/it, step size=2.60e-03, acc. prob=0.729][2026-02-15T03:16:03.006] error: *** JOB 2906968 ON adroit-h11n6 CANCELLED AT 2026-02-15T03:16:03 DUE TO TIME LIMIT ***
