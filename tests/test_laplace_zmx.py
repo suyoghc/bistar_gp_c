@@ -165,3 +165,23 @@ def test_laplace_logdet_caps_and_floors():
     logdet_neg, n_neg = _laplace_logdet(np.diag([1.0, -5.0]))
     assert np.isfinite(logdet_neg)                 # non-PSD floored, not NaN/inf
     assert n_neg == 1
+
+
+def test_default_metric_registered_on_import():
+    """Importing laplace_evidence must register its default metric itself,
+    not depend on a caller having imported metrics_v2 first."""
+    assert "pw_kl_vcal" in METRICS  # the module's default metric_name
+
+
+def test_construction_II_component_decomposition(mse_metric):
+    """Construction II components must satisfy fit + gp_penalty + occam == log_N,
+    and log_N is the (unnormalized) log kernel."""
+    ps = {"Lin": lin_space()}
+    xt = np.linspace(0.0, 4.0, 20)
+    yt = A_TRUE * xt + B_TRUE
+    mle = {"Lin": {"a": A_TRUE, "b": B_TRUE}}
+    mpr = model_posterior(ps, xt, yt, X_EVAL, AVG_GP, mle,
+                          construction="II", metric_name=mse_metric, tau=TAU)
+    c = mpr.components["Lin"]
+    assert c["log_lik_at_map"] + c["gp_penalty"] + c["occam"] == pytest.approx(c["log_N"], abs=1e-6)
+    assert mpr.log_kernel["Lin"] == pytest.approx(c["log_N"], abs=1e-12)
