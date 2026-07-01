@@ -77,10 +77,16 @@ package and viz implementations; migrate the two callers above.
 `laplace_log_Z_Mx` (data-free prior, Occam toggle), `laplace_log_evidence_ordinary`,
 `laplace_log_evidence_induced` (N/Z_prior), `model_posterior(construction=baseline|I|II)`, and a
 robust `_laplace_logdet` (clips eigenvalues to fix the boundary curvature-fabrication issue).
-`compute_laplace_evidence` marked DEPRECATED (still present until callers migrate).
-`tests/test_laplace_zmx.py` added — Laplace-vs-brute, Occam=−log V_ref, data-independence,
-volume-independent evidence, construction assembly/difference, double-use-collapses-to-II, logdet
-caps; **40 tests pass**. **Still pending (OPEN):** migrate `bistar_sample_size_sweep.py:234` and
-`bistar_induced_prior_v2.py:208` off `compute_laplace_evidence`; unify the two viz Laplace scripts
-onto `laplace_log_Z_Mx`; regenerate figures; update README + `kb/Wiki/GP-Induced Model Priors.md`
-to state the final definitions and Construction II as canonical.
+`compute_laplace_evidence` / `compute_all_laplace_evidences` / `LaplaceResult` **removed**; callers
+`bistar_sample_size_sweep.py` and `bistar_induced_prior_v2.py` migrated to
+`model_posterior(construction="II")` with redesigned decomposition/ablation figures; `laplace_evidence`
+now self-registers its default metric (imports `metrics_v2`). Parked eval follow-ups also done:
+`pyproject.toml`, dedup `build_toy_kernels`, `InducedPriorResult` collision renamed
+(`mechanism.py` → `CandidateInducedSamples`), optional RNG `seed=` on `fit_mcmc_simple`/`fit_hmc`.
+`tests/test_laplace_zmx.py` **42 tests pass** (adds default-metric-registration and
+II-decomposition-identity). README Occam section updated to the canonical API + ablation ladder.
+**Still OPEN (held deliberately — needs a decision or compute):** (1) unify the two self-contained viz
+Laplace scripts (`model_priors_laplace.py`, `model_prior_trajectory_laplace.py`) onto
+`laplace_log_Z_Mx` — blocked on the single-`G` choice (they use a variance-weighted MSE, not a package
+METRIC; this is the paper's metric-choice decision); (2) regenerate all figures + old-vs-new impact
+assessment (needs a torch runtime); (3) update `kb/Wiki/GP-Induced Model Priors.md` (gitignored).

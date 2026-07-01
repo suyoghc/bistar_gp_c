@@ -2,40 +2,32 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## In progress
+## Done this session (on `fix/laplace-zmx`, PR #2)
 
-- **Z_Mx / Laplace reconciliation** (DECISIONS D3) — PR #1 merged; Construction II confirmed
-  canonical. **Core done** on `fix/laplace-zmx`: new canonical API in `laplace_evidence.py` +
-  `tests/test_laplace_zmx.py` (40 tests pass).
-  **Scoping finding (2026-07-01):** the caller migration + viz unification are NOT mechanical and
-  belong in the figure session — (1) `bistar_sample_size_sweep.py:326-335` and
-  `bistar_induced_prior_v2.py`'s plots consume the deprecated decomposition
-  (`.prior_penalty`/`.occam_factor`/`.log_lik_at_map`), so migrating redesigns those figures;
-  (2) `model_priors_laplace.py` / `model_prior_trajectory_laplace.py` are self-contained and use a
-  *different* G (`mean((gp_mean-μ)²/(2·gp_var))`, variance-weighted MSE) than the package METRICS,
-  so unifying changes the G definition (the metric-choice question).
-  **Two decisions needed for the figure session:** (a) how to present the Construction-II
-  decomposition in figures; (b) which single G to standardize on (variance-weighted MSE vs a package
-  divergence metric).
-  **DONE (interim):** `bistar_sample_size_sweep.py` now computes its model posteriors via
-  `model_posterior(construction="II")` (corrects the reported result); the cosmetic fit/prior/occam
-  decomposition subplot still uses the deprecated object, flagged for the figure session.
+- **Z_Mx / Laplace reconciliation** (DECISIONS D3) — Construction II canonical. Canonical API in
+  `laplace_evidence.py` (`laplace_log_Z_Mx`, `laplace_log_evidence_ordinary`/`_induced`,
+  `model_posterior(baseline|I|II)`, `_laplace_logdet`); callers migrated; figures redesigned
+  (decomposition + ablation ladder); deprecated `compute_(all_)laplace_evidence`/`LaplaceResult`
+  removed; module self-registers its default metric. **42 tests pass.**
+- **Eval follow-ups:** `pyproject.toml`; dedup `build_toy_kernels`; `InducedPriorResult` collision
+  renamed; optional RNG `seed=` on `fit_mcmc_simple`/`fit_hmc`; `numerical_hessian` boundary issue
+  fixed in the new module via `_laplace_logdet` (old copy removed).
 
-## Open questions
+## Still open (held deliberately)
 
-- Confirm Occam default = no-Occam (README's "faithful BI*"); with-Occam shown as sensitivity.
-  (Currently `model_posterior`/`laplace_log_Z_Mx` default `occam=False`.)
-- When to regenerate paper figures + run the old-vs-new impact assessment (needs a torch env).
+- **Viz-script unification** — port `model_priors_laplace.py` / `model_prior_trajectory_laplace.py`
+  onto `laplace_log_Z_Mx`. Blocked on the single-`G` decision: they use a variance-weighted MSE,
+  not a package METRIC. This is the paper's metric-choice question; do NOT force it silently.
+- **Figure regeneration + old-vs-new impact assessment** — needs a torch runtime (the project
+  `.venv` lacks torch; tests run on system `python3`). This is the paper-facing session.
+- **kb/Wiki/GP-Induced Model Priors.md** — update to Construction II canonical (gitignored, local).
+- **Occam default** — currently `occam=False` (faithful BI*); with-Occam intended as sensitivity.
+- Minor: remove the 13 `sys.path` hacks now that `pyproject.toml` exists (`pip install -e .`);
+  add a cache key covering all result-determining config.
 
 ## Branches / PRs
 
-- **`fix/bms-correctness`** (PR #1: https://github.com/suyoghc/bistar_gp_c/pull/1) — repo hygiene +
-  5 correctness fixes + Z_Mx plan + Notes scaffold. Not yet merged.
-
-## Follow-ups from the codebase evaluation (not yet scheduled)
-
-- De-dup `build_toy_kernels` (defined twice, model.py:52 and :117) and the `InducedPriorResult`
-  name collision (induced_prior.py:155 vs mechanism.py:270).
-- RNG seeding for MAP/HMC; cache key that covers all result-determining config.
-- Fix `numerical_hessian` boundary regularization (fabricates curvature at boundary MAPs).
-- Add `pyproject.toml` to remove the 13 `sys.path` hacks and the `conftest.py` stopgap.
+- **PR #1** — MERGED to `main` (hygiene, 5 correctness fixes, plan, Notes workflow).
+- **PR #2** (`fix/laplace-zmx`, draft: https://github.com/suyoghc/bistar_gp_c/pull/2) — D3 core +
+  full caller migration + eval follow-ups + docs. Flip to "Ready" after the viz unification and
+  figure regeneration (the two held items above).
