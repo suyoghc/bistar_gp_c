@@ -16,9 +16,10 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   so unifying changes the G definition (the metric-choice question).
   **Two decisions needed for the figure session:** (a) how to present the Construction-II
   decomposition in figures; (b) which single G to standardize on (variance-weighted MSE vs a package
-  divergence metric). The safe interim increment: swap only the posterior computation in
-  `bistar_sample_size_sweep.py:234-244` to `model_posterior(construction="II")` (corrects the
-  reported model posteriors; leaves the cosmetic decomposition subplot for the figure session).
+  divergence metric).
+  **DONE (interim):** `bistar_sample_size_sweep.py` now computes its model posteriors via
+  `model_posterior(construction="II")` (corrects the reported result); the cosmetic fit/prior/occam
+  decomposition subplot still uses the deprecated object, flagged for the figure session.
 
 ## Open questions
 

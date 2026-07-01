@@ -45,6 +45,7 @@ from bistar_gp.induced_prior import build_toy_parameter_spaces
 from bistar_gp.laplace_evidence import (
     compute_all_laplace_evidences,
     compute_laplace_evidence,
+    model_posterior,
 )
 from bistar_gp.candidates import (
     LinearModel, SinusoidalModel, SinLinearModel, QuadraticModel,
@@ -231,17 +232,22 @@ def main():
                             if spec.name in mle_params[mn]:
                                 spec.mle_value = mle_params[mn][spec.name]
 
+                # Canonical model posterior — Construction II (DECISIONS D3, docs/plan-zmx-laplace.md).
+                # Replaces the old softmax over compute_laplace_evidence's mislabeled joint.
+                post = model_posterior(
+                    param_spaces, x_sub, y_sub, x_eval_sc, avg_gp_sc, mle_params,
+                    construction="II", metric_name=args.metric, tau=args.tau, occam=False,
+                )
+                posteriors_by_n[n_sub] = {m: post.posteriors[m] for m in model_names}
+
+                # DEPRECATED: kept only to feed the cosmetic fit/prior/occam decomposition
+                # subplot below; that subplot is slated for redesign in the figure session (D3).
                 laplace = compute_all_laplace_evidences(
                     param_spaces, x_sub, y_sub, x_eval_sc,
                     avg_gp_sc, mle_params,
                     metric_name=args.metric, tau=args.tau,
                     prior_name=prior_name,
                 )
-
-                log_evs = np.array([laplace[m].log_evidence for m in model_names])
-                log_evs -= log_evs.max()
-                ps = np.exp(log_evs) / np.exp(log_evs).sum()
-                posteriors_by_n[n_sub] = dict(zip(model_names, ps))
                 decomp_by_n[n_sub] = laplace
 
             all_posteriors[scenario_name][prior_name] = posteriors_by_n
