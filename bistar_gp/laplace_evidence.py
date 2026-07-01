@@ -33,7 +33,7 @@ This is what makes BI* different from BIC/AIC:
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 from scipy.optimize import minimize
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from bistar_gp.bms_star import GPPosteriorSample, METRICS
 from bistar_gp.induced_prior import ModelParameterSpace, build_toy_parameter_spaces
@@ -119,6 +119,13 @@ def compute_laplace_evidence(
     prior_name: str = "",
 ) -> LaplaceResult:
     """
+    DEPRECATED (see docs/plan-zmx-laplace.md, DECISIONS D3). This computes a Laplace
+    approximation to log ∫ p(y|φ)·exp(−Ḡ/τ) dφ — a likelihood-weighted joint that the
+    framework does NOT define as Z_Mx (the paper's Z_Mx is the data-free model prior).
+    Use `laplace_log_Z_Mx` for the model prior, `laplace_log_evidence_induced` /
+    `laplace_log_evidence_ordinary` for evidences, and `model_posterior` for selection.
+    Retained temporarily until callers migrate.
+
     Laplace approximation to model evidence under GP-induced prior.
 
     Steps:
@@ -276,6 +283,259 @@ def compute_all_laplace_evidences(
               f"occam={lr.occam_factor:.1f}]{marker}")
 
     return results
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Canonical Z_Mx / evidence / posterior  (docs/plan-zmx-laplace.md, DECISIONS D3)
+# ═══════════════════════════════════════════════════════════════════
+#
+# All log-integrals use the generic Laplace identity
+#     log ∫ exp(−f(φ)) dφ  ≈  −f(φ*) + (d/2)log(2π) − ½log|H|,   H = ∇²f(φ*), φ* = argmin f.
+# The τ and −log V_ref bookkeeping falls out of the choice of f:
+#   Z_Mx (no Occam):  f = Ḡ/τ                    → log Z = −Ḡ*/τ + (d/2)log(2πτ) − ½log|H_Ḡ|
+#   Z_Mx (Occam):     subtract log V_ref (p_ref = 1/V_ref uniform)
+#   ordinary evidence f = −log p(y|φ),  minus log V_ref (normalized reference prior)
+#   N(M):             f = −[log p(y|φ) − Ḡ/τ]    (joint MAP), minus log V_ref if Occam
+#   induced evidence  p(y|M,ψ) = N(M)/Z_prior(M),  Z_prior = Z_Mx with Occam (the V cancels)
+
+
+@dataclass
+class ZMxResult:
+    """Data-free GP-informed model prior Z_Mx (§1.2 of the plan)."""
+    model_name: str
+    log_Z: float                 # log Z_Mx, Occam-adjusted
+    G_at_min: float              # Ḡ(φ_G*)
+    phi_min: Dict[str, float]
+    occam: bool
+    log_volume: float            # log V_ref
+    logdet_H: float
+    n_params: int
+    tau: float
+    converged: bool
+
+
+@dataclass
+class EvidenceResult:
+    """Within-model evidence (kind='ordinary' or 'induced')."""
+    model_name: str
+    log_evidence: float
+    kind: str
+    log_N: Optional[float] = None          # induced: log ∫ p(y|φ) exp(−Ḡ/τ) p_ref dφ
+    log_Z_prior: Optional[float] = None    # induced: log Z_Mx^{Occam}
+    log_lik_at_map: Optional[float] = None
+    phi_star: Dict[str, float] = field(default_factory=dict)
+    n_params: int = 0
+    converged: bool = True
+
+
+@dataclass
+class ModelPosteriorResult:
+    """Normalized model posterior under a chosen assembly (§2 of the plan)."""
+    construction: str                      # 'baseline' | 'I' | 'II'
+    occam: bool
+    tau: float
+    model_names: List[str]
+    posteriors: Dict[str, float]
+    log_kernel: Dict[str, float]           # unnormalized log p(M|D) per model
+    components: Dict[str, Dict[str, float]]
+
+
+def _log_reference_volume(param_space) -> float:
+    """log V_ref = Σ log(upper − lower) over the uniform reference-prior box."""
+    return float(np.sum([np.log(ps.bounds[1] - ps.bounds[0])
+                         for ps in param_space.param_specs]))
+
+
+def _laplace_logdet(H: np.ndarray, floor: float = 1e-8, cap: float = 1e12) -> Tuple[float, int]:
+    """log|H| from eigenvalues clipped to [floor, cap]; robust to non-PSD/cliff curvature.
+
+    Clipping prevents both a negative/near-zero eigenvalue (from a saddle or flat
+    direction) and a cliff at a bounds-adjacent MAP from fabricating ~1e17 curvature.
+    """
+    H = 0.5 * (H + H.T)
+    eig = np.linalg.eigvalsh(H)
+    clipped = np.clip(eig, floor, cap)
+    n_clipped = int(np.sum((eig < floor) | (eig > cap)))
+    return float(np.sum(np.log(clipped))), n_clipped
+
+
+def _packers(param_space):
+    specs = param_space.param_specs
+    def pack(pd):
+        return np.array([pd[ps.name] for ps in specs])
+    def unpack(vec):
+        return {ps.name: float(vec[j]) for j, ps in enumerate(specs)}
+    return pack, unpack
+
+
+def _x0_and_bounds(param_space, mle_params):
+    specs = param_space.param_specs
+    bounds = [(ps.bounds[0], ps.bounds[1]) for ps in specs]
+    if mle_params is not None:
+        x0 = np.array([mle_params[ps.name] for ps in specs])
+    else:
+        x0 = np.array([(b[0] + b[1]) / 2 for b in bounds])
+    return x0, bounds
+
+
+def _log_likelihood(param_space, x_train, y_train, param_dict) -> float:
+    try:
+        mu = param_space.predict_fn(x_train, param_dict)
+    except Exception:
+        return -1e10
+    sigma = param_dict.get(param_space.noise_param, 0.3)
+    sigma2 = max(sigma ** 2, 1e-8)
+    n = len(y_train)
+    resid = y_train - mu
+    return -0.5 * n * np.log(2 * np.pi * sigma2) - 0.5 * np.sum(resid ** 2) / sigma2
+
+
+def _laplace_log_integral(neg_log_f, x0, bounds, d, eps=1e-4):
+    """Generic Laplace: returns (log_integral, x_star, f_star, logdet, converged)."""
+    try:
+        res = minimize(neg_log_f, x0, bounds=bounds, method="L-BFGS-B",
+                       options={"maxiter": 500, "ftol": 1e-10})
+        x_star, converged = res.x, bool(res.success)
+    except Exception:
+        x_star, converged = np.asarray(x0, dtype=float), False
+    f_star = float(neg_log_f(x_star))
+    H = numerical_hessian(neg_log_f, x_star, eps=eps)
+    logdet, _ = _laplace_logdet(H)
+    log_integral = -f_star + 0.5 * d * np.log(2 * np.pi) - 0.5 * logdet
+    return log_integral, x_star, f_star, logdet, converged
+
+
+def laplace_log_Z_Mx(param_space, x_eval, avg_gp, *, metric_name="pw_kl_vcal",
+                     tau=1.0, occam=False, mle_params=None) -> ZMxResult:
+    """Data-free GP-informed model prior Z_Mx = ∫ exp(−Ḡ/τ) [p_ref] dφ (§1.2).
+
+    Expands at φ_G* = argmin Ḡ with the Hessian of Ḡ. NO data likelihood. With
+    occam=True the uniform reference prior p_ref = 1/V_ref contributes −log V_ref.
+    """
+    metric_fn = METRICS[metric_name]
+    d = param_space.n_params
+    _, unpack = _packers(param_space)
+    x0, bounds = _x0_and_bounds(param_space, mle_params)
+
+    def neg_log_f(vec):
+        pd = unpack(vec)
+        if pd.get(param_space.noise_param, 0.3) <= 0:
+            return 1e10
+        return compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn) / tau
+
+    log_int, x_star, f_star, logdet, conv = _laplace_log_integral(neg_log_f, x0, bounds, d)
+    log_V = _log_reference_volume(param_space)
+    log_Z = log_int - (log_V if occam else 0.0)
+    return ZMxResult(model_name=param_space.model_name, log_Z=log_Z,
+                     G_at_min=f_star * tau, phi_min=unpack(x_star), occam=occam,
+                     log_volume=log_V, logdet_H=logdet, n_params=d, tau=tau, converged=conv)
+
+
+def laplace_log_evidence_ordinary(param_space, x_train, y_train, *,
+                                  mle_params=None) -> EvidenceResult:
+    """Ordinary marginal likelihood p_ord(D|M) = ∫ p(y|φ) p_ref dφ (no GP).
+
+    The GP-free primitive for the baseline and Construction I.
+    """
+    d = param_space.n_params
+    _, unpack = _packers(param_space)
+    x0, bounds = _x0_and_bounds(param_space, mle_params)
+
+    def neg_log_f(vec):
+        pd = unpack(vec)
+        if pd.get(param_space.noise_param, 0.3) <= 0:
+            return 1e10
+        return -_log_likelihood(param_space, x_train, y_train, pd)
+
+    log_int, x_star, f_star, logdet, conv = _laplace_log_integral(neg_log_f, x0, bounds, d)
+    log_ev = log_int - _log_reference_volume(param_space)   # p_ref = 1/V_ref normalized
+    return EvidenceResult(model_name=param_space.model_name, log_evidence=log_ev,
+                          kind="ordinary", log_lik_at_map=-f_star,
+                          phi_star=unpack(x_star), n_params=d, converged=conv)
+
+
+def _laplace_log_N(param_space, x_train, y_train, x_eval, avg_gp, metric_fn,
+                   tau, mle_params, occam):
+    """log N(M) = log ∫ p(y|φ) exp(−Ḡ/τ) [p_ref] dφ via the joint MAP."""
+    d = param_space.n_params
+    _, unpack = _packers(param_space)
+    x0, bounds = _x0_and_bounds(param_space, mle_params)
+
+    def neg_log_joint(vec):
+        pd = unpack(vec)
+        if pd.get(param_space.noise_param, 0.3) <= 0:
+            return 1e10
+        ll = _log_likelihood(param_space, x_train, y_train, pd)
+        G = compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn)
+        return -(ll - G / tau)
+
+    log_int, x_star, f_star, logdet, conv = _laplace_log_integral(neg_log_joint, x0, bounds, d)
+    log_N = log_int - (_log_reference_volume(param_space) if occam else 0.0)
+    return log_N, unpack(x_star), conv
+
+
+def laplace_log_evidence_induced(param_space, x_train, y_train, x_eval, avg_gp, *,
+                                 metric_name="pw_kl_vcal", tau=1.0,
+                                 mle_params=None) -> EvidenceResult:
+    """Within-model evidence under the GP-induced prior: p(y|M,ψ) = N(M)/Z_prior(M) (§1.3).
+
+    Occam-independent: both N and Z_prior carry −log V_ref, which cancels.
+    """
+    metric_fn = METRICS[metric_name]
+    log_N, phi_star, conv = _laplace_log_N(param_space, x_train, y_train, x_eval, avg_gp,
+                                           metric_fn, tau, mle_params, occam=True)
+    zprior = laplace_log_Z_Mx(param_space, x_eval, avg_gp, metric_name=metric_name,
+                              tau=tau, occam=True, mle_params=mle_params)
+    ll_at = _log_likelihood(param_space, x_train, y_train, phi_star)
+    return EvidenceResult(model_name=param_space.model_name,
+                          log_evidence=log_N - zprior.log_Z, kind="induced",
+                          log_N=log_N, log_Z_prior=zprior.log_Z, log_lik_at_map=ll_at,
+                          phi_star=phi_star, n_params=param_space.n_params, converged=conv)
+
+
+def model_posterior(param_spaces, x_train, y_train, x_eval, avg_gp, mle_params, *,
+                    construction="II", metric_name="pw_kl_vcal", tau=1.0,
+                    occam=False) -> ModelPosteriorResult:
+    """Normalized model posterior under the chosen assembly (§2). II is canonical.
+
+      baseline: p(M|D) ∝ p_ord(D|M)                    (no GP)
+      I       : p(M|D) ∝ Z_Mx · p_ord(D|M)             (GP at class level)
+      II      : p(M|D) ∝ N(M)                          (GP-induced joint prior)
+    """
+    metric_fn = METRICS[metric_name]
+    names = list(param_spaces.keys())
+    log_kernel, components = {}, {}
+
+    for name in names:
+        ps = param_spaces[name]
+        mp = mle_params.get(name) if mle_params else None
+        if construction == "baseline":
+            ev = laplace_log_evidence_ordinary(ps, x_train, y_train, mle_params=mp)
+            log_kernel[name] = ev.log_evidence
+            components[name] = {"log_ord_evidence": ev.log_evidence}
+        elif construction == "I":
+            zmx = laplace_log_Z_Mx(ps, x_eval, avg_gp, metric_name=metric_name,
+                                   tau=tau, occam=occam, mle_params=mp)
+            ev = laplace_log_evidence_ordinary(ps, x_train, y_train, mle_params=mp)
+            log_kernel[name] = zmx.log_Z + ev.log_evidence
+            components[name] = {"log_Z_Mx": zmx.log_Z, "log_ord_evidence": ev.log_evidence}
+        elif construction == "II":
+            log_N, _, _ = _laplace_log_N(ps, x_train, y_train, x_eval, avg_gp,
+                                         metric_fn, tau, mp, occam=occam)
+            log_kernel[name] = log_N
+            components[name] = {"log_N": log_N}
+        else:
+            raise ValueError(f"unknown construction {construction!r}")
+
+    logk = np.array([log_kernel[n] for n in names])
+    post = np.exp(logk - logk.max())
+    post = post / post.sum()
+    return ModelPosteriorResult(
+        construction=construction, occam=occam, tau=tau, model_names=names,
+        posteriors={n: float(p) for n, p in zip(names, post)},
+        log_kernel={n: float(log_kernel[n]) for n in names},
+        components=components,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════

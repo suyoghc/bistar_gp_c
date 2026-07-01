@@ -4,16 +4,17 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 
 ## In progress
 
-- **Z_Mx / Laplace reconciliation** — plan written (`docs/plan-zmx-laplace.md`), logged as
-  DECISIONS D3. Awaiting confirmation of **Construction II** as canonical, then implement on a
-  fresh `fix/laplace-zmx` branch after PR #1 lands.
+- **Z_Mx / Laplace reconciliation** (DECISIONS D3) — PR #1 merged; Construction II confirmed
+  canonical. **Core done** on `fix/laplace-zmx`: new canonical API in `laplace_evidence.py` +
+  `tests/test_laplace_zmx.py` (40 tests pass). **Next:** migrate the two callers off
+  `compute_laplace_evidence` (`bistar_sample_size_sweep.py:234`, `bistar_induced_prior_v2.py:208`),
+  unify the viz Laplace scripts, regenerate figures, update README + kb/Wiki definitions.
 
 ## Open questions
 
-- Confirm Construction II as the canonical posterior assembly (baseline / I as ablations).
 - Confirm Occam default = no-Occam (README's "faithful BI*"); with-Occam shown as sensitivity.
-- Should the process docs (this plan + `Notes/`) stay on the `fix/bms-correctness` PR, or move to a
-  separate branch so PR #1 is purely code?
+  (Currently `model_posterior`/`laplace_log_Z_Mx` default `occam=False`.)
+- When to regenerate paper figures + run the old-vs-new impact assessment (needs a torch env).
 
 ## Branches / PRs
 

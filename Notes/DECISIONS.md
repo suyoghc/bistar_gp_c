@@ -72,5 +72,15 @@ package and viz implementations; migrate the two callers above.
 - Leave-as-is / relabel only: rejected — disagrees with the viz `Z_Mx` figures and mislabels the object.
 - Occam default: no-Occam (faithful original BI*, README default); with-Occam (`−log V_ref`) shown as
   a sensitivity analysis. The `V_ref` (parameter-box) dependence is a real modeling knob to defend.
-**Status:** OPEN. Gate before implementation: user confirmation of Construction II as canonical.
-Implement on a fresh `fix/laplace-zmx` branch after PR #1 lands.
+**Status (updated 2026-07-01):** Construction II **confirmed canonical** (user). PR #1 merged
+(`origin/main` 76df156). **Core implemented + tested** on `fix/laplace-zmx`:
+`laplace_log_Z_Mx` (data-free prior, Occam toggle), `laplace_log_evidence_ordinary`,
+`laplace_log_evidence_induced` (N/Z_prior), `model_posterior(construction=baseline|I|II)`, and a
+robust `_laplace_logdet` (clips eigenvalues to fix the boundary curvature-fabrication issue).
+`compute_laplace_evidence` marked DEPRECATED (still present until callers migrate).
+`tests/test_laplace_zmx.py` added — Laplace-vs-brute, Occam=−log V_ref, data-independence,
+volume-independent evidence, construction assembly/difference, double-use-collapses-to-II, logdet
+caps; **40 tests pass**. **Still pending (OPEN):** migrate `bistar_sample_size_sweep.py:234` and
+`bistar_induced_prior_v2.py:208` off `compute_laplace_evidence`; unify the two viz Laplace scripts
+onto `laplace_log_Z_Mx`; regenerate figures; update README + `kb/Wiki/GP-Induced Model Priors.md`
+to state the final definitions and Construction II as canonical.
