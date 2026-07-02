@@ -219,25 +219,35 @@ class GPPosteriorSample:
 def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
                            mcmc_samples, kernel_builder,
                            likelihood_builder=None,
-                           n_posterior_samples=200, jitter=1e-4):
+                           n_posterior_samples=200, jitter=1e-4,
+                           condition_on_data=True):
     """
-    Extract full GP predictive distributions for each HMC sample.
+    Extract full GP predictive distributions for each hyperparameter sample.
 
     Each sample defines a specific GP with specific hyperparameters,
     which implies a specific multivariate Gaussian over y at x_eval.
     These are the ψ's in BMS*.
 
+    condition_on_data selects which predictive, so the SAME machinery serves both
+    Bayesian-workflow checks:
+      True  (default): POSTERIOR predictive p(y* | X, y, θ) — condition on the
+             training data. Feed fit_hmc posterior draws → posterior predictive check.
+      False: PRIOR predictive p(y* | θ) — the GP prior at x_eval (ZeroMean → mean 0,
+             cov K_θθ(x_eval) + σ²I), no conditioning on y. Feed sample_prior draws
+             → prior predictive check. x_train/y_train are then unused.
+
     Args:
         model: fitted AdditiveGPModel (for component_names)
         likelihood: fitted likelihood
-        x_train, y_train: training data
+        x_train, y_train: training data (used only when condition_on_data=True)
         x_eval: evaluation points
-        mcmc_samples: dict from fit_hmc
+        mcmc_samples: dict from fit_hmc (posterior) or sample_prior (prior)
         kernel_builder: callable returning (kernels, names)
         likelihood_builder: callable returning a likelihood. If None, uses
                            default with Positive() constraint.
         n_posterior_samples: how many samples to use
         jitter: numerical stability
+        condition_on_data: posterior (True) vs prior (False) predictive
 
     Returns:
         List[GPPosteriorSample]
@@ -287,30 +297,33 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
         fresh_model.eval()
         fresh_likelihood.eval()
 
-        # Compute full joint GP predictive: p(y* | X, y, θ)
         with torch.no_grad():
             try:
                 noise_var = fresh_likelihood.noise.item()
-
-                # K_sum at train points
-                K_XX = fresh_model.covar_module(x_train, x_train).evaluate().detach()
-                K_XstarX = fresh_model.covar_module(x_eval, x_train).evaluate().detach()
                 K_XstarXstar = fresh_model.covar_module(x_eval, x_eval).evaluate().detach()
-                K_XXstar = fresh_model.covar_module(x_train, x_eval).evaluate().detach()
 
-                # Cholesky of K_XX + σ²I
-                L = compute_cholesky(K_XX, noise_var, jitter)
+                if condition_on_data:
+                    # Posterior predictive p(y* | X, y, θ)
+                    K_XX = fresh_model.covar_module(x_train, x_train).evaluate().detach()
+                    K_XstarX = fresh_model.covar_module(x_eval, x_train).evaluate().detach()
+                    K_XXstar = fresh_model.covar_module(x_train, x_eval).evaluate().detach()
 
-                # Predictive mean: K_*X (K_XX + σ²I)^{-1} y
-                alpha = torch.cholesky_solve(y_train.unsqueeze(-1), L).squeeze(-1)
-                pred_mean = (K_XstarX @ alpha).numpy()
+                    # Cholesky of K_XX + σ²I
+                    L = compute_cholesky(K_XX, noise_var, jitter)
+                    # Predictive mean: K_*X (K_XX + σ²I)^{-1} y
+                    alpha = torch.cholesky_solve(y_train.unsqueeze(-1), L).squeeze(-1)
+                    pred_mean = (K_XstarX @ alpha).numpy()
+                    # Predictive covariance: K_** - K_*X (K_XX + σ²I)^{-1} K_X*
+                    V = torch.linalg.solve_triangular(L, K_XXstar, upper=False)
+                    pred_cov = (K_XstarXstar - V.T @ V).numpy()
+                else:
+                    # Prior predictive p(y* | θ): the GP prior at x_eval, no
+                    # conditioning on data. ZeroMean → mean 0; x_train/y_train unused.
+                    pred_mean = fresh_model.mean_module(x_eval).detach().numpy()
+                    pred_cov = K_XstarXstar.numpy().copy()
 
-                # Predictive covariance: K_** - K_*X (K_XX + σ²I)^{-1} K_X* + σ²I
-                V = torch.linalg.solve_triangular(L, K_XXstar, upper=False)
-                pred_cov = (K_XstarXstar - V.T @ V).numpy()
-
-                # Add observation noise to predictive covariance
-                pred_cov += noise_var * np.eye(len(x_eval))
+                # Add observation noise to the predictive covariance
+                pred_cov = pred_cov + noise_var * np.eye(len(x_eval))
 
                 results.append(GPPosteriorSample(
                     mean=pred_mean,

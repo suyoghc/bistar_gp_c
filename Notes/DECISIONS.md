@@ -216,3 +216,37 @@ test updated to the new signature).
 **Consequence:** independently reconfirms that **all committed HMC archives** (`bistar_gp/cache/*.npz`,
 `runs/mauna_loa_sub150_hmc_*`) are prior-only and MUST be regenerated on the fixed code before any
 paper number is quoted. Panel verdict was NO-GO on the pre-fix branch; GO after this fix.
+
+---
+
+## D7: prior/posterior predictive sampling (one pipeline, two checks) — 2026-07-02
+
+**Problem:** The core package could only sample the posterior (`fit_hmc`); prior sampling existed
+only as scattered numpy reimplementations in `bistar_viz/scripts/`. A prior predictive check (are the
+GP's prior beliefs — the ones BI* transfers into `Z_Mx` — reasonable before seeing data?) and a
+posterior predictive check (does the fitted GP reproduce the data?) had no shared, first-class path.
+Motivated by the D6 finding: the bug was accidentally producing prior draws via NUTS, i.e. prior
+sampling done the expensive/wrong way.
+
+**Decision:** Two minimal additions that share the existing predictive pipeline and the `fit_hmc`
+dict schema.
+- `fit.py::sample_prior(model, n_samples, seed)` — i.i.d. draws from the registered priors by
+  tracing `model.pyro_sample_from_prior()`; **no NUTS** (the priors are known distributions, so draws
+  are exact and ~instant), values in the same constrained space `fit_hmc`/`apply_hp_value` use.
+- `bms_star.py::extract_gp_predictives(..., condition_on_data=True)` — `True` (default) keeps the
+  posterior predictive p(y*|X,y,θ); `False` gives the prior predictive p(y*|θ) = GP prior at x_eval
+  (ZeroMean → mean 0, cov K_θθ(x_eval)+σ²I), no conditioning on data.
+So: prior predictive check = `sample_prior` → `extract_gp_predictives(condition_on_data=False)`;
+posterior predictive check = `fit_hmc` → `extract_gp_predictives(...)`.
+
+**Alternatives considered:** Sampling the prior via NUTS (rejected — wasteful and can mix poorly;
+i.i.d. is exact). Unifying the scattered `bistar_viz/scripts/` prior-predictive reimplementations
+into this path (deferred — tangled with the still-open single-`G` metric decision that blocks the
+other viz-unification work). A `.rsample()`-style helper drawing actual y* realizations (deferred —
+callers can draw from the returned Gaussians; keep the addition minimal).
+
+**Result:** 72 tests pass (6 new: prior-sample schema/i.i.d./data-freeness, prior-predictive exact
+analytic covariance + zero mean + data-independence, posterior-predictive data-dependence,
+posterior≤prior variance invariant). Adversarially reviewed (independent agent, ran its own checks:
+constrained-space match vs a real HMC run, NaN-train leakage test, exact-covariance sensitivity) —
+verdict SHIP, no defects.

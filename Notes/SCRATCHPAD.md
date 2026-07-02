@@ -34,6 +34,9 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   Fixed in D6: score through the returned sampled module + new connection regression test. **66
   tests pass.** Kimi's `×n` CRITICAL was a false positive (verified); `fit_mcmc_simple` Jacobian is
   a pre-existing non-blocking follow-up. Panel verdict: NO-GO pre-fix → GO after D6.
+- **Prior/posterior predictive sampling (D7)** — `fit.sample_prior` (i.i.d., no NUTS) +
+  `extract_gp_predictives(condition_on_data=)`: one pipeline for both prior and posterior predictive
+  checks. **72 tests pass** (6 new). Adversarially reviewed → SHIP, no defects.
 
 ## Still open (held deliberately)
 

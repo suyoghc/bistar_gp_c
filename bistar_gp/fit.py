@@ -227,3 +227,28 @@ def fit_hmc(model, likelihood, train_x, train_y,
     likelihood.eval()
 
     return samples
+
+
+def sample_prior(model, n_samples=500, seed=None):
+    """Draw i.i.d. hyperparameter samples from the GP priors — no data, no MCMC.
+
+    Prior sampling needs no NUTS: the registered priors are known distributions,
+    so we draw directly and exactly by tracing model.pyro_sample_from_prior().
+    Returns the SAME dict schema as fit_hmc (site name -> (n_samples,) array), so
+    prior draws flow through extract_gp_predictives(condition_on_data=False) and
+    decompose_model_hmc for PRIOR predictive checks exactly as fit_hmc posterior
+    draws feed the posterior predictive checks. Depends only on the priors, so it
+    is independent of the model's train targets.
+    """
+    import pyro
+
+    if seed is not None:
+        pyro.set_rng_seed(seed)
+
+    collected = {}
+    for _ in range(n_samples):
+        trace = pyro.poutine.trace(model.pyro_sample_from_prior).get_trace()
+        for name, site in trace.nodes.items():
+            if site["type"] == "sample" and not site.get("is_observed", False):
+                collected.setdefault(name, []).append(float(site["value"].detach()))
+    return {k: np.array(v) for k, v in collected.items()}
