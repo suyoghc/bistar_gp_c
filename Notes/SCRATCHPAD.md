@@ -20,13 +20,16 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   `fit_mcmc_simple`. New naming helpers `select_hmc_sites`/`apply_hp_value` in `model.py`.
   **56 tests pass** (14 new).
 
+- **Review findings round 2 fixed (DECISIONS D5)** — occam flag now applies the −log V_ref
+  reference term consistently across constructions (ablation-ladder gaps volume-free); `Z_Mx`
+  computes τ analytically on H_Ḡ (clipping τ-invariant) and `n_clipped` propagates with a warning;
+  `soft_transfer_weighted` global-scalar max shift. **63 tests pass** (7 new).
+
 ## Still open (held deliberately)
 
-- **Remaining review findings** — (a) cross-construction `V_ref` inconsistency with `occam=False`
-  contaminating the ablation ladder (laplace_evidence.py:340); (b) 1e-8 eigenvalue floor in
-  `_laplace_logdet` can turn non-identifiability into a +9.2-nat evidence bonus, `n_clipped`
-  diagnostic discarded; (c) pre-existing non-canceling max shift in
-  `aggregation_v3.soft_transfer_weighted:402`; (d) ~20 severity-2 cleanups (full list in the
+- **Remaining review findings** — ~20 severity-2 cleanups (duplication in laplace_evidence
+  closures, redundant recomputation in plot_ablation_ladder/tau sweeps, committed .pyc/.DS_Store
+  artifacts, walrus-in-ternary in impact_assessment, CLAUDE.md prose nits; full list in the
   review output).
 - **HMC archives invalid** — `bistar_gp/cache/*.npz` and `runs/mauna_loa_sub150_hmc_*` predate the
   D2 single-registration fix (biased target); regenerate before paper numbers. Della impact

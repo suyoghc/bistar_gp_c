@@ -131,3 +131,43 @@ smoke run: 4 sample sites, one noise latent, varying lengthscale draws in the pr
 **Consequence:** every committed HMC archive (`bistar_gp/cache/*.npz`,
 `runs/mauna_loa_sub150_hmc_*`) predates the D2 fix (biased target, duplicate sites) — regenerate
 before quoting paper numbers; the Della impact assessment must rerun on the fixed code.
+
+---
+
+## D5: Reference-volume consistency, τ-invariant Z_Mx clipping, weighted-transfer max shift — 2026-07-02
+
+**Problem:** Three review findings. (1) `laplace_log_evidence_ordinary` always subtracted
+`log V_ref` while `Z_Mx` and `N(M)` only did so with `occam=True`, so with `occam=False` (the
+default) cross-construction gaps in the ablation ladder absorbed per-model volume differences
+(log V_ref: 3.57 Linear vs 7.46 Sin+Linear — a ~49x odds artifact inside what the figure labels
+"the GP contribution"). (2) `laplace_log_Z_Mx` minimized f = Ḡ/τ, so the absolute eigenvalue floor
+in `_laplace_logdet` fired τ-dependently (τ-sweeps bent for numerical, not statistical, reasons),
+and `_laplace_log_integral` discarded `n_clipped` — a floored flat direction silently adds
+−½·log(1e-8) ≈ +9.2 nats of evidence. (3) `aggregation_v3.soft_transfer_weighted:402` kept the
+per-candidate (axis=0) max shift that D2 removed from `bms_star.soft_transfer`; two candidates with
+equal weighted Boltzmann mass got 0.434/0.566 instead of 0.50/0.50 (pre-existing on `main`, reached
+via `run_weighted_bms_star` from `experiments/bms_star_v3_comparison.py`).
+
+**Decision:** (1) `laplace_log_evidence_ordinary` gains `occam=True` (standalone default keeps the
+proper marginal-likelihood semantics); `model_posterior` threads its `occam` flag into every
+construction. The flag now has one module-wide meaning: include the −log V_ref term of the
+normalized uniform reference prior; `occam=False` integrates against the raw Lebesgue measure
+everywhere (faithful no-Occam BI*). (2) `Z_Mx` optimizes and differentiates Ḡ itself and applies τ
+analytically — log Z = −Ḡ*/τ + (d/2)log(2πτ) − ½log|H_Ḡ|, the identity the module header already
+documented — so clipping decisions are τ-invariant by construction; `n_clipped` now propagates into
+`ZMxResult`/`EvidenceResult`/the Construction-II components with a logger warning. Floor/cap values
+unchanged (pinned by tests; intentional mitigation per D3). (3) Global scalar max shift in
+`soft_transfer_weighted`, mirroring the D2 fix and comment.
+
+**Alternatives considered:** A floor relative to the largest eigenvalue (τ-invariant and
+scale-aware) was rejected: with the 1e12 cap in place a fabricated cliff eigenvalue would drag the
+floor up to ~1e3 and corrupt genuine O(1) curvature. Making `numerical_hessian` bounds-aware was
+deferred — the review's verifier showed the sentinel-cliff path is unreachable with the shipped
+parameter spaces, so surfacing the diagnostic is the honest fix.
+
+**Result:** 63 tests pass (7 new: volume-free construction gaps under a constant metric, occam
+toggle on the ordinary evidence, exact analytic τ-scaling checked at τ=1e12, flat-direction
+`n_clipped` flag, weighted-transfer direct formula / equal-mass 0.5-0.5 / global-offset invariance).
+Live demo on the toy spaces: II−baseline gaps no longer track log V, and the new warning immediately
+surfaced a real flat direction at Sin+Linear's joint MAP (1 of 6 eigenvalues floored) that was
+previously invisible.

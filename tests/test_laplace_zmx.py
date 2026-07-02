@@ -132,8 +132,10 @@ def test_constructions_assemble_and_differ(mse_metric):
         assert p.sum() == pytest.approx(1.0)
         assert np.all(p >= 0)
     assert not np.allclose(pI, pII)          # I and II are different objects
-    # baseline == softmax of the ordinary evidences (wiring check)
-    ord_logs = np.array([laplace_log_evidence_ordinary(spaces[n], x_train, y_train).log_evidence
+    # baseline == softmax of the ordinary evidences (wiring check; occam=False
+    # matches model_posterior's default so both use the Lebesgue reference)
+    ord_logs = np.array([laplace_log_evidence_ordinary(spaces[n], x_train, y_train,
+                                                       occam=False).log_evidence
                          for n in names])
     man = np.exp(ord_logs - ord_logs.max()); man /= man.sum()
     assert np.allclose(base, man, atol=1e-9)
@@ -156,6 +158,81 @@ def test_double_use_collapses_to_construction_II(mse_metric):
     combo_post = np.exp(combo - combo.max()); combo_post /= combo_post.sum()
     pII, _ = _posteriors("II", spaces, x_train, y_train, mse_metric, occam=True)
     assert np.allclose(combo_post, pII, atol=1e-6)
+
+
+@pytest.fixture
+def const_metric():
+    """GP-indifferent metric: Ḡ ≡ 2.0 for every parameter value."""
+    name = "_const_test"
+    METRICS[name] = lambda mp, cp, mq, cq: 2.0
+    yield name
+    del METRICS[name]
+
+
+def test_construction_gaps_are_volume_free_without_occam(const_metric):
+    """With a GP-indifferent metric (Ḡ ≡ c) and occam=False, II − baseline must
+    equal −c/τ for every model regardless of its V_ref. The old code always
+    subtracted log V_ref in the ordinary evidence but never in log N, leaking
+    per-model volume differences into the ladder's 'GP contribution'."""
+    spaces = {"LinNarrow": lin_space((-1, 1), (-1, 1)),
+              "LinWide": lin_space((-4, 4), (-4, 4))}
+    x_train = np.linspace(0, 4, 20)
+    y_train = A_TRUE * x_train + B_TRUE
+    base = model_posterior(spaces, x_train, y_train, X_EVAL, AVG_GP, None,
+                           construction="baseline", metric_name=const_metric,
+                           tau=TAU, occam=False)
+    pII = model_posterior(spaces, x_train, y_train, X_EVAL, AVG_GP, None,
+                          construction="II", metric_name=const_metric,
+                          tau=TAU, occam=False)
+    gaps = [pII.log_kernel[n] - base.log_kernel[n] for n in spaces]
+    assert gaps[0] == pytest.approx(-2.0 / TAU, abs=1e-6)
+    assert gaps[0] == pytest.approx(gaps[1], abs=1e-6)
+
+
+def test_ordinary_evidence_occam_toggle_controls_volume():
+    """occam=False: Lebesgue measure, box-independent for an interior MAP;
+    occam=True (default): proper marginal likelihood, shifts by −Δlog V_ref."""
+    x_train = np.linspace(0, 4, 20)
+    y_train = A_TRUE * x_train + B_TRUE
+    narrow, wide = lin_space((-1, 1), (-1, 1)), lin_space((-2, 2), (-2, 2))
+    no_n = laplace_log_evidence_ordinary(narrow, x_train, y_train, occam=False)
+    no_w = laplace_log_evidence_ordinary(wide, x_train, y_train, occam=False)
+    assert no_n.log_evidence == pytest.approx(no_w.log_evidence, abs=1e-6)
+    occ_n = laplace_log_evidence_ordinary(narrow, x_train, y_train)
+    occ_w = laplace_log_evidence_ordinary(wide, x_train, y_train)
+    dV = _log_reference_volume(wide) - _log_reference_volume(narrow)
+    assert occ_n.log_evidence - occ_w.log_evidence == pytest.approx(dV, abs=1e-6)
+
+
+def test_zmx_tau_scaling_is_analytic(mse_metric):
+    """log Z(τ) must follow −Ḡ*/τ + (d/2)log(2πτ) − ½log|H_Ḡ| exactly: the
+    optimization, Hessian, and eigenvalue clipping are evaluated once on Ḡ, so
+    which eigenvalues get floored cannot depend on τ. Under the old f = Ḡ/τ
+    implementation, extreme τ pushed H/τ below the absolute floor and bent
+    τ-sensitivity curves for numerical rather than statistical reasons."""
+    ps = lin_space()
+    r1 = laplace_log_Z_Mx(ps, X_EVAL, AVG_GP, metric_name=mse_metric, tau=1.0)
+    r2 = laplace_log_Z_Mx(ps, X_EVAL, AVG_GP, metric_name=mse_metric, tau=1e12)
+    G, d = r1.G_at_min, r1.n_params
+    expected_gap = (-G / 1e12 + G / 1.0) + 0.5 * d * np.log(1e12)
+    assert r2.log_Z - r1.log_Z == pytest.approx(expected_gap, rel=1e-12)
+    assert r1.logdet_H == r2.logdet_H          # H_Ḡ is τ-free
+    assert r1.n_clipped == r2.n_clipped == 0
+
+
+def test_flat_direction_is_flagged(mse_metric):
+    """A parameter the model ignores gives a zero-curvature direction; the
+    floored log-det must surface as n_clipped > 0, not vanish silently."""
+    ps = ModelParameterSpace(
+        model_name="LinDead",
+        param_specs=[ParameterSpec("a", (-1.0, 1.0), None),
+                     ParameterSpec("b", (-1.0, 1.0), None),
+                     ParameterSpec("dead", (-1.0, 1.0), None)],
+        predict_fn=lambda x, p: p["a"] * x + p["b"],   # 'dead' unused
+        noise_param="sigma",
+    )
+    r = laplace_log_Z_Mx(ps, X_EVAL, AVG_GP, metric_name=mse_metric, tau=TAU)
+    assert r.n_clipped >= 1
 
 
 def test_laplace_logdet_caps_and_floors():

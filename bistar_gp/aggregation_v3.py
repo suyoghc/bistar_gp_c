@@ -384,9 +384,13 @@ def soft_transfer_weighted(G_matrix: np.ndarray, tau: float,
         lw -= lw[valid].max()
         w = np.exp(lw)
 
-    # Weighted Boltzmann scores
+    # Weighted Boltzmann scores.
+    # Numerical stability: subtract a single GLOBAL scalar, which cancels in the
+    # cross-candidate normalization below. A per-candidate (axis=0) max does NOT
+    # cancel — it multiplies each candidate's score by exp(min_i G_ij / tau),
+    # distorting the posterior (same bug fixed in bms_star.soft_transfer).
     log_boltz = -G_matrix / tau
-    log_boltz -= log_boltz.max(axis=0, keepdims=True)
+    log_boltz -= log_boltz.max()
     boltz = np.exp(log_boltz)
 
     # Weighted average
