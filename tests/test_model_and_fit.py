@@ -74,13 +74,43 @@ def test_hmc_target_registers_noise_prior_once(toy_model):
 
     model, lik, x, y = toy_model
     model.train(); lik.train()
-    trace = pyro.poutine.trace(partial(_hmc_pyro_model, model, lik, x, y)).get_trace()
+    trace = pyro.poutine.trace(partial(_hmc_pyro_model, model, x, y)).get_trace()
     latents = [n for n, s in trace.nodes.items()
                if s["type"] == "sample" and not s["is_observed"]
                and not site_is_subsample(s)]
     assert len(latents) == 4, latents
     noise_sites = [n for n in latents if "noise_covar.noise" in n]
     assert len(noise_sites) == 1, latents
+
+
+def test_hmc_target_connects_latents_to_likelihood(toy_model):
+    """The obs likelihood MUST depend on the sampled hyperparameters.
+
+    gpytorch's model.pyro_sample_from_prior() returns a sampled COPY and leaves
+    the original model unchanged; if fit_hmc scores the original model instead of
+    the returned module, the obs log-prob is constant in the latents and NUTS
+    samples the prior, not the posterior. A site-count check cannot catch this —
+    only conditioning the latents and watching the obs log-prob move can.
+    """
+    pyro = pytest.importorskip("pyro")
+    from functools import partial
+    from bistar_gp.fit import _hmc_pyro_model
+
+    model, lik, x, y = toy_model
+    model.train(); lik.train()
+    tr = pyro.poutine.trace(partial(_hmc_pyro_model, model, x, y)).get_trace()
+    sites = [n for n, s in tr.nodes.items()
+             if s["type"] == "sample" and not s["is_observed"] and n.endswith("_prior")]
+
+    def obs_logprob(latents):
+        t = pyro.poutine.trace(
+            pyro.condition(partial(_hmc_pyro_model, model, x, y), data=latents)).get_trace()
+        node = t.nodes["obs"]
+        return float(node["fn"].log_prob(node["value"]).sum())
+
+    lp_lo = obs_logprob({s: torch.tensor(0.5) for s in sites})
+    lp_hi = obs_logprob({s: torch.tensor(2.5) for s in sites})
+    assert abs(lp_lo - lp_hi) > 1.0, (lp_lo, lp_hi)   # obs must move with the latents
 
 
 def test_mh_target_is_train_mode_log_joint(toy_model):

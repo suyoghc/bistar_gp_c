@@ -152,22 +152,26 @@ def _mh_log_joint(mll, model, likelihood, train_x, train_y):
         return (mll(model(train_x), train_y) * train_y.numel()).item()
 
 
-def _hmc_pyro_model(model, likelihood, x, y):
-    """Pyro target for fit_hmc: sample every registered prior once, score y.
+def _hmc_pyro_model(model, x, y):
+    """Pyro NUTS target for fit_hmc: sample every prior once, score y through
+    the SAMPLED module.
 
-    ExactGP registers the likelihood as a submodule, so the single
-    pyro_sample_from_prior() call emits each hyperparameter latent exactly
-    once — the kernel sites "covar_module.kernels.{i}.*_prior" plus the noise
-    site "likelihood.noise_covar.noise_prior". Calling
-    likelihood.pyro_sample_from_prior() as well would create a second,
-    disconnected noise latent whose returned "samples" are pure prior draws.
+    gpytorch's model.pyro_sample_from_prior() deep-copies the model, applies the
+    sampled hyperparameters to the COPY, and RETURNS it — the original `model` is
+    left unchanged. The obs likelihood must therefore be evaluated through the
+    returned `sampled` module; scoring the original `model(x)` instead leaves the
+    data independent of the latents, so NUTS samples the prior, not the posterior
+    (every returned "posterior" draw would just be a prior draw). The likelihood
+    is an ExactGP submodule, so `sampled.likelihood` carries the sampled noise and
+    each hyperparameter latent — the kernel sites "covar_module.kernels.{i}.*_prior"
+    plus "likelihood.noise_covar.noise_prior" — is emitted exactly once.
     """
     import pyro
 
-    model.pyro_sample_from_prior()
-    output = model(x)
+    sampled = model.pyro_sample_from_prior()
+    output = sampled(x)
     with pyro.plate("data", y.shape[0]):
-        pyro.sample("obs", likelihood(output), obs=y)
+        pyro.sample("obs", sampled.likelihood(output), obs=y)
 
 
 def fit_hmc(model, likelihood, train_x, train_y,
@@ -195,7 +199,7 @@ def fit_hmc(model, likelihood, train_x, train_y,
     pyro.clear_param_store()
 
     nuts = NUTS(
-        partial(_hmc_pyro_model, model, likelihood),
+        partial(_hmc_pyro_model, model),
         jit_compile=False,
         step_size=0.1,
         adapt_step_size=True,

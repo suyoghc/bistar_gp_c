@@ -128,6 +128,10 @@ disconnected latent and the samples dict still carries a prior-only column).
 **Result:** 56 tests pass (14 new: era selection, value application, a trace of the actual fit_hmc
 target, train-mode MH target, `extract_gp_predictives` kernel-draw propagation). End-to-end NUTS
 smoke run: 4 sample sites, one noise latent, varying lengthscale draws in the predictives.
+**CORRECTION (see D6):** this entry's implication that the HMC path was fully correct was WRONG.
+D4 fixed the duplicate noise latent but not the deeper disconnection (`_hmc_pyro_model` scored the
+un-sampled model, so NUTS still targeted the prior); the "varying lengthscale draws" smoke did not
+distinguish prior from posterior since prior draws also vary. Fixed in D6.
 **Consequence:** every committed HMC archive (`bistar_gp/cache/*.npz`,
 `runs/mauna_loa_sub150_hmc_*`) predates the D2 fix (biased target, duplicate sites) — regenerate
 before quoting paper numbers; the Della impact assessment must rerun on the fixed code.
@@ -171,3 +175,44 @@ toggle on the ordinary evidence, exact analytic τ-scaling checked at τ=1e12, f
 Live demo on the toy spaces: II−baseline gaps no longer track log V, and the new warning immediately
 surfaced a real flat direction at Sin+Linear's joint MAP (1 of 6 eigenvalues floored) that was
 previously invisible.
+
+---
+
+## D6: fit_hmc sampled the prior, not the posterior (multi-model review catch) — 2026-07-02
+
+**Problem:** Before the Della re-validation, a 5-model review panel (Gemini 3.1 Pro, Kimi K2-thinking,
+GLM-5.2 via OpenRouter; codex/gpt-5.5 on the real repo; Fable adjudicating) reviewed the D3–D5 diff.
+codex — alone among the panel — caught that `_hmc_pyro_model` discarded the return value of
+`model.pyro_sample_from_prior()`. In gpytorch 1.15.1 that method deep-copies the model, applies the
+sampled hyperparameters to the COPY, and returns it; the original `model`/`likelihood` are unchanged.
+The target scored `likelihood(model(x))` on the ORIGINAL module, so the obs likelihood was independent
+of the sampled latents and NUTS targeted the **prior**: every `fit_hmc` "posterior" draw was a prior
+draw. **Pre-existing** — main's inline `pyro_model` had the same discard pattern (plus the duplicate
+noise latent D4 removed); the D4 change fixed the duplicate latent but not the disconnection, and the
+D4 regression test passed because it checked latent-site COUNT, not whether obs depends on the latents.
+
+**Decision:** `_hmc_pyro_model(model, x, y)` now scores through the returned module:
+`sampled = model.pyro_sample_from_prior(); pyro.sample("obs", sampled.likelihood(sampled(x)), obs=y)`.
+Dropped the now-unused `likelihood` parameter (caller `partial(_hmc_pyro_model, model)`). Added
+`test_hmc_target_connects_latents_to_likelihood`: conditions the latents at two values and asserts the
+obs log-prob MOVES (the check a site-count test cannot do). Site names are unchanged, so
+`select_hmc_sites`/`apply_hp_value` and archive compatibility are unaffected.
+
+**Verification:** Direct experiment (orchestrator + Fable, independently): conditioning obs on
+latents 0.5 vs 2.5 gave an identical obs log-prob under the old target (disconnected) and a moving
+one under the fix (connected). gpytorch source confirms the copy semantics; the original
+`likelihood.noise` is unmutated after the call. **66 tests pass** (1 new connection test; D4 trace
+test updated to the new signature).
+
+**Panel notes (recorded, not fixes):**
+- Kimi's sole CRITICAL — "MLL is summed, so ×n over-inflates by n" — is a FALSE POSITIVE for
+  gpytorch 1.15.1: `ExactMarginalLogLikelihood.forward` ends `res.div_(num_data)`, so it is per-datum;
+  measured `mll=−1.61686`, `mll×n=−48.50574=` the independently summed log joint. The D5 (D2) `×n` fix
+  is correct. Gemini and GLM agreed.
+- `fit_mcmc_simple` proposes in raw unconstrained space while scoring constrained-space priors without
+  the constraint Jacobian (codex MEDIUM, GLM): **pre-existing**, and `fit_mcmc_simple` is documented as
+  a non-production starting point (fit_hmc/NUTS is production). Non-blocking follow-up.
+
+**Consequence:** independently reconfirms that **all committed HMC archives** (`bistar_gp/cache/*.npz`,
+`runs/mauna_loa_sub150_hmc_*`) are prior-only and MUST be regenerated on the fixed code before any
+paper number is quoted. Panel verdict was NO-GO on the pre-fix branch; GO after this fix.

@@ -28,6 +28,12 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   and new keys (a section erroring on one side reports as CHANGED instead of vanishing; report is
   now trustworthy for the Della rerun); `bistar_viz/scripts/bistar_sample_size_sweep.py` sys.path
   bootstrap points at the repo root after the file move (runs directly again). **65 tests pass.**
+- **Multi-model review + D6 fix** — 5-model panel (Gemini 3.1 Pro / Kimi K2-thinking / GLM-5.2 via
+  OpenRouter; codex/gpt-5.5; Fable adjudicating). codex alone caught that `fit_hmc` sampled the
+  PRIOR not the posterior (`_hmc_pyro_model` discarded the return of `pyro_sample_from_prior()`).
+  Fixed in D6: score through the returned sampled module + new connection regression test. **66
+  tests pass.** Kimi's `×n` CRITICAL was a false positive (verified); `fit_mcmc_simple` Jacobian is
+  a pre-existing non-blocking follow-up. Panel verdict: NO-GO pre-fix → GO after D6.
 
 ## Still open (held deliberately)
 
