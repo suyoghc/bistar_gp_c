@@ -18,11 +18,12 @@ We show this with three scenarios:
    → This is the cleanest BI* demonstration.
 
 Usage:
-    python experiments/bistar_sample_size_sweep.py --priors informative vague misspecified_tight
+    python bistar_viz/scripts/bistar_sample_size_sweep.py --priors informative vague misspecified_tight
 """
 
 import sys, os, argparse
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# Repo root is two levels up (this file is in bistar_viz/scripts/).
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import torch
 import numpy as np

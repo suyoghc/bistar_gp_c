@@ -24,6 +24,10 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   reference term consistently across constructions (ablation-ladder gaps volume-free); `Z_Mx`
   computes τ analytically on H_Ḡ (clipping τ-invariant) and `n_clipped` propagates with a warning;
   `soft_transfer_weighted` global-scalar max shift. **63 tests pass** (7 new).
+- **Last two severity-3 findings fixed** — `impact_assessment.compare()` diffs the union of old
+  and new keys (a section erroring on one side reports as CHANGED instead of vanishing; report is
+  now trustworthy for the Della rerun); `bistar_viz/scripts/bistar_sample_size_sweep.py` sys.path
+  bootstrap points at the repo root after the file move (runs directly again). **65 tests pass.**
 
 ## Still open (held deliberately)
 

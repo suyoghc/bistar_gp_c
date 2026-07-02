@@ -237,10 +237,12 @@ def compare(old_path, new_path):
                 yield key, v
 
     o = dict(leaves(old)); n = dict(leaves(new))
-    keys = [k for k in n if k not in ("seed", "n_points", "git_sha")]
+    # Union of both sides: a metric that exists in the old run but errored out
+    # of the new one (or vice versa) must show up as CHANGED, not vanish.
+    keys = (set(o) | set(n)) - {"seed", "n_points", "git_sha"}
     changed = same = 0
     for k in sorted(keys):
-        ov, nv = o.get(k, "—"), n.get(k)
+        ov, nv = o.get(k, "— missing —"), n.get(k, "— missing —")
         if isinstance(ov, (int, float)) and isinstance(nv, (int, float)):
             delta = nv - ov
             mark = "  CHANGED" if abs(delta) > 1e-9 else ""
@@ -250,8 +252,12 @@ def compare(old_path, new_path):
                 same += 1
             print(f"  {k:<48} {_fmt(ov):>12} -> {_fmt(nv):<12} {('Δ='+_fmt(delta)) if mark else ''}")
         else:
-            mark = "  CHANGED" if ov != nv else ""
-            (changed := changed + 1) if mark else (same := same + 1)
+            if ov != nv:
+                changed += 1
+                mark = "  CHANGED"
+            else:
+                same += 1
+                mark = ""
             print(f"  {k:<48} {str(ov):>12} -> {str(nv):<12}{mark}")
     print(f"\n  {changed} changed, {same} unchanged.")
 
