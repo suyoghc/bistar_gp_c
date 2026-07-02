@@ -292,7 +292,7 @@ def compute_log_marginal_likelihoods(
 
     Uses the same fresh-model rebuild approach as extract_gp_predictives.
     """
-    from bistar_gp.model import build_model
+    from bistar_gp.model import build_model, apply_hp_value
     from bistar_gp.decompose import compute_cholesky
 
     x_t = x_train.double() if isinstance(x_train, torch.Tensor) else torch.tensor(x_train).double()
@@ -321,20 +321,7 @@ def compute_log_marginal_likelihoods(
             # Set hyperparameters
             for pyro_name, val in sample.hyperparameters.items():
                 try:
-                    if "noise_covar.noise" in pyro_name:
-                        fresh_lik.noise = val
-                        continue
-                    parts = pyro_name.split(".")
-                    comp_idx = int(parts[1])
-                    kernel = fresh_model.kernel_components[comp_idx]
-                    if "period_length" in pyro_name:
-                        kernel.base_kernel.period_length = val
-                    elif "base_kernel.lengthscale" in pyro_name:
-                        kernel.base_kernel.lengthscale = val
-                    elif "outputscale" in pyro_name:
-                        kernel.outputscale = val
-                    elif "variance" in pyro_name:
-                        kernel.variance = val
+                    apply_hp_value(fresh_model, fresh_lik, pyro_name, val)
                 except (IndexError, AttributeError, RuntimeError):
                     continue
 

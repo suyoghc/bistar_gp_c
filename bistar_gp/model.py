@@ -52,6 +52,70 @@ class AdditiveGPModel(gpytorch.models.ExactGP):
         return matrices
 
 
+# ── HMC sample-site naming ───────────────────────────────────────
+#
+# fit_hmc/fit_mcmc_simple return dicts keyed by pyro sample-site name. The
+# names follow the module tree above: each kernel hyperparameter appears once,
+# at "covar_module.kernels.{i}.<hp>_prior", and the noise at
+# "likelihood.noise_covar.noise_prior". Archives saved by older code carry
+# extra sites: "kernel_components.{i}.*" duplicates (disconnected prior draws
+# from the double-registration bug) and a bare "noise_covar.noise_prior" from
+# the era when fit_hmc sampled the likelihood separately (in those archives
+# the bare site is the one that was wired to the likelihood). Every consumer
+# must go through the two helpers below rather than parsing names itself.
+
+def select_hmc_sites(sample_keys):
+    """Pick the sample sites actually wired to the likelihood, across eras.
+
+    Returns the kernel hyperparameter keys plus the noise key, preferring the
+    current naming and falling back to legacy names only when the current ones
+    are absent, so both fresh runs and old cached archives resolve to the
+    connected (posterior) latents.
+    """
+    keys = list(sample_keys)
+    kernel_keys = [k for k in keys if k.startswith("covar_module.kernels.")]
+    if not kernel_keys:  # archives predating the covar_module naming
+        kernel_keys = [k for k in keys if k.startswith("kernel_components.")]
+    if "noise_covar.noise_prior" in keys:
+        # Legacy archives: the bare site was sampled last and overwrote the
+        # likelihood.* one, so it holds the connected draws.
+        noise_keys = ["noise_covar.noise_prior"]
+    else:
+        noise_keys = [k for k in keys if k.endswith("noise_covar.noise_prior")]
+    return kernel_keys + noise_keys
+
+
+def apply_hp_value(model, likelihood, pyro_name, value):
+    """Set one hyperparameter on model/likelihood from a sample-site name.
+
+    Accepts both current ("covar_module.kernels.{i}.*") and legacy
+    ("kernel_components.{i}.*", "noise_covar.noise*") site names. Returns True
+    if the name was recognized and applied, False otherwise.
+    """
+    if "noise_covar.noise" in pyro_name:
+        likelihood.noise = value
+        return True
+    parts = pyro_name.split(".")
+    if parts[0] == "covar_module" and parts[1] == "kernels":
+        comp_idx = int(parts[2])
+    elif parts[0] == "kernel_components":
+        comp_idx = int(parts[1])
+    else:
+        return False
+    kernel = model.kernel_components[comp_idx]
+    if "base_kernel.lengthscale" in pyro_name:
+        kernel.base_kernel.lengthscale = value
+    elif "base_kernel.period_length" in pyro_name:
+        kernel.base_kernel.period_length = value
+    elif "outputscale" in pyro_name:
+        kernel.outputscale = value
+    elif "variance" in pyro_name:
+        kernel.variance = value
+    else:
+        return False
+    return True
+
+
 # ── Kernel builders ──────────────────────────────────────────────
 
 def build_mauna_loa_kernels():

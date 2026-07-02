@@ -13,7 +13,24 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   renamed; optional RNG `seed=` on `fit_mcmc_simple`/`fit_hmc`; `numerical_hessian` boundary issue
   fixed in the new module via `_laplace_logdet` (old copy removed).
 
+- **Code review (Fable, 8-angle) + D4 fixes** — review of the branch diff surfaced 33 findings
+  (10 severe). Fixed the top cluster (DECISIONS D4): stale `kernel_components` sample-key parsing
+  in `bms_star`/`debias`/`aggregation_v3`/`mechanism` (kernel posterior draws silently dropped),
+  double noise latent in `fit_hmc`, eval-mode MH target + duplicate proposal dim in
+  `fit_mcmc_simple`. New naming helpers `select_hmc_sites`/`apply_hp_value` in `model.py`.
+  **56 tests pass** (14 new).
+
 ## Still open (held deliberately)
+
+- **Remaining review findings** — (a) cross-construction `V_ref` inconsistency with `occam=False`
+  contaminating the ablation ladder (laplace_evidence.py:340); (b) 1e-8 eigenvalue floor in
+  `_laplace_logdet` can turn non-identifiability into a +9.2-nat evidence bonus, `n_clipped`
+  diagnostic discarded; (c) pre-existing non-canceling max shift in
+  `aggregation_v3.soft_transfer_weighted:402`; (d) ~20 severity-2 cleanups (full list in the
+  review output).
+- **HMC archives invalid** — `bistar_gp/cache/*.npz` and `runs/mauna_loa_sub150_hmc_*` predate the
+  D2 single-registration fix (biased target); regenerate before paper numbers. Della impact
+  assessment must rerun on fixed code.
 
 - **Viz-script unification** — port `model_priors_laplace.py` / `model_prior_trajectory_laplace.py`
   onto `laplace_log_Z_Mx`. Blocked on the single-`G` decision: they use a variance-weighted MSE,

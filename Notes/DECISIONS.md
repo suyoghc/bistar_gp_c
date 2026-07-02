@@ -90,3 +90,44 @@ Laplace scripts (`model_priors_laplace.py`, `model_prior_trajectory_laplace.py`)
 `laplace_log_Z_Mx` — blocked on the single-`G` choice (they use a variance-weighted MSE, not a package
 METRIC; this is the paper's metric-choice decision); (2) regenerate all figures + old-vs-new impact
 assessment (needs a torch runtime); (3) update `kb/Wiki/GP-Induced Model Priors.md` (gitignored).
+
+---
+
+## D4: HMC sample-site naming fallout + MH target fixes (fix/laplace-zmx) — 2026-07-01
+
+**Problem:** The D2 single-registration fix renamed every kernel latent from
+`kernel_components.{i}.*_prior` to `covar_module.kernels.{i}.*_prior`, but three consumers still
+parsed the old names: `extract_gp_predictives` (bms_star.py:269), `decompose_model_hmc`
+(debias.py:175), and the seven `hp_pattern` strings in mechanism.py. On any fresh HMC run, every
+kernel hyperparameter draw was silently dropped, so GP predictives were built at default-initialized
+kernel hyperparameters (only noise varied), invalidating BMS* scoring, decompositions, and mechanism
+figures with no error raised. Two related fit.py bugs: (1) `fit_hmc`'s pyro target called both
+`model.pyro_sample_from_prior()` and `likelihood.pyro_sample_from_prior()`; the likelihood is an
+ExactGP submodule, so the noise prior registered twice (5 latents for 4 toy hyperparameters) and the
+phantom `likelihood.noise_covar.noise_prior` column held pure prior draws. (2) `fit_mcmc_simple`
+evaluated its MH target in eval mode, scoring `train_y` against the posterior predictive conditioned
+on `train_y` itself (data used twice; the D2 `*n` factor amplified the bias); its proposal also
+double-counted the noise parameter (same tensor reached via both model and likelihood
+`named_parameters()`).
+
+**Decision:** One naming authority in model.py, next to `AdditiveGPModel`: `select_hmc_sites()`
+picks the connected latents across archive eras (current runs; legacy duplicate-site archives in
+`bistar_gp/cache/*.npz` and `runs/*/samples/`, where `covar_module.kernels.*` and the bare
+`noise_covar.noise_prior` were the wired sites; post-fix noise naming
+`likelihood.noise_covar.noise_prior`), and `apply_hp_value()` parses and sets one hyperparameter,
+accepting current and legacy names. All three consumers migrated onto the helpers; mechanism.py
+patterns updated to `covar_module.kernels.*` with `find_hp_key` canonicalizing legacy keys before
+matching. fit.py: module-level `_hmc_pyro_model` samples priors exactly once; `_mh_log_joint`
+forces train mode on every call; MH parameter list deduped by object identity.
+
+**Alternatives considered:** Patching the three string filters in place (rejected: leaves the naming
+logic in three copies, the exact drift that caused this bug). Keeping the separate likelihood
+sampling call and filtering the phantom site downstream (rejected: NUTS still wastes work on a
+disconnected latent and the samples dict still carries a prior-only column).
+
+**Result:** 56 tests pass (14 new: era selection, value application, a trace of the actual fit_hmc
+target, train-mode MH target, `extract_gp_predictives` kernel-draw propagation). End-to-end NUTS
+smoke run: 4 sample sites, one noise latent, varying lengthscale draws in the predictives.
+**Consequence:** every committed HMC archive (`bistar_gp/cache/*.npz`,
+`runs/mauna_loa_sub150_hmc_*`) predates the D2 fix (biased target, duplicate sites) — regenerate
+before quoting paper numbers; the Della impact assessment must rerun on the fixed code.

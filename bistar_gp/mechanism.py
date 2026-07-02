@@ -136,7 +136,7 @@ def toy_mechanism_config():
         name="toy",
         channels=[
             TransferChannel(
-                hp_pattern="kernel_components.0.base_kernel.lengthscale",
+                hp_pattern="covar_module.kernels.0.base_kernel.lengthscale",
                 hp_label="SE Lengthscale ℓ",
                 candidate_name="Sin+Linear",
                 param_name="omega",
@@ -144,7 +144,7 @@ def toy_mechanism_config():
                 true_value=1.0,
             ),
             TransferChannel(
-                hp_pattern="kernel_components.0.outputscale",
+                hp_pattern="covar_module.kernels.0.outputscale",
                 hp_label="SE Outputscale σ_f",
                 candidate_name="Sin+Linear",
                 param_name="A",
@@ -152,7 +152,7 @@ def toy_mechanism_config():
                 true_value=1.0,
             ),
             TransferChannel(
-                hp_pattern="kernel_components.1",  # linear kernel
+                hp_pattern="covar_module.kernels.1",  # linear kernel
                 hp_label="Linear Variance σ²_lin",
                 candidate_name="Sin+Linear",
                 param_name="b",
@@ -181,7 +181,7 @@ def mauna_loa_mechanism_config():
         name="mauna_loa",
         channels=[
             TransferChannel(
-                hp_pattern="kernel_components.0.base_kernel.lengthscale",
+                hp_pattern="covar_module.kernels.0.base_kernel.lengthscale",
                 hp_label="Trend ℓ",
                 candidate_name="Quad+2Harm",
                 param_name="b",
@@ -189,7 +189,7 @@ def mauna_loa_mechanism_config():
                 true_value=None,  # real data — no ground truth
             ),
             TransferChannel(
-                hp_pattern="kernel_components.0.outputscale",
+                hp_pattern="covar_module.kernels.0.outputscale",
                 hp_label="Trend σ",
                 candidate_name="Quad+2Harm",
                 param_name="a",
@@ -197,7 +197,7 @@ def mauna_loa_mechanism_config():
                 true_value=None,
             ),
             TransferChannel(
-                hp_pattern="kernel_components.1.outputscale",
+                hp_pattern="covar_module.kernels.1.outputscale",
                 hp_label="Seasonal σ",
                 candidate_name="Quad+2Harm",
                 param_name="A1",
@@ -205,7 +205,7 @@ def mauna_loa_mechanism_config():
                 true_value=None,
             ),
             TransferChannel(
-                hp_pattern="kernel_components.1.base_kernel.lengthscale",
+                hp_pattern="covar_module.kernels.1.base_kernel.lengthscale",
                 hp_label="Seasonal ℓ",
                 candidate_name="Quad+2Harm",
                 param_name="A2",
@@ -222,18 +222,32 @@ def mauna_loa_mechanism_config():
 # HP key matching
 # ═══════════════════════════════════════════════════════════════════
 
+def _canonical_hp_key(key: str) -> str:
+    """Map legacy sample-site names onto the current naming for matching.
+
+    Old archives name kernel sites "kernel_components.{i}.*"; current models
+    name them "covar_module.kernels.{i}.*" (see bistar_gp.model).
+    """
+    if key.startswith("kernel_components."):
+        return "covar_module.kernels." + key[len("kernel_components."):]
+    return key
+
+
 def find_hp_key(hp_dict: dict, pattern: str) -> Optional[str]:
     """
     Find the key in hp_dict that matches pattern (substring or exact).
 
-    Tries exact match first, then substring, then suffix match.
+    Tries exact match first, then substring, then suffix match. Keys are
+    matched in canonical (current) naming so patterns also hit legacy-named
+    archives; the original key is returned either way.
     """
     # Exact
-    if pattern in hp_dict:
-        return pattern
+    for k in hp_dict:
+        if _canonical_hp_key(k) == pattern:
+            return k
 
     # Substring
-    matches = [k for k in hp_dict if pattern in k]
+    matches = [k for k in hp_dict if pattern in _canonical_hp_key(k)]
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:

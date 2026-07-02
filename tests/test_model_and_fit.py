@@ -57,6 +57,65 @@ def test_hmc_sees_one_latent_per_hyperparameter(toy_model):
     assert len(set(sites)) == len(sites), "duplicate latent sites"
 
 
+def test_hmc_target_registers_noise_prior_once(toy_model):
+    """Trace the ACTUAL fit_hmc target, not just model.pyro_sample_from_prior.
+
+    fit_hmc used to also call likelihood.pyro_sample_from_prior(), which added
+    a second, disconnected noise latent ('noise_covar.noise_prior') on top of
+    the one the model already emits ('likelihood.noise_covar.noise_prior') —
+    5 sites for 4 hyperparameters, with the phantom site returning pure prior
+    draws that downstream consumers could mistake for the posterior.
+    """
+    pyro = pytest.importorskip("pyro")
+    from functools import partial
+    from bistar_gp.fit import _hmc_pyro_model
+
+    from pyro.poutine.util import site_is_subsample
+
+    model, lik, x, y = toy_model
+    model.train(); lik.train()
+    trace = pyro.poutine.trace(partial(_hmc_pyro_model, model, lik, x, y)).get_trace()
+    latents = [n for n, s in trace.nodes.items()
+               if s["type"] == "sample" and not s["is_observed"]
+               and not site_is_subsample(s)]
+    assert len(latents) == 4, latents
+    noise_sites = [n for n in latents if "noise_covar.noise" in n]
+    assert len(noise_sites) == 1, latents
+
+
+def test_mh_target_is_train_mode_log_joint(toy_model):
+    """fit_mcmc_simple's target must be the marginal-likelihood log joint.
+
+    The old code evaluated the target in eval mode, where model(train_x) is
+    the posterior predictive conditioned on train_y itself — data used twice,
+    biasing the chain toward small-noise/overfit hyperparameters. The helper
+    must return the train-mode value even if the caller left eval mode on.
+    """
+    from bistar_gp.fit import _mh_log_joint
+
+    model, lik, x, y = toy_model
+    mll = gpytorch.mlls.ExactMarginalLogLikelihood(lik, model)
+    model.train(); lik.train()
+    with torch.no_grad():
+        expected = (mll(model(x), y) * y.numel()).item()
+
+    model.eval(); lik.eval()
+    got = _mh_log_joint(mll, model, lik, x, y)
+    assert got == pytest.approx(expected, rel=1e-9)
+
+
+def test_mcmc_simple_samples_each_parameter_once(toy_model):
+    """The likelihood is a submodule of ExactGP, so its raw noise used to enter
+    the proposal twice under two names; after dedup exactly 4 dims remain."""
+    from bistar_gp.fit import fit_mcmc_simple
+
+    model, lik, x, y = toy_model
+    samples = fit_mcmc_simple(model, lik, x, y, n_samples=3, n_burnin=1,
+                              verbose=False, seed=0)
+    assert len(samples) == 4, sorted(samples)
+    assert sum("raw_noise" in k for k in samples) == 1, sorted(samples)
+
+
 def test_mll_is_per_datum_and_fix_recovers_summed_log_joint(toy_model):
     """fit_mcmc_simple's fix (mll * n) must equal the true summed log joint.
 

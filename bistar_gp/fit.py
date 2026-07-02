@@ -74,14 +74,17 @@ def fit_mcmc_simple(model, likelihood, train_x, train_y,
         torch.manual_seed(seed)
         np.random.seed(seed)
     train_x, train_y = train_x.double(), train_y.double()
-    model.eval()
-    likelihood.eval()
     mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
 
-    # Collect raw parameters
-    param_list = [(n, p) for n, p in 
-                  list(model.named_parameters()) + list(likelihood.named_parameters())
-                  if p.requires_grad and p.numel() == 1]
+    # Collect raw parameters. The likelihood is a submodule of ExactGP, so its
+    # parameters already appear in model.named_parameters(); dedupe by object
+    # identity so the noise is one proposal dimension, not two aliases.
+    seen = set()
+    param_list = []
+    for n, p in list(model.named_parameters()) + list(likelihood.named_parameters()):
+        if p.requires_grad and p.numel() == 1 and id(p) not in seen:
+            seen.add(id(p))
+            param_list.append((n, p))
     param_names = [n for n, _ in param_list]
 
     def get_params():
@@ -92,17 +95,10 @@ def fit_mcmc_simple(model, likelihood, train_x, train_y,
             p.data.copy_(vals[idx])
 
     def log_posterior():
-        # gpytorch's ExactMarginalLogLikelihood returns (log p(y|theta) +
-        # sum of registered prior log-probs) divided by num_data, i.e. a
-        # PER-DATUM average of the log joint. Using it directly tempers the MH
-        # target to posterior^(1/n) — a badly over-flattened posterior.
-        # Multiply back by n to recover the true (summed) log joint, which is
-        # the correct un-normalized log posterior to sample.
-        with gpytorch.settings.cholesky_jitter(DEFAULT_JITTER):
-            try:
-                return (mll(model(train_x), train_y) * train_y.numel()).item()
-            except RuntimeError:
-                return -float("inf")
+        try:
+            return _mh_log_joint(mll, model, likelihood, train_x, train_y)
+        except RuntimeError:
+            return -float("inf")
 
     current = get_params()
     current_lp = log_posterior()
@@ -133,7 +129,46 @@ def fit_mcmc_simple(model, likelihood, train_x, train_y,
     if verbose:
         print(f"  Final acceptance rate: {n_accepted/total:.3f}")
 
+    model.eval()
+    likelihood.eval()
+
     return {k: np.array(v) for k, v in samples.items()}
+
+
+def _mh_log_joint(mll, model, likelihood, train_x, train_y):
+    """Un-normalized summed log joint log p(y|θ) + log p(θ): the MH target.
+
+    Forces train mode on every call: in eval mode model(train_x) returns the
+    posterior predictive conditioned on train_y, so scoring train_y against it
+    uses the data twice and biases the target toward small-noise/overfit
+    hyperparameters (it can also reuse a stale prediction cache after in-place
+    parameter writes). gpytorch's ExactMarginalLogLikelihood averages the log
+    joint per datum; multiplying by n recovers the summed log joint, the
+    correct un-normalized log posterior to sample.
+    """
+    model.train()
+    likelihood.train()
+    with gpytorch.settings.cholesky_jitter(DEFAULT_JITTER):
+        return (mll(model(train_x), train_y) * train_y.numel()).item()
+
+
+def _hmc_pyro_model(model, likelihood, x, y):
+    """Pyro target for fit_hmc: sample every registered prior once, score y.
+
+    ExactGP registers the likelihood as a submodule, so the single
+    pyro_sample_from_prior() call emits each hyperparameter latent exactly
+    once — the kernel sites "covar_module.kernels.{i}.*_prior" plus the noise
+    site "likelihood.noise_covar.noise_prior". Calling
+    likelihood.pyro_sample_from_prior() as well would create a second,
+    disconnected noise latent whose returned "samples" are pure prior draws.
+    """
+    import pyro
+
+    model.pyro_sample_from_prior()
+    output = model(x)
+    with pyro.plate("data", y.shape[0]):
+        pyro.sample("obs", likelihood(output), obs=y)
+
 
 def fit_hmc(model, likelihood, train_x, train_y,
             n_samples=500, n_warmup=200, verbose=True, seed=None):
@@ -159,16 +194,8 @@ def fit_hmc(model, likelihood, train_x, train_y,
     # Clear any previous pyro state
     pyro.clear_param_store()
 
-    # Pyro model: sample hyperparameters from priors, compute likelihood
-    def pyro_model(model, likelihood, x, y):
-        model.pyro_sample_from_prior()
-        likelihood.pyro_sample_from_prior()
-        output = model(x)
-        with pyro.plate("data", y.shape[0]):
-            pyro.sample("obs", likelihood(output), obs=y)
-
     nuts = NUTS(
-        partial(pyro_model, model, likelihood),
+        partial(_hmc_pyro_model, model, likelihood),
         jit_compile=False,
         step_size=0.1,
         adapt_step_size=True,

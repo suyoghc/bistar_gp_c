@@ -242,7 +242,7 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
     Returns:
         List[GPPosteriorSample]
     """
-    from .model import build_model
+    from .model import build_model, select_hmc_sites, apply_hp_value
     from .decompose import compute_cholesky
     import gpytorch
     from gpytorch.constraints import Positive
@@ -265,8 +265,7 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
     total_mcmc = len(mcmc_samples[first_key])
     indices = np.random.choice(total_mcmc, min(n_posterior_samples, total_mcmc), replace=False)
 
-    relevant_keys = [k for k in mcmc_samples.keys()
-                     if k.startswith("kernel_components") or k.startswith("noise_covar")]
+    relevant_keys = select_hmc_sites(mcmc_samples.keys())
 
     results = []
 
@@ -280,24 +279,8 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
         for pyro_name in relevant_keys:
             val = float(mcmc_samples[pyro_name][idx])
             hp_dict[pyro_name] = val
-
             try:
-                if "noise_covar.noise" in pyro_name:
-                    fresh_likelihood.noise = val
-                    continue
-
-                parts = pyro_name.split(".")
-                comp_idx = int(parts[1])
-                kernel = fresh_model.kernel_components[comp_idx]
-
-                if "base_kernel.lengthscale" in pyro_name:
-                    kernel.base_kernel.lengthscale = val
-                elif "base_kernel.period_length" in pyro_name:
-                    kernel.base_kernel.period_length = val
-                elif "outputscale" in pyro_name:
-                    kernel.outputscale = val
-                elif "variance" in pyro_name:
-                    kernel.variance = val
+                apply_hp_value(fresh_model, fresh_likelihood, pyro_name, val)
             except (IndexError, AttributeError, RuntimeError):
                 continue
 
