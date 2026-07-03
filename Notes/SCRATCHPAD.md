@@ -51,8 +51,14 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 - **Viz-script unification** — port `model_priors_laplace.py` / `model_prior_trajectory_laplace.py`
   onto `laplace_log_Z_Mx`. Blocked on the single-`G` decision: they use a variance-weighted MSE,
   not a package METRIC. This is the paper's metric-choice question; do NOT force it silently.
-- **Figure regeneration + old-vs-new impact assessment** — needs a torch runtime (the project
-  `.venv` lacks torch; tests run on system `python3`). This is the paper-facing session.
+- **Old-vs-new impact assessment: toy sections DONE on Della** (job 10608943, 2026-07-03) —
+  `docs/impact-assessment-results.md`. Quantifies the D2 fixes: latent sites 7→4, decompose
+  full_std order-of-magnitude correction, mcmc_simple ~8x tighter, soft_transfer shifts.
+  **`--mauna` section BLOCKED**: real-data NUTS is intractable post-D6 (job 10584302 timed out
+  14/400 warmup iters, step size → 3e-7). Track-2 sampler diagnostics in progress (MAP init /
+  tree-depth cap / funnel check); note a noise-prior change would be a MODELING decision.
+- **Figure regeneration** — needs a torch runtime (the project `.venv` lacks torch; tests run
+  on system `python3`). This is the paper-facing session.
 - **kb/Wiki/GP-Induced Model Priors.md** — update to Construction II canonical (gitignored, local).
 - **Occam default** — currently `occam=False` (faithful BI*); with-Occam intended as sensitivity.
 - Minor: remove the 13 `sys.path` hacks now that `pyproject.toml` exists (`pip install -e .`);
