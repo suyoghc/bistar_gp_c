@@ -175,17 +175,30 @@ def _hmc_pyro_model(model, x, y):
 
 
 def fit_hmc(model, likelihood, train_x, train_y,
-            n_samples=500, n_warmup=200, verbose=True, seed=None):
+            n_samples=500, n_warmup=200, verbose=True, seed=None,
+            init_to_map=True, max_tree_depth=10):
     """
     Hamiltonian Monte Carlo via Pyro's NUTS sampler.
-    
+
     This is the production-grade sampler — uses gradients to explore
     the posterior efficiently, unlike random-walk MH.
-    
+
+    init_to_map: start each latent at the model's CURRENT constrained hyperparameter
+        value instead of a random prior draw. Pass a MAP-fitted model (run fit_map
+        first) so the chain begins in the typical set. The GP hyperparameter posterior
+        has a funnel (as the noise variance → 0 the marginal likelihood becomes a stiff
+        ridge); a random prior init can land in it, collapsing the NUTS step size toward
+        ~1e-7 and saturating the tree depth (each iteration then costs ~2^max_tree_depth
+        Cholesky solves). Sites are matched by named_priors() name, which equals the pyro
+        sample-site name (verified). init_to_map=False falls back to init_to_sample.
+    max_tree_depth: NUTS leapfrog-tree-depth cap (default 10 = pyro default, up to 1023
+        steps). Lower it (6–8) for stiff posteriors to bound per-iteration cost.
+
     Returns dict of parameter name -> numpy array of posterior samples.
     """
     import pyro
     from pyro.infer.mcmc import NUTS, MCMC
+    from pyro.infer.autoguide.initialization import init_to_value, init_to_sample
     from functools import partial
 
     if seed is not None:
@@ -198,12 +211,46 @@ def fit_hmc(model, likelihood, train_x, train_y,
     # Clear any previous pyro state
     pyro.clear_param_store()
 
+    if init_to_map:
+        # named_priors() yields (name, module, prior, closure, setting_closure);
+        # closure(module) is the current constrained hyperparameter value, and `name`
+        # is exactly the pyro sample-site name emitted by pyro_sample_from_prior.
+        from torch.distributions import biject_to
+
+        init_values, invalid_site = {}, None
+        for entry in model.named_priors():
+            name, prior, value = entry[0], entry[2], entry[3](entry[1]).detach()
+            # NUTS initializes in unconstrained space via biject_to(support).inv.
+            # A boundary value — e.g. a constrained hyperparameter that underflowed
+            # to exactly 0 — can be INSIDE a closed support like GreaterThanEq(0)
+            # yet still map to -inf, and pyro retries the same fixed value until
+            # "cannot find valid initial params". So the predicate is finiteness of
+            # the unconstrained image, not support membership; nudge into the
+            # interior when it fails.
+            if not torch.isfinite(biject_to(prior.support).inv(value)).all():
+                value = value.clamp(min=1e-8)
+            if not torch.isfinite(biject_to(prior.support).inv(value)).all():
+                invalid_site = name
+                break
+            init_values[name] = value
+        if invalid_site is None:
+            init_strategy = init_to_value(values=init_values)
+        else:
+            logger.warning(
+                "init_to_map: %s is outside its prior support even after clamping; "
+                "falling back to init_to_sample", invalid_site)
+            init_strategy = init_to_sample
+    else:
+        init_strategy = init_to_sample
+
     nuts = NUTS(
         partial(_hmc_pyro_model, model),
         jit_compile=False,
         step_size=0.1,
         adapt_step_size=True,
         target_accept_prob=0.8,
+        max_tree_depth=max_tree_depth,
+        init_strategy=init_strategy,
     )
 
     mcmc_run = MCMC(

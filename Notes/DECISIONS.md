@@ -250,3 +250,42 @@ analytic covariance + zero mean + data-independence, posterior-predictive data-d
 posterior≤prior variance invariant). Adversarially reviewed (independent agent, ran its own checks:
 constrained-space match vs a real HMC run, NaN-train leakage test, exact-covariance sensitivity) —
 verdict SHIP, no defects.
+
+---
+
+## D8: taming the Mauna Loa NUTS funnel (init_to_map + max_tree_depth) — 2026-07-03
+
+**Problem:** Post-D6, fit_hmc targets the real posterior, and the Mauna Loa run became
+intractable: Della job 10584302 timed out at 14/400 warmup iterations, step size collapsing
+7.2e-01 → 3.3e-07 with tree depth saturating (~72 min/iteration). Diagnosis: the noise
+posterior genuinely concentrates near zero (monthly-averaged CO2 is nearly noiseless;
+posterior noise ≈ 7e-4 ± 1e-4 normalized), so the stiff region IS the typical set — the
+sampler cannot avoid it, and uncapped depth-10 NUTS trees (up to 1023 leapfrog steps, each a
+Cholesky + backward) explode per-iteration cost. Head-to-head at SUB=30 (28 iterations):
+tree-cap=7 + MAP-init 29.2s (1.04 s/it) vs MAP-init alone 230.7s vs old behavior 138.2s —
+the CAP is the operative fix (MAP-init alone starts in the stiff region and is slower);
+all three configs agree on the posterior (noise 0.0006–0.0007 ± 0.0001), consistent with
+max_tree_depth being bias-free (it shortens trajectories, not the stationary distribution).
+
+**Decision:** `fit_hmc` gains `init_to_map=True` (init each latent at the model's current
+constrained value via pyro `init_to_value`; named_priors name == sample-site name, proven by
+a transforms round-trip test) and `max_tree_depth=10` (pyro default, now exposed).
+`impact_assessment.mauna()` passes `max_tree_depth=7` via `inspect.signature` dispatch (NOT
+try/except TypeError, which would swallow an internal TypeError and silently rerun uncapped);
+the old worktree arm keeps its signature — and is fast anyway since pre-D6 it samples the
+prior. `experiments/bms_star_mauna_loa.py` and `experiments/mauna_loa.py` now MAP-fit the
+model actually passed to fit_hmc (they used to fit one model and pass a fresh default one)
+and set `max_tree_depth=7`.
+
+**codex review (FIX-FIRST → fixed):** (1) CONFIRMED: a constrained value that underflows to
+exactly 0 sits INSIDE the closed support GreaterThanEq(0) yet maps to -inf under
+biject_to(support).inv, so pyro retries the same fixed init until "cannot find valid initial
+params" — reproduced, then fixed by checking finiteness of the unconstrained image (support
+membership is the WRONG predicate), clamping into the interior, and falling back to
+init_to_sample with a warning if still invalid. (2) The two stale experiment call sites above.
+
+**Result:** 75 tests pass (3 new: kwargs smoke, init_to_value transforms round-trip,
+boundary-underflow survival). Projection for Della: ~0.1 s/leapfrog at SUB=150 × ≤127 steps
+≈ ≤13 s/it → 400 iterations ≈ 90 min (was: >8 h timeout). Note for the paper: any change to
+the NOISE PRIOR itself (e.g. bounding it away from zero) is a modeling decision, deliberately
+not taken here — these are pure sampler-efficiency knobs.

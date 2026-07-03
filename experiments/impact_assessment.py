@@ -180,7 +180,18 @@ def mauna(seed=0, sub=120, n_hmc=100, n_warmup=100):
         pyro.set_rng_seed(seed); torch.manual_seed(seed); np.random.seed(seed)
         m2, l2 = build_model(x_train, y_train, *build_mauna_loa_kernels())
         fit_map(m2, l2, x_train, y_train, n_iter=300, lr=0.02, verbose=False)
-        mcmc = fit_hmc(m2, l2, x_train, y_train, n_samples=n_hmc, n_warmup=n_warmup)
+        # New tree: cap the NUTS tree depth (the noise posterior concentrates near
+        # zero, so the geometry is stiff; uncapped depth-10 trees made SUB=150
+        # intractable). Old tree's fit_hmc predates the kwarg, so dispatch on the
+        # signature (NOT try/except TypeError, which would swallow a real TypeError
+        # from inside fit_hmc and silently rerun uncapped). The old arm is fast
+        # regardless: pre-D6 it samples the prior, not the posterior.
+        import inspect
+        hmc_kw = {}
+        if "max_tree_depth" in inspect.signature(fit_hmc).parameters:
+            hmc_kw["max_tree_depth"] = 7
+        mcmc = fit_hmc(m2, l2, x_train, y_train, n_samples=n_hmc,
+                       n_warmup=n_warmup, **hmc_kw)
         out["mauna_hmc_nsamples"] = int(len(next(iter(mcmc.values()))))
         out["mauna_hmc_hyper_mean"] = {k: round(float(np.mean(v)), 5) for k, v in mcmc.items()}
         out["mauna_hmc_hyper_std"] = {k: round(float(np.std(v)), 5) for k, v in mcmc.items()}

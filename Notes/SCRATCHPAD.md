@@ -54,9 +54,13 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 - **Old-vs-new impact assessment: toy sections DONE on Della** (job 10608943, 2026-07-03) —
   `docs/impact-assessment-results.md`. Quantifies the D2 fixes: latent sites 7→4, decompose
   full_std order-of-magnitude correction, mcmc_simple ~8x tighter, soft_transfer shifts.
-  **`--mauna` section BLOCKED**: real-data NUTS is intractable post-D6 (job 10584302 timed out
-  14/400 warmup iters, step size → 3e-7). Track-2 sampler diagnostics in progress (MAP init /
-  tree-depth cap / funnel check); note a noise-prior change would be a MODELING decision.
+  **`--mauna` section UNBLOCKED (D8)**: fit_hmc gained init_to_map + max_tree_depth; the
+  tree cap (7) is the operative fix — head-to-head 1.04 s/it vs 4.9–8.2 s/it, identical
+  posteriors. impact_assessment passes it via signature dispatch; both Mauna experiment
+  scripts fixed (were MAP-fitting one model, HMC-ing a fresh default one). codex review
+  FIX-FIRST findings verified + fixed (boundary-underflow init guard). **75 tests pass.**
+  Ready to resubmit on Della with --mauna, ~90 min projected; noise-prior change remains a
+  deliberately-untaken MODELING decision.
 - **Figure regeneration** — needs a torch runtime (the project `.venv` lacks torch; tests run
   on system `python3`). This is the paper-facing session.
 - **kb/Wiki/GP-Induced Model Priors.md** — update to Construction II canonical (gitignored, local).

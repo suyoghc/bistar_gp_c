@@ -323,9 +323,14 @@ def main():
     likelihood2 = build_likelihood()
     model2, likelihood2 = build_model(x_train, y_train, kernels2, names2, likelihood2)
 
+    # MAP-fit THIS model so fit_hmc's init_to_map starts in the typical set, and
+    # cap the NUTS tree depth: the Mauna noise posterior concentrates near zero,
+    # so uncapped depth-10 trees are intractable (see DECISIONS D8).
+    fit_map(model2, likelihood2, x_train, y_train, n_iter=300, lr=0.02, verbose=False)
     mcmc_samples = fit_hmc(
         model2, likelihood2, x_train, y_train,
         n_samples=args.n_hmc, n_warmup=args.n_warmup,
+        max_tree_depth=7,
     )
 
     # Save HMC samples for reuse

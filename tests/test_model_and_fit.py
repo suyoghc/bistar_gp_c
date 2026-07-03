@@ -113,6 +113,79 @@ def test_hmc_target_connects_latents_to_likelihood(toy_model):
     assert abs(lp_lo - lp_hi) > 1.0, (lp_lo, lp_hi)   # obs must move with the latents
 
 
+def test_fit_hmc_map_init_and_tree_cap_smoke(toy_model):
+    """fit_hmc's stiff-posterior knobs (init_to_map, max_tree_depth) must run and
+    return one finite array per hyperparameter site."""
+    import numpy as np
+    from bistar_gp.fit import fit_hmc
+
+    model, lik, x, y = toy_model
+    x, y = x[:12], y[:12]
+    kers, names = build_toy_kernels()
+    m, l = build_model(x, y, kers, names)
+    s = fit_hmc(m, l, x, y, n_samples=2, n_warmup=2, verbose=False, seed=0,
+                init_to_map=True, max_tree_depth=4)
+    assert len(s) == 4, sorted(s)
+    assert all(np.isfinite(v).all() for v in s.values())
+
+
+def test_hmc_map_init_lands_at_model_values(toy_model):
+    """The init_to_value strategy must initialize each latent at the model's CURRENT
+    constrained hyperparameter value (what init_to_map=True promises for a
+    MAP-fitted model) — not at a prior draw or a default.
+
+    Verified through pyro's own initialize_model: the unconstrained initial params,
+    mapped back through the returned transforms, must equal the values that
+    fit_hmc's init dict is built from. Guards both the name matching (named_priors
+    name == pyro site name on the deep-copied sampled module) and the
+    constrained-vs-unconstrained space handling.
+    """
+    pyro = pytest.importorskip("pyro")
+    from functools import partial
+    from pyro.infer.autoguide.initialization import init_to_value
+    from pyro.infer.mcmc.util import initialize_model
+    from bistar_gp.fit import _hmc_pyro_model
+
+    model, lik, x, y = toy_model
+    # distinctive, non-default values (as if MAP-fitted)
+    model.kernel_components[0].base_kernel.lengthscale = 2.5
+    model.kernel_components[0].outputscale = 1.7
+    model.kernel_components[1].variance = 0.6
+    lik.noise = 0.31
+    model.train(); lik.train()
+
+    init_values = {entry[0]: entry[3](entry[1]).detach()
+                   for entry in model.named_priors()}
+    init_params, _, transforms, _ = initialize_model(
+        partial(_hmc_pyro_model, model), model_args=(x, y),
+        init_strategy=init_to_value(values=init_values))
+    for site, unconstrained in init_params.items():
+        constrained = transforms[site].inv(unconstrained)
+        expected = init_values[site]
+        assert torch.allclose(constrained.reshape(-1), expected.reshape(-1),
+                              rtol=1e-6), (site, constrained, expected)
+
+
+def test_hmc_map_init_survives_boundary_values(toy_model):
+    """A constrained hyperparameter that underflowed to exactly 0 (boundary of a
+    positive support) must not abort NUTS initialization. init_to_value maps the
+    boundary to -inf in unconstrained space, and pyro retries the SAME fixed value
+    until 'cannot find valid initial params' — fit_hmc clamps such values into the
+    support interior instead (codex review finding, verified)."""
+    import numpy as np
+    from bistar_gp.fit import fit_hmc
+
+    model, lik, x, y = toy_model
+    x, y = x[:10], y[:10]
+    kers, names = build_toy_kernels()
+    m, l = build_model(x, y, kers, names)
+    l.noise_covar.raw_noise.data.fill_(-1000.0)   # softplus(-1000) underflows to 0.0
+    assert float(l.noise) == 0.0
+    s = fit_hmc(m, l, x, y, n_samples=1, n_warmup=1, verbose=False, seed=0,
+                init_to_map=True, max_tree_depth=4)
+    assert all(np.isfinite(v).all() for v in s.values())
+
+
 def test_mh_target_is_train_mode_log_joint(toy_model):
     """fit_mcmc_simple's target must be the marginal-likelihood log joint.
 
