@@ -289,3 +289,23 @@ boundary-underflow survival). Projection for Della: ~0.1 s/leapfrog at SUB=150 �
 ≈ ≤13 s/it → 400 iterations ≈ 90 min (was: >8 h timeout). Note for the paper: any change to
 the NOISE PRIOR itself (e.g. bounding it away from zero) is a modeling decision, deliberately
 not taken here — these are pure sampler-efficiency knobs.
+
+**Status (updated 2026-07-03, mixing validation — IMPORTANT QUALIFIER):** Two independent
+2-chain validations (sub=60; capped depth-6, warmup 100; and capped depth-8 + DENSE adapted
+mass, warmup 200) show the capped sampler is fast and divergence-free but does NOT mix within
+hundreds of iterations: ESS ≈ 1 and split-R̂ 4–81 on every kernel hyperparameter (chains rest
+at trend lengthscale 8 vs 32 with a 418-nat log-joint gap between their mean points — a stuck
+chain, not a benign flat ridge or genuine multimodality). The one healthy direction is the
+NOISE (R̂ 1.06, ESS 12), which is what this entry's "configs agree" check measured — so the
+depth cap is bias-free in principle but the practical chains are far from stationarity in the
+lengthscale/outputscale directions. Dense mass adaptation does not rescue it (5× cost, same
+ESS=1): the curvature is position-dependent, so no constant mass matrix conditions it.
+**Implication:** a capped Della `--mauna` run is valid for the D6 old-vs-new IMPACT story
+(old arm = prior draws, new arm = data-informed draws near the MAP — a large, honest,
+qualitative shift) but its kernel-hyperparameter "posteriors" must carry a non-convergence
+caveat and are not paper-grade. Paper-grade full-Bayes on Mauna Loa needs one of: (a)
+Laplace-preconditioned NUTS (FIXED inverse mass from the MAP Hessian, adaptation off — the
+one cheap sampler idea not yet tried; adapted-mass failure does not rule it out), (b)
+reparameterization (significant work), or (c) rescoping full-Bayes mauna out of the paper's
+figures (MAP + Laplace machinery, the paper's primary path, is unaffected). (OPEN — fork
+belongs to the user.) Diagnostics: scratchpad nuts_diag_out/{validate,round2_dense}.json.
