@@ -59,8 +59,14 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   posteriors. impact_assessment passes it via signature dispatch; both Mauna experiment
   scripts fixed (were MAP-fitting one model, HMC-ing a fresh default one). codex review
   FIX-FIRST findings verified + fixed (boundary-underflow init guard). **75 tests pass.**
-  Ready to resubmit on Della with --mauna, ~90 min projected; noise-prior change remains a
-  deliberately-untaken MODELING decision.
+  **`--mauna` real-data results DONE (local, 2026-07-04)** — docs/impact-assessment-results.md
+  real-data section. Headline: BMS* model selection REVERSES on Mauna Loa CO2 (old picks
+  Linear 0.99; new picks Quad+2Harm 0.42) — the D4+D6 fixes change the scientific conclusion.
+  Mechanism: old HMC = prior (noise 1.58±1.09 ≈ GammaPrior), new = posterior (noise ≈0.001);
+  latent sites 13→7; decompose 0.92→0.03. NEW chain NOT converged (ESS≈1, Rhat 4–81) so exact
+  probs soft but DIRECTION robust (mechanistically forced by near-zero noise). Ran locally
+  (Della abandoned: della-h16 ~5× slower/op + thread-thrash + jitter-retry ballooning). Noise-
+  prior change remains a deliberately-untaken MODELING decision; converged full-Bayes = open fork.
 - **Figure regeneration** — needs a torch runtime (the project `.venv` lacks torch; tests run
   on system `python3`). This is the paper-facing session.
 - **kb/Wiki/GP-Induced Model Priors.md** — update to Construction II canonical (gitignored, local).

@@ -80,3 +80,61 @@ tempering). It does **not** capture the later branch fixes:
 
 To capture the D6 impact on real data, the `--mauna` section must run once the NUTS
 sampler is made tractable (MAP init, `max_tree_depth` cap, smaller subsample).
+
+## Real-data section (`--mauna`, D6/D8) — 2026-07-04
+
+Run locally (Mac, single-threaded) after the D8 sampler work made the Mauna path
+tractable — old `9016a55` vs new `865182a`, `SUB=60, NHMC=100, NWARM=100`. Della was
+abandoned for this section: the della-h16 node runs this tiny sequential single-thread
+NUTS ~5× slower per op and its 8-thread thrash + jitter-retry Choleskys in the
+ill-conditioned funnel neck ballooned per-iteration cost to ~35 min (two 4–8h
+timeouts); the Mac completes it in minutes. Raw: `new_local.json`, `old_local.json`.
+
+### Headline: model selection reverses (`mauna_bms_star_posteriors`)
+pw_kl_forward @ τ=1, model posteriors:
+
+| Candidate  | OLD (buggy) | NEW (fixed) |
+|------------|-------------|-------------|
+| Linear     | **0.990**   | 0.114       |
+| Quadratic  | 0.010       | 0.136       |
+| Quad+Sin   | 0.000       | 0.328       |
+| Quad+2Harm | 0.000       | **0.422**   |
+
+The old pipeline selects **Linear** (99%); the fixed pipeline selects
+**Quadratic+2-Harmonic** — the structurally correct model for CO₂ (quadratic trend +
+annual/semi-annual seasonality). `pw_nll` agrees (Linear 0.21→0.10, Quad+2Harm
+0.27→0.47). A qualitative reversal of the scientific conclusion.
+
+### Mechanism: old HMC sampled the prior, new samples the posterior (D6)
+`mauna_hmc_hyper_mean / _std`:
+
+| hyperparameter    | OLD mean | NEW mean | OLD std | NEW std |
+|-------------------|----------|----------|---------|---------|
+| noise             | 1.576    | 0.001    | 1.088   | 0.0001  |
+| trend lengthscale | 82.8     | 20.1     | 87.6    | 1.54    |
+| trend outputscale | 7.66     | 1.38     | 3.84    | 0.08    |
+
+Old noise mean 1.576 ≈ GammaPrior(1.75, 1) mean and std 1.088 ≈ the prior width — the
+old "posterior" IS the prior. New noise collapses to ≈0.001 (monthly CO₂ is nearly
+noiseless); hyperparameter stds tighten 1–2 orders of magnitude. A near-noiseless GP
+posterior sharply discriminates candidates, so the structured models win; the diffuse
+prior-noise GP defaulted to the simplest fit.
+
+### Corroborating rows
+- `mauna_hmc_latent_sites`: **13 → 7** (double prior-registration fix on the 3-component
+  Mauna kernel).
+- `mauna_decompose_full_std`: **~0.92 → ~0.03** (cross-covariance fix on real data,
+  matching the toy result).
+
+Summary line: **91 changed, 8 unchanged**.
+
+### Convergence caveat
+The NEW chain is NOT converged (2-chain validation, `865182a`: ESS≈1, split-Rhat 4–81
+on kernel hyperparameters; noise mixes at Rhat 1.06). So the *exact* new probabilities
+are soft and the tiny stds partly reflect a stuck chain under-dispersing, not an
+infinitesimal posterior. The *direction* is robust because it is mechanistically forced
+— the GP can nearly interpolate monthly CO₂, so the noise genuinely sits near zero, and
+that prior-noise → near-zero-noise shift is what flips the ranking. Paper claim is
+therefore **qualitative** ("the fixes change which model BMS* selects on Mauna Loa");
+precise posterior probabilities await a converged sampler (Laplace-preconditioned NUTS
+/ reparameterization / rescoping — open fork in D8).
