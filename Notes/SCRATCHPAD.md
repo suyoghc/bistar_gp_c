@@ -38,6 +38,13 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   `extract_gp_predictives(condition_on_data=)`: one pipeline for both prior and posterior predictive
   checks. **72 tests pass** (6 new). Adversarially reviewed → SHIP, no defects.
 
+- **Inference + G options, thesis-anchored (D9/D10)** — `fit_gp(method=hmc|vi|map|hmc_laplace)`,
+  one shared samples schema, defaults per thesis Ch.5 (full-Bayes sampling; VI was its primary
+  implementation, HMC the cross-check, MAP the contrast). D10: the "single-G decision" DISSOLVED —
+  viz variance-weighted MSE ≡ `pw_kl_vcal` (verified to 1e-12), so the default already matches both
+  thesis (KL variant) and viz figures; **viz unification UNBLOCKED**. Writeup-ready justifications in
+  `docs/inference-and-metric-options.md`. **84 tests pass** (9 new).
+
 ## Still open (held deliberately)
 
 - **Remaining review findings** — ~20 severity-2 cleanups (duplication in laplace_evidence
@@ -48,9 +55,9 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   D2 single-registration fix (biased target); regenerate before paper numbers. Della impact
   assessment must rerun on fixed code.
 
-- **Viz-script unification** — port `model_priors_laplace.py` / `model_prior_trajectory_laplace.py`
-  onto `laplace_log_Z_Mx`. Blocked on the single-`G` decision: they use a variance-weighted MSE,
-  not a package METRIC. This is the paper's metric-choice question; do NOT force it silently.
+- **Viz-script unification (UNBLOCKED by D10)** — port `model_priors_laplace.py` /
+  `model_prior_trajectory_laplace.py` onto `laplace_log_Z_Mx` with `metric_name="pw_kl_vcal"`
+  (proven identical to their G) and posterior draws (better estimator than their prior-IS).
 - **Old-vs-new impact assessment: toy sections DONE on Della** (job 10608943, 2026-07-03) —
   `docs/impact-assessment-results.md`. Quantifies the D2 fixes: latent sites 7→4, decompose
   full_std order-of-magnitude correction, mcmc_simple ~8x tighter, soft_transfer shifts.

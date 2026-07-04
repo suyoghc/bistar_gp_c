@@ -309,3 +309,63 @@ one cheap sampler idea not yet tried; adapted-mass failure does not rule it out)
 reparameterization (significant work), or (c) rescoping full-Bayes mauna out of the paper's
 figures (MAP + Laplace machinery, the paper's primary path, is unaffected). (OPEN — fork
 belongs to the user.) Diagnostics: scratchpad nuts_diag_out/{validate,round2_dense}.json.
+
+---
+
+## D9: GP inference as selectable options, thesis-anchored default (fit_gp) — 2026-07-04
+
+**Problem:** The user wants every methodological choice explicit and selectable, with defaults
+matching the thesis chapter (Chandramouli 2020 Ch. 5). For GP hyperparameter inference the chapter
+prescribes full-Bayes sampling of the joint posterior (p. 172–173) — Appendix II (p. 221): VI
+(gpflow) was the PRIMARY implementation, HMC (GPy) the cross-check, "similar" results, 10k samples /
+1k burn-in — with MAP/MMLE as the explicitly-contrasted simpler alternative (Fig. 6 vs 7a). The repo
+only exposed fit_hmc (+ fit_map separately, different output shape).
+
+**Decision:** `fit.py::fit_gp(model, lik, x, y, method=...)` — every method returns the SAME dict
+schema as fit_hmc (site name → (n,) constrained array), so options flow through
+extract_gp_predictives/BMS*/decompose unchanged and are directly comparable:
+- `"hmc"` (DEFAULT): existing NUTS path with D8 knobs. Thesis-equivalent (validated cross-check);
+  chosen over literal-primary VI because it is the path this codebase has verified end-to-end
+  (D6 connection test, D8).
+- `"vi"` (fit_vi): ADVI-style pyro SVI, AutoMultivariateNormal guide in unconstrained space,
+  MAP-initialized via the shared init_to_value machinery. The thesis's literal primary method;
+  funnel-immune (pragmatic recommendation for Mauna until the D8 mixing fork closes).
+- `"map"` (fit_map_samples): MAP/MMLE as length-1 arrays — the thesis's contrast case, now
+  pipeline-compatible (degenerate posterior).
+- `"hmc_laplace"` (fit_hmc_laplace): NUTS on the Laplace-whitened posterior z = A⁻¹(u−u_MAP),
+  A = chol(H⁻¹), H = MAP Hessian of the potential in unconstrained space via initialize_model +
+  autograd; eigenvalue floor 1e-6; falls back to identity whitening with a warning. NOTE: a linear
+  reparameterization ≡ mass-matrix preconditioning, so this single option delivers both the
+  "Laplace-preconditioned NUTS" and "reparameterized HMC" items; a NONLINEAR reparameterization
+  (e.g. signal-to-noise) remains the open D8 fork.
+
+**Result:** 84 tests pass (9 new: per-method schema/finite/positive, MAP point-estimate equality,
+VI concentrates vs prior (noise sd ≪ prior sd), pipeline flow-through for map/vi, unknown-method
+error, plus the D10 identity below). Justification writeup for the paper:
+`docs/inference-and-metric-options.md`.
+
+---
+
+## D10: the "single-G decision" dissolved — viz metric ≡ pw_kl_vcal — 2026-07-04
+
+**Problem:** The viz-script unification (D3 open item) was blocked on choosing a single canonical G:
+the viz scripts use a "pointwise variance-weighted MSE" while the package default METRIC is
+pw_kl_vcal — believed to be different quantities requiring a paper-level decision.
+
+**Decision/Finding:** They are the SAME function. viz `compute_G` = mean((μ_GP−μ_θ)²/(2σ²_GP));
+`pw_kl_vcal` = mean(0.5(μ_θ−μ_ψ)²/σ²_ψ) = KL(N(μ_ψ,σ²_ψ)‖N(μ_θ,σ²_ψ)) — identical formulas
+(viz adds only a 1e-6 variance floor). Verified numerically to 1e-12
+(tests/test_fit_gp_options.py::test_viz_variance_weighted_mse_is_pw_kl_vcal). Consequences:
+(1) the package default is simultaneously a KL variant — the thesis's named family (Ch.5 p.174–175:
+metric "chosen by the investigator… one or another variant of KL divergence") — AND numerically
+identical to what the viz-reference figures used; the default needs NO change and satisfies both
+anchors at once. (2) The metric option family already exists (METRICS + metrics_v2 with
+justification-grade docstrings: variance-calibrated / mean-only / GP-anchored); documented per-option
+in docs/inference-and-metric-options.md. (3) The residual viz/package difference is upstream and
+estimator-level only: viz importance-weights PRIOR hyperparameter draws by marginal likelihood, the
+package uses genuine posterior draws with uniform weights — same mixture-of-Gaussians target, same
+mixture-moment formulas (compute_averaged_gp vs aggregation_v3.average_gp_posterior), better
+estimator in the package. Viz unification is therefore UNBLOCKED: port the scripts onto
+laplace_log_Z_Mx with metric_name="pw_kl_vcal" and posterior draws.
+**Thesis nuance recorded for the paper:** the chapter's aggregation is hard best-match assignment
+(p. 174); the package's soft-τ Boltzmann transfer is the practical relaxation (τ→0 recovers it).

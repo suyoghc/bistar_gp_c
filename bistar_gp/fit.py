@@ -276,6 +276,205 @@ def fit_hmc(model, likelihood, train_x, train_y,
     return samples
 
 
+def _map_init_values(model):
+    """{sample-site name: current constrained hyperparameter value} for a model.
+
+    named_priors() yields (name, module, prior, closure, setting_closure); the
+    name equals the pyro sample-site name and closure(module) the constrained
+    value (see fit_hmc's init_to_map, which shares this mapping).
+    """
+    return {entry[0]: entry[3](entry[1]).detach()
+            for entry in model.named_priors()}
+
+
+def fit_vi(model, likelihood, train_x, train_y,
+           n_samples=500, n_steps=2000, lr=0.01, verbose=True, seed=None):
+    """Variational inference over the GP hyperparameter posterior (pyro SVI,
+    multivariate-normal guide), returning the fit_hmc dict schema.
+
+    The thesis chapter's PRIMARY implementation was VI (Appendix II: results
+    "were based on variational inference", gpflow/ADVI, cross-checked against
+    HMC with "similar" results). The guide is a full-covariance Gaussian in
+    unconstrained space (ADVI-style), initialized at the model's current
+    (MAP-fitted) hyperparameters. VI is immune to the stiff-funnel NUTS
+    pathology (D8) at the price of a Gaussian approximation to the posterior.
+    """
+    import pyro
+    from pyro.infer import SVI, Trace_ELBO
+    from pyro.infer.autoguide import AutoMultivariateNormal
+    from pyro.infer.autoguide.initialization import init_to_value
+    from pyro.optim import Adam
+
+    if seed is not None:
+        pyro.set_rng_seed(seed)
+
+    train_x, train_y = train_x.double(), train_y.double()
+    model.train()
+    likelihood.train()
+    pyro.clear_param_store()
+
+    model_fn = partial(_hmc_pyro_model, model)
+    guide = AutoMultivariateNormal(
+        model_fn, init_loc_fn=init_to_value(values=_map_init_values(model)))
+    svi = SVI(model_fn, guide, Adam({"lr": lr}), Trace_ELBO())
+
+    with gpytorch.settings.cholesky_jitter(DEFAULT_JITTER):
+        for step in range(n_steps):
+            loss = svi.step(train_x, train_y)
+            if verbose and (step + 1) % max(1, n_steps // 5) == 0:
+                print(f"  SVI {step + 1}/{n_steps} — ELBO loss: {loss:.2f}")
+
+    collected = {}
+    with torch.no_grad():
+        for _ in range(n_samples):
+            draw = guide(train_x, train_y)   # {site: constrained value}
+            for name, value in draw.items():
+                collected.setdefault(name, []).append(float(value.detach()))
+
+    model.eval()
+    likelihood.eval()
+    return {k: np.array(v) for k, v in collected.items()}
+
+
+def fit_map_samples(model, likelihood, train_x, train_y,
+                    n_iter=500, lr=0.05, verbose=False):
+    """MAP/MMLE point estimate in the fit_hmc dict schema (length-1 arrays).
+
+    The thesis chapter's explicitly-contrasted simpler alternative (Fig. 6
+    "best fitting" vs Fig. 7a full Bayes): a single GP instance at the
+    maximum-marginal-likelihood hyperparameters. Returning the shared schema
+    lets the degenerate "posterior" flow through extract_gp_predictives /
+    BMS* / decomposition unchanged — the predictive is then the familiar
+    single-GP posterior predictive, with no hyperparameter uncertainty.
+    """
+    fit_map(model, likelihood, train_x, train_y, n_iter=n_iter, lr=lr,
+            verbose=verbose)
+    return {name: np.array([float(value)])
+            for name, value in _map_init_values(model).items()}
+
+
+def fit_hmc_laplace(model, likelihood, train_x, train_y,
+                    n_samples=500, n_warmup=200, verbose=True, seed=None,
+                    max_tree_depth=10):
+    """NUTS on the Laplace-whitened posterior (preconditioned HMC).
+
+    Computes the Hessian H of the negative log joint at the MAP in
+    UNCONSTRAINED space and runs NUTS on z, where u = u_map + A z with
+    A = chol(H^{-1}) — i.e. the posterior is approximately N(0, I) in z.
+    A linear reparameterization is mathematically identical to running HMC
+    with mass matrix H, so this delivers "Laplace-preconditioned NUTS" and
+    "linear reparameterization" as one option. Pass a MAP-fitted model.
+    Falls back to identity whitening (plain unconstrained NUTS) if the
+    Hessian is not usable. Returns the fit_hmc dict schema.
+    """
+    import pyro
+    from pyro.infer.mcmc import NUTS, MCMC
+    from pyro.infer.mcmc.util import initialize_model
+    from pyro.infer.autoguide.initialization import init_to_value
+
+    if seed is not None:
+        pyro.set_rng_seed(seed)
+
+    train_x, train_y = train_x.double(), train_y.double()
+    model.train()
+    likelihood.train()
+    pyro.clear_param_store()
+
+    init_params, potential_fn, transforms, _ = initialize_model(
+        partial(_hmc_pyro_model, model), model_args=(train_x, train_y),
+        init_strategy=init_to_value(values=_map_init_values(model)))
+
+    # Flatten the unconstrained site dict into one vector u.
+    sites = sorted(init_params)
+    shapes = {s: init_params[s].reshape(-1).shape[0] for s in sites}
+    u_map = torch.cat([init_params[s].reshape(-1).double() for s in sites])
+
+    def unflatten(u):
+        out, i = {}, 0
+        for s in sites:
+            n = shapes[s]
+            out[s] = u[i:i + n].reshape(init_params[s].shape)
+            i += n
+        return out
+
+    def potential_u(u):
+        with gpytorch.settings.cholesky_jitter(DEFAULT_JITTER):
+            return potential_fn(unflatten(u))
+
+    # Laplace whitening matrix A = chol(H^{-1}) from the MAP Hessian
+    # (eigenvalue floor keeps a flat/negative direction from breaking chol).
+    try:
+        H = torch.autograd.functional.hessian(potential_u, u_map)
+        H = 0.5 * (H + H.T)
+        eigval, eigvec = torch.linalg.eigh(H)
+        eigval = eigval.clamp(min=1e-6)
+        A = eigvec @ torch.diag(eigval.rsqrt())   # H^{-1} = A A^T
+    except Exception as e:
+        logger.warning("fit_hmc_laplace: Hessian failed (%s); identity whitening", e)
+        A = torch.eye(len(u_map), dtype=torch.float64)
+
+    def potential_z(z_dict):
+        return potential_u(u_map + A @ z_dict["z"])
+
+    z0 = {"z": torch.zeros(len(u_map), dtype=torch.float64)}
+    nuts = NUTS(potential_fn=potential_z, jit_compile=False, step_size=0.1,
+                adapt_step_size=True, target_accept_prob=0.8,
+                max_tree_depth=max_tree_depth)
+    mcmc_run = MCMC(nuts, num_samples=n_samples, warmup_steps=n_warmup,
+                    initial_params=z0, disable_progbar=(not verbose))
+    with gpytorch.settings.cholesky_jitter(DEFAULT_JITTER):
+        mcmc_run.run()
+
+    z_draws = mcmc_run.get_samples()["z"]              # (n_samples, d)
+    u_draws = u_map.unsqueeze(0) + z_draws @ A.T        # back to unconstrained u
+    out = {}
+    for j, s in enumerate(sites):                       # constrained via transforms
+        col = u_draws[:, sum(shapes[t] for t in sites[:j]):
+                      sum(shapes[t] for t in sites[:j]) + shapes[s]]
+        out[s] = transforms[s].inv(col.squeeze(-1)).detach().numpy().reshape(-1)
+
+    model.eval()
+    likelihood.eval()
+    return out
+
+
+GP_INFERENCE_METHODS = ("hmc", "vi", "map", "hmc_laplace")
+
+
+def fit_gp(model, likelihood, train_x, train_y, method="hmc", **kwargs):
+    """One entry point for the GP hyperparameter-inference options (D9).
+
+    All methods return the SAME dict schema (site name -> (n,) array), so any
+    choice flows through extract_gp_predictives / BMS* / decomposition
+    unchanged and results are directly comparable across methods.
+
+      "hmc"          full-Bayes NUTS (default; thesis-equivalent — the chapter
+                     validated HMC against its primary VI implementation).
+                     Accepts fit_hmc kwargs (init_to_map, max_tree_depth, ...).
+      "vi"           ADVI-style SVI, the thesis chapter's PRIMARY
+                     implementation (Appendix II); funnel-immune, Gaussian
+                     posterior approximation.
+      "map"          MAP/MMLE point estimate (thesis Fig. 6 contrast);
+                     length-1 arrays, no hyperparameter uncertainty.
+      "hmc_laplace"  NUTS on the Laplace-whitened posterior (== MAP-Hessian
+                     mass-matrix preconditioning == linear reparameterization).
+
+    Defaults follow the thesis chapter (full-Bayes sampling; see
+    docs/inference-and-metric-options.md for the justification writeup).
+    Except for "map", pass a MAP-fitted model so initialization starts in the
+    typical set (run fit_map first).
+    """
+    dispatch = {
+        "hmc": fit_hmc,
+        "vi": fit_vi,
+        "map": fit_map_samples,
+        "hmc_laplace": fit_hmc_laplace,
+    }
+    if method not in dispatch:
+        raise ValueError(f"unknown method {method!r}; one of {GP_INFERENCE_METHODS}")
+    return dispatch[method](model, likelihood, train_x, train_y, **kwargs)
+
+
 def sample_prior(model, n_samples=500, seed=None):
     """Draw i.i.d. hyperparameter samples from the GP priors — no data, no MCMC.
 
