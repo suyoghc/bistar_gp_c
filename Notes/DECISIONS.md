@@ -343,6 +343,17 @@ extract_gp_predictives/BMS*/decompose unchanged and are directly comparable:
 VI concentrates vs prior (noise sd ≪ prior sd), pipeline flow-through for map/vi, unknown-method
 error, plus the D10 identity below). Justification writeup for the paper:
 `docs/inference-and-metric-options.md`.
+**codex review (FIX-FIRST → fixed, same day):** (1) the D8 boundary guard existed only in fit_hmc's
+inline init loop, so an underflowed-to-zero hyperparameter crashed the NEW vi/hmc_laplace init paths
+— `_map_init_values` is now the single guarded authority (biject_to-finiteness clamp, ValueError if
+irreparable; fit_hmc falls back to init_to_sample), with boundary regression tests for both paths.
+(2) fit_hmc's `.squeeze()` returned 0-d arrays at n_samples=1, breaking the (n,) schema promise and
+crashing extract_gp_predictives — now `.reshape(-1)`, pinned by a test. (3) the VI concentration test
+could pass with n_steps=0 (MAP init alone) — replaced with a fresh-model learn-vs-no-learn contrast
+(n_steps=0 stays at init 0.69; 400 steps drops below 0.2), so a future detached-gradient regression
+fails the test. codex independently verified the ELBO gradient path through gpytorch's
+setting_closure is alive, and hmc_laplace's flatten/whiten/transform round-trip is correct.
+88 tests pass.
 
 ---
 
@@ -369,3 +380,8 @@ estimator in the package. Viz unification is therefore UNBLOCKED: port the scrip
 laplace_log_Z_Mx with metric_name="pw_kl_vcal" and posterior draws.
 **Thesis nuance recorded for the paper:** the chapter's aggregation is hard best-match assignment
 (p. 174); the package's soft-τ Boltzmann transfer is the practical relaxation (τ→0 recovers it).
+**Scope qualifier (codex review):** the identity holds for GP pointwise variance ≥ 1e-6; below that
+the implementations' variance FLOORS differ (viz clips at 1e-6, package `_extract_marginals` at
+1e-10) and they diverge by the floor ratio — pinned in
+`test_viz_and_package_floors_diverge_below_1e6_variance` and qualified in the docs. For the viz
+unification, adopt the package floor (closer to the un-floored mathematics).

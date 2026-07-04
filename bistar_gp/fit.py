@@ -212,33 +212,10 @@ def fit_hmc(model, likelihood, train_x, train_y,
     pyro.clear_param_store()
 
     if init_to_map:
-        # named_priors() yields (name, module, prior, closure, setting_closure);
-        # closure(module) is the current constrained hyperparameter value, and `name`
-        # is exactly the pyro sample-site name emitted by pyro_sample_from_prior.
-        from torch.distributions import biject_to
-
-        init_values, invalid_site = {}, None
-        for entry in model.named_priors():
-            name, prior, value = entry[0], entry[2], entry[3](entry[1]).detach()
-            # NUTS initializes in unconstrained space via biject_to(support).inv.
-            # A boundary value — e.g. a constrained hyperparameter that underflowed
-            # to exactly 0 — can be INSIDE a closed support like GreaterThanEq(0)
-            # yet still map to -inf, and pyro retries the same fixed value until
-            # "cannot find valid initial params". So the predicate is finiteness of
-            # the unconstrained image, not support membership; nudge into the
-            # interior when it fails.
-            if not torch.isfinite(biject_to(prior.support).inv(value)).all():
-                value = value.clamp(min=1e-8)
-            if not torch.isfinite(biject_to(prior.support).inv(value)).all():
-                invalid_site = name
-                break
-            init_values[name] = value
-        if invalid_site is None:
-            init_strategy = init_to_value(values=init_values)
-        else:
-            logger.warning(
-                "init_to_map: %s is outside its prior support even after clamping; "
-                "falling back to init_to_sample", invalid_site)
+        try:
+            init_strategy = init_to_value(values=_map_init_values(model))
+        except ValueError as e:
+            logger.warning("init_to_map: %s; falling back to init_to_sample", e)
             init_strategy = init_to_sample
     else:
         init_strategy = init_to_sample
@@ -263,9 +240,11 @@ def fit_hmc(model, likelihood, train_x, train_y,
     with gpytorch.settings.cholesky_jitter(DEFAULT_JITTER):
         mcmc_run.run(train_x, train_y)
 
-    # Extract samples as numpy arrays
+    # Extract samples as numpy arrays. reshape(-1), NOT squeeze(): with
+    # n_samples=1 squeeze collapses (1, ...) to a 0-d array, breaking the
+    # documented (n,) schema that downstream consumers rely on.
     raw_samples = mcmc_run.get_samples()
-    samples = {k: v.squeeze().numpy() for k, v in raw_samples.items()}
+    samples = {k: v.reshape(-1).numpy() for k, v in raw_samples.items()}
 
     if verbose:
         mcmc_run.summary()
@@ -277,14 +256,33 @@ def fit_hmc(model, likelihood, train_x, train_y,
 
 
 def _map_init_values(model):
-    """{sample-site name: current constrained hyperparameter value} for a model.
+    """{sample-site name: current constrained hyperparameter value} for a model,
+    guarded against boundary values — the SINGLE authority for MAP-init dicts
+    (fit_hmc, fit_vi, fit_hmc_laplace, fit_map_samples all use it).
 
     named_priors() yields (name, module, prior, closure, setting_closure); the
     name equals the pyro sample-site name and closure(module) the constrained
-    value (see fit_hmc's init_to_map, which shares this mapping).
+    value. Pyro initializes in unconstrained space via biject_to(support).inv,
+    and a boundary value — e.g. a hyperparameter that underflowed to exactly 0 —
+    can be INSIDE a closed support like GreaterThanEq(0) yet map to -inf,
+    aborting initialization ("cannot find valid initial params" for NUTS, an
+    invalid guide loc for SVI). So the predicate is finiteness of the
+    unconstrained image, not support membership; boundary values are nudged
+    into the interior, and a value that is still invalid after clamping raises
+    ValueError (callers may fall back to init_to_sample).
     """
-    return {entry[0]: entry[3](entry[1]).detach()
-            for entry in model.named_priors()}
+    from torch.distributions import biject_to
+
+    init_values = {}
+    for entry in model.named_priors():
+        name, prior, value = entry[0], entry[2], entry[3](entry[1]).detach()
+        if not torch.isfinite(biject_to(prior.support).inv(value)).all():
+            value = value.clamp(min=1e-8)
+        if not torch.isfinite(biject_to(prior.support).inv(value)).all():
+            raise ValueError(
+                f"{name} is outside its prior support even after clamping")
+        init_values[name] = value
+    return init_values
 
 
 def fit_vi(model, likelihood, train_x, train_y,
@@ -296,8 +294,9 @@ def fit_vi(model, likelihood, train_x, train_y,
     "were based on variational inference", gpflow/ADVI, cross-checked against
     HMC with "similar" results). The guide is a full-covariance Gaussian in
     unconstrained space (ADVI-style), initialized at the model's current
-    (MAP-fitted) hyperparameters. VI is immune to the stiff-funnel NUTS
-    pathology (D8) at the price of a Gaussian approximation to the posterior.
+    (MAP-fitted) hyperparameters. VI avoids the stiff-funnel NUTS pathology
+    (D8) — optimization has no step-size collapse — at the price of a Gaussian
+    approximation whose adequacy in that funnel must itself be checked.
     """
     import pyro
     from pyro.infer import SVI, Trace_ELBO
@@ -452,8 +451,8 @@ def fit_gp(model, likelihood, train_x, train_y, method="hmc", **kwargs):
                      validated HMC against its primary VI implementation).
                      Accepts fit_hmc kwargs (init_to_map, max_tree_depth, ...).
       "vi"           ADVI-style SVI, the thesis chapter's PRIMARY
-                     implementation (Appendix II); funnel-immune, Gaussian
-                     posterior approximation.
+                     implementation (Appendix II); no NUTS-style step-size
+                     pathology, but a Gaussian posterior approximation.
       "map"          MAP/MMLE point estimate (thesis Fig. 6 contrast);
                      length-1 arrays, no hyperparameter uncertainty.
       "hmc_laplace"  NUTS on the Laplace-whitened posterior (== MAP-Hessian

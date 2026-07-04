@@ -33,7 +33,7 @@ decomposition unchanged, and results are directly comparable across methods.
 | method | What it is | Thesis anchoring | When to prefer it |
 |---|---|---|---|
 | `"hmc"` **(default)** | NUTS on the joint hyperparameter posterior (with D8's `init_to_map` + `max_tree_depth`) | The chapter's validated cross-check implementation (App. II); same estimand as its primary VI | Default. Asymptotically exact; matches the repo's tested production path |
-| `"vi"` | ADVI-style SVI with a full-covariance Gaussian guide in unconstrained space, MAP-initialized | **The chapter's primary implementation** (App. II) | Stiff posteriors where NUTS mixes poorly (the D8 funnel): VI is funnel-immune and fast, at the price of a Gaussian approximation |
+| `"vi"` | ADVI-style SVI with a full-covariance Gaussian guide in unconstrained space, MAP-initialized | **The chapter's primary implementation** (App. II) | Stiff posteriors where NUTS mixes poorly (the D8 funnel): VI has no step-size/trajectory pathology (optimization, not simulation) and is fast — at the price of a Gaussian approximation whose fidelity in the funnel is itself an assumption to check |
 | `"map"` | MAP/MMLE point estimate, returned as a length-1 "posterior" | The chapter's explicit simpler contrast (Fig. 6) | Clean, deterministic, funnel-free demonstrations; sensitivity analyses; anywhere hyperparameter uncertainty is not the point |
 | `"hmc_laplace"` | NUTS on the Laplace-whitened posterior: z = A⁻¹(u − u_MAP), A = chol(H⁻¹), H the MAP Hessian in unconstrained space | Implementation-level aid to the same thesis estimand | Ill-conditioned posteriors where geometry, not multimodality, is the obstacle |
 
@@ -83,8 +83,15 @@ The viz scripts' G ("pointwise variance-weighted MSE",
 i.e. the pointwise KL between the GP marginal and a candidate assigned the GP's
 own variance — a *variance-calibrated* KL variant. Verified numerically to
 1e-12 (`tests/test_fit_gp_options.py::test_viz_variance_weighted_mse_is_pw_kl_vcal`).
-So the package default is simultaneously (a) a KL variant per the thesis and
-(b) numerically identical to the metric the viz-reference figures used. The
+Scope of the identity: it holds wherever the GP pointwise variance is at or
+above 1e-6, because the two implementations clip variance at different floors
+(viz at 1e-6, package `_extract_marginals` at 1e-10) — below 1e-6 they diverge
+by the floor ratio (pinned in `test_viz_and_package_floors_diverge_below_1e6_variance`).
+That regime is degenerate near-interpolation; for the unification, adopt the
+package floor (closer to the un-floored mathematics) and disclose the change if
+any legacy figure probed sub-1e-6 variances. So the package default is
+simultaneously (a) a KL variant per the thesis and (b) identical to the metric
+the viz-reference figures used on any non-degenerate input. The
 "single-G decision" required no choice — only the recognition.
 
 (The remaining viz/package difference is upstream and estimator-level, not
