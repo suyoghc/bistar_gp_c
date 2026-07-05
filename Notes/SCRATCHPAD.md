@@ -2,6 +2,42 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
+## Done this session (D11/D12, comparison campaign)
+
+- **Method × metric comparison (D12)** — `experiments/fit_method_metric_comparison.py`,
+  tables in `docs/fit-method-metric-comparison.md` (+ capped-NUTS appendix
+  `docs/appendix-tree-depth-cap.md`, `_td7` outputs). Headlines: toy posterior BIMODAL under
+  `informative` priors (evidence: `experiments/toy_posterior_mode_analysis.py`);
+  hmc/map/hmc_laplace pick Sin+Linear under every metric (hard assignment 200/200); VI
+  converges stably to the prior mode and picks the WRONG model — thesis App. II "VI ≈ HMC"
+  does not replicate. pw_kl_vcal ≡ pw_nll_gp empirically; kl_forward sharpest but brittle.
+  D9/D10 defaults (hmc, pw_kl_vcal) results-confirmed (user to ratify). depth-7 cap:
+  ~9× cheaper, model posteriors shift ≤0.011. Raw draws cached
+  (`runs/fit_method_metric_comparison/samples_*.npz`) — sampler hours never re-paid.
+- **candidates.py restart-selection bug (D11)** — multi-start MLE selection was a no-op
+  (criterion constant n/2 at any MLE); Sin+Linear had collapsed to a degenerate near-linear
+  fit (same no-op + a tuple-unpack breakage in the two Mauna candidates, codex catch).
+  Fixed via full-NLL comparison at all six `_fit_mle` call sites + `tests/test_candidates.py`.
+  **91 tests pass.**
+  First-run outputs preserved as `results_degenerate_candidates.json`.
+
+## New open item (from D11)
+
+- **Recheck Mauna candidate fits post-D11**: the real-data impact results (D6/D8 section of
+  `docs/impact-assessment-results.md`) fitted QuadSin/Quad+2Harm with the old no-op restart
+  selection (first restart always kept). Their initialization is data-driven (polyfit +
+  residual amplitude) so the first restart plausibly converged fine, but the headline
+  Linear→Quad+2Harm reversal should be re-verified against the fixed selection before paper
+  numbers.
+
+## Open questions for the user (from D12)
+
+- Ratify defaults: keep `method="hmc"`, `metric_name="pw_kl_vcal"`? (results now support both)
+- VI's role in the paper: thesis-primary but mode-blind here — present as caveat or drop?
+- The `informative` prior config actively fights the toy data scale (truth-ish log joint −57
+  vs −33 MAP) — revisit priors, or keep as a prior-sensitivity talking point?
+- Then: Task 2 — the ~20 severity-2 cleanups (below).
+
 ## Done this session (on `fix/laplace-zmx`, PR #2)
 
 - **Z_Mx / Laplace reconciliation** (DECISIONS D3) — Construction II canonical. Canonical API in

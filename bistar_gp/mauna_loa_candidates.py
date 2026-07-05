@@ -59,9 +59,7 @@ class QuadSinModel(CandidateModel):
                        A_mult * A_init, phi_init,
                        np.log(max(np.std(resid) * 0.3, 1e-3))]
                 try:
-                    result = self._fit_mle(x, y, self._f, p0)
-                    mu = self._f(x, result[:-1])
-                    nll = 0.5 * np.sum((y - mu) ** 2) / np.exp(2 * result[-1])
+                    result, nll = self._fit_mle(x, y, self._f, p0)
                     if nll < best_nll:
                         best_nll = nll
                         best_params = result
@@ -132,9 +130,7 @@ class QuadHarmonic2Model(CandidateModel):
                            A_scale * A_init * 0.3, phi2_init,
                            np.log(max(np.std(resid) * 0.1, 1e-3))]
                     try:
-                        result = self._fit_mle(x, y, self._f, p0)
-                        mu = self._f(x, result[:-1])
-                        nll = 0.5 * np.sum((y - mu) ** 2) / np.exp(2 * result[-1])
+                        result, nll = self._fit_mle(x, y, self._f, p0)
                         if nll < best_nll:
                             best_nll = nll
                             best_params = result

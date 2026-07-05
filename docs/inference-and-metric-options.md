@@ -136,3 +136,17 @@ run the same pipeline across `fit_gp` methods and across metrics, compare model
 posteriors, and record the choice in `Notes/DECISIONS.md` with the observed
 justification. The defaults above are the thesis-anchored starting point, not
 a commitment.
+
+**The comparison has since been run** (D12; tables in
+`docs/fit-method-metric-comparison.md`, evidence chain in
+`experiments/toy_posterior_mode_analysis.py`). Headlines: the toy
+hyperparameter posterior is bimodal under the `informative` priors; HMC and
+Laplace-whitened HMC sample only the likelihood mode and select the true model
+under every metric, while VI converges (stably) to only the prior mode and
+selects the WRONG model — thesis Appendix II's "VI ≈ HMC" agreement does not
+replicate here, so §1's pragmatic recommendation of VI for stiff posteriors
+carries a mode-check caveat. Among metrics, `pw_kl_vcal` and `pw_nll_gp` are
+empirically equivalent, mean-only and bounded variants lose discrimination,
+and joint `kl_forward` is sharpest but most brittle under a bad hyperparameter
+posterior. The D9/D10 defaults (`hmc`, `pw_kl_vcal`) are confirmed by results,
+not just anchoring.
