@@ -137,16 +137,27 @@ posteriors, and record the choice in `Notes/DECISIONS.md` with the observed
 justification. The defaults above are the thesis-anchored starting point, not
 a commitment.
 
-**The comparison has since been run** (D12; tables in
+**The comparison has since been run** (D12, corrected by D13 after an
+adjudicated independent verification; tables in
 `docs/fit-method-metric-comparison.md`, evidence chain in
 `experiments/toy_posterior_mode_analysis.py`). Headlines: the toy
-hyperparameter posterior is bimodal under the `informative` priors; HMC and
-Laplace-whitened HMC sample only the likelihood mode and select the true model
-under every metric, while VI converges (stably) to only the prior mode and
-selects the WRONG model — thesis Appendix II's "VI ≈ HMC" agreement does not
-replicate here, so §1's pragmatic recommendation of VI for stiff posteriors
-carries a mode-check caveat. Among metrics, `pw_kl_vcal` and `pw_nll_gp` are
-empirically equivalent, mean-only and bounded variants lose discrimination,
-and joint `kl_forward` is sharpest but most brittle under a bad hyperparameter
-posterior. The D9/D10 defaults (`hmc`, `pw_kl_vcal`) are confirmed by results,
-not just anchoring.
+hyperparameter posterior is bimodal under the `informative` priors — a
+low-noise mode containing the global density maximum (the MAP) and a
+high-noise, prior-scale mode holding roughly 3× the posterior mass (prior
+importance sampling; the two modes verified as genuine local maxima of the
+exact log joint). HMC and Laplace-whitened HMC sample only the density-mode
+basin and select the true model under every metric; VI migrates (stably) to
+the dominant-mass basin, whose smooth predictives select a wrong model.
+Thesis Appendix II's "VI ≈ HMC" agreement does not replicate here, and no
+single offered method reports the full bimodal posterior — the practical
+diagnostic is the basin-occupancy check (`toy_posterior_mode_analysis.py`),
+and §1's pragmatic recommendation of VI for stiff posteriors carries that
+mode-check caveat. Because the mass-dominant basin contradicts the
+data-generating hyperparameters, this reads as a prior-misspecification
+finding as much as a method comparison. Among metrics, `pw_kl_vcal` and
+`pw_nll_gp` are empirically equivalent, mean-only and bounded variants lose
+discrimination, and joint `kl_forward` is sharpest but most brittle under a
+bad hyperparameter posterior — the `pw_kl_vcal` default is confirmed by
+results. The METHOD default remains `hmc` as the thesis-anchored choice, now
+with the honest qualifier that on this toy it reports the density mode, not
+the posterior mass.

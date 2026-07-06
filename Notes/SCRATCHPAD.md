@@ -2,24 +2,31 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## Done this session (D11/D12, comparison campaign)
+## Done this session (D11/D12/D13, comparison campaign)
 
-- **Method × metric comparison (D12)** — `experiments/fit_method_metric_comparison.py`,
-  tables in `docs/fit-method-metric-comparison.md` (+ capped-NUTS appendix
-  `docs/appendix-tree-depth-cap.md`, `_td7` outputs). Headlines: toy posterior BIMODAL under
-  `informative` priors (evidence: `experiments/toy_posterior_mode_analysis.py`);
-  hmc/map/hmc_laplace pick Sin+Linear under every metric (hard assignment 200/200); VI
-  converges stably to the prior mode and picks the WRONG model — thesis App. II "VI ≈ HMC"
-  does not replicate. pw_kl_vcal ≡ pw_nll_gp empirically; kl_forward sharpest but brittle.
-  D9/D10 defaults (hmc, pw_kl_vcal) results-confirmed (user to ratify). depth-7 cap:
-  ~9× cheaper, model posteriors shift ≤0.011. Raw draws cached
-  (`runs/fit_method_metric_comparison/samples_*.npz`) — sampler hours never re-paid.
+- **Method × metric comparison (D12, corrected by D13)** —
+  `experiments/fit_method_metric_comparison.py`, tables in
+  `docs/fit-method-metric-comparison.md` (+ capped-NUTS appendix
+  `docs/appendix-tree-depth-cap.md`, `_td7` outputs). Corrected headlines: toy posterior
+  BIMODAL under `informative` priors — low-noise mode = global DENSITY max (MAP, −33.4);
+  high-noise prior-scale mode holds ~3× the MASS (prior-IS 0.19/0.67). hmc/map/hmc_laplace
+  report the density-mode basin and pick Sin+Linear under every metric (hard assignment
+  200/200); VI migrates to the dominant-mass basin and picks Sinusoidal — thesis App. II
+  "VI ≈ HMC" does not replicate; reads as PRIOR MISSPECIFICATION expressed through method
+  choice. pw_kl_vcal ≡ pw_nll_gp empirically; kl_forward sharpest but brittle; pw_kl_vcal
+  default results-confirmed; METHOD default is now a real user fork (density mode vs mass —
+  see D12 Decision). depth-7 cap: ~9× cheaper, model posteriors shift ≤0.011. Raw draws
+  cached (`runs/fit_method_metric_comparison/samples_*.npz`) — sampler hours never re-paid.
 - **candidates.py restart-selection bug (D11)** — multi-start MLE selection was a no-op
   (criterion constant n/2 at any MLE); Sin+Linear had collapsed to a degenerate near-linear
   fit (same no-op + a tuple-unpack breakage in the two Mauna candidates, codex catch).
   Fixed via full-NLL comparison at all six `_fit_mle` call sites + `tests/test_candidates.py`.
-  **91 tests pass.**
   First-run outputs preserved as `results_degenerate_candidates.json`.
+- **fit_mcmc_simple sampled the wrong measure (D13)** — raw-space MH without the softplus
+  Jacobian; inflated small-hyperparameter mass ~3× and briefly inverted the D12 mass story
+  (caught by a post-commit codex verification, upheld by independent prior-IS + exact-mode
+  optimization; D12 corrected in place). Fixed via `_raw_log_jacobian` in the MH target +
+  analytic regression test. **92 tests pass.**
 
 ## New open item (from D11)
 
@@ -30,12 +37,15 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   Linear→Quad+2Harm reversal should be re-verified against the fixed selection before paper
   numbers.
 
-## Open questions for the user (from D12)
+## Open questions for the user (from D12/D13)
 
-- Ratify defaults: keep `method="hmc"`, `metric_name="pw_kl_vcal"`? (results now support both)
-- VI's role in the paper: thesis-primary but mode-blind here — present as caveat or drop?
-- The `informative` prior config actively fights the toy data scale (truth-ish log joint −57
-  vs −33 MAP) — revisit priors, or keep as a prior-sensitivity talking point?
+- `metric_name="pw_kl_vcal"`: results-confirmed — ratify?
+- METHOD default (genuine fork, D12 Decision): keep `hmc` (reports the density-mode basin,
+  picks the true model, thesis-style) with the mass split disclosed — or first revisit the
+  `informative` priors (truth-ish log joint −57 vs −33 MAP; the bimodality and the whole
+  method disagreement may dissolve under better-calibrated priors)?
+- VI's role in the paper: thesis-primary; here it faithfully reports the DOMINANT-mass basin
+  of a misspecified-prior posterior — present as the bimodality/prior-sensitivity story?
 - Then: Task 2 — the ~20 severity-2 cleanups (below).
 
 ## Done this session (on `fix/laplace-zmx`, PR #2)

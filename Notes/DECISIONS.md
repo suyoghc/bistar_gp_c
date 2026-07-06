@@ -445,23 +445,34 @@ reproduced run-1 hyperparameter summaries to 4 decimals).
 
 **Findings:**
 1. **The hyperparameter posterior is bimodal** under the `informative` priors
-   (evidence chain: `experiments/toy_posterior_mode_analysis.py`). Likelihood mode:
-   noise≈0.05, ls≈1.45 — best data fit (log ML −19.2) but prior-penalized (log prior −29.3).
-   Prior mode: noise≈0.55, ls≈7 (≈ Gamma(6,0.85) prior mean) — prior-favored (−6.9), worst
-   fit (−30.6). RW-MH referee (30k draws × 4 seeds) visits both; majority of mass 65–81% in
-   the likelihood mode. The truth-ish hyperparameters score worst of all probed points
-   (log joint −57.2): the `informative` config actively fights this data's scale — a prior
-   sensitivity point for the paper.
-2. **HMC and hmc_laplace sample ONLY the likelihood mode** (P(noise<0.15)=1.000, both);
-   **VI converges stably to ONLY the prior mode** (P=0.000; identical across seeds 0/1/2 and
-   5k/20k steps — a converged ELBO optimum, not drift). Thesis App. II's "VI ≈ HMC" does
-   NOT replicate here: hyperparameter means 2.4–14.8 pooled-SDs apart.
+   (evidence chain: `experiments/toy_posterior_mode_analysis.py`). Both modes verified as
+   genuine local maxima of the exact log joint (D13 adjudication): low-noise mode = the MAP
+   (noise 0.0736, ls 2.18, log joint −33.4, the global DENSITY mode; the HMC mean noise≈0.053
+   is a typical-set point in its basin, not the mode itself) with the best data fit
+   (log ML −23.4) but prior-penalized; high-noise mode (noise 0.5917, ls 8.43, log joint
+   −36.8) prior-favored, worst fit; valley ≈ −43 between them. **Mass: the high-noise basin
+   holds ~3× the posterior mass** (prior-IS P(noise>0.30)=0.67 vs P(noise<0.15)=0.19;
+   codex Sobol integral 0.63/0.24 — CORRECTED in D13; the original "65–81% in the likelihood
+   mode" figure came from the Jacobian-less fit_mcmc_simple measure and was wrong). The
+   truth-ish hyperparameters score worst of all probed points (log joint −57.2): the
+   `informative` config actively fights this data's scale — a prior sensitivity point for
+   the paper.
+2. **HMC and hmc_laplace sample ONLY the low-noise/density-mode basin**
+   (P(noise<0.15)=1.000, both — a MINORITY of posterior mass); **VI converges stably to
+   ONLY the dominant high-noise basin** (P=0.000; identical across seeds 0/1/2 and 5k/20k
+   steps — a converged ELBO optimum that MIGRATES from its MAP init, noise 0.074 → 0.57,
+   toward the larger-mass basin). Thesis App. II's "VI ≈ HMC" does NOT replicate here:
+   hyperparameter means 2.4–14.8 pooled-SDs apart, and NO single method reports the full
+   bimodal posterior.
 3. **Model selection:** hmc/map/hmc_laplace select Sin+Linear (true) under EVERY metric —
    hard best-match (the thesis's own aggregation) is unanimous 200/200 draws. **VI selects
    Sinusoidal** (78.5% of draws, pointwise metrics; kl_forward flips to Linear and is
-   τ-unstable): its smooth prior-mode GPs are best matched by the degenerate long-period
-   sine. Mode-blindness propagates through BMS* to a WRONG scientific conclusion — the
-   literal thesis-primary implementation fails this toy under these priors.
+   τ-unstable): its smooth high-noise-basin GPs are best matched by the long-period sine.
+   Honest framing (D13): the true-model selection comes from the MINORITY-mass basin; a
+   mass-faithful full-Bayes answer under these priors would weight the smooth basin ~3:1
+   and lean toward VI's (wrong-model) conclusion. The failure is PRIOR MISSPECIFICATION
+   expressed through method choice, not "VI is broken" — each single-basin method reports
+   a different half of a posterior whose dominant mass contradicts the truth.
 4. **Metrics (within hmc):** pw_kl_vcal ≡ pw_nll_gp in practice (0.675 vs 0.677 at τ=1 —
    the log-variance term is ≈constant across draws); pw_kl_mean much flatter (0.284:
    dropping GP-variance weighting costs discrimination); pw_hellinger_vcal intermediate
@@ -475,13 +486,21 @@ reproduced run-1 hyperparameter summaries to 4 decimals).
    vs 4–27): the obstacle is global bimodality, not local conditioning — which also predicts
    the D8 fork's option (a) (Laplace-preconditioned NUTS) won't rescue Mauna.
 
-**Decision (defaults, user to ratify):** keep `method="hmc"` (finds the dominant mode;
-robust true-model selection) and `metric_name="pw_kl_vcal"` (thesis KL family; empirically
-equivalent to pw_nll_gp, more discriminating than mean-only/bounded variants, far more
-stable than joint kl_forward). VI's thesis-primary status does not transfer to this prior
-config: use it only with a mode check (e.g. compare its noise posterior against MAP), and
-the earlier "VI pragmatic for Mauna" suggestion inherits this caveat. MAP is the honest
-fast path when hyperparameter uncertainty is not the point.
+**Decision (defaults, user to ratify — sharpened by the D13 correction):** keep
+`metric_name="pw_kl_vcal"` (thesis KL family; empirically equivalent to pw_nll_gp, more
+discriminating than mean-only/bounded variants, far more stable than joint kl_forward) —
+this choice is unaffected by the correction. The METHOD default is now a genuine judgment
+call the user must make: `hmc` (MAP-init) reproduces the thesis-style answer and selects
+the true model, but it reports the MINORITY-mass basin (the global density mode); VI
+reports the DOMINANT-mass basin, which under these misspecified priors selects the wrong
+model; no offered method reports the full bimodal posterior. Framing options: (a) keep
+`hmc` as default on the grounds that the density-mode basin is the scientifically useful
+answer here and disclose the mass split; (b) treat the toy as evidence the `informative`
+priors need revision (truth-ish log joint −57 vs −33 MAP), after which the bimodality may
+dissolve and the method choice may stop mattering. Either way both methods need the
+basin-occupancy check (`toy_posterior_mode_analysis.py` §5) as a standard diagnostic, and
+the earlier "VI pragmatic for Mauna" suggestion inherits the mode-check caveat. MAP is the
+honest fast path when hyperparameter uncertainty is not the point.
 
 **Status (closed same day):** capped-NUTS arm (`--max-tree-depth 7`, the D8-validated knee)
 done — `docs/appendix-tree-depth-cap.md`. The cap is result-preserving at model-selection
@@ -490,3 +509,61 @@ unchanged 200/200) at ~9× lower cost (5.6 h → 39 min); within-mode ESS per dr
 or better; both capped chains stay in the likelihood mode (P(noise<0.15)=1.000) — the cap
 neither causes nor cures mode-blindness. Caches/outputs tagged `_td7`; uncapped canonical
 files untouched.
+
+**Correction (2026-07-05, same day — post-commit codex verification, adjudicated):** the
+findings above were EDITED IN PLACE after an independent codex verification pass (prompt
+targeted the five scientific claims; commit 0d49a1e carries the original wording) refuted
+the mass story: the original "majority of mass 65–81% in the likelihood mode" was an
+artifact of the fit_mcmc_simple raw-space measure (missing softplus Jacobian — D13), and
+the true constrained posterior puts ~3× the mass in the HIGH-noise basin. Fable
+adjudication upheld the refutation with independent methods (Nelder-Mead high-mode search
+matching codex's mode to 4 decimals; prior importance sampling 0.19/0.67 vs codex Sobol
+0.24/0.63). Consequently the causal framing flipped: VI migrates to the dominant basin,
+HMC/MAP report the minority density-mode basin; "VI selects the wrong model" became a
+prior-misspecification story. codex's remaining verdicts: bimodality CONFIRMED (with the
+MAP-vs-HMC-mean coordinate correction), decompose() CONFIRMED to 1e-12 (constrained-space
+priors, no Jacobian in gpytorch's MLL prior term), model-selection scoring CONFIRMED clean
+(no inf-sentinel involvement; VI's Sinusoidal pick traced to real predictive shapes:
+GP-mean MSE Sinusoidal 0.0095 vs Sin+Linear 0.3487 under the high-noise basin).
+
+---
+
+## D13: fit_mcmc_simple sampled the wrong measure — raw-space MH without the change-of-variables Jacobian — 2026-07-05
+
+**Problem:** `fit_mcmc_simple` proposes on RAW (unconstrained) hyperparameters but accepted
+on `_mh_log_joint` alone, which evaluates the posterior density in CONSTRAINED space
+(gpytorch adds `prior.log_prob` at the constrained value; no Jacobian anywhere). The
+missing factor is Π|d constrained/d raw| = Π sigmoid(raw_i) for Positive()/softplus — for
+small θ this ≈ θ, so omitting it INFLATES small-hyperparameter regions. Known since the D6
+multi-model review as a "pre-existing non-blocking follow-up"; it became result-relevant
+when D12 used fit_mcmc_simple as the mass referee on the bimodal toy posterior: the
+uncorrected measure reported 65–81% of mass at noise<0.15 when the true split is ~0.19/0.67
+the other way (codex caught it by reproducing the uncorrected numbers from the
+Jacobian-less measure via Sobol integration; verified independently by prior importance
+sampling, which needs no chain at all).
+
+**Decision:** `fit.py::_raw_log_jacobian(model, param_list)` — sums log|d transform/d raw|
+over constrained scalar params, resolving each constraint by gpytorch naming convention
+(`raw_X` → owning module's `raw_X_constraint`) and differentiating `constraint.transform`
+by autograd (handles any elementwise constraint; unconstrained params contribute 0).
+`fit_mcmc_simple.log_posterior` now adds this term. Pinned by
+`tests/test_candidates.py::test_raw_log_jacobian_is_log_sigmoid_for_positive`
+(softplus′ = sigmoid analytic identity on the toy model's four sites). NOTE: even
+corrected, a single RW-MH chain remains a POOR mass estimator here (valley crossings are
+rare; corrected per-chain splits scatter 0.06–0.56 across seeds) —
+`toy_posterior_mode_analysis.py` therefore uses prior importance sampling as the mass
+authority and keeps MH only as basin-crossing evidence. Pyro-side samplers (fit_hmc,
+fit_vi, fit_hmc_laplace) are unaffected: pyro's biject_to machinery applies Jacobians
+correctly.
+
+**Alternatives considered:** closed-form logsigmoid for softplus only (rejected: silently
+wrong for any future Interval constraint); fixing only the analysis script and leaving the
+package sampler biased (rejected: the D12 episode shows a mislabeled measure WILL be
+reused).
+
+**Result:** 92 tests pass. D12 findings corrected in place (see its Correction block);
+`experiments/toy_posterior_mode_analysis.py` restructured (exact-mode optimization as the
+bimodality proof, prior-IS as the mass authority, corrected-MH demoted to mixing evidence);
+`docs/inference-and-metric-options.md` §3 reworded. Downstream caveat: any past result that
+used fit_mcmc_simple draws quantitatively (old impact-assessment sections compare old-code
+vs new-code chains, both now superseded) should be treated as raw-measure numbers.

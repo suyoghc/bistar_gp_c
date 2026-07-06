@@ -61,13 +61,45 @@ def print_hyperparameters(model, likelihood):
     print()
 
 
+def _raw_log_jacobian(model, param_list):
+    """Sum of log|d constrained/d raw| over constrained params — the
+    change-of-variables term a RAW-space MH target must include.
+
+    `_mh_log_joint` evaluates the posterior density in CONSTRAINED space
+    (gpytorch adds prior.log_prob at the constrained value). A random walk on
+    the raw parameters that accepts on that density alone samples the wrong
+    measure: for softplus (Positive) the omitted factor is sigmoid(raw) ~
+    theta as theta -> 0, so small-noise/small-scale regions are inflated —
+    on the D12 toy this flipped the apparent dominant mode (P(noise<0.15)
+    0.65-0.81 uncorrected vs ~0.19-0.24 under the true posterior). Constraints
+    are resolved by name (`raw_X` -> owning module's `raw_X_constraint`) and
+    the derivative taken by autograd, so any invertible elementwise gpytorch
+    constraint is handled; unconstrained params contribute 0.
+    """
+    total = 0.0
+    for name, _ in param_list:
+        module = model
+        *path, pname = name.split(".")
+        for step in path:
+            module = getattr(module, step)
+        constraint = getattr(module, pname + "_constraint", None)
+        if constraint is None:
+            continue
+        raw = getattr(module, pname).detach().clone().requires_grad_(True)
+        constraint.transform(raw).sum().backward()
+        total += float(torch.log(raw.grad.abs()).sum())
+    return total
+
+
 def fit_mcmc_simple(model, likelihood, train_x, train_y,
                     n_samples=10000, n_burnin=1000, proposal_scale=0.1, verbose=True,
                     seed=None):
     """
-    Random-walk Metropolis-Hastings over log hyperparameters.
+    Random-walk Metropolis-Hastings over raw (unconstrained) hyperparameters,
+    targeting the CONSTRAINED-space posterior (the change-of-variables
+    Jacobian is included via _raw_log_jacobian; see D13).
     For production use NumPyro — this is a starting point.
-    Returns dict of parameter name -> posterior samples array.
+    Returns dict of parameter name -> posterior samples array (raw values).
     Pass seed for a reproducible chain (seeds both torch and numpy RNGs).
     """
     if seed is not None:
@@ -96,7 +128,8 @@ def fit_mcmc_simple(model, likelihood, train_x, train_y,
 
     def log_posterior():
         try:
-            return _mh_log_joint(mll, model, likelihood, train_x, train_y)
+            return (_mh_log_joint(mll, model, likelihood, train_x, train_y)
+                    + _raw_log_jacobian(model, param_list))
         except RuntimeError:
             return -float("inf")
 

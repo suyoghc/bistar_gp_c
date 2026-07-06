@@ -67,6 +67,30 @@ def test_mauna_candidates_use_tuple_return_and_recover_params():
     assert abs(m2.A1) == pytest.approx(3.0, abs=0.3)
 
 
+def test_raw_log_jacobian_is_log_sigmoid_for_positive(thesis_toy):
+    """D13: fit_mcmc_simple's raw-space MH target must include the
+    change-of-variables term. For gpytorch Positive() (softplus) the
+    analytic derivative is sigmoid(raw), so _raw_log_jacobian must equal
+    sum(logsigmoid(raw)) over the four constrained hyperparameters —
+    omitting it inflated the small-noise basin ~3x on the D12 toy."""
+    import torch
+    import torch.nn.functional as F
+    from bistar_gp.model import build_toy_kernels, build_model
+    from bistar_gp.fit import _raw_log_jacobian
+
+    x, y = thesis_toy
+    kers, names = build_toy_kernels()
+    m, l = build_model(torch.tensor(x), torch.tensor(y), kers, names)
+    seen, param_list = set(), []
+    for n, p in list(m.named_parameters()) + list(l.named_parameters()):
+        if p.requires_grad and p.numel() == 1 and id(p) not in seen:
+            seen.add(id(p))
+            param_list.append((n, p))
+    assert len(param_list) == 4
+    expected = sum(float(F.logsigmoid(p.detach()).sum()) for _, p in param_list)
+    assert _raw_log_jacobian(m, param_list) == pytest.approx(expected, rel=1e-12)
+
+
 def test_fit_mle_returns_full_nll(thesis_toy):
     """_fit_mle's second return value is the FULL Gaussian NLL at the fitted
     params (including the 0.5*n*log(2*pi*sigma^2) term), the only quantity a
