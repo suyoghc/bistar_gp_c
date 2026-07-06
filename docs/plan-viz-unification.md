@@ -1,12 +1,16 @@
-# Plan: viz-script unification onto laplace_evidence (Task 2 batch 2b) — 2026-07-06, R1
+# Plan: viz-script unification onto laplace_evidence (Task 2 batch 2b) — 2026-07-06, R2
 
 Port `bistar_viz/scripts/model_priors_laplace.py` (515 ln) and
 `model_prior_trajectory_laplace.py` (542 ln) onto the canonical
 `bistar_gp.laplace_evidence` machinery (D3 open item 1, unblocked by D10,
 foundation refactored in D15).
 
-**Revision 1 (same day): incorporates the codex review of the R0 plan
-(committed 22a3e5e).** Dispositions are logged in §7; the material changes:
+**Revision 2 (same day): R1 incorporated the codex review of R0 (22a3e5e);
+R2 patches four blockers from the codex re-review of R1 (15051aa) — see the
+§7 review log. Notably R2 corrects an R1 factual error (Quadratic bounds DO
+differ between the legacy scripts) and respecifies the IS estimator as
+ordinary/balance-heuristic MIS (SNIS was mathematically wrong for a
+normalizing constant).** The R1 summary below stands otherwise: Dispositions are logged in §7; the material changes:
 the reference Z_Mx estimator for figures is now defensive-mixture IS rather
 than a fixed-window Laplace/MC blend (codex S2: the R0 blend was pure Laplace
 at exactly the fixed-τ=0.3 panels it claimed to improve); the two legacy
@@ -68,10 +72,12 @@ counts and reports retained draws per stage; (vi) `extract_gp_predictives`
 subsampling uses global np.random and needs placeholder x/y tensors for the
 n=0 prior stage; (vii) prior parity is the script's responsibility.
 
-**V3 — the two legacy scripts are NOT mutually consistent (verified in-repo,
-this revision).** `model_priors_laplace.py` vs
-`model_prior_trajectory_laplace.py`: (a) Linear bounds (-2,2) vs (-3,3)
-(Sinusoidal/Sin+Linear/Quadratic bounds match); (b) the priors script's
+**V3 — the two legacy scripts are NOT mutually consistent (verified in-repo;
+bounds re-verified in R2 after a truncated-grep error in R1).**
+`model_priors_laplace.py` vs `model_prior_trajectory_laplace.py`: (a) Linear
+bounds (-2,2) vs (-3,3) AND Quadratic bounds [(-0.5,0.5),(-2,2),(-5,5)] vs
+[(-1,1),(-3,3),(-5,5)] (Sinusoidal and Sin+Linear match); (b) the priors
+script's
 Laplace Z always subtracts `log V` (occam ON) while the trajectory script's
 `compute_laplace_Z` has NO `−log V` term (occam OFF) — since `log V_j`
 differs per model, the two legacy figure sets used different normalized
@@ -93,11 +99,19 @@ comparison harness.
    pins the D5 same-reference-measure invariant so a mixed Laplace/MC ladder
    can never silently disagree on volume bookkeeping.
 2. **`is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000,
-   seed=0, starts=None, metric_name=..., occam=False)`** — defensive-mixture
-   importance sampling: proposal = ½·uniform-box + ½·mixture of Gaussians at
-   the multi-start optima with covariances `τ_k·H⁻¹` over a small τ_k ladder;
-   self-normalized estimate of the same integral, valid at ALL τ from one
-   sample set; returns per-τ log Z + ESS, warns when ESS < threshold.
+   seed=0, starts=None, metric_name=..., occam=False)`** — ORDINARY
+   defensive-mixture importance sampling (balance-heuristic MIS), NOT
+   self-normalized IS: SNIS estimates expectations whose normalizer cancels,
+   but Z_Mx IS the normalizer, so the proposal density must be evaluated
+   exactly. Proposal q = ½·uniform-box + ½·mixture of BOX-TRUNCATED Gaussians
+   at the multi-start optima with covariances `τ_k·H⁻¹` over a small τ_k
+   ladder — each Gaussian component's density renormalized by its in-box
+   mass so q is exactly normalized on the bounded domain. Estimate:
+   `log I_raw = logmeanexp_i( −Ḡ(φ_i)/τ − log q(φ_i) )`, φ_i ~ q — the RAW
+   Lebesgue integral over the box. `occam=False` returns `log I_raw`;
+   `occam=True` returns `log I_raw − log V` (same convention as the Laplace
+   path). Valid at ALL τ from one sample set; returns per-τ log Z + ESS,
+   warns when ESS < threshold.
    **This is the reference/default estimator for all figure Z_Mx values**
    (codex recommendation adopted): one estimator, no seam, no
    blended-bias window — and it fixes the R0 inconsistency that the blend
@@ -151,8 +165,9 @@ comparison harness.
 ## 3. Unification decisions (from V3)
 
 - **Bounds**: one canonical set = the `model_priors_laplace.py` bounds
-  (Linear (-2,2)); D3 designates that script the viz reference for Z_Mx. The
-  trajectory legacy delta (Linear (-3,3)) is reproduced only inside the
+  (Linear (-2,2), Quadratic (-0.5,0.5)/(-2,2)/(-5,5)); D3 designates that
+  script the viz reference for Z_Mx. The trajectory legacy deltas (Linear
+  (-3,3) AND Quadratic (-1,1)/(-3,3)/(-5,5)) are reproduced only inside the
   harness for its own legacy comparison. Volumes enter through occam, so the
   bounds choice is disclosed alongside it.
 - **Occam**: canonical default `occam=False` (D3's faithful no-Occam BI*
@@ -194,18 +209,26 @@ hybrid vs IS vs Laplace vs MC on the τ-sweep to document the change.
 ## 6. Test checklist (updated per review)
 
 1. `mc_log_Z_Mx` vs brute-force grid on a 2-D space at τ ∈ {0.1, 1, 10}.
-2. Occam/volume invariance ACROSS estimators (the D5 invariant): doubling a
-   parameter box changes `log Z` identically under Laplace, MC, and IS for
-   both occam settings (mirrors `test_construction_gaps_are_volume_free…`).
+2. Occam/volume invariance ACROSS estimators (the D5 invariant), under a
+   CONTROLLED setup where widening bounds changes only `log V` and not the
+   sampled integrand — a constant-Ḡ metric (the existing `const_metric`
+   fixture pattern) or an added dead parameter the predict_fn ignores:
+   doubling that box must change `log Z` identically under Laplace, MC, and
+   IS for both occam settings. (With a real metric, wider bounds change the
+   integration region itself, so the naive version of this test would be
+   comparing different integrals.)
 3. `is_log_Z_Mx`: matches the 2-D grid truth across τ ∈ [0.1, 100]; matches
    Laplace at low τ on a unimodal interior-MAP case; ESS reported;
    deterministic under fixed seed; ESS warning fires on a starved case.
 4. `starts=`: recovers the Sinusoidal ω-boundary optimum the midpoint start
    misses, and Sin+Linear's Ḡ*=0 basin (re-derives the V1 finding in-repo).
-5. Laplace large-τ structure (re-derives V1 in-repo, codex outcome 9): on
-   the canonical spaces, assert `laplace log Z > 0` beyond a computed τ
-   while `is_log_Z_Mx ≤ 0`, and assert the d-driven ranking flip τ against
-   its closed-form value.
+5. Laplace large-τ structure (re-derives V1 in-repo, codex outcome 9), with
+   BOTH estimators at `occam=True` — the `log Z ≤ 0` bound holds only for
+   the box-mean-normalized quantity (`Z = E_box[exp(−Ḡ/τ)] ≤ 1`); the raw
+   `occam=False` Lebesgue integral can legitimately exceed 1. Assert
+   `laplace_log_Z_Mx(occam=True) > 0` beyond a computed τ while
+   `is_log_Z_Mx(occam=True) ≤ 0`, and assert the d-driven ranking-flip τ
+   against its closed-form value.
 6. `weights=` on `average_gp_posterior` vs the viz formula at machine
    precision (uniform and Dirichlet-random weights).
 7. `extract_gp_predictives(rng=...)`: identical subsample under the same
@@ -222,8 +245,9 @@ hybrid vs IS vs Laplace vs MC on the τ-sweep to document the change.
 (§6.2). (2) FIX accepted: R0's blend was pure Laplace at the fixed-τ=0.3
 panels; resolved by adopting IS as the reference estimator everywhere (§1.2).
 (3) FIX accepted with in-repo verification: legacy space/occam/multi-start
-differences documented (§0 V3; note: Quadratic bounds are identical in both
-scripts — only Linear differs) and resolved by unify-with-disclosure (§3).
+differences documented (§0 V3) and resolved by unify-with-disclosure (§3).
+(R1's parenthetical here wrongly claimed the Quadratic bounds were identical —
+corrected in R2.)
 (4) RECOMMENDATION adopted: defensive-mixture IS is the default/reference;
 the fixed-window hybrid is dropped rather than made adaptive (§1.2).
 (5) CLARIFY accepted: MAP wording corrected to point-estimate predictive;
@@ -235,3 +259,21 @@ mechanism-figure choice (§2). (6) API accepted: `starts=`, `weights=`, and
 legacy scripts extracted from the pinned commit at runtime (§5).
 (9) NUMERIC-CLAIMS hedge accepted: §0 constants marked measured-once;
 structural claims become committed regression tests (§6.5).
+
+**R2 (2026-07-06) — codex re-review of R1 (15051aa), four outcomes, all
+accepted:**
+(1) S1 factual: R1's own "Quadratic bounds identical" claim was WRONG — the
+trajectory script's bounds line sits beyond the grep window R1 used; verified
+with full blocks: priors [(-0.5,0.5),(-2,2),(-5,5)] vs trajectory
+[(-1,1),(-3,3),(-5,5)]. §0 V3, §3, and the R1 log entry corrected — the
+trajectory legacy deltas are Linear AND Quadratic.
+(2) S1 estimator spec: "self-normalized" was mathematically wrong for a
+normalizing constant (SNIS cancels the very normalizer being estimated);
+§1.2 respecified as ordinary defensive-mixture IS / balance-heuristic MIS
+with an exactly evaluated, box-truncated-and-renormalized proposal density
+and explicit occam bookkeeping (`log I_raw` raw; `−log V` under occam=True).
+(3) S2: §6.5 test now pins `occam=True` explicitly — the `log Z ≤ 0` bound
+holds only for the box-mean-normalized quantity.
+(4) S2: §6.2 volume-invariance test restricted to a controlled setup
+(constant-Ḡ metric or dead parameter) where widening bounds changes only
+`log V`, not the integrand's region.
