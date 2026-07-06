@@ -28,7 +28,16 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   optimization; D12 corrected in place). Fixed via `_raw_log_jacobian` in the MH target +
   analytic regression test. **92 tests pass.**
 
-## NEXT: Task 2 batch 2b — viz-script ports (design settled, execution pending)
+## NEXT: Task 2 batch 2b — viz-script ports (plan verified + written: docs/plan-viz-unification.md)
+
+Two adversarial verification runs (2026-07-06) resolved the open forks with measurements:
+pure Laplace FAILS the τ-sweep (ranking flip at τ≈88, gap 0.45 at τ=316, and 0.1–0.25
+mid-range distortion) AND plain MC fails low-τ (ESS<200 below τ≈0.3) — hybrid needed both
+ways; averaged-GP moment formulas match to 2e-16 with all port differences enumerated.
+Full plan, package additions (mc_log_Z_Mx, hybrid, starts=, weights=), port recipes,
+comparison harness, and open review questions: docs/plan-viz-unification.md.
+
+### superseded design sketch (kept for the record)
 
 Port `bistar_viz/scripts/model_priors_laplace.py` (515 ln) and
 `model_prior_trajectory_laplace.py` (542 ln) onto `laplace_log_Z_Mx` (D10 unblocked; D15
