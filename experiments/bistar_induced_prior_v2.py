@@ -279,10 +279,13 @@ def main():
         plt.close(fig)
 
         # Ablation ladder: baseline / Construction I / Construction II (DECISIONS D3).
+        # The Construction-II leg reuses the model_posterior result from Part 2
+        # (same metric/tau/occam) instead of re-optimizing N(M) per model.
         fig = plot_ablation_ladder(
             param_spaces, x_train_np, y_train_np, x_eval,
             all_avg_gps[prior_name], mle_params,
             metric_name=args.metric, tau=args.tau, prior_name=prior_name,
+            precomputed_II=all_laplace.get(prior_name),
         )
         fig.savefig(os.path.join(out_dir, f"ablation_ladder_{prior_name}.png"),
                     dpi=150, bbox_inches='tight')

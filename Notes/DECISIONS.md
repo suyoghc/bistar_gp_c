@@ -603,3 +603,67 @@ severity-1s never previously addressed.
 **Result:** 92 tests pass. Remaining backlog (laplace_evidence efficiency/duplication
 cluster, construction guard, bounds-aware hessian S3-PLAU, induced_prior_v2 re-run item,
 test_laplace_zmx param-space duplication) is batch 2, folded into the viz unification.
+
+---
+
+## D15: cleanup-backlog batch 2a — laplace_evidence efficiency/duplication cluster — 2026-07-06
+
+**Problem:** The backlog's laplace_evidence.py cluster (11 items): five copy-pasted
+noise-guard/0.3-default sites that could silently desync the three Laplace objectives;
+plot_ablation_ladder computing p_ord twice and plot_tau_effect_on_evidence re-running the
+full machinery at every τ; a KeyError trap when the II-only decomposition plots receive
+baseline/I results; dead code (`_packers`' pack, unused f0); a hand-rolled softmax; the
+induced evidence recomputing a value its own detail dict already held; and the D5-deferred
+S3 item — finite-difference stencils evaluating the objective OUTSIDE the bounds box at a
+bound-pinned MAP, which the guards turn into cliffs and the eigenvalue floor converts into
+an arbitrary +9.2-nats-per-direction term.
+
+**Decision (pure refactors, verified bit-identical on a 38-entry golden snapshot):**
+- Single guard authority: `DEFAULT_FIXED_SIGMA`/`_noise_sigma`/`_guarded_neg_log`; all three
+  Laplace objectives (Z_Mx, ordinary, N(M)) and both helpers now share it.
+- `_packers` replaced by `_unpacker` (pack was dead at all 3 call sites); scipy
+  `softmax` replaces the hand-rolled shift-by-max; `laplace_log_evidence_induced` reuses
+  `detail["log_lik_at_map"]`.
+- `_require_construction_II` guard on both decomposition plots (clear ValueError).
+- New `ablation_ladder_posteriors(...)`: each primitive computed ONCE per model (p_ord
+  serves baseline+I), optional `precomputed_II=` reuses an existing model_posterior result
+  (consistency-checked); `plot_ablation_ladder` delegates;
+  `bistar_induced_prior_v2.py` passes its Part-2 result (one N(M) pass saved per prior).
+- New `model_posterior_tau_sweep(...)`: baseline computed once (τ-independent);
+  Construction I rescales Z_Mx ANALYTICALLY from one τ=1 pass
+  (log Z(τ) = log Z(1) + Ḡ*(1−1/τ) + (d/2)log τ); II honestly recomputed per τ (its joint
+  MAP moves with τ — no shortcut exists). `plot_tau_effect_on_evidence` delegates.
+**Decision (numerics, shifts ≤ 0.005 nats on the golden fixture):**
+- `numerical_hessian` diagonal uses the 3-point second difference through f(x) (uses the
+  previously dead f0; ~2d fewer evaluations, same O(eps²) accuracy).
+- `_laplace_log_integral` evaluates the Hessian at `clip(x*, lo+2eps, hi−2eps)` so every
+  stencil point stays in-box: boundary pinning no longer fabricates curvature, genuinely
+  flat directions still floor and are flagged via n_clipped (unchanged on the fixture —
+  the sigma-flat directions of mean-only metrics are real and stay flagged).
+
+**Rejected from the backlog (S2-PLAU):** test_laplace_zmx's lin_space/quad_space are NOT
+duplicates of `build_toy_parameter_spaces` — they are deliberately minimal (sigma excluded
+so integrals run over means with an interior MAP; adjustable bounds for the volume tests);
+replacing them would weaken the tests.
+
+**Result:** 96 tests pass (4 new: analytic-Hessian recovery, non-II rejection, ladder ≡
+three model_posterior calls + precomputed_II identity + mismatch guard, τ-sweep fast paths
+≡ naive loop). Golden equivalences: pure refactors 0.0 delta across all 38 entries;
+ladder/precomputed/τ-sweep paths exact to 1e-21. Remaining batch-2 work: port the two viz
+Laplace scripts onto this machinery (D3 open item 1).
+
+**codex review (empirical; all three findings verified and fixed same day):** codex loaded
+the HEAD module in-memory and diffed old-vs-new numerically, independently confirming the
+refactor claims (fixed-sigma deltas ~1e-10; sigma-boundary case 0.0040 nats — within the
+claimed 0.005; Construction-I analytic rescale exact to 4.4e-16 with no V_ref
+double-count). Findings fixed: (1) MEDIUM — precomputed_II metric mismatch was
+unenforceable because ModelPosteriorResult carried no metric_name; field added, guard
+extended, mismatch test added. (2) LOW — the non-II rejection fired only after the
+matplotlib import (fails in mpl-less/sandboxed envs before the intended ValueError);
+guard moved before the import in both plots. (3) LOW — the fixed 2*eps Hessian-point
+inset INVERTS the clip for a parameter box narrower than 4*eps; inset now capped at half
+the box width (degrades to the box midpoint), pinned by
+test_laplace_survives_degenerate_narrow_bounds. 97 tests pass; golden fixture
+bit-identical through the fixes. Tooling note: backgrounded `codex exec` requires
+stdin redirected from /dev/null, else it blocks forever on "Reading additional input
+from stdin..." — the cause of two apparent review hangs this session.

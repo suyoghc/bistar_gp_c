@@ -262,3 +262,104 @@ def test_construction_II_component_decomposition(mse_metric):
     c = mpr.components["Lin"]
     assert c["log_lik_at_map"] + c["gp_penalty"] + c["occam"] == pytest.approx(c["log_N"], abs=1e-6)
     assert mpr.log_kernel["Lin"] == pytest.approx(c["log_N"], abs=1e-12)
+
+
+# ── D15: backlog batch 2 — structural helpers and guards ────────────
+
+def test_numerical_hessian_exact_on_quadratic():
+    """Both stencils (3-point diagonal through f0, 4-point cross off-diagonal)
+    recover an analytic Hessian: f(x) = x'Ax/2 has Hessian A exactly (finite
+    differences are exact for quadratics up to float error)."""
+    A = np.array([[4.0, 1.0, 0.5], [1.0, 3.0, -0.7], [0.5, -0.7, 2.0]])
+    f = lambda x: 0.5 * x @ A @ x
+    H = le.numerical_hessian(f, np.array([0.3, -1.2, 0.8]), eps=1e-4)
+    assert np.allclose(H, A, atol=1e-5), H - A
+
+
+def test_decomposition_plots_reject_non_II(mse_metric):
+    """The log N(M) decomposition keys exist only on Construction II —
+    baseline/I results must be rejected with a clear error, not a KeyError."""
+    spaces = {"Lin": lin_space()}
+    x_train = X_EVAL
+    y_train = GP_MEAN + 0.1
+    mpr = model_posterior(spaces, x_train, y_train, X_EVAL, AVG_GP, None,
+                          construction="baseline", metric_name=mse_metric,
+                          occam=False)
+    with pytest.raises(ValueError, match="construction='II'"):
+        le.plot_evidence_decomposition({"p": mpr})
+    with pytest.raises(ValueError, match="construction='II'"):
+        le.plot_prior_penalty_comparison({"p": mpr})
+
+
+def test_ablation_ladder_matches_model_posterior(mse_metric):
+    """ablation_ladder_posteriors computes each primitive once; it must equal
+    the three separate model_posterior calls exactly, and the precomputed_II
+    path must change nothing (while a mismatched precomputed_II raises)."""
+    spaces = {"Lin": lin_space(), "Quad": quad_space()}
+    x_train = X_EVAL
+    y_train = GP_MEAN + 0.05
+    kw = dict(metric_name=mse_metric, tau=0.8, occam=False)
+
+    lad = le.ablation_ladder_posteriors(spaces, x_train, y_train, X_EVAL,
+                                        AVG_GP, None, **kw)
+    for c in ("baseline", "I", "II"):
+        mpr = model_posterior(spaces, x_train, y_train, X_EVAL, AVG_GP, None,
+                              construction=c, **kw)
+        for n in mpr.model_names:
+            assert lad[c][n] == pytest.approx(mpr.posteriors[n], abs=1e-12)
+
+    mpr_ii = model_posterior(spaces, x_train, y_train, X_EVAL, AVG_GP, None,
+                             construction="II", **kw)
+    lad2 = le.ablation_ladder_posteriors(spaces, x_train, y_train, X_EVAL,
+                                         AVG_GP, None, precomputed_II=mpr_ii,
+                                         **kw)
+    assert lad2 == lad
+    with pytest.raises(ValueError, match="precomputed_II"):
+        le.ablation_ladder_posteriors(spaces, x_train, y_train, X_EVAL,
+                                      AVG_GP, None, metric_name=mse_metric,
+                                      tau=0.3, occam=False,
+                                      precomputed_II=mpr_ii)   # tau mismatch
+    # metric mismatch must also raise (codex finding: unenforceable until
+    # ModelPosteriorResult carried metric_name)
+    assert mpr_ii.metric_name == mse_metric
+    with pytest.raises(ValueError, match="precomputed_II"):
+        le.ablation_ladder_posteriors(spaces, x_train, y_train, X_EVAL,
+                                      AVG_GP, None, metric_name="pw_kl_vcal",
+                                      tau=0.8, occam=False,
+                                      precomputed_II=mpr_ii)
+
+
+def test_laplace_survives_degenerate_narrow_bounds(mse_metric):
+    """codex finding: a fixed 2*eps Hessian-point inset inverts the clip for a
+    parameter box narrower than 4*eps, pushing the stencil center OUTSIDE the
+    box. The inset is now capped at half the box width — a sub-4*eps dimension
+    degrades to the box midpoint and the integral stays finite."""
+    ps = ModelParameterSpace(
+        model_name="NarrowLin",
+        param_specs=[ParameterSpec("a", (0.5 - 5e-5, 0.5 + 5e-5), None),  # width 1e-4
+                     ParameterSpec("b", (-1.0, 1.0), None)],
+        predict_fn=lambda x, p: p["a"] * x + p["b"],
+        noise_param="sigma",
+    )
+    z = laplace_log_Z_Mx(ps, X_EVAL, AVG_GP, metric_name=mse_metric, tau=1.0)
+    assert np.isfinite(z.log_Z)
+
+
+def test_tau_sweep_fast_path_matches_naive(mse_metric):
+    """Construction I's analytic Z_Mx rescaling and the tau-independent
+    baseline must reproduce the naive per-tau model_posterior loop."""
+    spaces = {"Lin": lin_space(), "Quad": quad_space()}
+    x_train = X_EVAL
+    y_train = GP_MEAN + 0.05
+    taus = [0.3, 1.0, 5.0]
+    for construction in ("baseline", "I"):
+        names, fast = le.model_posterior_tau_sweep(
+            spaces, x_train, y_train, X_EVAL, AVG_GP, None, taus,
+            construction=construction, metric_name=mse_metric, occam=False)
+        for t_idx, tau in enumerate(taus):
+            mpr = model_posterior(spaces, x_train, y_train, X_EVAL, AVG_GP,
+                                  None, construction=construction,
+                                  metric_name=mse_metric, tau=tau, occam=False)
+            for j, n in enumerate(names):
+                assert fast[t_idx, j] == pytest.approx(mpr.posteriors[n],
+                                                       abs=1e-9), (construction, tau)

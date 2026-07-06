@@ -137,40 +137,40 @@ you'll be editing those plot functions anyway.
 ### OPEN — execute these
 
 Correctness-adjacent / deferred:
-- [ ] laplace_evidence.py :: numerical_hessian + _laplace_logdet :: not bounds-aware; the
+- [x] laplace_evidence.py :: numerical_hessian + _laplace_logdet :: not bounds-aware; the
   [1e-8,1e12] clip CONSTANTS set the Occam term at a bound-pinned MAP (~+9.2 nats/flat dir).
   D5 surfaced n_clipped but deferred the bounds-aware refactor :: S3-PLAU
-- [ ] laplace_evidence.py :: plot_evidence_decomposition / plot_prior_penalty_comparison ::
+- [x] laplace_evidence.py :: plot_evidence_decomposition / plot_prior_penalty_comparison ::
   read Construction-II-only component keys (log_lik_at_map, gp_penalty) with no
   `result.construction` guard → KeyError on a construction="I"/"baseline" result :: S2
 
 Efficiency (redundant recompute — also speeds figure regeneration):
-- [ ] laplace_evidence.py :: plot_tau_effect_on_evidence :: re-runs full Laplace at every τ
+- [x] laplace_evidence.py :: plot_tau_effect_on_evidence :: re-runs full Laplace at every τ
   though baseline is τ-independent and Construction-I rescales analytically :: S2
-- [ ] laplace_evidence.py :: plot_ablation_ladder :: recomputes laplace_log_evidence_ordinary
+- [x] laplace_evidence.py :: plot_ablation_ladder :: recomputes laplace_log_evidence_ordinary
   for both "baseline" and "I" per model (identical inputs) :: S2
-- [ ] laplace_evidence.py :: laplace_log_evidence_induced :: recomputes ll_at via
+- [x] laplace_evidence.py :: laplace_log_evidence_induced :: recomputes ll_at via
   _log_likelihood though _laplace_log_N's detail already holds log_lik_at_map :: S2
-- [ ] experiments/bistar_induced_prior_v2.py :: main → plot_ablation_ladder :: re-runs
+- [x] experiments/bistar_induced_prior_v2.py :: main → plot_ablation_ladder :: re-runs
   model_posterior(construction="II") already computed earlier in the same loop :: S2
-- [ ] laplace_evidence.py :: numerical_hessian :: computes f0=f(x) but never uses it, and the
+- [x] laplace_evidence.py :: numerical_hessian :: computes f0=f(x) but never uses it, and the
   diagonal (i==j) uses the 4-point cross stencil (~2d+1 redundant objective evals) :: S2
 
 Duplication / reuse:
-- [ ] laplace_evidence.py :: neg_log_f/neg_log_joint closures + _log_likelihood +
+- [x] laplace_evidence.py :: neg_log_f/neg_log_joint closures + _log_likelihood +
   compute_G_at_params :: the `noise_param, 0.3 <= 0` guard and magic 0.3 default are
   copy-pasted across 5 sites (drift silently desyncs Z_Mx / ordinary / N(M)) :: S2
-- [ ] laplace_evidence.py :: _log_likelihood :: re-implements the iid Gaussian log-likelihood
+- [x] laplace_evidence.py :: _log_likelihood :: re-implements the iid Gaussian log-likelihood
   (incl. the 0.3 default) rather than reusing a shared primitive :: S2
-- [ ] laplace_evidence.py :: model_posterior :: hand-rolls shift-by-max softmax
+- [x] laplace_evidence.py :: model_posterior :: hand-rolls shift-by-max softmax
   (np.exp(logk - logk.max())) — another copy of a normalization snippet :: S2
 - [x] experiments/impact_assessment.py :: mauna() :: duplicates the pyro latent-site
   trace/count block verbatim from collect() :: S2
-- [ ] tests/test_laplace_zmx.py :: lin_space()/quad_space() :: re-implement Linear/Quadratic
+- [~] tests/test_laplace_zmx.py :: lin_space()/quad_space() :: re-implement Linear/Quadratic
   ModelParameterSpace that bistar_gp.induced_prior already builds :: S2-PLAU
 
 Dead code / artifacts:
-- [ ] laplace_evidence.py :: _packers :: returns (pack, unpack) but `pack` is dead at all 3
+- [x] laplace_evidence.py :: _packers :: returns (pack, unpack) but `pack` is dead at all 3
   call sites (`_, unpack = _packers(...)`) :: S2
 - [x] bistar_viz/scripts/bistar_sample_size_sweep.py :: per-n_sub loop :: dead mutation
   `spec.mle_value = ...` (nothing reads it; leftover from removed compute_all_laplace_evidences) :: S2
