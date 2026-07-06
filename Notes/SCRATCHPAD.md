@@ -28,6 +28,31 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   optimization; D12 corrected in place). Fixed via `_raw_log_jacobian` in the MH target +
   analytic regression test. **92 tests pass.**
 
+## NEXT: Task 2 batch 2b — viz-script ports (design settled, execution pending)
+
+Port `bistar_viz/scripts/model_priors_laplace.py` (515 ln) and
+`model_prior_trajectory_laplace.py` (542 ln) onto `laplace_log_Z_Mx` (D10 unblocked; D15
+machinery committed at 641444a). Design decisions already made:
+- **Spaces**: build sigma-free `ModelParameterSpace`s IN the scripts mirroring their own
+  bounds/parameterizations (NOT `build_toy_parameter_spaces` — different bounds, plus a
+  sigma param that adds a flat direction; legacy-figure comparability wins).
+- **Multi-start**: external — loop each model's legacy `inits`, call
+  `laplace_log_Z_Mx(mle_params=init)` per start, keep min `G_at_min` (D11 lesson: Ḡ has
+  local minima in ω; package API stays single-start).
+- **Averaged GP**: replace prior-IS `compute_averaged_gp` with `extract_gp_predictives`
+  plus `aggregation_v3.average_gp_posterior`; draw source via `--gp-method` flag (map
+  default for the n-sweep figures per D9's "clean deterministic demonstrations" case;
+  vi/hmc selectable; the n=0 stage via `sample_prior` + `condition_on_data=False`).
+  Disclose the estimator change vs legacy prior-IS figures.
+- **Trajectory-script fork (surface with evidence, don't silently resolve)**: it uses a
+  Laplace/MC HYBRID (`compute_Z_hybrid`: Laplace low-τ, uniform-box MC log Z high-τ,
+  sigmoid blend) because pure Laplace degrades as τ flattens exp(−Ḡ/τ). Option (a) pure
+  Laplace + verify the high-τ tail vs the legacy hybrid; (b) add an optional MC Z_Mx
+  estimator to the package. Lean (a); check the tail first. The analytic τ-rescale makes
+  Laplace trajectories nearly free either way.
+- Then: figure regeneration + legacy comparison, codex review (stdin: `< /dev/null`!),
+  D16, flip D3 open item (1), PR #2 to Ready.
+
 ## New open item (from D11)
 
 - **Recheck Mauna candidate fits post-D11**: the real-data impact results (D6/D8 section of
