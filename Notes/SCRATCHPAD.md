@@ -34,7 +34,7 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   `docs/impact-assessment-results.md`) fitted QuadSin/Quad+2Harm with the old no-op restart
   selection (first restart always kept). Their initialization is data-driven (polyfit +
   residual amplitude) so the first restart plausibly converged fine, but the headline
-  Linear→Quad+2Harm reversal should be re-verified against the fixed selection before paper
+  Linear-to-Quad+2Harm reversal should be re-verified against the fixed selection before paper
   numbers.
 
 ## Open questions for the user (from D12/D13)
@@ -79,10 +79,10 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   PRIOR not the posterior (`_hmc_pyro_model` discarded the return of `pyro_sample_from_prior()`).
   Fixed in D6: score through the returned sampled module + new connection regression test. **66
   tests pass.** Kimi's `×n` CRITICAL was a false positive (verified); `fit_mcmc_simple` Jacobian is
-  a pre-existing non-blocking follow-up. Panel verdict: NO-GO pre-fix → GO after D6.
+  a pre-existing non-blocking follow-up. Panel verdict: NO-GO pre-fix, GO after D6.
 - **Prior/posterior predictive sampling (D7)** — `fit.sample_prior` (i.i.d., no NUTS) +
   `extract_gp_predictives(condition_on_data=)`: one pipeline for both prior and posterior predictive
-  checks. **72 tests pass** (6 new). Adversarially reviewed → SHIP, no defects.
+  checks. **72 tests pass** (6 new). Adversarially reviewed: SHIP, no defects.
 
 - **Inference + G options, thesis-anchored (D9/D10)** — `fit_gp(method=hmc|vi|map|hmc_laplace)`,
   one shared samples schema, defaults per thesis Ch.5 (full-Bayes sampling; VI was its primary
@@ -105,7 +105,7 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   `model_prior_trajectory_laplace.py` onto `laplace_log_Z_Mx` with `metric_name="pw_kl_vcal"`
   (proven identical to their G) and posterior draws (better estimator than their prior-IS).
 - **Old-vs-new impact assessment: toy sections DONE on Della** (job 10608943, 2026-07-03) —
-  `docs/impact-assessment-results.md`. Quantifies the D2 fixes: latent sites 7→4, decompose
+  `docs/impact-assessment-results.md`. Quantifies the D2 fixes: latent sites 7 down to 4, decompose
   full_std order-of-magnitude correction, mcmc_simple ~8x tighter, soft_transfer shifts.
   **`--mauna` section UNBLOCKED (D8)**: fit_hmc gained init_to_map + max_tree_depth; the
   tree cap (7) is the operative fix — head-to-head 1.04 s/it vs 4.9–8.2 s/it, identical
@@ -116,7 +116,7 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   real-data section. Headline: BMS* model selection REVERSES on Mauna Loa CO2 (old picks
   Linear 0.99; new picks Quad+2Harm 0.42) — the D4+D6 fixes change the scientific conclusion.
   Mechanism: old HMC = prior (noise 1.58±1.09 ≈ GammaPrior), new = posterior (noise ≈0.001);
-  latent sites 13→7; decompose 0.92→0.03. NEW chain NOT converged (ESS≈1, Rhat 4–81) so exact
+  latent sites 13 down to 7; decompose 0.92 down to 0.03. NEW chain NOT converged (ESS≈1, Rhat 4–81) so exact
   probs soft but DIRECTION robust (mechanistically forced by near-zero noise). Ran locally
   (Della abandoned: della-h16 ~5× slower/op + thread-thrash + jitter-retry ballooning). Noise-
   prior change remains a deliberately-untaken MODELING decision; converged full-Bayes = open fork.
@@ -164,7 +164,7 @@ Duplication / reuse:
   (incl. the 0.3 default) rather than reusing a shared primitive :: S2
 - [ ] laplace_evidence.py :: model_posterior :: hand-rolls shift-by-max softmax
   (np.exp(logk - logk.max())) — another copy of a normalization snippet :: S2
-- [ ] experiments/impact_assessment.py :: mauna() :: duplicates the pyro latent-site
+- [x] experiments/impact_assessment.py :: mauna() :: duplicates the pyro latent-site
   trace/count block verbatim from collect() :: S2
 - [ ] tests/test_laplace_zmx.py :: lin_space()/quad_space() :: re-implement Linear/Quadratic
   ModelParameterSpace that bistar_gp.induced_prior already builds :: S2-PLAU
@@ -172,21 +172,21 @@ Duplication / reuse:
 Dead code / artifacts:
 - [ ] laplace_evidence.py :: _packers :: returns (pack, unpack) but `pack` is dead at all 3
   call sites (`_, unpack = _packers(...)`) :: S2
-- [ ] bistar_viz/scripts/bistar_sample_size_sweep.py :: per-n_sub loop :: dead mutation
+- [x] bistar_viz/scripts/bistar_sample_size_sweep.py :: per-n_sub loop :: dead mutation
   `spec.mle_value = ...` (nothing reads it; leftover from removed compute_all_laplace_evidences) :: S2
-- [ ] conftest.py :: root sys.path shim :: now redundant — pyproject.toml exists and its own
+- [x] conftest.py :: root sys.path shim :: now redundant — pyproject.toml exists and its own
   comment says "Remove once the project ships a pyproject.toml" (ties into the 13 sys.path hacks) :: S2
-- [ ] experiments/practice_EvansEtAL/__pycache__/*.pyc :: 6 committed .pyc artifacts the D1
+- [x] experiments/practice_EvansEtAL/__pycache__/*.pyc :: 6 committed .pyc artifacts the D1
   hygiene sweep missed :: S2
 
 Prose (CLAUDE.md writing-style rules):
-- [ ] README.md :: "Z_Mx is the **data-free** GP model prior" :: "X is the Y" label ban :: S2
-- [ ] docs/plan-zmx-laplace.md :: "...are the ingredients." :: "ingredient" metaphor ban :: S2
+- [x] README.md :: "Z_Mx is the **data-free** GP model prior" :: "X is the Y" label ban :: S2
+- [x] docs/plan-zmx-laplace.md :: "...are the ingredients." :: "ingredient" metaphor ban :: S2
 
 ### OPEN — severity-1 (never addressed — FLAGGED)
-- [ ] **laplace_evidence.py :: module imports :: `build_toy_parameter_spaces` and
+- [x] **laplace_evidence.py :: module imports :: `build_toy_parameter_spaces` and
   `average_gp_posterior` imported but unused (1 occurrence each) :: S1**
-- [ ] **Notes/DECISIONS.md :: prose :: right-arrow (→) chars — CLAUDE.md ban; 16 occurrences and
+- [x] **Notes/DECISIONS.md :: prose :: right-arrow (→) chars — CLAUDE.md ban; 16 occurrences and
   GROWING (D4–D13 entries added more) :: S1**
 
 ### FIXED

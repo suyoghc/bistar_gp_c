@@ -26,9 +26,9 @@ directly into the paper's methods discussion.
 
 ### The options
 
-All methods return the same dict schema (pyro site name → array of constrained
-draws), so any choice flows through `extract_gp_predictives` → BMS* →
-decomposition unchanged, and results are directly comparable across methods.
+All methods return the same dict schema (pyro site name mapped to an array of
+constrained draws), so any choice flows through `extract_gp_predictives`, BMS*,
+and decomposition unchanged, and results are directly comparable across methods.
 
 | method | What it is | Thesis anchoring | When to prefer it |
 |---|---|---|---|
@@ -120,13 +120,13 @@ variance-ratio trap (`metrics_v2.py` header). A plain KL against GP predictives
 rewards wrong models with inflated noise for accidentally matching the GP's
 width; calibrating the candidate to the GP's variance scores mean adequacy
 under GP uncertainty — the quantity BI* transfers. This is the 6-part argument
-of `kb/Wiki/Metric Choice Justification.md` (KL → pw_nll → aggregation), which
+of `kb/Wiki/Metric Choice Justification.md` (KL, then pw_nll, then aggregation), which
 this section summarizes.
 
 One further thesis nuance for the paper: the chapter's aggregation is a hard
 best-match assignment (p. 174: sum the posteriors of the GP instances each
 model instance best matches); the package's soft Boltzmann transfer with
-temperature τ is the practical relaxation, recovering hard assignment as τ→0.
+temperature τ is the practical relaxation, recovering hard assignment in the small-τ limit.
 τ-sensitivity panels therefore double as a thesis-fidelity axis.
 
 ## 3. Choosing based on results

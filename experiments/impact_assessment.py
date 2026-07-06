@@ -41,6 +41,17 @@ def _git_sha():
         return "unknown"
 
 
+def _latent_sites(model):
+    """{'count': n, 'names': [...]} of the model's pyro sample sites — the
+    latent-site metric that isolates the D2 double prior-registration fix.
+    Shared by collect() and mauna(); pyro imported lazily so the OLD-worktree
+    arm can still run sections that never touch pyro."""
+    import pyro
+    tr = pyro.poutine.trace(model.pyro_sample_from_prior).get_trace()
+    sites = sorted(nm for nm, s in tr.nodes.items() if s["type"] == "sample")
+    return {"count": len(sites), "names": sites}
+
+
 def collect(seed=0, n_points=40):
     import torch
     from types import SimpleNamespace
@@ -76,13 +87,10 @@ def collect(seed=0, n_points=40):
 
     # ── 2. HMC latent-site count (isolates the double prior-registration fix) ──
     try:
-        import pyro
         from bistar_gp.model import build_toy_kernels, build_model
         xt = torch.linspace(0, 6, 20); yt = torch.sin(xt) + 0.25 * xt
         m, _ = build_model(xt, yt, *build_toy_kernels())
-        tr = pyro.poutine.trace(m.pyro_sample_from_prior).get_trace()
-        sites = sorted(nm for nm, s in tr.nodes.items() if s["type"] == "sample")
-        out["hmc_latent_sites"] = {"count": len(sites), "names": sites}
+        out["hmc_latent_sites"] = _latent_sites(m)
     except Exception as e:
         out["hmc_latent_sites"] = {"error": repr(e)[:300]}
 
@@ -157,11 +165,8 @@ def mauna(seed=0, sub=120, n_hmc=100, n_warmup=100):
 
     # 1) HMC latent-site count (double prior registration; ~13 vs 7 for 3 components)
     try:
-        import pyro
         mm, _ = build_model(x_train, y_train, *build_mauna_loa_kernels())
-        tr = pyro.poutine.trace(mm.pyro_sample_from_prior).get_trace()
-        sites = sorted(nm for nm, s in tr.nodes.items() if s["type"] == "sample")
-        out["mauna_hmc_latent_sites"] = {"count": len(sites), "names": sites}
+        out["mauna_hmc_latent_sites"] = _latent_sites(mm)
     except Exception as e:
         out["mauna_hmc_latent_sites"] = {"error": repr(e)[:300]}
 

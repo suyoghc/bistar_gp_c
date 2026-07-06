@@ -38,8 +38,7 @@ from scipy.optimize import minimize
 from dataclasses import dataclass, field
 
 from bistar_gp.bms_star import GPPosteriorSample, METRICS
-from bistar_gp.induced_prior import ModelParameterSpace, build_toy_parameter_spaces
-from bistar_gp.aggregation_v3 import average_gp_posterior
+from bistar_gp.induced_prior import ModelParameterSpace
 import bistar_gp.metrics_v2  # noqa: F401 — registers pw_* metrics (incl. the default pw_kl_vcal) into METRICS
 
 logger = logging.getLogger(__name__)

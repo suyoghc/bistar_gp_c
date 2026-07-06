@@ -21,7 +21,7 @@ were committed before `.gitignore` existed, so the ignore rules never took effec
 byte-identical duplicate scripts. No test suite for numerically delicate GP code.
 **Decision:** `git rm --cached` the already-ignored artifacts (files kept on disk); commit
 `.gitignore` so it sticks; delete the 4 duplicates (canonical copies kept in `bistar_viz/scripts/`
-per README); add `tests/` + a root `conftest.py`. Tracked files 740 → 458, repo 72 MB → 11 MB.
+per README); add `tests/` + a root `conftest.py`. Tracked files 740 down to 458, repo 72 MB down to 11 MB.
 **Alternatives considered:** Leave artifacts tracked (rejected: bloat, and ignore rules silently
 ineffective). `metrics_v2.py` / `aggregation_v3.py` were left untouched — verified they are the
 live modules, not superseded versions.
@@ -46,7 +46,7 @@ in the default pipelines.
   compute the true sum-kernel posterior covariance instead.
 Also added a defensive `period_length` branch in `aggregation_v3.py:330` (not result-invalidating:
 `period_length` has no prior, so it is never sampled).
-**Result:** 33 tests pass. Verified live: HMC latents 7 → 4; the soft_transfer distortion was
+**Result:** 33 tests pass. Verified live: HMC latents 7 down to 4; the soft_transfer distortion was
 demonstrated numerically ([0.501, 0.289, 0.210] correct vs [0.476, 0.302, 0.222] as-implemented).
 
 ---
@@ -82,7 +82,7 @@ robust `_laplace_logdet` (clips eigenvalues to fix the boundary curvature-fabric
 `model_posterior(construction="II")` with redesigned decomposition/ablation figures; `laplace_evidence`
 now self-registers its default metric (imports `metrics_v2`). Parked eval follow-ups also done:
 `pyproject.toml`, dedup `build_toy_kernels`, `InducedPriorResult` collision renamed
-(`mechanism.py` → `CandidateInducedSamples`), optional RNG `seed=` on `fit_mcmc_simple`/`fit_hmc`.
+(`mechanism.py` renamed it to `CandidateInducedSamples`), optional RNG `seed=` on `fit_mcmc_simple`/`fit_hmc`.
 `tests/test_laplace_zmx.py` **42 tests pass** (adds default-metric-registration and
 II-decomposition-identity). README Occam section updated to the canonical API + ablation ladder.
 **Still OPEN (held deliberately — needs a decision or compute):** (1) unify the two self-contained viz
@@ -235,9 +235,10 @@ dict schema.
   are exact and ~instant), values in the same constrained space `fit_hmc`/`apply_hp_value` use.
 - `bms_star.py::extract_gp_predictives(..., condition_on_data=True)` — `True` (default) keeps the
   posterior predictive p(y*|X,y,θ); `False` gives the prior predictive p(y*|θ) = GP prior at x_eval
-  (ZeroMean → mean 0, cov K_θθ(x_eval)+σ²I), no conditioning on data.
-So: prior predictive check = `sample_prior` → `extract_gp_predictives(condition_on_data=False)`;
-posterior predictive check = `fit_hmc` → `extract_gp_predictives(...)`.
+  (ZeroMean gives mean 0, cov K_θθ(x_eval)+σ²I), no conditioning on data.
+So: the prior predictive check feeds `sample_prior` into
+`extract_gp_predictives(condition_on_data=False)`; the posterior predictive check feeds
+`fit_hmc` draws into `extract_gp_predictives(...)`.
 
 **Alternatives considered:** Sampling the prior via NUTS (rejected — wasteful and can mix poorly;
 i.i.d. is exact). Unifying the scattered `bistar_viz/scripts/` prior-predictive reimplementations
@@ -257,7 +258,7 @@ verdict SHIP, no defects.
 
 **Problem:** Post-D6, fit_hmc targets the real posterior, and the Mauna Loa run became
 intractable: Della job 10584302 timed out at 14/400 warmup iterations, step size collapsing
-7.2e-01 → 3.3e-07 with tree depth saturating (~72 min/iteration). Diagnosis: the noise
+from 7.2e-01 to 3.3e-07 with tree depth saturating (~72 min/iteration). Diagnosis: the noise
 posterior genuinely concentrates near zero (monthly-averaged CO2 is nearly noiseless;
 posterior noise ≈ 7e-4 ± 1e-4 normalized), so the stiff region IS the typical set — the
 sampler cannot avoid it, and uncapped depth-10 NUTS trees (up to 1023 leapfrog steps, each a
@@ -277,7 +278,7 @@ prior. `experiments/bms_star_mauna_loa.py` and `experiments/mauna_loa.py` now MA
 model actually passed to fit_hmc (they used to fit one model and pass a fresh default one)
 and set `max_tree_depth=7`.
 
-**codex review (FIX-FIRST → fixed):** (1) CONFIRMED: a constrained value that underflows to
+**codex review (FIX-FIRST, then fixed):** (1) CONFIRMED: a constrained value that underflows to
 exactly 0 sits INSIDE the closed support GreaterThanEq(0) yet maps to -inf under
 biject_to(support).inv, so pyro retries the same fixed init until "cannot find valid initial
 params" — reproduced, then fixed by checking finiteness of the unconstrained image (support
@@ -286,7 +287,7 @@ init_to_sample with a warning if still invalid. (2) The two stale experiment cal
 
 **Result:** 75 tests pass (3 new: kwargs smoke, init_to_value transforms round-trip,
 boundary-underflow survival). Projection for Della: ~0.1 s/leapfrog at SUB=150 × ≤127 steps
-≈ ≤13 s/it → 400 iterations ≈ 90 min (was: >8 h timeout). Note for the paper: any change to
+≈ ≤13 s/it, so 400 iterations ≈ 90 min (was: >8 h timeout). Note for the paper: any change to
 the NOISE PRIOR itself (e.g. bounding it away from zero) is a modeling decision, deliberately
 not taken here — these are pure sampler-efficiency knobs.
 
@@ -322,7 +323,7 @@ prescribes full-Bayes sampling of the joint posterior (p. 172–173) — Appendi
 only exposed fit_hmc (+ fit_map separately, different output shape).
 
 **Decision:** `fit.py::fit_gp(model, lik, x, y, method=...)` — every method returns the SAME dict
-schema as fit_hmc (site name → (n,) constrained array), so options flow through
+schema as fit_hmc (site name mapped to a (n,) constrained array), so options flow through
 extract_gp_predictives/BMS*/decompose unchanged and are directly comparable:
 - `"hmc"` (DEFAULT): existing NUTS path with D8 knobs. Thesis-equivalent (validated cross-check);
   chosen over literal-primary VI because it is the path this codebase has verified end-to-end
@@ -343,7 +344,7 @@ extract_gp_predictives/BMS*/decompose unchanged and are directly comparable:
 VI concentrates vs prior (noise sd ≪ prior sd), pipeline flow-through for map/vi, unknown-method
 error, plus the D10 identity below). Justification writeup for the paper:
 `docs/inference-and-metric-options.md`.
-**codex review (FIX-FIRST → fixed, same day):** (1) the D8 boundary guard existed only in fit_hmc's
+**codex review (FIX-FIRST, then fixed the same day):** (1) the D8 boundary guard existed only in fit_hmc's
 inline init loop, so an underflowed-to-zero hyperparameter crashed the NEW vi/hmc_laplace init paths
 — `_map_init_values` is now the single guarded authority (biject_to-finiteness clamp, ValueError if
 irreparable; fit_hmc falls back to init_to_sample), with boundary regression tests for both paths.
@@ -379,7 +380,7 @@ mixture-moment formulas (compute_averaged_gp vs aggregation_v3.average_gp_poster
 estimator in the package. Viz unification is therefore UNBLOCKED: port the scripts onto
 laplace_log_Z_Mx with metric_name="pw_kl_vcal" and posterior draws.
 **Thesis nuance recorded for the paper:** the chapter's aggregation is hard best-match assignment
-(p. 174); the package's soft-τ Boltzmann transfer is the practical relaxation (τ→0 recovers it).
+(p. 174); the package's soft-τ Boltzmann transfer is the practical relaxation (recovering it in the small-τ limit).
 **Scope qualifier (codex review):** the identity holds for GP pointwise variance ≥ 1e-6; below that
 the implementations' variance FLOORS differ (viz clips at 1e-6, package `_extract_marginals` at
 1e-10) and they diverge by the floor ratio — pinned in
@@ -460,7 +461,7 @@ reproduced run-1 hyperparameter summaries to 4 decimals).
 2. **HMC and hmc_laplace sample ONLY the low-noise/density-mode basin**
    (P(noise<0.15)=1.000, both — a MINORITY of posterior mass); **VI converges stably to
    ONLY the dominant high-noise basin** (P=0.000; identical across seeds 0/1/2 and 5k/20k
-   steps — a converged ELBO optimum that MIGRATES from its MAP init, noise 0.074 → 0.57,
+   steps — a converged ELBO optimum that MIGRATES from its MAP init, noise 0.074 to 0.57,
    toward the larger-mass basin). Thesis App. II's "VI ≈ HMC" does NOT replicate here:
    hyperparameter means 2.4–14.8 pooled-SDs apart, and NO single method reports the full
    bimodal posterior.
@@ -477,7 +478,7 @@ reproduced run-1 hyperparameter summaries to 4 decimals).
    the log-variance term is ≈constant across draws); pw_kl_mean much flatter (0.284:
    dropping GP-variance weighting costs discrimination); pw_hellinger_vcal intermediate
    (0.326, bounded); kl_forward sharpest (1.000) but most brittle under the bad posterior
-   (VI row). τ matters more than the pointwise-metric choice: at τ=0.1 pw_kl_vcal → 1.000;
+   (VI row). τ matters more than the pointwise-metric choice: at τ=0.1 pw_kl_vcal reaches 1.000;
    hard assignment is scale-free and unanimous.
 5. **Cost:** hmc 5.6 h / hmc_laplace 5.8 h (uncapped depth-10 NUTS, trees saturating —
    the bimodal geometry is stiff; within-mode ESS only 4–37, single-chain Geyer) vs
@@ -505,7 +506,7 @@ honest fast path when hyperparameter uncertainty is not the point.
 **Status (closed same day):** capped-NUTS arm (`--max-tree-depth 7`, the D8-validated knee)
 done — `docs/appendix-tree-depth-cap.md`. The cap is result-preserving at model-selection
 precision on the toy (max posterior shift 0.0015 hmc / 0.0108 hmc_laplace, hard assignment
-unchanged 200/200) at ~9× lower cost (5.6 h → 39 min); within-mode ESS per draw comparable
+unchanged 200/200) at ~9× lower cost (5.6 h down to 39 min); within-mode ESS per draw comparable
 or better; both capped chains stay in the likelihood mode (P(noise<0.15)=1.000) — the cap
 neither causes nor cures mode-blindness. Caches/outputs tagged `_td7`; uncapped canonical
 files untouched.
@@ -544,7 +545,7 @@ sampling, which needs no chain at all).
 
 **Decision:** `fit.py::_raw_log_jacobian(model, param_list)` — sums log|d transform/d raw|
 over constrained scalar params, resolving each constraint by gpytorch naming convention
-(`raw_X` → owning module's `raw_X_constraint`) and differentiating `constraint.transform`
+(`raw_X` resolves to the owning module's `raw_X_constraint`) and differentiating `constraint.transform`
 by autograd (handles any elementwise constraint; unconstrained params contribute 0).
 `fit_mcmc_simple.log_posterior` now adds this term. Pinned by
 `tests/test_candidates.py::test_raw_log_jacobian_is_log_sigmoid_for_positive`
@@ -567,3 +568,38 @@ bimodality proof, prior-IS as the mass authority, corrected-MH demoted to mixing
 `docs/inference-and-metric-options.md` §3 reworded. Downstream caveat: any past result that
 used fit_mcmc_simple draws quantitatively (old impact-assessment sections compare old-code
 vs new-code chains, both now superseded) should be treated as raw-measure numbers.
+
+---
+
+## D14: cleanup-backlog batch 1 — hygiene + test-invocation workflow change — 2026-07-06
+
+**Problem:** The 2026-07-01 8-angle review's severity-2 backlog (reconstructed and
+annotated against the tree in commit 20bd7c8; live checklist in Notes/SCRATCHPAD.md) held
+a batch of mechanical items independent of the viz-unification work, including two flagged
+severity-1s never previously addressed.
+
+**Decision (batch 1, no numerics touched):**
+- `bistar_gp/laplace_evidence.py`: removed unused imports `build_toy_parameter_spaces`,
+  `average_gp_posterior` (S1); `metrics_v2` self-registration import untouched.
+- Right-arrow characters purged from prose per the global style rule (S1): all 16 in
+  `Notes/DECISIONS.md`, 4 in `docs/inference-and-metric-options.md`, and the prose lines
+  of `Notes/SCRATCHPAD.md` (the backlog checklist's own tag notation left as-is — it is
+  ephemeral by design).
+- Prose nits: README `Z_Mx` label-pattern sentence rewritten with an active verb;
+  `docs/plan-zmx-laplace.md` "ingredients" metaphor replaced.
+- 6 committed `.pyc` artifacts under `experiments/practice_EvansEtAL/__pycache__/`
+  untracked (`git rm --cached`; `.gitignore` already covers `__pycache__/`).
+- `experiments/impact_assessment.py`: the pyro latent-site trace block duplicated between
+  `collect()` and `mauna()` extracted into `_latent_sites(model)` (lazy pyro import
+  preserved; verified count 4 on the toy model).
+- `bistar_viz/scripts/bistar_sample_size_sweep.py`: dead per-n_sub `spec.mle_value`
+  mutation removed (verified: `laplace_evidence` reads only the explicit `mle_params`
+  dict; `spec.mle_value` matters only for `induced_prior` plotting the sweep never calls).
+- **Workflow change:** root `conftest.py` sys.path shim REMOVED per its own removal note —
+  the package is now installed editable (`pip install -e . --no-deps`, miniconda base).
+  Anyone running tests in a fresh environment needs that install once; both
+  `python3 -m pytest` and bare `pytest` verified green after removal.
+
+**Result:** 92 tests pass. Remaining backlog (laplace_evidence efficiency/duplication
+cluster, construction guard, bounds-aware hessian S3-PLAU, induced_prior_v2 re-run item,
+test_laplace_zmx param-space duplication) is batch 2, folded into the viz unification.

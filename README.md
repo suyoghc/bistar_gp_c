@@ -100,7 +100,7 @@ Average GP-compatible density. Penalizes models with vast parameter wastelands.
 
 Both are computed via Laplace approximation to avoid Monte Carlo dimensionality bias.
 
-`Z_Mx` is the **data-free** GP model prior: `laplace_evidence.laplace_log_Z_Mx(..., occam=False|True)`, expanded at `argmin Ḡ` with the Hessian of `Ḡ` (no data likelihood). Model *selection* combines it with the data through `model_posterior(construction=...)`, an ablation ladder:
+`laplace_evidence.laplace_log_Z_Mx(..., occam=False|True)` computes the **data-free** GP model prior `Z_Mx`, expanded at `argmin Ḡ` with the Hessian of `Ḡ` (no data likelihood). Model *selection* combines it with the data through `model_posterior(construction=...)`, an ablation ladder:
 
 - **baseline** — ordinary marginal likelihood, no GP.
 - **Construction I** — `Z_Mx · p_ord(D|M)` (GP acts as a class-level prior).

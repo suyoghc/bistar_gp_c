@@ -223,12 +223,6 @@ def main():
                 x_sub, y_sub = subsample_data(x_sc, y_sc, n_sub, seed=config.seed)
                 mle_params = fit_candidates(x_sub, y_sub, x_eval_sc)
 
-                for mn, ps in param_spaces.items():
-                    if mn in mle_params:
-                        for spec in ps.param_specs:
-                            if spec.name in mle_params[mn]:
-                                spec.mle_value = mle_params[mn][spec.name]
-
                 # Canonical model posterior + decomposition — Construction II
                 # (DECISIONS D3, docs/plan-zmx-laplace.md).
                 post = model_posterior(
