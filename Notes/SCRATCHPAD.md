@@ -28,14 +28,19 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   optimization; D12 corrected in place). Fixed via `_raw_log_jacobian` in the MH target +
   analytic regression test. **92 tests pass.**
 
-## NEXT: Task 2 batch 2b — viz-script ports (plan verified + written: docs/plan-viz-unification.md)
+## NEXT: Task 2 batch 2b — viz-script ports (plan at R1 after codex review: docs/plan-viz-unification.md)
 
 Two adversarial verification runs (2026-07-06) resolved the open forks with measurements:
 pure Laplace FAILS the τ-sweep (ranking flip at τ≈88, gap 0.45 at τ=316, and 0.1–0.25
 mid-range distortion) AND plain MC fails low-τ (ESS<200 below τ≈0.3) — hybrid needed both
 ways; averaged-GP moment formulas match to 2e-16 with all port differences enumerated.
-Full plan, package additions (mc_log_Z_Mx, hybrid, starts=, weights=), port recipes,
-comparison harness, and open review questions: docs/plan-viz-unification.md.
+R1 changes after codex review (all 9 outcomes dispositioned, plan §7): defensive-mixture
+IS (`is_log_Z_Mx`) replaces the fixed-window hybrid as the reference estimator (the R0
+blend was pure Laplace at exactly the τ=0.3 panels it claimed to fix); legacy scripts'
+verified inconsistencies (Linear bounds, occam ON vs OFF, multi-start styles) resolved by
+unify-with-disclosure; prior parity pinned to PRIOR_CONFIGS['informative'] (build_toy_kernels
+uses Gamma(2,2) — mismatch); rng= param on extract_gp_predictives; rerunnable harness via
+git-show of the pinned commit; 9-item test checklist in plan §6.
 
 ### superseded design sketch (kept for the record)
 

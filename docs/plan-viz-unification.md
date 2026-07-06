@@ -1,146 +1,237 @@
-# Plan: viz-script unification onto laplace_evidence (Task 2 batch 2b) — 2026-07-06
+# Plan: viz-script unification onto laplace_evidence (Task 2 batch 2b) — 2026-07-06, R1
 
 Port `bistar_viz/scripts/model_priors_laplace.py` (515 ln) and
 `model_prior_trajectory_laplace.py` (542 ln) onto the canonical
 `bistar_gp.laplace_evidence` machinery (D3 open item 1, unblocked by D10,
-foundation refactored in D15). Every design choice below is grounded in two
-adversarial verification runs (2026-07-06, ~200k tokens, scripts preserved in
-the session scratchpad and summarized here); the numbers cited are measured,
-not assumed.
+foundation refactored in D15).
 
-## 0. What the verification runs established
+**Revision 1 (same day): incorporates the codex review of the R0 plan
+(committed 22a3e5e).** Dispositions are logged in §7; the material changes:
+the reference Z_Mx estimator for figures is now defensive-mixture IS rather
+than a fixed-window Laplace/MC blend (codex S2: the R0 blend was pure Laplace
+at exactly the fixed-τ=0.3 panels it claimed to improve); the two legacy
+scripts' space/occam/multi-start DIFFERENCES are now stated from in-repo
+verification and resolved by unify-with-disclosure; prior parity is pinned to
+`PRIOR_CONFIGS["informative"]` (`build_toy_kernels()` uses `Gamma(2,2)`
+lengthscale — the legacy-matching `Gamma(6,0.85)` is commented out in
+`model.py`); the comparison harness extracts legacy scripts from a pinned
+commit so it stays rerunnable after replace-in-place; `rng=` is added to
+`extract_gp_predictives` instead of caller-side global seeding.
 
-**V1 — pure Laplace is NOT adequate for the τ-sweep figure (verdict:
-hybrid needed).** On sigma-free spaces mirroring the legacy MODELS bounds
-(Linear d=2, Sinusoidal d=3, Sin+Linear d=5), against a 200k-sample uniform-box
-MC ground truth (cross-checked by a 400k defensive-mixture IS estimator):
+## 0. Evidence base
 
-- The Laplace `(d/2)log τ` term grows without bound while the true
-  occam-normalized `Z_Mx = E_box[exp(−Ḡ/τ)] ≤ 1`. Laplace crosses the
-  impossible `log Z > 0` line at τ ≈ 31 (Sin), 47 (Sin+Lin), 187 (Lin); the
-  cross-model ranking FLIPS at τ ≈ 88 purely because d=5 > d=3 — at the
-  legacy figure's τ_max ≈ 316, Laplace gives Sin+Linear 0.77 vs true 0.32
-  (wrong winner, posterior gap 0.45).
-- Mid-range (τ ~ 0.3–3) pure Laplace also carries 1–2.5-nat model-specific
-  errors from non-Gaussianity (Sinusoidal's Ḡ-minimum pinned at the ω=0.1
-  boundary, +1.1 nats; Sin+Linear's bimodal Ḡ landscape, −1.9 to −2.5 nats),
-  giving posterior gaps 0.10–0.25. Laplace/MC agreement near τ≈1 and τ≈20–30
-  is coincidental cancellation.
-- Plain uniform MC fails at the LOW end: ESS < 200 below τ ≈ 0.3, and it
-  misses Sin+Linear's narrow Ḡ=0 basin entirely at τ=0.1 (−2.4 nats). So the
-  legacy hybrid architecture (Laplace low-τ, MC high-τ) is justified in BOTH
-  directions, not a convenience.
-- The package's single midpoint start is insufficient: it found Ḡ* = 4.94 for
-  Sinusoidal (true 0.796) and missed Sin+Linear's Ḡ* = 0 entirely.
-  Multi-start is mandatory (the D11 lesson recurring).
-- The legacy G-clamp at 500 is immaterial (< 0.001 nats). At the fixed τ=0.3
-  used by the bar-chart/trajectory panels, pure Laplace preserves the top
-  model but distorts probabilities by up to 0.22 and swaps 2nd/3rd.
+Two adversarial verification runs (2026-07-06) ground this plan. Their raw
+scripts are session-scratch (not committed); accordingly, treat the specific
+constants below as *measured once, to be re-derived in-repo* — §6 commits a
+re-derivation script as part of implementation. The STRUCTURAL claims are
+closed-form consequences of the Laplace expression and were independently
+confirmed by the codex review.
+
+**V1 — pure Laplace is NOT adequate for the τ-sweep figure; plain MC is not
+adequate at low τ (verdict: two regimes, no single cheap estimator).** On
+sigma-free spaces mirroring the trajectory script's bounds, against 200k-
+sample uniform-box MC cross-checked by a 400k defensive-mixture IS estimator:
+
+- Laplace's `(d/2)log τ` term grows without bound while the true
+  occam-normalized `Z_Mx = E_box[exp(−Ḡ/τ)] ≤ 1` (so `log Z ≤ 0` — a hard
+  bound Laplace crosses at finite τ: measured ≈31/47/187 for d=3/5/2). The
+  cross-model ranking FLIPS (measured τ≈88) because at large τ Laplace orders
+  models by d while the truth orders them by mean box divergence; at the
+  legacy figure's τ_max≈316 the Laplace posterior gap vs truth was 0.45 with
+  the wrong winner. The flip-τ is closed-form derivable from the Laplace
+  expression — it becomes a committed regression check (§6).
+- Mid-range (τ~0.3–3) pure Laplace carries 1–2.5-nat model-specific errors
+  from non-Gaussianity (Sinusoidal's Ḡ-minimum pinned at the ω=0.1 boundary;
+  Sin+Linear's bimodal Ḡ landscape), i.e. posterior gaps 0.10–0.25.
+  Laplace/MC agreement near τ≈1 and τ≈20–30 is coincidental cancellation.
+- Plain uniform-box MC fails at LOW τ: ESS < 200 below τ≈0.3, and misses
+  Sin+Linear's narrow Ḡ=0 basin entirely at τ=0.1 (−2.4 nats).
+- The package's single midpoint start found Ḡ*=4.94 for Sinusoidal (true
+  0.796) and missed Sin+Linear's Ḡ*=0 — multi-start is mandatory (the D11
+  lesson recurring).
+- The legacy G-clamp at 500 is immaterial (<0.001 nats).
 
 **V2 — the averaged-GP port recipe is exact where it must be.** The viz
-`compute_averaged_gp` moment-match and the package `average_gp_posterior` use
-the same mixture-moment formulas: machine-precision agreement (2.2e-16 mean,
-8.9e-16 var) on identical draws with uniform weights; a weighted
-generalization is exact to 1.8e-15. The differences a port must handle or
-disclose: (i) ESTIMATOR — viz importance-weights PRIOR draws by LML, package
-uses uniform-weighted POSTERIOR draws (on the same draws, LML-vs-uniform
-weighting shifts moments by up to 2.37 mean / 3.21 var — this is the
-deliberate D10 estimator upgrade, disclosed, not a bug); (ii) variance floor
-1e-6 (viz) vs 1e-10 (package `_extract_marginals`) — adopt the package floor
-per D10; (iii) diag-only (viz) vs full mixture covariance (package) —
-harmless under pw_* metrics, which consume marginals; (iv) training-Gram
-jitter 1e-6 vs 1e-4; (v) viz clips extreme hyperparameter draws, the package
-drops them on Cholesky failure (mixture N can shrink silently — count and
-report); (vi) `extract_gp_predictives` has no seed argument (subsampling uses
-global np.random) and requires placeholder x/y tensors for the n=0 prior
-stage; (vii) prior parity (Gamma(6,0.85)³ + Gamma(1.75,1)) is the script's
-responsibility — nothing in the package enforces it.
+`compute_averaged_gp` moment-match and the package `average_gp_posterior`
+agree at machine precision on identical draws with uniform weights (2.2e-16
+mean, 8.9e-16 var); a weighted generalization is exact to 1.8e-15. The port
+differences to handle or disclose: (i) ESTIMATOR — viz importance-weights
+PRIOR draws by LML, package uses uniform-weighted draws from the chosen
+`fit_gp` method (on identical draws, LML-vs-uniform weighting shifts moments
+by up to 2.37 mean / 3.21 var — the deliberate D10 estimator change,
+disclosed, not a bug); (ii) variance floor 1e-6 (viz) vs 1e-10 (package
+`_extract_marginals`) — adopt the package floor per D10; (iii) diag-only vs
+full mixture covariance — harmless under pw_* metrics, which consume
+marginals; (iv) training-Gram jitter 1e-6 vs 1e-4; (v) viz clips extreme
+hyperparameter draws, the package drops them on Cholesky failure — the port
+counts and reports retained draws per stage; (vi) `extract_gp_predictives`
+subsampling uses global np.random and needs placeholder x/y tensors for the
+n=0 prior stage; (vii) prior parity is the script's responsibility.
 
-## 1. Package additions (laplace_evidence.py) — forced by V1
+**V3 — the two legacy scripts are NOT mutually consistent (verified in-repo,
+this revision).** `model_priors_laplace.py` vs
+`model_prior_trajectory_laplace.py`: (a) Linear bounds (-2,2) vs (-3,3)
+(Sinusoidal/Sin+Linear/Quadratic bounds match); (b) the priors script's
+Laplace Z always subtracts `log V` (occam ON) while the trajectory script's
+`compute_laplace_Z` has NO `−log V` term (occam OFF) — since `log V_j`
+differs per model, the two legacy figure sets used different normalized
+posteriors, an inconsistency the unification must resolve, not preserve;
+(c) multi-start styles differ (fixed inits lists vs p0 + 20 seeded random
+perturbations clipped to 0.99·bounds). Resolution: **unify with
+disclosure** (§3), reproducing each legacy convention only inside the
+comparison harness.
+
+## 1. Package additions (laplace_evidence.py)
 
 1. **`mc_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_mc=200_000,
    seed=0, metric_name="pw_kl_vcal", occam=False)`** — uniform-box sampling;
-   Ḡ computed ONCE and reweighted per τ (the legacy `precompute_G_samples`
-   pattern, generalized): `log Z_occam(τ) = logsumexp(−Ḡ/τ) − log n_mc`.
-   Occam bookkeeping: the box-uniform MC mean estimates `(1/V)∫exp(−Ḡ/τ)dφ`,
-   i.e. the OCCAM-normalized quantity — `occam=False` must ADD `+log V`
-   (inverse of the Laplace path, where occam=True subtracts it). Returns
-   per-τ log Z plus per-τ ESS diagnostics.
-2. **`hybrid_log_Z_Mx(...)`** — Laplace below τ_lo, MC above τ_hi, log-space
-   linear blend inside [τ_lo, τ_hi]; defaults **τ_lo=0.3, τ_hi=1.0** from the
-   measured ESS profile (MC ESS ≈ 200 at τ=0.3, ≥ 960 at τ≥1) rather than the
-   legacy sigmoid centered at 0.5. Warn if MC ESS < 100 anywhere it carries
-   weight. (Alternative considered: a defensive-mixture IS estimator valid at
-   ALL τ — one method, no seam — deferred as heavier machinery unless review
-   prefers it; the V1 run validated such an estimator as its ground truth.)
+   Ḡ computed ONCE, reweighted per τ (`logsumexp(−Ḡ/τ) − log n_mc`); returns
+   per-τ log Z + per-τ ESS. Occam bookkeeping (codex-CONFIRMED): the
+   box-uniform mean estimates the OCCAM-normalized `(1/V)∫exp(−Ḡ/τ)dφ`, so
+   `occam=False` ADDS `+log V` — the inverse of the Laplace path where
+   `occam=True` subtracts it. A cross-estimator volume-invariance test (§6)
+   pins the D5 same-reference-measure invariant so a mixed Laplace/MC ladder
+   can never silently disagree on volume bookkeeping.
+2. **`is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000,
+   seed=0, starts=None, metric_name=..., occam=False)`** — defensive-mixture
+   importance sampling: proposal = ½·uniform-box + ½·mixture of Gaussians at
+   the multi-start optima with covariances `τ_k·H⁻¹` over a small τ_k ladder;
+   self-normalized estimate of the same integral, valid at ALL τ from one
+   sample set; returns per-τ log Z + ESS, warns when ESS < threshold.
+   **This is the reference/default estimator for all figure Z_Mx values**
+   (codex recommendation adopted): one estimator, no seam, no
+   blended-bias window — and it fixes the R0 inconsistency that the blend
+   was pure Laplace at exactly the fixed-τ=0.3 panels V1 showed Laplace
+   distorting by 0.10–0.25. Laplace (analytic, low-τ) and `mc_log_Z_Mx`
+   (high-τ) remain as cheap CROSS-CHECKS: the harness plots all three, and
+   an ESS-adaptive hybrid is NOT built unless the IS estimator proves too
+   expensive in practice (it did not in V1: 400k evaluations covered a
+   7-point τ ladder for three models in minutes).
 3. **`laplace_log_Z_Mx(..., starts=None)`** — optional list of start dicts;
    runs the existing single-start path per start, keeps the min-Ḡ* result.
-   Small addition, mandatory per V1's midpoint-start failures, benefits all
-   callers.
+   Mandatory per V1's midpoint-start failures; also feeds the IS proposal's
+   Gaussian components.
 4. **`average_gp_posterior(..., weights=None)`** — verified-exact weighted
-   moments (default None = uniform, current behavior). Enables reproducing
-   legacy LML-weighted figures exactly for the comparison harness; the
-   ported scripts' default remains uniform posterior draws.
-
-Each addition gets a regression test: MC vs brute-force grid on a 2-D case
-(+ occam sign-convention test); hybrid continuity across the blend window;
-`starts` recovers the Sinusoidal optimum the midpoint start misses (pinned
-from V1); `weights` vs the viz formula at machine precision; the ESS warning
-fires on a starved case.
+   moments (None = uniform, current behavior). Needed to reproduce legacy
+   LML-weighted figures inside the comparison harness only.
+5. **`extract_gp_predictives(..., rng=None)`** — optional
+   `numpy.random.Generator` for the draw subsampling (codex: API parameter,
+   not caller-side `np.random.seed`); `None` preserves the current
+   global-state behavior for existing callers.
 
 ## 2. Port `model_priors_laplace.py`
 
-- **Spaces**: sigma-free `ModelParameterSpace`s built in-script, mirroring
-  the legacy MODELS bounds/parameterizations exactly (NOT
-  `build_toy_parameter_spaces`: different bounds, and its sigma param adds a
-  flat direction — legacy-figure comparability wins). Legacy positional
-  `predict_fn`s converted to dict-based; legacy `inits` become `starts`.
-- **Averaged GP** (V2 recipe): `build_model` with matching priors; n>0
-  stages: `fit_map` → `fit_gp(method=args.gp_method)` →
-  `np.random.seed(seed)` → `extract_gp_predictives` →
+- **Spaces**: sigma-free `ModelParameterSpace`s built in a shared
+  `bistar_viz/scripts/_viz_spaces.py`, on the UNIFIED canonical bounds (§3);
+  legacy positional `predict_fn`s converted to dict-based; legacy `inits`
+  become `starts`.
+- **Priors** (codex fix): kernels/likelihood built via
+  `build_kernels_from_config(PRIOR_CONFIGS["informative"])` and
+  `build_likelihood_from_config(...)` — NOT `build_toy_kernels()`, whose
+  SE-lengthscale prior is `Gamma(2,2)` (the legacy-matching `Gamma(6,0.85)`
+  is present only as a comment in `model.py`). The harness asserts the
+  registered prior parameters equal the config values at runtime.
+- **Averaged GP** (V2 recipe): n>0 stages: `fit_map` →
+  `fit_gp(method=args.gp_method)` → `extract_gp_predictives(rng=rng)` →
   `average_gp_posterior`. n=0 stage: placeholder tensors + `sample_prior` +
-  `condition_on_data=False`. `--gp-method` flag: **default `map`** (the
-  D9 "clean deterministic demonstrations" case — these are mechanism
-  figures; hmc would cost hours per stage post-D12), `vi`/`hmc` selectable.
-  Report the retained-draw count per stage (V2 diff v).
-- **Z per model**: `hybrid_log_Z_Mx(..., occam=True, starts=legacy inits)`.
-  Default is the hybrid even for the fixed-τ=0.3 panels — V1 measured
-  0.10–0.25 posterior distortion from pure Laplace there, so matching the
-  legacy figures' method would mean matching their known error. A
-  `--pure-laplace` flag reproduces legacy behavior for the comparison.
-- **Comparison harness**: run the UNTOUCHED legacy script and the port on
-  identical data/seeds; emit side-by-side figures + a per-figure delta table
-  under `runs/viz_unification/`; deltas attributed to (metric: none —
-  identity proven D10) / (estimator: prior-IS→posterior draws) /
-  (Z method: pure Laplace→hybrid).
+  `condition_on_data=False`. `--gp-method` **default `map`**, `vi`/`hmc`
+  selectable. Language discipline (codex clarification): MAP output is a
+  **point-estimate predictive** (a degenerate length-1 "posterior");
+  "posterior draws" is reserved for `hmc`/`vi`. The default is defensible
+  ONLY as a disclosed mechanism-figure choice: per D12 these figures
+  illustrate the BI* mechanism, not full-Bayes inference claims, and under
+  the `informative` priors MAP/HMC report the density-mode basin (minority
+  mass) — the figure captions and the disclosure paragraph say so.
+- **Z per model**: `is_log_Z_Mx(..., starts=legacy inits)` at the figure's
+  τ (fixed panels AND normalization), `occam` per §3. `--estimator
+  {is,laplace,mc}` exposed; `--estimator laplace` reproduces the legacy
+  method for the harness.
+- Report retained-draw counts per stage (V2 diff v).
 
-## 3. Port `model_prior_trajectory_laplace.py`
+## 3. Unification decisions (from V3)
 
-Same spaces/averaged-GP; its `compute_avg_gp`/`compute_laplace_Z`/
-`compute_Z_hybrid`/`precompute_G_samples` copies all collapse onto the
-package. The τ-sweep figure uses `mc_log_Z_Mx`'s reweighting (Ḡ computed
-once per stage) + the Laplace analytic rescale below the window — the
-whole sweep costs one Ḡ-precompute per model per stage.
+- **Bounds**: one canonical set = the `model_priors_laplace.py` bounds
+  (Linear (-2,2)); D3 designates that script the viz reference for Z_Mx. The
+  trajectory legacy delta (Linear (-3,3)) is reproduced only inside the
+  harness for its own legacy comparison. Volumes enter through occam, so the
+  bounds choice is disclosed alongside it.
+- **Occam**: canonical default `occam=False` (D3's faithful no-Occam BI*
+  default), with `occam=True` regenerated as the sensitivity variant —
+  replacing the legacy scripts' contradictory hard-wired conventions
+  (priors: always ON; trajectory: always OFF). Each legacy comparison runs
+  under that script's own convention.
+- **Multi-start**: canonical = the legacy inits lists via `starts=`, plus an
+  optional `--n-perturb` (seeded rng) reproducing the trajectory script's
+  20-perturbation robustness trick where its figures are compared.
 
-## 4. Close-out
+## 4. Port `model_prior_trajectory_laplace.py`
 
-Figure regeneration (system python3 has torch); legacy scripts REPLACED in
-place (git history + comparison artifacts preserve the old behavior — they
-are the last two self-contained Laplace copies, and keeping them defeats the
-unification); disclosure paragraph added to
-`docs/inference-and-metric-options.md` (estimator + Z-method changes and why
-the new figures are more accurate); codex review of the full diff
-(`< /dev/null` on stdin); D16 entry; flip D3 open item (1); check the last
-backlog leftovers; PR #2 → Ready.
+Same shared spaces/averaged-GP; its `compute_avg_gp` / `compute_laplace_Z` /
+`compute_Z_hybrid` / `precompute_G_samples` copies all collapse onto the
+package. The τ-sweep figure comes from ONE `is_log_Z_Mx` call per model per
+stage (per-τ reweighting of one sample set); the legacy sigmoid-blend hybrid
+is not ported (superseded by IS — §1.2), but the harness overlays legacy
+hybrid vs IS vs Laplace vs MC on the τ-sweep to document the change.
 
-## Open questions for review
+## 5. Comparison harness + close-out
 
-1. Hybrid blend vs single defensive-mixture IS estimator (seam vs machinery).
-2. Hybrid-by-default for the fixed-τ=0.3 panels (more accurate, diverges from
-   legacy figures) vs pure-Laplace default (matches legacy, known 0.1–0.25
-   error) — plan says hybrid-by-default + `--pure-laplace` escape hatch.
-3. `--gp-method map` default for figure speed vs `hmc` for thesis fidelity
-   (D12's bimodality caveat applies to BOTH: map reports the density mode;
-   the figures' role is mechanism illustration, not inference claims).
-4. API surface: `starts=`, `weights=`, and a possible `seed=` on
-   `extract_gp_predictives` (V2 blocker vi) vs external `np.random.seed`.
+- Harness is RERUNNABLE after replace-in-place (codex fix): it extracts the
+  legacy scripts from the pinned pre-port commit at runtime
+  (`git show <pinned>:bistar_viz/scripts/model_priors_laplace.py`, etc.)
+  into `runs/viz_unification/legacy_scripts/`, runs them headless on the
+  same data/seeds, and emits side-by-side figures + per-figure delta tables
+  attributing gaps to (metric: none, D10 identity) / (estimator: prior-IS →
+  fit_gp draws) / (Z method: pure Laplace or legacy hybrid → IS) /
+  (occam/bounds convention: §3).
+- Legacy scripts then REPLACED in place; old behavior preserved by the
+  pinned commit + harness artifacts.
+- Disclosure paragraph in `docs/inference-and-metric-options.md` (estimator
+  + Z-method + convention changes, and why the new figures are more
+  accurate).
+- codex review of the full diff (`< /dev/null` on stdin); D16 entry; flip D3
+  open item (1); PR #2 → Ready.
+
+## 6. Test checklist (updated per review)
+
+1. `mc_log_Z_Mx` vs brute-force grid on a 2-D space at τ ∈ {0.1, 1, 10}.
+2. Occam/volume invariance ACROSS estimators (the D5 invariant): doubling a
+   parameter box changes `log Z` identically under Laplace, MC, and IS for
+   both occam settings (mirrors `test_construction_gaps_are_volume_free…`).
+3. `is_log_Z_Mx`: matches the 2-D grid truth across τ ∈ [0.1, 100]; matches
+   Laplace at low τ on a unimodal interior-MAP case; ESS reported;
+   deterministic under fixed seed; ESS warning fires on a starved case.
+4. `starts=`: recovers the Sinusoidal ω-boundary optimum the midpoint start
+   misses, and Sin+Linear's Ḡ*=0 basin (re-derives the V1 finding in-repo).
+5. Laplace large-τ structure (re-derives V1 in-repo, codex outcome 9): on
+   the canonical spaces, assert `laplace log Z > 0` beyond a computed τ
+   while `is_log_Z_Mx ≤ 0`, and assert the d-driven ranking flip τ against
+   its closed-form value.
+6. `weights=` on `average_gp_posterior` vs the viz formula at machine
+   precision (uniform and Dirichlet-random weights).
+7. `extract_gp_predictives(rng=...)`: identical subsample under the same
+   Generator; `rng=None` preserves legacy global-state behavior.
+8. Prior-parity assertion: harness fails loudly if the built kernels' prior
+   parameters differ from `PRIOR_CONFIGS["informative"]`.
+9. n=0 prior stage smoke test: `sample_prior` → `condition_on_data=False` →
+   `average_gp_posterior` → finite `is_log_Z_Mx` for all four models.
+
+## 7. Review log
+
+**R1 (2026-07-06) — codex review of R0 (22a3e5e), all outcomes dispositioned:**
+(1) MC occam sign CONFIRMED — kept, plus the cross-estimator invariance test
+(§6.2). (2) FIX accepted: R0's blend was pure Laplace at the fixed-τ=0.3
+panels; resolved by adopting IS as the reference estimator everywhere (§1.2).
+(3) FIX accepted with in-repo verification: legacy space/occam/multi-start
+differences documented (§0 V3; note: Quadratic bounds are identical in both
+scripts — only Linear differs) and resolved by unify-with-disclosure (§3).
+(4) RECOMMENDATION adopted: defensive-mixture IS is the default/reference;
+the fixed-window hybrid is dropped rather than made adaptive (§1.2).
+(5) CLARIFY accepted: MAP wording corrected to point-estimate predictive;
+"posterior draws" reserved for hmc/vi; map default framed as a disclosed
+mechanism-figure choice (§2). (6) API accepted: `starts=`, `weights=`, and
+`rng=` on `extract_gp_predictives` (§1.3–1.5). (7) PRIOR PARITY accepted:
+`PRIOR_CONFIGS["informative"]` + runtime assertion; `build_toy_kernels()`
+`Gamma(2,2)` mismatch verified in `model.py` (§2). (8) HARNESS fix accepted:
+legacy scripts extracted from the pinned commit at runtime (§5).
+(9) NUMERIC-CLAIMS hedge accepted: §0 constants marked measured-once;
+structural claims become committed regression tests (§6.5).
