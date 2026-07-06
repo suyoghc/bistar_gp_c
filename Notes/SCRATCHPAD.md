@@ -127,6 +127,90 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 - Minor: remove the 13 `sys.path` hacks now that `pyproject.toml` exists (`pip install -e .`);
   add a cache key covering all result-determining config.
 
+## Cleanup backlog — 8-angle review findings (2026-07-01), annotated vs D4–D13
+
+Reconstructed from the original review; every FIXED/OPEN status re-verified against the
+tree at HEAD 6573ff0. 33 kept findings + 1 refuted. Anchored by symbol (lines have moved).
+Fold the `laplace_evidence.py` efficiency items into the viz unification (D10 unblocked it) —
+you'll be editing those plot functions anyway.
+
+### OPEN — execute these
+
+Correctness-adjacent / deferred:
+- [ ] laplace_evidence.py :: numerical_hessian + _laplace_logdet :: not bounds-aware; the
+  [1e-8,1e12] clip CONSTANTS set the Occam term at a bound-pinned MAP (~+9.2 nats/flat dir).
+  D5 surfaced n_clipped but deferred the bounds-aware refactor :: S3-PLAU
+- [ ] laplace_evidence.py :: plot_evidence_decomposition / plot_prior_penalty_comparison ::
+  read Construction-II-only component keys (log_lik_at_map, gp_penalty) with no
+  `result.construction` guard → KeyError on a construction="I"/"baseline" result :: S2
+
+Efficiency (redundant recompute — also speeds figure regeneration):
+- [ ] laplace_evidence.py :: plot_tau_effect_on_evidence :: re-runs full Laplace at every τ
+  though baseline is τ-independent and Construction-I rescales analytically :: S2
+- [ ] laplace_evidence.py :: plot_ablation_ladder :: recomputes laplace_log_evidence_ordinary
+  for both "baseline" and "I" per model (identical inputs) :: S2
+- [ ] laplace_evidence.py :: laplace_log_evidence_induced :: recomputes ll_at via
+  _log_likelihood though _laplace_log_N's detail already holds log_lik_at_map :: S2
+- [ ] experiments/bistar_induced_prior_v2.py :: main → plot_ablation_ladder :: re-runs
+  model_posterior(construction="II") already computed earlier in the same loop :: S2
+- [ ] laplace_evidence.py :: numerical_hessian :: computes f0=f(x) but never uses it, and the
+  diagonal (i==j) uses the 4-point cross stencil (~2d+1 redundant objective evals) :: S2
+
+Duplication / reuse:
+- [ ] laplace_evidence.py :: neg_log_f/neg_log_joint closures + _log_likelihood +
+  compute_G_at_params :: the `noise_param, 0.3 <= 0` guard and magic 0.3 default are
+  copy-pasted across 5 sites (drift silently desyncs Z_Mx / ordinary / N(M)) :: S2
+- [ ] laplace_evidence.py :: _log_likelihood :: re-implements the iid Gaussian log-likelihood
+  (incl. the 0.3 default) rather than reusing a shared primitive :: S2
+- [ ] laplace_evidence.py :: model_posterior :: hand-rolls shift-by-max softmax
+  (np.exp(logk - logk.max())) — another copy of a normalization snippet :: S2
+- [ ] experiments/impact_assessment.py :: mauna() :: duplicates the pyro latent-site
+  trace/count block verbatim from collect() :: S2
+- [ ] tests/test_laplace_zmx.py :: lin_space()/quad_space() :: re-implement Linear/Quadratic
+  ModelParameterSpace that bistar_gp.induced_prior already builds :: S2-PLAU
+
+Dead code / artifacts:
+- [ ] laplace_evidence.py :: _packers :: returns (pack, unpack) but `pack` is dead at all 3
+  call sites (`_, unpack = _packers(...)`) :: S2
+- [ ] bistar_viz/scripts/bistar_sample_size_sweep.py :: per-n_sub loop :: dead mutation
+  `spec.mle_value = ...` (nothing reads it; leftover from removed compute_all_laplace_evidences) :: S2
+- [ ] conftest.py :: root sys.path shim :: now redundant — pyproject.toml exists and its own
+  comment says "Remove once the project ships a pyproject.toml" (ties into the 13 sys.path hacks) :: S2
+- [ ] experiments/practice_EvansEtAL/__pycache__/*.pyc :: 6 committed .pyc artifacts the D1
+  hygiene sweep missed :: S2
+
+Prose (CLAUDE.md writing-style rules):
+- [ ] README.md :: "Z_Mx is the **data-free** GP model prior" :: "X is the Y" label ban :: S2
+- [ ] docs/plan-zmx-laplace.md :: "...are the ingredients." :: "ingredient" metaphor ban :: S2
+
+### OPEN — severity-1 (never addressed — FLAGGED)
+- [ ] **laplace_evidence.py :: module imports :: `build_toy_parameter_spaces` and
+  `average_gp_posterior` imported but unused (1 occurrence each) :: S1**
+- [ ] **Notes/DECISIONS.md :: prose :: right-arrow (→) chars — CLAUDE.md ban; 16 occurrences and
+  GROWING (D4–D13 entries added more) :: S1**
+
+### FIXED
+- [x] bms_star.py :: extract_gp_predictives :: stale 'kernel_components' filter dropped kernel draws :: S5 → D4
+- [x] fit.py :: fit_hmc/_hmc_pyro_model :: noise prior registered twice → phantom prior-only latent :: S4 → D4 (+D6)
+- [x] mechanism.py :: *_mechanism_config hp_patterns :: 'kernel_components.*' no longer matched :: S4 → D4
+- [x] fit.py :: fit_mcmc_simple :: MH target scored in eval mode (data twice) :: S4 → D4 (D13 added Jacobian)
+- [x] debias.py :: decompose_model_hmc :: same stale 'kernel_components' filter :: S4 → D4
+- [x] aggregation_v3.py :: soft_transfer_weighted :: per-candidate (axis=0) max shift distorted posteriors :: S4 → D5
+- [x] laplace_evidence.py :: ordinary vs model_posterior :: occam=False V_ref inconsistent across constructions :: S4 → D5
+- [x] laplace_evidence.py :: _laplace_logdet/_laplace_log_integral :: n_clipped discarded :: S3 → D5 (floor magnitude still OPEN)
+- [x] impact_assessment.py :: compare() :: key set only from NEW json (old-only vanished) :: S3 → severity-3 pair
+- [x] bistar_viz/scripts/bistar_sample_size_sweep.py :: sys.path bootstrap :: '..' = bistar_viz/ not root :: S3 → severity-3 pair
+- [x] bistar_viz/scripts/bistar_sample_size_sweep.py :: docstring :: stale 'python experiments/...' path :: S2 → severity-3 pair
+- [x] impact_assessment.py :: compare() :: walrus-in-ternary counter :: S2 → fixed w/ compare() union commit
+
+### SUPERSEDED (not actionable)
+- [~] Notes/DECISIONS.md :: D3 status in a later commit than the change (same-commit rule) :: S2 —
+  past-commit process observation; D4–D13 all comply going forward
+- [~] Notes/SCRATCHPAD.md :: "This is the *" openers :: S1 — flagged content gone (rewritten); watch style
+
+### REFUTED by the review's own verifier (do NOT action)
+- impact_assessment.py :: _git_sha :: claimed to dup run_manager._git_hash — REFUTED (both exist)
+
 ## Branches / PRs
 
 - **PR #1** — MERGED to `main` (hygiene, 5 correctness fixes, plan, Notes workflow).
