@@ -104,16 +104,22 @@ machinery committed at 641444a). Design decisions already made:
   subsection in docs/impact-assessment-results.md; raw runs/mauna_recheck_postD11.json;
   D11 Result updated.
 
-## Open questions for the user (from D12/D13)
+## D12/D13 gates RESOLVED (user, 2026-07-07) — logged in Notes/WRITEUP_DECISIONS.md
 
-- `metric_name="pw_kl_vcal"`: results-confirmed — ratify?
-- METHOD default (genuine fork, D12 Decision): keep `hmc` (reports the density-mode basin,
-  picks the true model, thesis-style) with the mass split disclosed — or first revisit the
-  `informative` priors (truth-ish log joint −57 vs −33 MAP; the bimodality and the whole
-  method disagreement may dissolve under better-calibrated priors)?
-- VI's role in the paper: thesis-primary; here it faithfully reports the DOMINANT-mass basin
-  of a misspecified-prior posterior — present as the bimodality/prior-sensitivity story?
-- Then: Task 2 — the ~20 severity-2 cleanups (below).
+- `metric_name="pw_kl_vcal"` RATIFIED as main/default; `kl_forward` to the appendix as a
+  covariance-sensitive stress-test metric (W1; no code change).
+- METHOD default: keep `hmc` for package/paper draft with the mass split disclosed loudly;
+  basin-occupancy check is a required diagnostic; prior-sensitivity / re-elicitation study
+  QUEUED before final paper numbers (W2). NOT switching the default to VI.
+- VI framing: bimodality/prior-sensitivity story, with recorded paper phrasing (W3).
+- `Notes/WRITEUP_DECISIONS.md` is the new paper/writeup decision log (gitignored,
+  local-only; entries W1–W3 so far).
+
+## OPEN: prior-sensitivity study before final paper numbers (from W2)
+
+- Re-elicit / revise the `informative` priors (truth-ish log joint −57.2 vs −33.4 MAP) and
+  re-run the method × metric comparison. Prior change invalidates the cached draws; use the
+  capped-depth arm (max_tree_depth 7, D12 addendum) — ~39 min, not 5.6 h.
 
 ## Done this session (on `fix/laplace-zmx`, PR #2)
 

@@ -511,6 +511,15 @@ basin-occupancy check (`toy_posterior_mode_analysis.py` §5) as a standard diagn
 the earlier "VI pragmatic for Mauna" suggestion inherits the mode-check caveat. MAP is the
 honest fast path when hyperparameter uncertainty is not the point.
 
+**Ratified (2026-07-07, user):** `metric_name="pw_kl_vcal"` confirmed as the default;
+`kl_forward` moves to the paper appendix as a covariance-sensitive stress-test metric.
+Method fork resolved as "both": `hmc` stays the package/paper-draft default with the
+mass split disclosed and the basin-occupancy check required as a standard diagnostic;
+a prior-sensitivity / re-elicitation study on the `informative` config is queued before
+final paper numbers. VI framed as the bimodality/prior-sensitivity diagnostic, not a
+failed method. Full writeup-facing rationale and paper phrasing in
+`Notes/WRITEUP_DECISIONS.md` W1–W3 (local, gitignored).
+
 **Status (closed same day):** capped-NUTS arm (`--max-tree-depth 7`, the D8-validated knee)
 done — `docs/appendix-tree-depth-cap.md`. The cap is result-preserving at model-selection
 precision on the toy (max posterior shift 0.0015 hmc / 0.0108 hmc_laplace, hard assignment
