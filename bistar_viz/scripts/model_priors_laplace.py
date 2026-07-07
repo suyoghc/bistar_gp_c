@@ -53,9 +53,10 @@ def stage_figures(args, out_dir, x_eval, x_50, y_50, spaces):
                                  n_draws=args.n_draws, seed=42)
         _, log_Z, priors, diag = V.model_prior_curves(
             spaces, x_eval, gp, [args.tau], estimator=args.estimator,
-            occam=args.occam, n_is=args.n_is)
+            occam=args.occam, n_is=args.n_is, starts_map=args.starts_map)
         zmx = {m: laplace_log_Z_Mx(spaces[m], x_eval, gp, tau=args.tau,
-                                   occam=args.occam, starts=V.STARTS[m])
+                                   occam=args.occam,
+                                   starts=(args.starts_map or V.STARTS)[m])
                for m in names}
         results.append((label, n, priors[0], zmx, kept))
         print(f"n={n}: retained {kept} draws; priors " +
@@ -139,7 +140,7 @@ def sweep_figures(args, out_dir, x_eval, x_50, y_50, spaces):
                               n_draws=args.n_draws, seed=42)
         _, log_Z, priors, _ = V.model_prior_curves(
             spaces, x_eval, gp, [args.tau], estimator=args.estimator,
-            occam=args.occam, n_is=args.n_is)
+            occam=args.occam, n_is=args.n_is, starts_map=args.starts_map)
         traces[i], lz_traces[i] = priors[0], log_Z[0]
         print(f"  n={n:3d}: " + "  ".join(
             f"{m}={p:.1%}" for m, p in zip(names, priors[0])))
@@ -201,6 +202,9 @@ def main():
     p.add_argument("--n-draws", type=int, default=150)
     p.add_argument("--n-is", type=int, default=40_000)
     p.add_argument("--quick", action="store_true")
+    p.add_argument("--n-perturb", type=int, default=5,
+                   help="seeded perturbations per start for IS proposal "
+                        "coverage (0 disables)")
     args = p.parse_args()
 
     out_dir = os.path.abspath(args.out_dir)
@@ -208,6 +212,8 @@ def main():
     x_eval = np.linspace(-10, 10, 80)
     x_50, y_50 = V.generate_data(50, seed=42)
     spaces = V.canonical_spaces()
+    args.starts_map = ({m: V.perturbed_starts(m, spaces, args.n_perturb)
+                        for m in spaces} if args.n_perturb else None)
 
     stage_figures(args, out_dir, x_eval, x_50, y_50, spaces)
     sweep_figures(args, out_dir, x_eval, x_50, y_50, spaces)

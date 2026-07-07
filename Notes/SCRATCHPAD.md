@@ -37,10 +37,18 @@ trajectory: Sin+Linear 0.934) — attributed dominantly to the priors script's h
 occam-ON convention (volume penalty against the d=5 true model), secondarily to pure
 Laplace; canonical figures (occam=False, IS estimator) select the true model 0.93–0.99.
 
-**Full-quality figures DONE (2026-07-06):** 32 figures across all harness arms in
-`runs/viz_unification/`; canonical arms give Sin+Linear 0.86–0.99 at every n, both scripts
-exactly consistent at shared stages; ESS warnings fire only at the τ-sweep's extreme low
-end (designed behavior). **PR #2 is ready to flip from draft** (push + flip = user action).
+**Full-quality figures DONE (2026-07-06, corrected + hardened after codex post-run
+review):** canonical arms give Sin+Linear 0.86–0.99 at every n, both scripts exactly
+consistent at shared stages; codex's independent 200k-n_is rerun confirms the headline
+(n=50 canonical still 0.992). CORRECTION (codex): ESS warnings fired at the PRIMARY
+τ=0.3 for Sinusoidal at intermediate stages — a proposal-coverage gap (fixed starts miss
+data-dependent basins), not a sample-count problem (the n=50 τ-sweep is healthy at 200k,
+min ESS 955). Hardened: both ported scripts now default to seeded perturbed starts
+(--n-perturb 5) anchoring the IS proposal, and the trajectory port emits a per-stage
+per-model `ess_by_stage.md` diagnostic; stale first-layout legacy figures removed from
+`runs/viz_unification/`. **PR #2 is ready to flip from draft** (push + flip = user
+action) — for PAPER-grade figure claims, check `ess_by_stage.md` in the regenerated run
+first.
 Then the deferred items: Mauna candidate recheck post-D11 (paper numbers), figure regen
 for the OTHER figure sets (D3 item 2), kb/Wiki update (D3 item 3).
 

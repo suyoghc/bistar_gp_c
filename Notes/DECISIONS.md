@@ -772,3 +772,15 @@ non-Gamma prior (now reports it as a parity violation).
 arms internally consistent across both ported scripts. Remaining for PR #2 "Ready":
 full-quality figure regeneration (non-quick harness + canonical runs) and the D3 status
 flip below.
+
+**Status addendum (2026-07-06, codex post-run review — accepted and hardened):** codex
+independently re-ran the suite (111 pass) and a 200k-n_is canonical figure set (headline
+unchanged: n=50 Sin+Linear 0.992), and corrected two claims: ESS warnings fired at the
+PRIMARY τ=0.3 (Sinusoidal/Sin+Linear, intermediate stages) — a proposal-coverage gap, not
+a sample-count problem — and stale first-layout legacy figures padded the artifact count.
+Fixes: both ported scripts now default to seeded perturbed starts (--n-perturb 5)
+anchoring the IS proposal; the trajectory port writes a per-stage per-model
+`ess_by_stage.md` diagnostic; stale figures removed; SCRATCHPAD corrected. Validation
+rerun at the standard n_is=40k: zero ESS warnings, worst per-stage ESS 166 (Sin+Linear,
+n≈20; was <100), τ-sweep min 221, priors unchanged (Sin+Linear 0.93–0.99). Paper-grade
+figure certification = check `ess_by_stage.md` in the shipping run.

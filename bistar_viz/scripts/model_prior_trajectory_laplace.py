@@ -52,10 +52,12 @@ def main():
     p.add_argument("--legacy-spaces", action="store_true",
                    help="the trajectory script's own wider Linear/Quadratic "
                         "boxes (harness comparisons)")
-    p.add_argument("--n-perturb", type=int, default=0,
-                   help="seeded random perturbations added per start — the "
-                        "legacy trajectory multi-start convention used 20 "
-                        "(harness comparisons)")
+    p.add_argument("--n-perturb", type=int, default=5,
+                   help="seeded random perturbations added per start; "
+                        "improves IS proposal coverage at intermediate GP "
+                        "stages where the fixed starts miss basins (codex "
+                        "post-run diagnostic); legacy convention used 20; "
+                        "0 disables")
     args = p.parse_args()
 
     out_dir = os.path.abspath(args.out_dir)
@@ -74,6 +76,7 @@ def main():
     lz_tr = np.empty_like(priors_tr)
     gstar_tr = np.empty_like(priors_tr)
     gp_50 = None
+    ess_rows = []
     for i, n in enumerate(n_values):
         gp, _ = V.averaged_gp(x_eval, x_50[:n] if n else None,
                               y_50[:n] if n else None,
@@ -81,10 +84,11 @@ def main():
                               n_draws=args.n_draws, seed=42)
         if n == max(n_values):
             gp_50 = gp
-        _, log_Z, priors, _ = V.model_prior_curves(
+        _, log_Z, priors, diag_n = V.model_prior_curves(
             spaces, x_eval, gp, [args.tau], estimator="is",
             occam=args.occam, n_is=args.n_is, starts_map=starts_map)
         priors_tr[i], lz_tr[i] = priors[0], log_Z[0]
+        ess_rows.append([n] + [float(diag_n[m][0]) for m in names])
         for j, m in enumerate(names):
             gstar_tr[i, j] = laplace_log_Z_Mx(
                 spaces[m], x_eval, gp, tau=args.tau, occam=args.occam,
@@ -92,6 +96,18 @@ def main():
         if n % 10 == 0:
             print(f"  n={n:3d}: " + "  ".join(
                 f"{m}={priors_tr[i, j]:.1%}" for j, m in enumerate(names)))
+
+    # ESS-by-stage diagnostic (codex: starvation at the primary tau is a
+    # proposal-coverage signal, not a global sample-count problem)
+    ess_path = os.path.join(out_dir, "ess_by_stage.md")
+    with open(ess_path, "w") as f:
+        f.write(f"# per-stage IS ESS at tau={args.tau} (n_is={args.n_is}, "
+                f"n_perturb={args.n_perturb})\n\n| n | "
+                + " | ".join(names) + " |\n|---|" + "---|" * len(names) + "\n")
+        for row in ess_rows:
+            f.write("| " + " | ".join(f"{v:.0f}" for v in row) + " |\n")
+    worst = min(min(r[1:]) for r in ess_rows)
+    print(f"  ESS-by-stage diagnostic -> {ess_path} (worst {worst:.0f})")
 
     fig, axes = plt.subplots(1, 3, figsize=(21, 6))
     panels = [(priors_tr, "GP-Informed Model Prior  p(M | ψ)",
