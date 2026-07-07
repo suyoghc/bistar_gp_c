@@ -105,8 +105,13 @@ comparison harness.
    but Z_Mx IS the normalizer, so the proposal density must be evaluated
    exactly. Proposal q = ½·uniform-box + ½·mixture of BOX-TRUNCATED Gaussians
    at the multi-start optima with covariances `τ_k·H⁻¹` over a small τ_k
-   ladder — each Gaussian component's density renormalized by its in-box
-   mass so q is exactly normalized on the bounded domain. Estimate:
+   ladder. Implementation choice (codex watchpoint, resolved): the Gaussian
+   components are UNTRUNCATED (normalized on ℝᵈ) and the box constraint is an
+   INDICATOR on the integrand — q integrates to 1 by construction, out-of-box
+   draws contribute zero weight, and no per-component truncation-mass
+   computation is needed; the cost is a small sampling-efficiency loss. A
+   standalone consistency test estimates `∫_box 1 dφ = V` through the full
+   sample-and-evaluate path (§6.10). Estimate:
    `log I_raw = logmeanexp_i( −Ḡ(φ_i)/τ − log q(φ_i) )`, φ_i ~ q — the RAW
    Lebesgue integral over the box. `occam=False` returns `log I_raw`;
    `occam=True` returns `log I_raw − log V` (same convention as the Laplace
@@ -237,6 +242,12 @@ hybrid vs IS vs Laplace vs MC on the τ-sweep to document the change.
    parameters differ from `PRIOR_CONFIGS["informative"]`.
 9. n=0 prior stage smoke test: `sample_prior` → `condition_on_data=False` →
    `average_gp_posterior` → finite `is_log_Z_Mx` for all four models.
+10. Proposal-consistency standalone test (codex watchpoint): estimate
+    `∫_box 1 dφ = V` through the full IS sample-and-evaluate path (f = the
+    in-box indicator) — validates that q's density evaluation matches its
+    sampler, the sharp part of the estimator; also assert q's mixture mass
+    (uniform component normalized on the box, untruncated Gaussians on ℝᵈ)
+    integrates to 1 on a 2-D quadrature grid.
 
 ## 7. Review log
 
@@ -277,3 +288,8 @@ holds only for the box-mean-normalized quantity.
 (4) S2: §6.2 volume-invariance test restricted to a controlled setup
 (constant-Ḡ metric or dead parameter) where widening bounds changes only
 `log V`, not the integrand's region.
+
+**R2 sign-off (2026-07-06): codex confirms implementation-ready.** One
+engineering watchpoint (not a blocker): the proposal density is the sharp
+part. Resolved by adopting the simpler untruncated-Gaussian + in-box
+indicator construction (§1.2) with the standalone consistency test (§6.10).
