@@ -65,3 +65,38 @@ plaintext ~/.zshrc — consider rotating/moving.
 (+ optionally Mauna) so the user can "choose based on results"; (2) severity-2 cleanups (fold into
 viz unification); (3) viz unification (UNBLOCKED by D10); (4) figure regeneration; (5) open forks:
 converged Mauna full-Bayes (nonlinear reparam), Occam default, kb/Wiki update.
+
+## 2026-07-04 → 2026-07-07 — Task 1 (method × metric comparison) + Task 2 (cleanup backlog + viz unification)
+
+**Task 1 (D11–D13):** fit_gp methods × 5 metrics on the thesis toy. Found + fixed the
+candidates.py restart-selection no-op (D11: criterion constant n/2 at any MLE; Sin+Linear
+had collapsed to a fake near-linear sinusoid — invalidated the first 12 h run; raw draws
+now cached so sampler hours are never re-paid). Corrected results (D12): toy posterior
+BIMODAL under `informative` priors; hmc/map/hmc_laplace select Sin+Linear under every
+metric, VI migrates to the dominant-mass basin and selects Sinusoidal — thesis App. II
+"VI ≈ HMC" does not replicate; reads as prior misspecification. Post-commit codex
+verification refuted the initial mass story — root cause fit_mcmc_simple's missing
+raw-space Jacobian (D13, fixed); D12 corrected in place. Capped-NUTS appendix
+(docs/appendix-tree-depth-cap.md): depth-7 ≈9× cheaper, posteriors shift ≤0.011.
+
+**Task 2 (D14–D17):** backlog recovered via the user's second session (20bd7c8). D14
+hygiene (S1s, prose, .pyc, conftest retired for pip install -e). D15 laplace_evidence
+refactor (bit-identical golden; ladder/τ-sweep helpers; bounds-aware Hessian). D16 Z_Mx
+sampling estimators (mc + ordinary defensive-mixture IS as reference; starts=, weights=,
+rng=). D17 viz unification: both scripts ported (legacy pinned a87356a), shared
+_viz_spaces, rerunnable attribution harness. KEY FINDING: the two legacy reference
+scripts CONTRADICTED each other at n=50 (Linear 0.693 vs Sin+Linear 0.934) — attributed
+dominantly to the priors script's hard-wired occam-ON convention; canonical figures
+select the true model 0.93–0.99. Post-run codex review → proposal-coverage hardening
+(--n-perturb 5 default, ess_by_stage.md diagnostic) + pristine single-run artifact
+directory (zero ESS warnings, worst per-stage ESS 166).
+
+**Committed:** 0d49a1e, 6573ff0 (Task 1); 980d253, 641444a, plan R0–R2 docs, a87356a,
+7be2f40, 5b4c889, 5b7210f (Task 2). 111 tests pass. Five codex review rounds, all
+findings verified empirically; two of my own claims corrected by review (D12 mass story,
+SCRATCHPAD ESS claim) — logged as corrections, not rewrites.
+
+**Open for the user:** push + flip PR #2 to Ready; ratify pw_kl_vcal / method-default /
+VI-framing (D12/D13 questions in SCRATCHPAD); Mauna candidate recheck post-D11 before
+paper numbers; non-viz figure sets; kb/Wiki update. Tooling lesson recorded: backgrounded
+`codex exec` needs stdin from /dev/null.
