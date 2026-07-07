@@ -85,10 +85,9 @@ now self-registers its default metric (imports `metrics_v2`). Parked eval follow
 (`mechanism.py` renamed it to `CandidateInducedSamples`), optional RNG `seed=` on `fit_mcmc_simple`/`fit_hmc`.
 `tests/test_laplace_zmx.py` **42 tests pass** (adds default-metric-registration and
 II-decomposition-identity). README Occam section updated to the canonical API + ablation ladder.
-**Still OPEN (held deliberately — needs a decision or compute):** (1) unify the two self-contained viz
-Laplace scripts (`model_priors_laplace.py`, `model_prior_trajectory_laplace.py`) onto
-`laplace_log_Z_Mx` — blocked on the single-`G` choice (they use a variance-weighted MSE, not a package
-METRIC; this is the paper's metric-choice decision); (2) regenerate all figures + old-vs-new impact
+**Still OPEN (held deliberately — needs a decision or compute):** (1) ~~unify the two self-contained viz
+Laplace scripts~~ DONE — D10 dissolved the single-`G` choice, D15/D16 built the machinery, D17 landed
+the ports + comparison harness; (2) regenerate all figures + old-vs-new impact
 assessment (needs a torch runtime); (3) update `kb/Wiki/GP-Induced Model Priors.md` (gitignored).
 
 ---
@@ -717,3 +716,59 @@ correlation ridge (fixed with orthonormalized features).
 diverging at high τ; MC exact at high τ and starving at low τ — the three-regime
 picture the plan predicted. Next: the shared viz spaces module, the two script ports,
 and the comparison harness (plan §2–§5).
+
+---
+
+## D17: viz unification landed — ports, harness, and the legacy-figure contradiction attributed — 2026-07-06
+
+**Problem:** D3 open item (1): the two self-contained viz Laplace scripts duplicated GP/
+Laplace machinery, used mutually contradictory conventions (V3: occam hard-ON vs hard-OFF,
+different Linear/Quadratic boxes, different multi-start styles), and predated the D15/D16
+package machinery. Plan: docs/plan-viz-unification.md (R2 + codex sign-off).
+
+**Decision:**
+- `bistar_viz/scripts/_viz_spaces.py` (new shared module): canonical sigma-free spaces
+  (unified on the priors-script bounds), trajectory-legacy space variants, legacy inits as
+  `starts` (+ `perturbed_starts` reproducing the trajectory's 20-perturbation convention),
+  `averaged_gp` (the V2-verified recipe: PRIOR_CONFIGS["informative"] with a runtime
+  parity assertion — build_toy_kernels() has a Gamma(2,2) lengthscale and would silently
+  break parity — fit_map, fit_gp(--gp-method), extract_gp_predictives(rng=),
+  average_gp_posterior; n=0 via sample_prior + condition_on_data=False), and
+  `model_prior_curves` (is/mc/laplace dispatch).
+- Both scripts REPLACED in place (legacy pinned at a87356a): IS reference estimator,
+  `--estimator/--occam/--gp-method/--legacy-spaces/--n-perturb` flags, canonical
+  occam=False default (D3); the decomposition figure stays Laplace-structured
+  (multi-start) by design. τ-sweep = one is_log_Z_Mx call per model.
+- `viz_unification_compare.py` (new harness): git-show extraction from the pinned commit
+  (rerunnable forever), per-script legacy figure dirs, both legacy print formats parsed
+  (stage blocks at n_hyper=200 AND sweep rows at 150), an ATTRIBUTION LADDER of ported
+  arms isolating one change per adjacent gap, and the plan-§4 τ-overlay figure (legacy
+  hybrid vs IS vs Laplace vs MC on the legacy averaged GP).
+- D10 identity tests rewired to an inline legacy-formula reimplementation (the loader
+  targeted the replaced script).
+
+**Finding (harness, quick arms):** the legacy scripts' contradiction is now QUANTIFIED and
+ATTRIBUTED. At n=50 the legacy priors figures picked the WRONG model (Linear 0.693,
+Sin+Linear 0.008 at stage resolution) while the legacy trajectory gave Sin+Linear 0.934.
+Ladder: the averaged-GP estimator change preserves the legacy behavior (p1: Linear 0.534);
+the IS-for-Laplace swap narrows it (p2: 0.499 vs 0.473); dropping the hard-wired −log V
+occam term flips it (p3/canonical: Sin+Linear 0.992) — the occam-ON volume penalty against
+the d=5 true model was the dominant cause, with pure-Laplace error secondary. The
+trajectory ladder is convention-stable (t1 ≈ t2 ≈ legacy). The legacy priors script also
+disagreed with ITSELF by 0.14 across its two internal resolutions (n_hyper 200 vs 150) —
+its prior-IS estimator noise, now visible. Canonical figures select the true model at
+0.93–0.99 across all n.
+
+**codex review (1 HIGH, 4 MEDIUM, 1 LOW — all fixed):** HIGH: the delta table's
+attribution claim conflated the Z-estimator and occam changes (fixed with the p2
+intermediate arm + corrected wording). MEDIUM: trajectory multi-start convention not
+reproduced (perturbed_starts + --n-perturb); the log parser missed the priors stage
+blocks and silently compared mixed resolutions (both formats parsed, suffixed); both
+legacy scripts overwrote each other's flow figure (per-script dirs); the plan-§4
+τ-overlay was missing (added). LOW: assert_prior_parity would AttributeError on a
+non-Gamma prior (now reports it as a parity violation).
+
+**Result:** 111 tests pass. Harness validated end-to-end (--quick); canonical/legacyconv
+arms internally consistent across both ported scripts. Remaining for PR #2 "Ready":
+full-quality figure regeneration (non-quick harness + canonical runs) and the D3 status
+flip below.

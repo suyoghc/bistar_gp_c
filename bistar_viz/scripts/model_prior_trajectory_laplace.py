@@ -1,541 +1,175 @@
 """
-BI* Model Prior Trajectory
+BI* Model Prior Trajectory — unified onto bistar_gp.laplace_evidence
+(docs/plan-viz-unification.md §4; DECISIONS D10/D16/D17).
 
-Shows p(M_x | ψ) as a function of sample size n, using Laplace
-approximation for Z_Mx to avoid Monte Carlo dimensionality bias.
+Replaces the self-contained legacy script (last at commit a87356a; the
+comparison harness re-extracts and runs it). Changes vs the legacy figures:
 
-Z_Mx ≈ exp(-G(φ*)/τ) · (2πτ)^{d/2} · |H_G|^{-1/2}
+  - SPACES unified on the canonical (model_priors_laplace) bounds — the
+    legacy trajectory used wider Linear (-3,3) and Quadratic boxes (plan §0
+    V3); pass --legacy-spaces to reproduce those.
+  - Z_Mx from is_log_Z_Mx (reference estimator) everywhere, replacing the
+    legacy pure-Laplace n-sweep AND the legacy Laplace/MC sigmoid-blend
+    hybrid in the τ-sweep (one estimator, no seam; the whole τ ladder is a
+    reweighting of one sample set per model).
+  - OCCAM: the legacy trajectory script omitted −log V (occam OFF) while its
+    sibling hard-wired occam ON — the scripts now share one flag (default
+    off = the D3 canonical convention, which here matches this script's own
+    legacy behavior).
+  - AVERAGED GP: fit_gp draws via _viz_spaces.averaged_gp (estimator change
+    per D10; --gp-method map is the disclosed point-predictive default).
 
-where φ* = argmin G(φ), H_G = Hessian of G/τ at φ*.
+Usage: python model_prior_trajectory_laplace.py [--out-dir DIR]
+           [--gp-method map|vi|hmc] [--occam] [--tau 0.3] [--quick]
+           [--legacy-spaces]
 """
+
+import argparse
+import os
+import sys
 
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from scipy.stats import gamma as gamma_dist, lognorm
-from scipy.optimize import minimize
-from scipy.linalg import det
-import os
 
-# ── GP primitives ────────────────────────────────────────────────
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-def se_kernel(x1, x2, ls, os_):
-    return os_ * np.exp(-0.5 * (x1[:, None] - x2[None, :]) ** 2 / ls**2)
+import _viz_spaces as V
+from bistar_gp.laplace_evidence import laplace_log_Z_Mx
 
-def linear_kernel(x1, x2, v):
-    return v * (x1[:, None] * x2[None, :])
-
-def gp_prior_predictive(x_eval, ls, os_, lv, nv):
-    K = se_kernel(x_eval, x_eval, ls, os_) + linear_kernel(x_eval, x_eval, lv)
-    return np.zeros(len(x_eval)), K + nv * np.eye(len(x_eval))
-
-def gp_posterior_predictive(x_tr, y_tr, x_ev, ls, os_, lv, nv):
-    nt, ne = len(x_tr), len(x_ev)
-    Ktt = se_kernel(x_tr, x_tr, ls, os_) + linear_kernel(x_tr, x_tr, lv) + (nv+1e-6)*np.eye(nt)
-    Kte = se_kernel(x_tr, x_ev, ls, os_) + linear_kernel(x_tr, x_ev, lv)
-    Kee = se_kernel(x_ev, x_ev, ls, os_) + linear_kernel(x_ev, x_ev, lv) + nv*np.eye(ne)
-    try:
-        L = np.linalg.cholesky(Ktt)
-    except:
-        Ktt += 1e-4*np.eye(nt); L = np.linalg.cholesky(Ktt)
-    a = np.linalg.solve(L.T, np.linalg.solve(L, y_tr))
-    V = np.linalg.solve(L, Kte)
-    mu = Kte.T @ a
-    cov = Kee - V.T @ V
-    cov = 0.5*(cov+cov.T)
-    e = np.linalg.eigvalsh(cov)
-    if e.min() < 0: cov += (abs(e.min())+1e-6)*np.eye(ne)
-    return mu, cov
-
-def gp_lml(x_tr, y_tr, ls, os_, lv, nv):
-    n = len(x_tr)
-    K = se_kernel(x_tr, x_tr, ls, os_) + linear_kernel(x_tr, x_tr, lv) + (nv+1e-6)*np.eye(n)
-    try:
-        L = np.linalg.cholesky(K)
-        a = np.linalg.solve(L.T, np.linalg.solve(L, y_tr))
-        return -0.5*y_tr@a - np.sum(np.log(np.diag(L))) - 0.5*n*np.log(2*np.pi)
-    except:
-        return -np.inf
-
-# ── Hyperparameter config ────────────────────────────────────────
-
-INFORMATIVE = {
-    "se_lengthscale": ("gamma", 6.0, 0.85),
-    "se_outputscale": ("gamma", 6.0, 0.85),
-    "linear_variance": ("gamma", 6.0, 0.85),
-    "noise": ("gamma", 1.75, 1.0),
-}
-
-def _sample(fam, p1, p2, n, rng):
-    if fam == "gamma": return gamma_dist.rvs(a=p1, scale=1/p2, size=n, random_state=rng)
-    return lognorm.rvs(s=p2, scale=np.exp(p1), size=n, random_state=rng)
-
-def sample_hyp(pc, n, rng):
-    return (np.clip(_sample(*pc["se_lengthscale"], n, rng), 0.1, 50),
-            np.clip(_sample(*pc["se_outputscale"], n, rng), 0.01, 50),
-            np.clip(_sample(*pc["linear_variance"], n, rng), 0.001, 50),
-            np.clip(_sample(*pc["noise"], n, rng), 1e-4, 20))
-
-def compute_avg_gp(x_ev, x_tr, y_tr, pc, n_hyp=200, rng=None, use_data=True):
-    if rng is None: rng = np.random.RandomState(42)
-    ls, os_, lv, nv = sample_hyp(pc, n_hyp, rng)
-    means, cvd, lmls = [], [], []
-    for i in range(n_hyp):
-        if use_data and x_tr is not None and len(x_tr) > 0:
-            mu, cov = gp_posterior_predictive(x_tr, y_tr, x_ev, ls[i], os_[i], lv[i], nv[i])
-            lml = gp_lml(x_tr, y_tr, ls[i], os_[i], lv[i], nv[i])
-        else:
-            mu, cov = gp_prior_predictive(x_ev, ls[i], os_[i], lv[i], nv[i])
-            lml = 0.0
-        means.append(mu); cvd.append(np.diag(cov)); lmls.append(lml)
-    means, cvd, lmls = np.array(means), np.array(cvd), np.array(lmls)
-    ok = np.isfinite(lmls)
-    if use_data and ok.any():
-        lw = lmls.copy(); lw[~ok] = -np.inf; lw -= lw[ok].max()
-        mw = np.exp(lw); mw /= mw.sum()
-    else:
-        mw = np.ones(n_hyp)/n_hyp
-    am = np.sum(mw[:, None]*means, 0)
-    av = np.sum(mw[:, None]*(cvd + means**2), 0) - am**2
-    return am, np.maximum(av, 1e-6)
-
-# ── Parametric models ────────────────────────────────────────────
-
-def sinlinear_fn(x, A, om, ph, b, c):
-    return A * np.sin(om * x + ph) + b * x + c
-
-def sinusoidal_fn(x, A, om, ph):
-    return A * np.sin(om * x + ph)
-
-def linear_fn(x, a, b):
-    return a * x + b
-
-def quadratic_fn(x, a, b, c):
-    return a * x**2 + b * x + c
-
-
-MODELS = {
-    "Linear": {
-        "fn": lambda x, p: p[0]*x + p[1],
-        "p0_list": [np.array([0.25, 0.0])],
-        "bounds": [(-3, 3), (-5, 5)],
-        "d": 2,
-        "color": "#e74c3c",
-    },
-    "Sinusoidal": {
-        "fn": lambda x, p: p[0]*np.sin(p[1]*x + p[2]),
-        "p0_list": [
-            np.array([1.0, 1.0, 0.0]),
-            np.array([1.0, 0.5, 0.0]),
-            np.array([1.0, 2.0, 0.0]),
-            np.array([0.5, 1.0, 1.0]),
-            np.array([1.0, 1.0, np.pi/4]),
-            np.array([1.0, 1.0, -np.pi/4]),
-            np.array([1.0, 1.0, np.pi/2]),
-            np.array([1.5, 1.0, 0.0]),
-        ],
-        "bounds": [(0.01, 5), (0.1, 5), (-np.pi, np.pi)],
-        "d": 3,
-        "color": "#3498db",
-    },
-    "Sin+Linear": {
-        "fn": lambda x, p: p[0]*np.sin(p[1]*x + p[2]) + p[3]*x + p[4],
-        "p0_list": [
-            np.array([1.0, 1.0, 0.0, 0.25, 0.0]),   # true params
-            np.array([1.0, 0.5, 0.0, 0.0, 0.0]),
-            np.array([1.0, 2.0, 0.0, 0.25, 0.0]),
-            np.array([0.5, 1.5, 1.0, 0.1, 0.0]),
-            np.array([1.0, 1.0, np.pi/4, 0.25, 0.0]),
-            np.array([1.0, 1.0, -np.pi/4, 0.25, 0.0]),
-            np.array([1.0, 1.0, np.pi/2, 0.25, 0.0]),
-            np.array([0.8, 1.0, 0.0, 0.3, 0.0]),
-            np.array([1.2, 1.0, 0.0, 0.2, 0.0]),
-        ],
-        "bounds": [(0.01, 5), (0.1, 5), (-np.pi, np.pi), (-2, 2), (-5, 5)],
-        "d": 5,
-        "color": "#27ae60",
-    },
-    "Quadratic": {
-        "fn": lambda x, p: p[0]*x**2 + p[1]*x + p[2],
-        "p0_list": [
-            np.array([0.0, 0.25, 0.0]),
-            np.array([0.01, 0.0, 0.0]),
-        ],
-        "bounds": [(-1, 1), (-3, 3), (-5, 5)],
-        "d": 3,
-        "color": "#9b59b6",
-    },
-}
-
-
-# ── Laplace Z computation ────────────────────────────────────────
-
-def compute_G(params, fn, gp_mean, gp_var, x_eval):
-    """Divergence: variance-weighted MSE."""
-    try:
-        mu = fn(x_eval, params)
-        return np.mean((gp_mean - mu)**2 / (2 * np.maximum(gp_var, 1e-6)))
-    except:
-        return 1e10
-
-
-def numerical_hessian(f, x, eps=1e-4):
-    """Numerical Hessian via finite differences."""
-    d = len(x)
-    H = np.zeros((d, d))
-    f0 = f(x)
-    for i in range(d):
-        for j in range(i, d):
-            ei = np.zeros(d); ei[i] = eps
-            ej = np.zeros(d); ej[j] = eps
-            fpp = f(x + ei + ej)
-            fpm = f(x + ei - ej)
-            fmp = f(x - ei + ej)
-            fmm = f(x - ei - ej)
-            H[i, j] = (fpp - fpm - fmp + fmm) / (4 * eps**2)
-            H[j, i] = H[i, j]
-    return H
-
-
-def compute_laplace_Z(model_spec, gp_mean, gp_var, x_eval, tau):
-    """
-    Laplace approximation for Z_Mx.
-
-    Z_Mx ≈ exp(-G(φ*)/τ) · (2πτ)^{d/2} · |H_G|^{-1/2}
-
-    where H_G is the Hessian of G (not G/τ) at φ*.
-    Uses multiple random restarts for robust optimization.
-    """
-    fn = model_spec["fn"]
-    d = model_spec["d"]
-    bounds = model_spec["bounds"]
-
-    def obj(p):
-        return compute_G(p, fn, gp_mean, gp_var, x_eval)
-
-    # Try explicit starts + random perturbations
-    best_G = np.inf
-    best_p = None
-    rng_opt = np.random.RandomState(42)
-    
-    all_starts = list(model_spec["p0_list"])
-    # Add 20 random perturbations of each starting point
-    for p0 in model_spec["p0_list"]:
-        for _ in range(20):
-            perturbed = p0 + rng_opt.normal(0, 0.3, d)
-            # Clip to bounds
-            for j in range(d):
-                perturbed[j] = np.clip(perturbed[j], bounds[j][0]*0.99, bounds[j][1]*0.99)
-            all_starts.append(perturbed)
-    # Also add purely random points within bounds
-    for _ in range(30):
-        rp = np.array([rng_opt.uniform(b[0], b[1]) for b in bounds])
-        all_starts.append(rp)
-
-    for p0 in all_starts:
-        try:
-            res = minimize(obj, p0, bounds=bounds, method='L-BFGS-B',
-                           options={'maxiter': 500})
-            if res.fun < best_G:
-                best_G = res.fun
-                best_p = res.x.copy()
-        except:
-            pass
-
-    # Polish with Nelder-Mead from best result
-    if best_p is not None:
-        try:
-            res2 = minimize(obj, best_p, method='Nelder-Mead',
-                            options={'maxiter': 2000, 'xatol': 1e-8})
-            in_bounds = all(bounds[j][0] <= res2.x[j] <= bounds[j][1] for j in range(d))
-            if res2.fun < best_G and in_bounds:
-                best_G = res2.fun
-                best_p = res2.x.copy()
-        except:
-            pass
-
-    if best_p is None:
-        return 0.0, np.inf, None
-
-    # Hessian of G at φ*
-    H = numerical_hessian(obj, best_p, eps=1e-4)
-
-    # Eigendecomposition and regularization
-    eigvals = np.linalg.eigvalsh(H)
-    # Floor: must be positive for Laplace to be valid
-    eigvals = np.maximum(eigvals, 1e-4)
-    # Cap extreme eigenvalues: a very large eigenvalue means G changes
-    # drastically in that direction — the peak is razor-sharp.
-    # Cap at 500 (σ_eff ≈ 0.045) to prevent a single sloppy dimension
-    # from dominating the volume term.
-    eigvals = np.minimum(eigvals, 500.0)
-    logdet_H = np.sum(np.log(eigvals))
-
-    # log Z = -G*/τ + (d/2)log(2πτ) - (1/2)log|H|
-    # Note: omitting -log(V_ref) since reference prior bounds are arbitrary
-    # and the Hessian already captures the effective Occam penalty.
-    log_Z = -best_G / tau + 0.5 * d * np.log(2 * np.pi * tau) - 0.5 * logdet_H
-
-    return log_Z, best_G, best_p
-
-
-# ── Monte Carlo Z (works at high τ) ──────────────────────────────
-
-def precompute_G_samples(model_spec, gp_mean, gp_var, x_eval, n_mc=80000):
-    """Pre-compute G values for MC; can be reweighted for any τ."""
-    fn = model_spec["fn"]
-    bounds = model_spec["bounds"]
-    rng = np.random.RandomState(42)
-    samples = np.column_stack([rng.uniform(b[0], b[1], n_mc) for b in bounds])
-    G_vals = np.array([compute_G(samples[i], fn, gp_mean, gp_var, x_eval) 
-                       for i in range(n_mc)])
-    return np.clip(G_vals, 0, 500)  # clamp numerical artifacts
-
-
-def mc_log_Z_from_G(G_vals, tau):
-    """Given pre-computed G, estimate log Z for any τ."""
-    log_w = -G_vals / tau
-    mx = np.max(log_w)
-    return mx + np.log(np.mean(np.exp(log_w - mx)))
-
-
-def compute_Z_hybrid(model_spec, gp_mean, gp_var, x_eval, tau,
-                     G_precomputed=None, tau_cross=0.5):
-    """Laplace at low τ, MC at high τ, sigmoid blend in between."""
-    if tau < tau_cross * 0.5:
-        lz, _, _ = compute_laplace_Z(model_spec, gp_mean, gp_var, x_eval, tau)
-        return lz
-    elif tau > tau_cross * 2.0:
-        if G_precomputed is not None:
-            return mc_log_Z_from_G(G_precomputed, tau)
-        # Fallback: compute on the fly
-        G = precompute_G_samples(model_spec, gp_mean, gp_var, x_eval, n_mc=50000)
-        return mc_log_Z_from_G(G, tau)
-    else:
-        lz_lap, _, _ = compute_laplace_Z(model_spec, gp_mean, gp_var, x_eval, tau)
-        if G_precomputed is not None:
-            lz_mc = mc_log_Z_from_G(G_precomputed, tau)
-        else:
-            G = precompute_G_samples(model_spec, gp_mean, gp_var, x_eval, n_mc=50000)
-            lz_mc = mc_log_Z_from_G(G, tau)
-        t = (tau - tau_cross*0.5) / (tau_cross*1.5)
-        a = 1.0 / (1.0 + np.exp(-6*(t - 0.5)))
-        return (1-a)*lz_lap + a*lz_mc
-
-
-# ── Data ─────────────────────────────────────────────────────────
-
-def generate_data(n, noise_std=0.3, seed=42, x_range=(-10, 10)):
-    rng = np.random.RandomState(seed)
-    x = np.sort(rng.uniform(*x_range, n))
-    return x, np.sin(x) + 0.25*x + rng.normal(0, noise_std, n)
-
-
-# ══════════════════════════════════════════════════════════════════
-# MAIN
-# ══════════════════════════════════════════════════════════════════
 
 def main():
-    out_dir = "/home/claude/model_prior_plots"
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[1])
+    p.add_argument("--out-dir", default=os.path.join(
+        os.path.dirname(__file__), "..", "output", "model_prior_trajectory"))
+    p.add_argument("--gp-method", default="map", choices=["map", "vi", "hmc"])
+    p.add_argument("--occam", action="store_true")
+    p.add_argument("--tau", type=float, default=0.3)
+    p.add_argument("--n-draws", type=int, default=150)
+    p.add_argument("--n-is", type=int, default=40_000)
+    p.add_argument("--quick", action="store_true")
+    p.add_argument("--legacy-spaces", action="store_true",
+                   help="the trajectory script's own wider Linear/Quadratic "
+                        "boxes (harness comparisons)")
+    p.add_argument("--n-perturb", type=int, default=0,
+                   help="seeded random perturbations added per start — the "
+                        "legacy trajectory multi-start convention used 20 "
+                        "(harness comparisons)")
+    args = p.parse_args()
+
+    out_dir = os.path.abspath(args.out_dir)
     os.makedirs(out_dir, exist_ok=True)
-
     x_eval = np.linspace(-10, 10, 80)
-    x_50, y_50 = generate_data(50, seed=42)
-    pc = INFORMATIVE
-    tau = 0.3
+    x_50, y_50 = V.generate_data(50, seed=42)
+    spaces = (V.trajectory_legacy_spaces() if args.legacy_spaces
+              else V.canonical_spaces())
+    names = list(spaces.keys())
+    starts_map = ({m: V.perturbed_starts(m, spaces, args.n_perturb)
+                   for m in names} if args.n_perturb else None)
 
-    model_names = list(MODELS.keys())
-    model_colors = [MODELS[m]["color"] for m in model_names]
-
-    # ── Sweep across n ───────────────────────────────────────────
-    n_values = list(range(0, 51, 2))  # every 2 from 0 to 50
-
-    log_Z_traces = {m: [] for m in model_names}
-    G_star_traces = {m: [] for m in model_names}
-    prior_traces = {m: [] for m in model_names}
-
-    print("Computing model priors via Laplace Z...")
-    print(f"{'':>6}  {'':>35}G*{'':>30}  |  {'':>32}p(M)")
-    print("-" * 110)
-
-    for n in n_values:
-        if n == 0:
-            rng_gp = np.random.RandomState(42)
-            gp_mean, gp_var = compute_avg_gp(
-                x_eval, None, None, pc, n_hyp=150, rng=rng_gp, use_data=False)
-        else:
-            x_sub, y_sub = x_50[:n], y_50[:n]
-            rng_gp = np.random.RandomState(42)
-            gp_mean, gp_var = compute_avg_gp(
-                x_eval, x_sub, y_sub, pc, n_hyp=150, rng=rng_gp, use_data=True)
-
-        # Laplace Z for each model
-        log_Zs = {}
-        g_stars = {}
-        for mname, mspec in MODELS.items():
-            log_Z, G_star, phi_star = compute_laplace_Z(
-                mspec, gp_mean, gp_var, x_eval, tau)
-            log_Zs[mname] = log_Z
-            log_Z_traces[mname].append(log_Z)
-            G_star_traces[mname].append(G_star)
-            g_stars[mname] = G_star
-
-        # Normalize to get model priors
-        log_Z_arr = np.array([log_Zs[m] for m in model_names])
-        log_Z_arr -= np.max(log_Z_arr)  # numerical stability
-        Z_arr = np.exp(log_Z_arr)
-        priors = Z_arr / Z_arr.sum()
-
-        for i, m in enumerate(model_names):
-            prior_traces[m].append(priors[i])
-
-        if n % 10 == 0 or n <= 4:
-            gs = "  ".join(f"{g_stars[m]:8.4f}" for m in model_names)
-            ps = "  ".join(f"{prior_traces[m][-1]:8.1%}" for m in model_names)
-            print(f"  n={n:3d}  G*: {gs}  |  p(M): {ps}")
-
-    # ══════════════════════════════════════════════════════════════
-    # Figure 1: Model prior trajectory
-    # ══════════════════════════════════════════════════════════════
-    print("\nPlotting...")
+    # ── n-sweep at fixed τ ───────────────────────────────────────────
+    n_values = list(range(0, 51, 2)) if not args.quick else [0, 10, 30, 50]
+    priors_tr = np.empty((len(n_values), len(names)))
+    lz_tr = np.empty_like(priors_tr)
+    gstar_tr = np.empty_like(priors_tr)
+    gp_50 = None
+    for i, n in enumerate(n_values):
+        gp, _ = V.averaged_gp(x_eval, x_50[:n] if n else None,
+                              y_50[:n] if n else None,
+                              gp_method=args.gp_method,
+                              n_draws=args.n_draws, seed=42)
+        if n == max(n_values):
+            gp_50 = gp
+        _, log_Z, priors, _ = V.model_prior_curves(
+            spaces, x_eval, gp, [args.tau], estimator="is",
+            occam=args.occam, n_is=args.n_is, starts_map=starts_map)
+        priors_tr[i], lz_tr[i] = priors[0], log_Z[0]
+        for j, m in enumerate(names):
+            gstar_tr[i, j] = laplace_log_Z_Mx(
+                spaces[m], x_eval, gp, tau=args.tau, occam=args.occam,
+                starts=(starts_map or V.STARTS)[m]).G_at_min
+        if n % 10 == 0:
+            print(f"  n={n:3d}: " + "  ".join(
+                f"{m}={priors_tr[i, j]:.1%}" for j, m in enumerate(names)))
 
     fig, axes = plt.subplots(1, 3, figsize=(21, 6))
-
-    # Left: Model prior probabilities
-    ax = axes[0]
-    for m in model_names:
-        ax.plot(n_values, prior_traces[m], 'o-', color=MODELS[m]["color"],
-                linewidth=2.5, markersize=8, label=m)
-    ax.axhline(0.25, color='gray', ls='--', lw=1, alpha=0.5, label='Uniform (1/4)')
-    ax.set_xlabel("Sample Size n", fontsize=12)
-    ax.set_ylabel("GP-Informed Model Prior  p(M | ψ)", fontsize=12)
-    ax.set_title("Model Prior Trajectory", fontsize=13, fontweight='bold')
-    ax.legend(fontsize=10)
-    ax.set_ylim(-0.02, 1.02)
-    ax.grid(True, alpha=0.2)
-
-    # Middle: log Z (shows why — peak fit vs volume)
-    ax = axes[1]
-    for m in model_names:
-        ax.plot(n_values, log_Z_traces[m], 'o-', color=MODELS[m]["color"],
-                linewidth=2.5, markersize=8, label=m)
-    ax.set_xlabel("Sample Size n", fontsize=12)
-    ax.set_ylabel("log Z_M  (Laplace estimate)", fontsize=12)
-    ax.set_title("Log Model Evidence (unnormalized)", fontsize=13, fontweight='bold')
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.2)
-
-    # Right: G* (best-case divergence — how well each model CAN fit the GP)
-    ax = axes[2]
-    for m in model_names:
-        ax.plot(n_values, G_star_traces[m], 'o-', color=MODELS[m]["color"],
-                linewidth=2.5, markersize=8, label=m)
-    ax.set_xlabel("Sample Size n", fontsize=12)
-    ax.set_ylabel("G* = min G(φ)  [best-case divergence]", fontsize=12)
-    ax.set_title("How Well Each Model Can Match GP", fontsize=13, fontweight='bold')
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.2)
-
-    fig.suptitle(
-        f"BI* Model Prior via Laplace: "
-        r"$Z_{M} \approx e^{-G^*/\tau} \cdot (2\pi\tau)^{d/2} \cdot |H|^{-1/2}$"
-        f"   (τ = {tau})\n"
-        "Left: normalized model priors  |  "
-        "Middle: log evidence (higher = more GP-compatible)  |  "
-        "Right: best-case GP divergence (lower = better fit)",
-        fontsize=13, fontweight='bold', y=1.05)
+    panels = [(priors_tr, "GP-Informed Model Prior  p(M | ψ)",
+               "Model Prior Trajectory"),
+              (lz_tr, "log Z_M  (IS estimate)",
+               "Log Model Evidence (unnormalized)"),
+              (gstar_tr, "G* = min Ḡ(φ)  [best-case divergence]",
+               "How Well Each Model Can Match the GP")]
+    for ax, (data, ylab, title) in zip(axes, panels):
+        for j, m in enumerate(names):
+            ax.plot(n_values, data[:, j], "o-", color=V.COLORS[m], lw=2.5,
+                    ms=7, label=m)
+        ax.set_xlabel("Sample Size n", fontsize=12)
+        ax.set_ylabel(ylab, fontsize=12)
+        ax.set_title(title, fontsize=13, fontweight="bold")
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.2)
+    axes[0].axhline(0.25, color="gray", ls="--", lw=1, alpha=0.5)
+    axes[0].set_ylim(-0.02, 1.02)
+    fig.suptitle(f"BI* Model Prior Trajectory (IS estimator, τ = {args.tau}, "
+                 f"occam={args.occam}, gp={args.gp_method})",
+                 fontsize=13, fontweight="bold", y=1.04)
     fig.tight_layout()
     fig.savefig(os.path.join(out_dir, "model_prior_trajectory_laplace.png"),
-                dpi=150, bbox_inches='tight')
+                dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print("  ✓ model_prior_trajectory_laplace.png")
+    print("  saved model_prior_trajectory_laplace.png")
 
-    # ══════════════════════════════════════════════════════════════
-    # Figure 2: Stacked area — probability flow
-    # ══════════════════════════════════════════════════════════════
+    # ── stacked flow ─────────────────────────────────────────────────
     fig, ax = plt.subplots(figsize=(12, 6))
-
-    stack_order = ["Sin+Linear", "Sinusoidal", "Linear", "Quadratic"]
-    stack_data = np.array([prior_traces[m] for m in stack_order])
-    stack_colors = [MODELS[m]["color"] for m in stack_order]
-
-    ax.stackplot(n_values, stack_data, labels=stack_order,
-                 colors=stack_colors, alpha=0.7, edgecolor='white', linewidth=0.5)
+    order = [names.index(m) for m in V.STACK_ORDER]
+    ax.stackplot(n_values, priors_tr[:, order].T, labels=V.STACK_ORDER,
+                 colors=[V.COLORS[m] for m in V.STACK_ORDER], alpha=0.7,
+                 edgecolor="white", linewidth=0.5)
     ax.set_xlabel("Sample Size n", fontsize=12)
     ax.set_ylabel("GP-Informed Model Prior  p(M | ψ)", fontsize=12)
-    ax.set_title("BI* Model Prior Probability Flow (Laplace Z)\n"
-                 "How GP beliefs redistribute probability as data accumulates",
-                 fontsize=13, fontweight='bold')
-    ax.legend(loc='center right', fontsize=10, framealpha=0.9)
-    ax.set_ylim(0, 1); ax.set_xlim(0, 50)
-    ax.grid(True, alpha=0.15, axis='y')
+    ax.set_title("BI* Model Prior Probability Flow", fontsize=13,
+                 fontweight="bold")
+    ax.legend(loc="center right", fontsize=10, framealpha=0.9)
+    ax.set_ylim(0, 1)
+    ax.set_xlim(min(n_values), max(n_values))
+    ax.grid(True, alpha=0.15, axis="y")
     fig.tight_layout()
     fig.savefig(os.path.join(out_dir, "model_prior_flow_laplace.png"),
-                dpi=150, bbox_inches='tight')
+                dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print("  ✓ model_prior_flow_laplace.png")
+    print("  saved model_prior_flow_laplace.png")
 
-    # ══════════════════════════════════════════════════════════════
-    # Figure 3: τ sensitivity at n=50
-    # ══════════════════════════════════════════════════════════════
-    print("  τ sensitivity...")
-    rng_gp = np.random.RandomState(42)
-    gp_mean_50, gp_var_50 = compute_avg_gp(
-        x_eval, x_50, y_50, pc, n_hyp=150, rng=rng_gp, use_data=True)
-
-    taus = np.logspace(-1.5, 2.5, 40)
-    tau_traces = {m: [] for m in model_names}
-    
-    # Pre-compute G samples once for each model
-    print("    Pre-computing G samples for MC...")
-    G_precomp = {}
-    for mname, mspec in MODELS.items():
-        G_precomp[mname] = precompute_G_samples(
-            mspec, gp_mean_50, gp_var_50, x_eval, n_mc=80000)
-        print(f"      {mname}: G_min={G_precomp[mname].min():.3f}, "
-              f"G_median={np.median(G_precomp[mname]):.1f}, "
-              f"G_max={G_precomp[mname].max():.1f}")
-
-    for t in taus:
-        log_Zs = {}
-        for mname, mspec in MODELS.items():
-            log_Zs[mname] = compute_Z_hybrid(
-                mspec, gp_mean_50, gp_var_50, x_eval, t,
-                G_precomputed=G_precomp[mname])
-        log_Z_arr = np.array([log_Zs[m] for m in model_names])
-        log_Z_arr -= np.max(log_Z_arr)
-        Z_arr = np.exp(log_Z_arr)
-        priors = Z_arr / Z_arr.sum()
-        for i, m in enumerate(model_names):
-            tau_traces[m].append(priors[i])
+    # ── τ-sweep at n = max ───────────────────────────────────────────
+    taus = np.logspace(-1.5, 2.5, 40 if not args.quick else 12)
+    _, _, tau_priors, diag = V.model_prior_curves(
+        spaces, x_eval, gp_50, taus, estimator="is", occam=args.occam,
+        n_is=args.n_is, starts_map=starts_map)
+    min_ess = min(float(np.min(d)) for d in diag.values())
+    print(f"  τ-sweep min ESS across models/τ: {min_ess:.0f}")
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    for m in model_names:
-        ax.plot(taus, tau_traces[m], '-', color=MODELS[m]["color"],
-                linewidth=2.5, label=m)
-    ax.axhline(0.25, color='gray', ls='--', lw=1, alpha=0.5, label='Uniform')
-    ax.axvline(0.3, color='gray', ls=':', lw=1.5, alpha=0.7, label=f'τ = {tau}')
-    ax.set_xscale('log')
+    for j, m in enumerate(names):
+        ax.plot(taus, tau_priors[:, j], "-", color=V.COLORS[m], lw=2.5,
+                label=m)
+    ax.axhline(0.25, color="gray", ls="--", lw=1, alpha=0.5, label="Uniform")
+    ax.axvline(args.tau, color="gray", ls=":", lw=1.5, alpha=0.7,
+               label=f"τ = {args.tau}")
+    ax.set_xscale("log")
     ax.set_xlabel("Temperature τ", fontsize=12)
     ax.set_ylabel("GP-Informed Model Prior  p(M | ψ)", fontsize=12)
-    ax.set_title("τ Controls GP Influence on Model Prior (n=50)\n"
-                 "Low τ → GP dominates (Occam razor sharpens)  |  High τ → uniform",
-                 fontsize=13, fontweight='bold')
+    ax.set_title(f"τ Controls GP Influence on the Model Prior (n={max(n_values)})\n"
+                 "one IS sample set per model, reweighted across the ladder",
+                 fontsize=13, fontweight="bold")
     ax.legend(fontsize=10)
     ax.set_ylim(-0.02, 1.02)
     ax.grid(True, alpha=0.2)
     fig.tight_layout()
     fig.savefig(os.path.join(out_dir, "model_prior_tau_laplace.png"),
-                dpi=150, bbox_inches='tight')
+                dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print("  ✓ model_prior_tau_laplace.png")
-
-    # Summary
-    print(f"\n{'='*55}")
-    for f in sorted(os.listdir(out_dir)):
-        if 'laplace' in f:
-            print(f"  {f}")
+    print("  saved model_prior_tau_laplace.png")
+    print(f"\nFigures in {out_dir}")
 
 
 if __name__ == "__main__":

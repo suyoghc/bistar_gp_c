@@ -28,7 +28,21 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   optimization; D12 corrected in place). Fixed via `_raw_log_jacobian` in the MH target +
   analytic regression test. **92 tests pass.**
 
-## NEXT: Task 2 batch 2b — viz-script ports (plan at R1 after codex review: docs/plan-viz-unification.md)
+## Task 2 batch 2b — LANDED (D16 estimators + D17 ports/harness); remaining below
+
+D17: both viz scripts ported onto the package (legacy pinned at a87356a), shared
+`_viz_spaces.py`, rerunnable comparison harness with an attribution ladder + τ-overlay.
+Headline: the legacy scripts CONTRADICTED each other at n=50 (priors: Linear 0.693;
+trajectory: Sin+Linear 0.934) — attributed dominantly to the priors script's hard-wired
+occam-ON convention (volume penalty against the d=5 true model), secondarily to pure
+Laplace; canonical figures (occam=False, IS estimator) select the true model 0.93–0.99.
+
+**Remaining for PR #2 "Ready":** (1) full-quality figure regeneration — non-quick
+`viz_unification_compare.py` + canonical script runs (~30–60 min, background); (2) flip
+PR #2 from draft. Then the deferred items: Mauna candidate recheck post-D11 (paper
+numbers), figure regen for the OTHER figure sets (D3 item 2), kb/Wiki update (D3 item 3).
+
+### superseded planning note (plan now at R2 + implementation addenda)
 
 Two adversarial verification runs (2026-07-06) resolved the open forks with measurements:
 pure Laplace FAILS the τ-sweep (ranking flip at τ≈88, gap 0.45 at τ=316, and 0.1–0.25

@@ -13,8 +13,6 @@ numerically IDENTICAL to the package's default metric pw_kl_vcal — the
 "single-G decision" was a naming difference, not a mathematical one.
 """
 
-import importlib.util
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -163,13 +161,18 @@ def test_fit_gp_samples_flow_through_predictive_pipeline(toy):
 
 # ── D10: the G-metric identity ─────────────────────────────────────
 
-def _load_viz_module():
-    path = (Path(__file__).resolve().parents[1] / "bistar_viz" / "scripts"
-            / "model_priors_laplace.py")
-    spec = importlib.util.spec_from_file_location("viz_mpl", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+def _legacy_viz_compute_G(params, predict_fn, gp_mean, gp_var, x_eval):
+    """The LEGACY viz scripts' G, verbatim ("pointwise variance-weighted
+    MSE" with its 1e-6 variance floor). The self-contained scripts were
+    ported onto the package in D17; the last self-contained copy is pinned
+    at commit a87356a (bistar_viz/scripts/model_priors_laplace.py:175-181),
+    and this inline reimplementation keeps the D10 identity pinned against
+    that formula without a git dependency in the test."""
+    try:
+        mu = predict_fn(x_eval, params)
+        return np.mean((gp_mean - mu) ** 2 / (2 * np.maximum(gp_var, 1e-6)))
+    except Exception:
+        return 1e10
 
 
 def test_viz_variance_weighted_mse_is_pw_kl_vcal():
@@ -187,7 +190,6 @@ def test_viz_variance_weighted_mse_is_pw_kl_vcal():
     import bistar_gp.metrics_v2  # noqa: F401 — registers pw_kl_vcal
     from bistar_gp.bms_star import METRICS
 
-    viz = _load_viz_module()
     rng = np.random.default_rng(0)
     x_eval = np.linspace(-3, 3, 25)
     gp_mean = rng.normal(size=25)
@@ -197,7 +199,7 @@ def test_viz_variance_weighted_mse_is_pw_kl_vcal():
     predict_fn = lambda x, p: p["a"] * x + p["b"]
     mu_theta = predict_fn(x_eval, params)
 
-    g_viz = viz.compute_G(params, predict_fn, gp_mean, gp_var, x_eval)
+    g_viz = _legacy_viz_compute_G(params, predict_fn, gp_mean, gp_var, x_eval)
     g_pkg = METRICS["pw_kl_vcal"](gp_mean, np.diag(gp_var),
                                   mu_theta, np.eye(25))
     assert g_viz == pytest.approx(g_pkg, rel=1e-12)
@@ -211,14 +213,13 @@ def test_viz_and_package_floors_diverge_below_1e6_variance():
     import bistar_gp.metrics_v2  # noqa: F401
     from bistar_gp.bms_star import METRICS
 
-    viz = _load_viz_module()
     n = 5
     x_eval = np.linspace(0, 1, n)
     gp_mean = np.ones(n)
     gp_var = np.full(n, 1e-8)                     # below viz floor, above pkg floor
     predict_fn = lambda x, p: np.zeros_like(x)    # mean error = 1 everywhere
 
-    g_viz = viz.compute_G({}, predict_fn, gp_mean, gp_var, x_eval)
+    g_viz = _legacy_viz_compute_G({}, predict_fn, gp_mean, gp_var, x_eval)
     g_pkg = METRICS["pw_kl_vcal"](gp_mean, np.diag(gp_var),
                                   np.zeros(n), np.eye(n))
     assert g_viz == pytest.approx(1.0 / (2 * 1e-6), rel=1e-9)   # viz floor binds

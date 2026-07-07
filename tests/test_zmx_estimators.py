@@ -362,3 +362,49 @@ def test_defensive_proposal_density_consistent_with_sampler():
     lq_grid, _ = prop.log_q(pts)
     mass = float(np.sum(np.exp(lq_grid)) * h ** 2)
     assert mass == pytest.approx(1.0, abs=0.005)
+
+
+# ── §6.8 / §6.9: shared viz-spaces module ───────────────────────────
+
+def _viz():
+    import importlib, sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..",
+                                    "bistar_viz", "scripts"))
+    return importlib.import_module("_viz_spaces")
+
+
+def test_prior_parity_assertion_catches_toy_kernels():
+    """§6.8: the harness must fail loudly when the GP is built with
+    build_toy_kernels() (Gamma(2,2) lengthscale) instead of the
+    legacy-matching PRIOR_CONFIGS['informative'] (Gamma(6,0.85))."""
+    import torch
+    from bistar_gp import build_model
+    from bistar_gp.model import build_toy_kernels
+    from bistar_gp.config import (PRIOR_CONFIGS, build_kernels_from_config,
+                                  build_likelihood_from_config)
+    V = _viz()
+
+    xt, yt = torch.linspace(0, 1, 4), torch.zeros(4)
+    pc = PRIOR_CONFIGS["informative"]
+    kers, names = build_kernels_from_config(pc)
+    m_ok, l_ok = build_model(xt, yt, kers, names,
+                             build_likelihood_from_config(pc))
+    V.assert_prior_parity(m_ok, l_ok)          # must pass silently
+
+    m_bad, l_bad = build_model(xt, yt, *build_toy_kernels())
+    with pytest.raises(AssertionError, match="prior parity"):
+        V.assert_prior_parity(m_bad, l_bad)
+
+
+def test_prior_stage_flows_to_finite_is_log_Z():
+    """§6.9: n=0 stage — sample_prior draws through
+    extract_gp_predictives(condition_on_data=False) and
+    average_gp_posterior yield a finite is_log_Z_Mx for all four models."""
+    V = _viz()
+    x_eval = np.linspace(-10, 10, 40)
+    gp, kept = V.averaged_gp(x_eval, n_draws=40, seed=0)
+    assert kept == 40
+    for name, ps in V.canonical_spaces().items():
+        r = is_log_Z_Mx(ps, x_eval, gp, [0.3], n_is=4_000, seed=0,
+                        starts=V.STARTS[name], ess_warn=0.0)
+        assert np.isfinite(r.log_Z[0]), name
