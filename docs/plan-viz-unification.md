@@ -216,12 +216,16 @@ hybrid vs IS vs Laplace vs MC on the τ-sweep to document the change.
 1. `mc_log_Z_Mx` vs brute-force grid on a 2-D space at τ ∈ {0.1, 1, 10}.
 2. Occam/volume invariance ACROSS estimators (the D5 invariant), under a
    CONTROLLED setup where widening bounds changes only `log V` and not the
-   sampled integrand — a constant-Ḡ metric (the existing `const_metric`
-   fixture pattern) or an added dead parameter the predict_fn ignores:
-   doubling that box must change `log Z` identically under Laplace, MC, and
-   IS for both occam settings. (With a real metric, wider bounds change the
-   integration region itself, so the naive version of this test would be
-   comparing different integrals.)
+   raw integral: a PEAKED integrand (isotropic quadratic Ḡ via
+   orthonormalized features, so no correlation ridge leaks into the widened
+   strip) deep inside the box — widening then leaves occam=False unchanged
+   and shifts occam=True by exactly −log(widening factor), identically for
+   Laplace, MC, and IS. *Implementation finding (R2 addendum): the
+   dead-parameter/constant-Ḡ variants originally specified here are NOT
+   valid three-way tests — a flat direction is floored in Laplace's Hessian,
+   whose fabricated width does not scale with the box (the D5 n_clipped
+   pathology); the test asserts that pathology is FLAGGED (n_clipped ≥ 1)
+   rather than pretending Laplace tracks volume there.*
 3. `is_log_Z_Mx`: matches the 2-D grid truth across τ ∈ [0.1, 100]; matches
    Laplace at low τ on a unimodal interior-MAP case; ESS reported;
    deterministic under fixed seed; ESS warning fires on a starved case.
@@ -293,3 +297,12 @@ holds only for the box-mean-normalized quantity.
 engineering watchpoint (not a blocker): the proposal density is the sharp
 part. Resolved by adopting the simpler untruncated-Gaussian + in-box
 indicator construction (§1.2) with the standalone consistency test (§6.10).
+
+**Implementation addendum (2026-07-06, found while writing §6.2's test):**
+the dead-parameter volume test both reviews accepted is invalid for Laplace —
+a dead direction is floored-flat, so Laplace's occam=True value shifts with
+the box where the truth is invariant (n_clipped ≥ 1 flags exactly this).
+§6.2 respecified to the peaked-isotropic-integrand setup; the pathology is
+asserted as flagged. Also: a naive `a·x + b` peaked setup fails too (the a–b
+correlation ridge leaks mass into the widened strip — measured +0.19 nats at
+τ=0.3); orthonormalized features remove the ridge.

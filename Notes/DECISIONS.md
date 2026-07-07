@@ -667,3 +667,53 @@ test_laplace_survives_degenerate_narrow_bounds. 97 tests pass; golden fixture
 bit-identical through the fixes. Tooling note: backgrounded `codex exec` requires
 stdin redirected from /dev/null, else it blocks forever on "Reading additional input
 from stdin..." — the cause of two apparent review hangs this session.
+
+---
+
+## D16: batch 2b step 1 — sampling estimators for Z_Mx (mc/is), starts=, weights=, rng= — 2026-07-06
+
+**Problem:** The viz unification (docs/plan-viz-unification.md, reviewed to R2 by codex)
+needs Z_Mx estimators that stay valid across the full τ range: pure Laplace crosses the
+impossible log Z > 0 bound at finite τ and flips cross-model rankings via its (d/2)log τ
+term, while plain uniform-box MC starves below τ≈0.3 (plan §0 V1, re-derived in-repo by
+the §6.5 test). The ports also need multi-start optimization, weighted mixture averaging
+for the legacy comparison, and reproducible draw subsampling.
+
+**Decision (laplace_evidence.py unless noted):**
+- `mc_log_Z_Mx`: uniform-box MC, Ḡ computed once and reweighted per τ; per-τ ESS
+  reported. Occam: the box mean is already occam-normalized, so occam=False ADDS +log V
+  (inverse of the Laplace convention; D5 single-reference-measure invariant pinned by a
+  cross-estimator test).
+- `is_log_Z_Mx`: ORDINARY defensive-mixture IS (not SNIS — Z_Mx is the normalizer), the
+  REFERENCE estimator for figure Z_Mx values. Proposal = ½ uniform-box + ½ equal-weight
+  UNTRUNCATED Gaussians at multi-start Ḡ-optima (cov τ_k·H⁻¹ over a τ_k ladder), box
+  constraint as an indicator on the integrand — q integrates to 1 by construction
+  (codex watchpoint; consistency pinned by estimating ∫_box 1 dφ = V through the full
+  sample-and-evaluate path, and by cell-centered quadrature of q).
+- `laplace_log_Z_Mx(starts=)`: multi-start, min-Ḡ* wins (midpoint start missed the
+  Sinusoidal basin by >4 nats and Sin+Linear's Ḡ*=0 entirely — §6.4 regression).
+- `average_gp_posterior(weights=)` (aggregation_v3): verified-exact weighted mixture
+  moments for reproducing legacy LML-weighted figures; None = uniform (unchanged).
+- `extract_gp_predictives(rng=)` (bms_star): optional Generator for subsampling;
+  None preserves the legacy global-state path.
+
+**codex implementation review (4 findings, all CONFIRMED by execution, all fixed):**
+(P2) clipped Hessians were reconstructed then inverted — LinAlgError risk at ~1e20
+condition; now inverted in eigen space with proposal variances capped at the box scale
+(a floored-flat direction would otherwise throw ~all samples out of the box).
+(P2) weights validation accepted nan/inf → NaN moments; finiteness check added.
+(P3) _weight_ess returned NaN on all-(-inf) weights, silencing the starvation warning;
+returns 0.0. (P3) the §6.2 test's "exactly unchanged" claim was an overclaim — codex
+derived the analytic tail leakage (0.0009 nats at τ=0.1, 0.036 at τ=0.3); docstring
+corrected. Implementation findings of our own, recorded in the plan (§6.2 addendum +
+review log): the dead-parameter volume test both plan reviews had accepted is INVALID
+for Laplace (floored-flat width does not scale with the box — n_clipped flags it;
+asserted as flagged), and a naive a·x+b peaked setup leaks 0.19 nats through the a–b
+correlation ridge (fixed with orthonormalized features).
+
+**Result:** 109 tests pass (17 new in tests/test_zmx_estimators.py — plan §6.1–6.7,
+§6.10, plus the four review regressions). Verified against 2-D grid truth: IS within
+0.1 nats across τ ∈ [0.1, 100] with ESS > 1000 throughout; Laplace exact at low τ and
+diverging at high τ; MC exact at high τ and starving at low τ — the three-regime
+picture the plan predicted. Next: the shared viz spaces module, the two script ports,
+and the comparison harness (plan §2–§5).

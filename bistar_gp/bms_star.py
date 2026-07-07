@@ -220,7 +220,7 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
                            mcmc_samples, kernel_builder,
                            likelihood_builder=None,
                            n_posterior_samples=200, jitter=1e-4,
-                           condition_on_data=True):
+                           condition_on_data=True, rng=None):
     """
     Extract full GP predictive distributions for each hyperparameter sample.
 
@@ -248,6 +248,8 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
         n_posterior_samples: how many samples to use
         jitter: numerical stability
         condition_on_data: posterior (True) vs prior (False) predictive
+        rng: optional numpy.random.Generator for the draw subsampling;
+             None preserves the legacy global-np.random behavior
 
     Returns:
         List[GPPosteriorSample]
@@ -273,7 +275,13 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
 
     first_key = list(mcmc_samples.keys())[0]
     total_mcmc = len(mcmc_samples[first_key])
-    indices = np.random.choice(total_mcmc, min(n_posterior_samples, total_mcmc), replace=False)
+    n_take = min(n_posterior_samples, total_mcmc)
+    if rng is not None:
+        indices = rng.choice(total_mcmc, n_take, replace=False)
+    else:
+        # legacy path: global np.random state (callers that need
+        # reproducibility without the rng= parameter seed globally)
+        indices = np.random.choice(total_mcmc, n_take, replace=False)
 
     relevant_keys = select_hmc_sites(mcmc_samples.keys())
 

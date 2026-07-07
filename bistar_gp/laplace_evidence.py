@@ -35,7 +35,8 @@ import logging
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 from scipy.optimize import minimize
-from scipy.special import softmax
+from scipy.special import softmax, logsumexp
+from scipy.linalg import solve_triangular
 from dataclasses import dataclass, field
 
 from bistar_gp.bms_star import GPPosteriorSample, METRICS
@@ -287,7 +288,8 @@ def _laplace_log_integral(neg_log_f, x0, bounds, d, eps=1e-4):
 
 
 def laplace_log_Z_Mx(param_space, x_eval, avg_gp, *, metric_name="pw_kl_vcal",
-                     tau=1.0, occam=False, mle_params=None) -> ZMxResult:
+                     tau=1.0, occam=False, mle_params=None,
+                     starts=None) -> ZMxResult:
     """Data-free GP-informed model prior Z_Mx = ∫ exp(−Ḡ/τ) [p_ref] dφ (§1.2).
 
     Expands at φ_G* = argmin Ḡ with the Hessian of Ḡ. NO data likelihood. With
@@ -298,17 +300,31 @@ def laplace_log_Z_Mx(param_space, x_eval, avg_gp, *, metric_name="pw_kl_vcal",
     so the optimization, the Hessian, and the eigenvalue clipping in
     _laplace_logdet are all evaluated once on Ḡ itself — which eigenvalues get
     floored cannot depend on τ, keeping τ-sweeps free of clipping artifacts.
+
+    starts: optional list of {param: value} dicts for MULTI-START optimization
+    (the min-Ḡ* result wins). Ḡ landscapes with sinusoidal candidates are
+    multimodal — a single midpoint/MLE start can miss the global basin
+    entirely (plan-viz-unification §0 V1); mle_params, if also given, is
+    appended as one more start.
     """
     metric_fn = METRICS[metric_name]
     d = param_space.n_params
     unpack = _unpacker(param_space)
-    x0, bounds = _x0_and_bounds(param_space, mle_params)
 
     neg_log_f = _guarded_neg_log(
         param_space, unpack,
         lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn))
 
-    log_int, x_star, G_star, logdet, conv, n_clip = _laplace_log_integral(neg_log_f, x0, bounds, d)
+    start_list = list(starts) if starts else []
+    if mle_params is not None or not start_list:
+        start_list.append(mle_params)
+    best = None
+    for start in start_list:
+        x0, bounds = _x0_and_bounds(param_space, start)
+        run = _laplace_log_integral(neg_log_f, x0, bounds, d)
+        if best is None or run[2] < best[2]:   # min f_star == min Ḡ*
+            best = run
+    log_int, x_star, G_star, logdet, conv, n_clip = best
     # log_int is the τ=1 integral −Ḡ* + (d/2)log(2π) − ½log|H_Ḡ|; rescale to τ.
     log_int_tau = log_int + G_star - G_star / tau + 0.5 * d * np.log(tau)
     log_V = _log_reference_volume(param_space)
@@ -317,6 +333,223 @@ def laplace_log_Z_Mx(param_space, x_eval, avg_gp, *, metric_name="pw_kl_vcal",
                      G_at_min=G_star, phi_min=unpack(x_star), occam=occam,
                      log_volume=log_V, logdet_H=logdet, n_params=d, tau=tau,
                      converged=conv, n_clipped=n_clip)
+
+
+@dataclass
+class ZMxSweepResult:
+    """log Z_Mx across a τ ladder from one sampling estimator (mc or is)."""
+    model_name: str
+    taus: np.ndarray
+    log_Z: np.ndarray
+    ess: np.ndarray            # per-τ effective sample size of the weights
+    estimator: str             # 'mc' | 'is'
+    occam: bool
+    n_samples: int
+
+
+def _pack(param_space, pd):
+    """{param: value} -> vector in param_specs order."""
+    return np.array([pd[ps.name] for ps in param_space.param_specs], dtype=float)
+
+
+def _box(param_space):
+    lo = np.array([ps.bounds[0] for ps in param_space.param_specs], dtype=float)
+    hi = np.array([ps.bounds[1] for ps in param_space.param_specs], dtype=float)
+    return lo, hi
+
+
+def _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X):
+    """Ḡ evaluated row-wise on an (n, d) parameter matrix."""
+    unpack = _unpacker(param_space)
+    neg_log_f = _guarded_neg_log(
+        param_space, unpack,
+        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn))
+    return np.array([neg_log_f(row) for row in X])
+
+
+def _weight_ess(log_w):
+    """ESS = (Σw)² / Σw² computed in log space; -inf entries contribute 0.
+    All--inf weights (every sample out of box / invalid) is ESS 0, not NaN —
+    the starvation warning must fire in exactly that case (codex P3)."""
+    total = logsumexp(log_w)
+    if not np.isfinite(total):
+        return 0.0
+    return float(np.exp(2.0 * total - logsumexp(2.0 * log_w)))
+
+
+def mc_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_mc=200_000, seed=0,
+                metric_name="pw_kl_vcal", occam=False) -> ZMxSweepResult:
+    """Uniform-box Monte Carlo Z_Mx across a τ ladder: Ḡ is computed ONCE and
+    reweighted per τ (the legacy precompute_G_samples pattern, generalized).
+
+    The box-uniform mean estimates the OCCAM-NORMALIZED quantity
+    (1/V)∫exp(−Ḡ/τ)dφ, so occam=False ADDS +log V — the inverse of the
+    Laplace path, where occam=True subtracts it (same reference-measure
+    convention module-wide, D5).
+
+    Cheap and unbiased, but the weights starve at low τ (plan §0 V1: ESS
+    < 200 below τ≈0.3 on the viz spaces) — check .ess before trusting the
+    low-τ end; is_log_Z_Mx is the reference estimator across all τ.
+    """
+    metric_fn = METRICS[metric_name]
+    lo, hi = _box(param_space)
+    rng = np.random.default_rng(seed)
+    X = rng.uniform(lo, hi, size=(n_mc, len(lo)))
+    G = _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X)
+
+    taus = np.asarray(list(taus), dtype=float)
+    log_V = _log_reference_volume(param_space)
+    log_Z = np.empty(len(taus))
+    ess = np.empty(len(taus))
+    for t, tau in enumerate(taus):
+        log_w = -G / tau
+        log_Z[t] = logsumexp(log_w) - np.log(n_mc) + (0.0 if occam else log_V)
+        ess[t] = _weight_ess(log_w)
+    return ZMxSweepResult(model_name=param_space.model_name, taus=taus,
+                          log_Z=log_Z, ess=ess, estimator="mc", occam=occam,
+                          n_samples=n_mc)
+
+
+class _DefensiveProposal:
+    """Mixture proposal for ordinary-IS Z_Mx: ½·uniform-box + ½·equal-weight
+    UNTRUNCATED Gaussians at the multi-start Ḡ-optima with covariances
+    τ_k·H⁻¹ over a τ_k ladder.
+
+    The Gaussians are normalized on R^d and the box constraint is an
+    INDICATOR on the integrand (out-of-box draws get zero weight), so the
+    mixture density integrates to 1 by construction — no per-component
+    truncation-mass bookkeeping (plan §1.2, codex watchpoint). Sampling and
+    density evaluation share the same component parameters; their consistency
+    is pinned by the ∫_box 1 dφ = V test (plan §6.10).
+    """
+
+    def __init__(self, lo, hi, centers, covs):
+        self.lo, self.hi = lo, hi
+        self.d = len(lo)
+        self.log_V = float(np.sum(np.log(hi - lo)))
+        self.chols = [np.linalg.cholesky(C) for C in covs]
+        self.centers = [np.asarray(c, dtype=float) for c in centers]
+        self.n_gauss = len(self.centers)
+
+    def sample(self, rng, n):
+        comp = rng.integers(0, 2, size=n)          # 0: uniform half, 1: gaussian half
+        X = rng.uniform(self.lo, self.hi, size=(n, self.d))
+        if self.n_gauss:
+            which = rng.integers(0, self.n_gauss, size=n)
+            Z = rng.standard_normal(size=(n, self.d))
+            for j in range(self.n_gauss):
+                m = (comp == 1) & (which == j)
+                if m.any():
+                    X[m] = self.centers[j] + Z[m] @ self.chols[j].T
+        return X
+
+    def log_q(self, X):
+        n = len(X)
+        in_box = np.all((X >= self.lo) & (X <= self.hi), axis=1)
+        parts = [np.where(in_box, np.log(0.5) - self.log_V, -np.inf)]
+        for c, L in zip(self.centers, self.chols):
+            y = solve_triangular(L, (X - c).T, lower=True)
+            log_det = np.sum(np.log(np.diag(L)))
+            lp = (-0.5 * np.sum(y ** 2, axis=0) - log_det
+                  - 0.5 * self.d * np.log(2 * np.pi))
+            parts.append(np.log(0.5) - np.log(self.n_gauss) + lp)
+        return logsumexp(np.vstack(parts), axis=0), in_box
+
+
+def _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts,
+                         eps=1e-4):
+    """[(x*, Ḡ*, eigval_clipped, eigvec)] per start — the IS proposal's
+    Gaussian anchors, with the Hessian eigendecomposition kept EXPLICIT so
+    the caller inverts in eigen space (codex P2: reconstructing the clipped
+    matrix and calling np.linalg.inv can raise on the ~1e20-condition
+    flat+cliff combination the clipping exists to survive)."""
+    unpack = _unpacker(param_space)
+    neg_log_f = _guarded_neg_log(
+        param_space, unpack,
+        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn))
+    lo, hi = _box(param_space)
+    bounds = list(zip(lo, hi))
+    out = []
+    for start in (starts or [None]):
+        x0, _ = _x0_and_bounds(param_space, start)
+        try:
+            res = minimize(neg_log_f, x0, bounds=bounds, method="L-BFGS-B",
+                           options={"maxiter": 500, "ftol": 1e-10})
+            x_star = res.x
+        except Exception:
+            x_star = np.asarray(x0, dtype=float)
+        inset = np.minimum(2 * eps, 0.5 * (hi - lo))
+        H = numerical_hessian(neg_log_f, np.clip(x_star, lo + inset, hi - inset),
+                              eps=eps)
+        H = 0.5 * (H + H.T)
+        eigval, eigvec = np.linalg.eigh(H)
+        out.append((x_star, float(neg_log_f(x_star)),
+                    np.clip(eigval, 1e-8, 1e12), eigvec))
+    return out
+
+
+def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
+                starts=None, metric_name="pw_kl_vcal", occam=False,
+                tau_ladder=(0.03, 0.3, 3.0), ess_warn=100.0) -> ZMxSweepResult:
+    """ORDINARY defensive-mixture importance sampling for Z_Mx across a τ
+    ladder — the REFERENCE estimator for figure Z_Mx values (plan §1.2).
+
+    NOT self-normalized IS: Z_Mx is itself the normalizer, so the proposal
+    density q is evaluated exactly and
+
+        log I_raw = logmeanexp_i( −Ḡ(φ_i)/τ − log q(φ_i) ),  φ_i ~ q
+
+    estimates the RAW Lebesgue integral ∫_box exp(−Ḡ/τ) dφ. occam=False
+    returns log I_raw; occam=True returns log I_raw − log V (Laplace-path
+    convention). Ḡ and log q are computed once; every τ is a reweighting.
+
+    starts: multi-start dicts anchoring the proposal's Gaussian components
+    (covariances τ_k·H⁻¹ over tau_ladder); pass the same starts you would
+    give laplace_log_Z_Mx. The uniform half of the mixture defends against
+    optima the starts missed. Warns when any per-τ ESS < ess_warn.
+    """
+    metric_fn = METRICS[metric_name]
+    lo, hi = _box(param_space)
+    optima = _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts)
+    # Component covariances tau_k * H^-1, inverted in EIGEN space (never
+    # reconstruct-then-inv, codex P2) with per-direction variances capped at
+    # the box scale: a floored-flat Hessian direction would otherwise give a
+    # ~1e8-variance Gaussian that throws nearly all its samples out of the
+    # box. The uniform mixture half keeps the estimator correct either way;
+    # the cap keeps it efficient.
+    var_cap = float(np.max(0.5 * (hi - lo)) ** 2)
+    centers, covs = [], []
+    for x_star, _, eigval, eigvec in optima:
+        for tk in tau_ladder:
+            var = np.minimum(tk / eigval, var_cap)
+            centers.append(x_star)
+            covs.append(eigvec @ np.diag(var) @ eigvec.T)
+    prop = _DefensiveProposal(lo, hi, centers, covs)
+
+    rng = np.random.default_rng(seed)
+    X = prop.sample(rng, n_is)
+    log_q, in_box = prop.log_q(X)
+    G = np.full(n_is, np.inf)
+    G[in_box] = _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X[in_box])
+
+    taus = np.asarray(list(taus), dtype=float)
+    log_V = _log_reference_volume(param_space)
+    log_Z = np.empty(len(taus))
+    ess = np.empty(len(taus))
+    for t, tau in enumerate(taus):
+        log_w = np.where(in_box, -G / tau - log_q, -np.inf)
+        log_Z[t] = (logsumexp(log_w) - np.log(n_is)
+                    - (log_V if occam else 0.0))
+        ess[t] = _weight_ess(log_w)
+    if np.any(ess < ess_warn):
+        worst = taus[int(np.argmin(ess))]
+        logger.warning(
+            "is_log_Z_Mx(%s): ESS below %g (min %.1f at tau=%g) — increase "
+            "n_is or supply better starts", param_space.model_name, ess_warn,
+            float(ess.min()), worst)
+    return ZMxSweepResult(model_name=param_space.model_name, taus=taus,
+                          log_Z=log_Z, ess=ess, estimator="is", occam=occam,
+                          n_samples=n_is)
 
 
 def laplace_log_evidence_ordinary(param_space, x_train, y_train, *,
