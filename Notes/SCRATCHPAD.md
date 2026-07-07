@@ -95,14 +95,14 @@ machinery committed at 641444a). Design decisions already made:
 - Then: figure regeneration + legacy comparison, codex review (stdin: `< /dev/null`!),
   D16, flip D3 open item (1), PR #2 to Ready.
 
-## New open item (from D11)
+## Mauna candidate recheck post-D11 — DONE (2026-07-07)
 
-- **Recheck Mauna candidate fits post-D11**: the real-data impact results (D6/D8 section of
-  `docs/impact-assessment-results.md`) fitted QuadSin/Quad+2Harm with the old no-op restart
-  selection (first restart always kept). Their initialization is data-driven (polyfit +
-  residual amplitude) so the first restart plausibly converged fine, but the headline
-  Linear-to-Quad+2Harm reversal should be re-verified against the fixed selection before paper
-  numbers.
+- Reversal headline VERIFIED on the fixed restart selection: HMC reproduces
+  bit-identically, BMS* posteriors shift at most 0.00002 (Quad+2Harm 0.42218 vs Linear
+  0.11368 at pw_kl_forward@tau1). All 12 restarts of each Mauna candidate share one
+  basin (fixed frequencies) — the toy omega pathology has no analog here. Recheck
+  subsection in docs/impact-assessment-results.md; raw runs/mauna_recheck_postD11.json;
+  D11 Result updated.
 
 ## Open questions for the user (from D12/D13)
 

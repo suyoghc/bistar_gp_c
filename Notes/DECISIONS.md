@@ -425,6 +425,15 @@ the residual-only criterion equals n/2 at the MLE; Mauna tuple-return + paramete
 consumed `build_toy_candidates()` output on the toy problem inherited the degenerate
 Sin+Linear (and Sinusoidal) fits; the D12 comparison was rerun on the fixed candidates
 (GP-side draws unaffected — fit_gp is independent of candidates).
+**Mauna recheck (2026-07-07, `d9efaaa`):** the real-data reversal headline
+(docs/impact-assessment-results.md) SURVIVES the fix. Re-run of
+`impact_assessment --mauna` at identical seed/settings reproduces the HMC side
+bit-identically and shifts every BMS* posterior entry by at most 0.00002
+(Quad+2Harm stays 0.42218 vs Linear 0.11368 at pw_kl_forward@tau1). All 12 restarts
+of each Mauna candidate converge to one basin (frequencies fixed a priori; full NLLs
+within ~1e-4), so the pre-fix first-restart selection was already optimal there —
+the toy's multi-basin omega pathology does not transfer. Raw:
+`runs/mauna_recheck_postD11.json`; recheck subsection added to the impact doc.
 
 ---
 

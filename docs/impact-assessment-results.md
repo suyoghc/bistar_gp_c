@@ -138,3 +138,17 @@ that prior-noise → near-zero-noise shift is what flips the ranking. Paper clai
 therefore **qualitative** ("the fixes change which model BMS* selects on Mauna Loa");
 precise posterior probabilities await a converged sampler (Laplace-preconditioned NUTS
 / reparameterization / rescoping — open fork in D8).
+
+### Post-D11 recheck (2026-07-07): headline survives the restart-selection fix
+The NEW arm above (`865182a`) predates D11, which fixed the multi-start restart
+selection at all six `_fit_mle` call sites — including `QuadSinModel.fit` and
+`QuadHarmonic2Model.fit` used here. Recheck on the current tree (`d9efaaa`, identical
+seed/settings, `runs/mauna_recheck_postD11.json`): the HMC side reproduces
+bit-identically (max delta 0.0 on hyperparameter means and stds — a clean isolation of
+the candidate side), and every BMS* posterior entry shifts by at most 0.00002. The
+headline is unchanged: Quad+2Harm 0.42218 vs Linear 0.11368 at pw_kl_forward@tau1.
+Mechanism: with the annual/semi-annual frequencies fixed a priori, all 12 restarts of
+each Mauna candidate converge to a single basin (full NLLs agree to ~1e-4, predictive
+means to ~1.3e-5), so the pre-fix first-restart pick was already the global optimum to
+optimizer precision. The toy's multi-basin omega failure mode has no analog on these
+candidates.
