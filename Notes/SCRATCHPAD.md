@@ -37,10 +37,12 @@ trajectory: Sin+Linear 0.934) — attributed dominantly to the priors script's h
 occam-ON convention (volume penalty against the d=5 true model), secondarily to pure
 Laplace; canonical figures (occam=False, IS estimator) select the true model 0.93–0.99.
 
-**Remaining for PR #2 "Ready":** (1) full-quality figure regeneration — non-quick
-`viz_unification_compare.py` + canonical script runs (~30–60 min, background); (2) flip
-PR #2 from draft. Then the deferred items: Mauna candidate recheck post-D11 (paper
-numbers), figure regen for the OTHER figure sets (D3 item 2), kb/Wiki update (D3 item 3).
+**Full-quality figures DONE (2026-07-06):** 32 figures across all harness arms in
+`runs/viz_unification/`; canonical arms give Sin+Linear 0.86–0.99 at every n, both scripts
+exactly consistent at shared stages; ESS warnings fire only at the τ-sweep's extreme low
+end (designed behavior). **PR #2 is ready to flip from draft** (push + flip = user action).
+Then the deferred items: Mauna candidate recheck post-D11 (paper numbers), figure regen
+for the OTHER figure sets (D3 item 2), kb/Wiki update (D3 item 3).
 
 ### superseded planning note (plan now at R2 + implementation addenda)
 
