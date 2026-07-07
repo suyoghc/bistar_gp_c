@@ -47,8 +47,12 @@ min ESS 955). Hardened: both ported scripts now default to seeded perturbed star
 (--n-perturb 5) anchoring the IS proposal, and the trajectory port emits a per-stage
 per-model `ess_by_stage.md` diagnostic; stale first-layout legacy figures removed from
 `runs/viz_unification/`. **PR #2 is ready to flip from draft** (push + flip = user
-action) — for PAPER-grade figure claims, check `ess_by_stage.md` in the regenerated run
-first.
+action). **Paper-grade artifact directory DONE (codex caveat resolved):**
+`runs/viz_unification/` regenerated from empty in ONE clean harness run with the hardened
+scripts — zero ESS warnings in every log, same-run `ess_by_stage.md` (worst 166), 26
+figures, all artifacts in a single 10-min timestamp window; headline reproduced exactly
+(canonical n=50 Sin+Linear 0.992 vs legacy priors Linear 0.693). codex's independent
+200k set kept at `runs/viz_unification_highis/` as the cross-check.
 Then the deferred items: Mauna candidate recheck post-D11 (paper numbers), figure regen
 for the OTHER figure sets (D3 item 2), kb/Wiki update (D3 item 3).
 
