@@ -1,9 +1,16 @@
 """
 laplace_evidence.py — Laplace Approximation for BI* Model Evidence
 
-Replaces importance sampling (which fails in >3D parameter spaces)
-with a Laplace approximation around the MAP estimate under the
-GP-induced prior.
+Approximates BI* model evidence with a Laplace expansion around the MAP
+estimate under the GP-induced prior. The Laplace path replaced an early
+naive prior-importance-sampling estimator whose effective sample size
+collapsed beyond a few dimensions, and remains the fast default. Since
+D16 the module also provides sampling estimators for Z_Mx: `mc_log_Z_Mx`
+(uniform-box MC, accurate at high τ) and `is_log_Z_Mx` (ordinary
+defensive-mixture IS). The figure scripts use `is_log_Z_Mx` as their
+validated reference for Z_Mx values; it costs more than Laplace and its
+reported ESS diagnostics must be checked, but it stays accurate across
+the full τ range, where pure Laplace diverges at high τ.
 
 The model evidence integral:
 

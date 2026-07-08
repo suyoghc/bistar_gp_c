@@ -141,3 +141,21 @@ wording), left for the next code-touching pass.
 
 **Open for the user:** prior-sensitivity / re-elicitation study on the informative config
 before final paper numbers (W2); debias-script HMC fix chip; PR #2 review itself.
+
+## 2026-07-08 — debias-script HMC fix chip (CLOSED)
+
+Scope-limited cleanup chip after PR #2 / D3 closure; the prior-sensitivity /
+re-elicitation study was explicitly NOT started and remains open.
+
+- `experiments/bistar_debias_mauna_loa.py` fresh-HMC branch brought onto the D8
+  pattern: MAP-fit the model actually passed to `fit_hmc` (n_iter=300), then
+  `fit_hmc(..., max_tree_depth=7)`; the throwaway `model_map` fit removed.
+  `--use-cache` untouched (the regenerated figures had used cached draws and
+  were never affected).
+- `bistar_gp/laplace_evidence.py` header reworded post-D16: IS no longer
+  described as failing >3D; `is_log_Z_Mx` documented as the figure scripts'
+  validated reference, heavier and ESS-checked.
+- New `tests/test_experiment_hmc_pattern.py`: source-level (AST) guard that all
+  three Mauna scripts cap tree depth at 7 and MAP-fit the exact model/data
+  passed to `fit_hmc`; verified to fail on the pre-fix source.
+- D8 and D16 got status addenda. Full suite: 114 passed.

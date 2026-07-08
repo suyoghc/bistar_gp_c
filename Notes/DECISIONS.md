@@ -324,6 +324,21 @@ reparameterization (significant work), or (c) rescoping full-Bayes mauna out of 
 figures (MAP + Laplace machinery, the paper's primary path, is unaffected). (OPEN — fork
 belongs to the user.) Diagnostics: scratchpad nuts_diag_out/{validate,round2_dense}.json.
 
+**Status addendum (2026-07-08, debias-script chip):** a third stale call site surfaced during
+the D3 figure regeneration: `experiments/bistar_debias_mauna_loa.py` MAP-fitted a throwaway
+`model_map`, then passed a fresh default-init `model2` to `fit_hmc` with no depth cap.
+Since `init_to_map` reads the current values of the model actually passed, standalone fresh
+debias runs started from default hyperparameters under uncapped depth-10 NUTS. Fixed to the
+D8 pattern (MAP-fit `model2` itself, n_iter=300, then `fit_hmc(..., max_tree_depth=7)`);
+`--use-cache` behavior unchanged. The regenerated figures were unaffected because the debias
+run consumed cached bms_star draws via `--use-cache`. New source-level guard
+`tests/test_experiment_hmc_pattern.py` (AST) checks both knobs in all three Mauna scripts and
+fails on the pre-fix source; after an adversarial review found name-only matching escapable
+(cross-branch match after a model2 rename; rebinding between fit_map and fit_hmc), the guard
+requires the matching fit_map to be a sibling statement in fit_hmc's block with none of the
+four tracked names rebound in between — all escape mutants verified caught. The mixing qualifier above still applies; the prior-sensitivity
+study stays open.
+
 ---
 
 ## D9: GP inference as selectable options, thesis-anchored default (fit_gp) — 2026-07-04
@@ -748,6 +763,11 @@ correlation ridge (fixed with orthonormalized features).
 diverging at high τ; MC exact at high τ and starving at low τ — the three-regime
 picture the plan predicted. Next: the shared viz spaces module, the two script ports,
 and the comparison harness (plan §2–§5).
+
+**Status addendum (2026-07-08):** the module header still carried the pre-D16 claim that
+importance sampling "fails in >3D parameter spaces"; reworded to the current picture
+(Laplace as the fast default; `is_log_Z_Mx` as the figure scripts' validated reference,
+heavier and requiring its ESS diagnostics be checked).
 
 ---
 
