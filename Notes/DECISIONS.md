@@ -51,7 +51,7 @@ demonstrated numerically ([0.501, 0.289, 0.210] correct vs [0.476, 0.302, 0.222]
 
 ---
 
-## D3: Z_Mx / Laplace model-prior definition and posterior assembly (OPEN — plan committed c5562a3) — 2026-07-01
+## D3: Z_Mx / Laplace model-prior definition and posterior assembly (CLOSED 2026-07-08 — plan committed c5562a3) — 2026-07-01
 
 **Problem:** `laplace_evidence.py::compute_laplace_evidence` computes a Laplace approximation to
 `∫ p(y|φ)·exp(−Ḡ/τ) dφ` — a likelihood-weighted joint mislabeled as "model evidence." The paper
@@ -85,10 +85,24 @@ now self-registers its default metric (imports `metrics_v2`). Parked eval follow
 (`mechanism.py` renamed it to `CandidateInducedSamples`), optional RNG `seed=` on `fit_mcmc_simple`/`fit_hmc`.
 `tests/test_laplace_zmx.py` **42 tests pass** (adds default-metric-registration and
 II-decomposition-identity). README Occam section updated to the canonical API + ablation ladder.
-**Still OPEN (held deliberately — needs a decision or compute):** (1) ~~unify the two self-contained viz
+**All three open items CLOSED:** (1) ~~unify the two self-contained viz
 Laplace scripts~~ DONE — D10 dissolved the single-`G` choice, D15/D16 built the machinery, D17 landed
-the ports + comparison harness; (2) regenerate all figures + old-vs-new impact
-assessment (needs a torch runtime); (3) update `kb/Wiki/GP-Induced Model Priors.md` (gitignored).
+the ports + comparison harness; (2) ~~regenerate all figures + old-vs-new impact
+assessment~~ DONE — impact assessment: toy sections on Della (job 10608943), Mauna local
+2026-07-04, post-D11 recheck 523825c; figures: all non-viz sets regenerated 2026-07-08 on
+the fixed code via `runs/figures_regen/regen.sh` (detached two-wave orchestrator: the five
+`bistar_gp/cache/hmc_samples_*_n500_s42.npz` caches rebuilt fresh — pre-D2 originals
+quarantined in `bistar_gp/cache/stale_preD2_20260214/` — then toy_example x2, mauna_loa,
+bms_star_mauna_loa + debias (debias fed the properly-sampled cache via `--use-cache`; its
+own HMC block still has the pre-D8 init/cap bug, flagged separately), and the five
+cache-dependent scripts induced_prior, induced_prior_v2, sample_size_sweep,
+v2/v3_comparison; 151 figures, zero errors across 11 logs; the full-data Mauna chain
+inherits the D8 convergence caveat). The self-contained sandbox viz scripts
+(mechanism_unified, pipeline_figure, model_priors_montecarlo, model_prior_both) import
+nothing from bistar_gp, so the correctness fixes never invalidated their outputs — left
+as-is; (3) ~~update `kb/Wiki/GP-Induced Model Priors.md`~~ DONE 2026-07-07 — rewritten to
+Construction II canonical (ablation ladder, analytic-tau Laplace form, D5 occam
+semantics, D16 estimator picture, D17 attribution folded into the trajectory Q&A).
 
 ---
 

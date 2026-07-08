@@ -100,3 +100,44 @@ SCRATCHPAD ESS claim) — logged as corrections, not rewrites.
 VI-framing (D12/D13 questions in SCRATCHPAD); Mauna candidate recheck post-D11 before
 paper numbers; non-viz figure sets; kb/Wiki update. Tooling lesson recorded: backgrounded
 `codex exec` needs stdin from /dev/null.
+
+## 2026-07-07/08 — Work-queue session: recheck, gates, PR flip, figure regeneration
+
+**Orientation:** verified d9efaaa + 111 tests before touching anything, per the handoff
+prompt.
+
+**Mauna candidate recheck post-D11 (523825c):** the reversal headline SURVIVES. Re-ran
+`impact_assessment --mauna` at the 2026-07-04 settings on the current tree: HMC side
+bit-identical (clean isolation), every BMS* posterior entry within 0.00002 (Quad+2Harm
+stays 0.42218 vs Linear 0.11368 at pw_kl_forward@tau1). Mechanism diagnostic: all 12
+restarts of each Mauna candidate converge to one basin (frequencies fixed a priori), so
+the pre-D11 first-restart pick was already optimal — the toy's multi-basin omega
+pathology does not transfer. Recheck subsection added to the impact doc.
+
+**D12/D13 gates resolved (user; f6db15d):** new local-only paper log
+Notes/WRITEUP_DECISIONS.md (gitignored via 0280b77). W1: pw_kl_vcal ratified as main
+metric, kl_forward demoted to appendix stress-test. W2: method default stays hmc for the
+draft with the mass split disclosed and basin-occupancy required; prior-sensitivity study
+QUEUED before final paper numbers (the one remaining open fork). W3: VI framed as the
+bimodality/prior-sensitivity story, paper phrasing recorded verbatim. D12 got a Ratified
+block.
+
+**PR #2 flipped to Ready** (user-authorized): 16 commits pushed, draft flag cleared.
+
+**Figure regeneration (D3 item 2) DONE — D3 fully CLOSED:** detached two-wave
+orchestrator runs/figures_regen/regen.sh (survived one Claude session restart that had
+killed the first attempt). Five bistar_gp/cache HMC caches rebuilt fresh on fixed code
+(pre-D2 originals quarantined in cache/stale_preD2_20260214/); toy_example x2, mauna_loa,
+bms_star_mauna_loa + debias (fed the sampled cache via --use-cache — the debias script's
+own HMC block still has the pre-D8 init/cap bug, flagged as a spawn-task), then the five
+cache-dependent scripts. 151 figures, zero errors in 11 logs. Full-data Mauna BMS* chain
+is slow even at depth 7 (~8 min/step, 28 h) and carries the D8 convergence caveat.
+Sandbox-era viz scripts import nothing from bistar_gp — unaffected, not regenerated.
+kb/Wiki/GP-Induced Model Priors.md rewritten to Construction II canonical (D3 item 3).
+
+**Committed:** 523825c, 0280b77, f6db15d, plus this close-out docs commit. Stale module
+docstring noted (laplace_evidence.py header still says IS "fails in >3D" — pre-D16
+wording), left for the next code-touching pass.
+
+**Open for the user:** prior-sensitivity / re-elicitation study on the informative config
+before final paper numbers (W2); debias-script HMC fix chip; PR #2 review itself.

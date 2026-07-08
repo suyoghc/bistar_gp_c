@@ -53,8 +53,9 @@ scripts — zero ESS warnings in every log, same-run `ess_by_stage.md` (worst 16
 figures, all artifacts in a single 10-min timestamp window; headline reproduced exactly
 (canonical n=50 Sin+Linear 0.992 vs legacy priors Linear 0.693). codex's independent
 200k set kept at `runs/viz_unification_highis/` as the cross-check.
-Then the deferred items: Mauna candidate recheck post-D11 (paper numbers), figure regen
-for the OTHER figure sets (D3 item 2), kb/Wiki update (D3 item 3).
+The three deferred items are now ALL DONE (2026-07-07/08): Mauna candidate recheck
+post-D11 (523825c), non-viz figure regeneration (D3 item 2, see below), kb/Wiki update
+(D3 item 3). D3 is fully CLOSED.
 
 ### superseded planning note (plan now at R2 + implementation addenda)
 
@@ -170,9 +171,12 @@ machinery committed at 641444a). Design decisions already made:
   closures, redundant recomputation in plot_ablation_ladder/tau sweeps, committed .pyc/.DS_Store
   artifacts, walrus-in-ternary in impact_assessment, CLAUDE.md prose nits; full list in the
   review output).
-- **HMC archives invalid** — `bistar_gp/cache/*.npz` and `runs/mauna_loa_sub150_hmc_*` predate the
-  D2 single-registration fix (biased target); regenerate before paper numbers. Della impact
-  assessment must rerun on fixed code.
+- ~~**HMC archives invalid**~~ RESOLVED (2026-07-08): the five `bistar_gp/cache/*.npz`
+  caches regenerated fresh on the fixed code (pre-D2 originals quarantined in
+  `bistar_gp/cache/stale_preD2_20260214/`); the stale `runs/mauna_loa_sub150_hmc_*`
+  archive is superseded by the regenerated Mauna figure sets under `runs/figures_regen/`
+  (left on disk — never reuse). Impact assessment reran long ago (toy: Della; Mauna:
+  local 2026-07-04; recheck 523825c).
 
 - **Viz-script unification (UNBLOCKED by D10)** — port `model_priors_laplace.py` /
   `model_prior_trajectory_laplace.py` onto `laplace_log_Z_Mx` with `metric_name="pw_kl_vcal"`
@@ -193,9 +197,22 @@ machinery committed at 641444a). Design decisions already made:
   probs soft but DIRECTION robust (mechanistically forced by near-zero noise). Ran locally
   (Della abandoned: della-h16 ~5× slower/op + thread-thrash + jitter-retry ballooning). Noise-
   prior change remains a deliberately-untaken MODELING decision; converged full-Bayes = open fork.
-- **Figure regeneration** — needs a torch runtime (the project `.venv` lacks torch; tests run
-  on system `python3`). This is the paper-facing session.
-- **kb/Wiki/GP-Induced Model Priors.md** — update to Construction II canonical (gitignored, local).
+- ~~**Figure regeneration**~~ DONE (2026-07-08) — all non-viz figure sets regenerated on
+  the fixed code via the detached two-wave orchestrator `runs/figures_regen/regen.sh`
+  (system python3, miniconda base, torch 2.10): wave 1 rebuilt the five HMC caches
+  (`bms_star_toy --force-rerun`, uncapped as shipped, ~18 h) plus toy_example x2,
+  mauna_loa, and the bms_star_mauna_loa + debias chain (debias fed
+  `--use-cache runs/figures_regen/bms_mauna_loa/hmc_samples.pt` to bypass its own
+  un-capped default-init HMC block — that bug is flagged as a separate task); wave 2 ran
+  the five cache-dependent scripts (induced_prior, induced_prior_v2, sample_size_sweep,
+  v2/v3_comparison). 151 figures (18 under `runs/figures_regen/`, 133 in
+  `bistar_gp/results/`), zero errors across 11 logs (`runs/figures_regen/logs/`). The
+  full-data Mauna BMS* chain mixes slowly even at depth 7 (~8 min/step) — figures carry
+  the D8 convergence caveat. Sandbox-era viz scripts (mechanism_unified, pipeline_figure,
+  model_priors_montecarlo, model_prior_both) import nothing from bistar_gp — unaffected
+  by the fixes, not regenerated.
+- ~~**kb/Wiki/GP-Induced Model Priors.md**~~ DONE (2026-07-07) — rewritten to
+  Construction II canonical (gitignored, local).
 - **Occam default** — currently `occam=False` (faithful BI*); with-Occam intended as sensitivity.
 - Minor: remove the 13 `sys.path` hacks now that `pyproject.toml` exists (`pip install -e .`);
   add a cache key covering all result-determining config.
