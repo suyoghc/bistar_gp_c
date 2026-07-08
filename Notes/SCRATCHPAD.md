@@ -211,6 +211,15 @@ machinery committed at 641444a). Design decisions already made:
   the D8 convergence caveat. Sandbox-era viz scripts (mechanism_unified, pipeline_figure,
   model_priors_montecarlo, model_prior_both) import nothing from bistar_gp — unaffected
   by the fixes, not regenerated.
+  ADDENDUM (2026-07-08, post-codex closeout check): codex noted 76 February PNGs still
+  mixed into `bistar_gp/results/` alongside the fresh set. Resolved: 68 were prior-config
+  gaps the wave-2 defaults skipped — regenerated from the fresh caches
+  (`--priors low_noise high_noise` for induced_prior x2; `--priors vague
+  misspecified_tight low_noise high_noise` for v3_comparison; `*gapfill.log`); the 8 true
+  orphans (renamed `bms_tau_informative`, six `mauna_loa_map_*` from a February
+  CWD-in-results run — regenerated equivalents in `runs/figures_regen/mauna_loa/` — and
+  the v2 tau=10 grid point) are quarantined in `bistar_gp/results/stale_preD2_20260214/`.
+  `bistar_gp/results/` now contains ONLY post-fix figures (203) outside the quarantine.
 - ~~**kb/Wiki/GP-Induced Model Priors.md**~~ DONE (2026-07-07) — rewritten to
   Construction II canonical (gitignored, local).
 - **Occam default** — currently `occam=False` (faithful BI*); with-Occam intended as sensitivity.
