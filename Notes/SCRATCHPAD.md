@@ -2,6 +2,21 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
+## Prior-sensitivity study (W2 gate) — DONE 2026-07-08, see D18
+
+`experiments/prior_sensitivity_study.py` + `docs/prior-sensitivity-study.md` +
+`runs/prior_sensitivity/` (local). Bimodality is prior-induced (kernel Gamma(6,0.85)
+priors; noise prior innocent). Sin+Linear survives every prior under HMC/MAP and under
+the new mass-faithful SIR arm (even informative's SIR row: 0.276±0.003 at tau=1,
+tau-fragile). Spot-check arbitration: capped MAP-init NUTS under-explores the noise
+ridge even in the unimodal toy_elicited geometry — full-Bayes headline = SIR
+0.441±0.005, HMC 0.696 = density-mode-region answer.
+**Open forks for the user (D18 Status):** (a) ratify `toy_elicited` for final toy
+figures; (b) whether `toy_elicited` graduates into `PRIOR_CONFIGS` (package change,
+out of PR #2 scope); (c) revise W3's verbatim VI sentence (VI = wide-basin detector,
+not mass-faithful reporter — D18 finding 4). New study files are uncommitted; user to
+decide whether they ride on `fix/laplace-zmx` (PR #2) or a separate branch.
+
 ## Done this session (D11/D12/D13, comparison campaign)
 
 - **Method × metric comparison (D12, corrected by D13)** —

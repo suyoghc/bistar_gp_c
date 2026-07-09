@@ -548,6 +548,9 @@ a prior-sensitivity / re-elicitation study on the `informative` config is queued
 final paper numbers. VI framed as the bimodality/prior-sensitivity diagnostic, not a
 failed method. Full writeup-facing rationale and paper phrasing in
 `Notes/WRITEUP_DECISIONS.md` W1–W3 (local, gitignored).
+**Status addendum (2026-07-08):** the queued prior-sensitivity study is DONE — see D18
+(bimodality confirmed prior-induced; the mass split and the VI framing above are
+superseded by D18 findings 2 and 4).
 
 **Status (closed same day):** capped-NUTS arm (`--max-tree-depth 7`, the D8-validated knee)
 done — `docs/appendix-tree-depth-cap.md`. The cap is result-preserving at model-selection
@@ -836,3 +839,139 @@ anchoring the IS proposal; the trajectory port writes a per-stage per-model
 rerun at the standard n_is=40k: zero ESS warnings, worst per-stage ESS 166 (Sin+Linear,
 n≈20; was <100), τ-sweep min 221, priors unchanged (Sin+Linear 0.93–0.99). Paper-grade
 figure certification = check `ess_by_stage.md` in the shipping run.
+
+---
+
+## D18: prior-sensitivity / re-elicitation study — the D12 bimodality is prior-induced; `toy_elicited` recommended for final toy numbers — 2026-07-08
+
+**Problem:** W2 (the ratified D12 gate) required a prior-sensitivity study before final paper
+numbers: is the D12 bimodality (and the VI/HMC disagreement, and the "true model selected
+from the minority-mass basin" caveat) an artifact of the `informative` prior fighting the
+toy data's scale (truth-ish log joint -57.2 vs -33.4 MAP), and is the BI*/BMS* thesis-toy
+result stable under reasonable re-elicited priors?
+
+**Design** (`experiments/prior_sensitivity_study.py`; raw artifacts `runs/prior_sensitivity/`,
+local by convention; generated tables `docs/prior-sensitivity-study.md`): three alternates
+defined in-script (deliberately NOT added to `PRIOR_CONFIGS` — package default is out of
+scope): `vague` (the pre-registered broad-LogNormal config), `toy_elicited` (LogNormal priors
+with medians from observable data statistics only: lengthscale median 4.5 = geometric middle
+of x-spacing 1.05 and x-range 20, sigma 0.9; outputscale median 1.5 ~ var(y)/2; linear
+variance median 0.04 ~ var(y)/(2*mean(x^2)); noise median 0.3 ~ 10% of var(y)), and
+`gamma_relaxed` (attribution arm: kernel priors Gamma(6,0.85) relaxed to Gamma(2,0.5), noise
+prior untouched). Staged cheap-to-expensive pipeline: stage A (prior scorecard, MAP,
+27-start Nelder-Mead mode hunt with valley checks between verified modes, 3-seed prior-IS
+with delta-method SEs and per-basin ESS, VI across seeds 0/1/2/42), stage B (capped-depth
+NUTS td7 + VI + MAP through the D12 `run_one_method` machinery, cache fingerprint sidecars),
+stage `is` (mass-faithful model selection: SIR from pooled prior-IS draws through the same
+BMS* pipeline, ESS>=100 floor). Decision rules PRE-REGISTERED in the script docstring and
+report header before any stage-B result was read (roles, coherence criteria i-iii,
+winner-blind adoption, outcome patterns A-E). A preflight multi-agent review (5 reviewers,
+findings adversarially verified) ran before the expensive stage and forced four fixes: the
+`toy_elicited` lengthscale prior violated its own elicitation rule (median 2, suspiciously
+near the D12 posterior, vs the honest geometric middle 4.5 — fixed, affected HMC rerun);
+the original 4-start mode hunt produced a FALSE unimodal verdict for `vague` (a verifier
+located a surviving degenerate mode at ls 0.018, noise 0.44); prior-IS ESS collapses for
+the Gamma configs (informative low-basin effective draws ~15 at the 60k default) with no
+reported uncertainty; and no mass-faithful model-selection number existed anywhere despite
+D12's framing hinging on one.
+
+**Findings:**
+1. **Attribution:** prior-only scorecard at truth-ish — `informative` total log prior
+   -35.5 nats (per-site: linear variance -19.7, outputscale -9.7, lengthscale -5.0,
+   noise -1.2);
+   alternates -0.9 to -9.5. `gamma_relaxed` (kernel priors relaxed, noise prior IDENTICAL)
+   fully dissolves the bimodality: the Gamma(6, 0.85) kernel priors are the cause, not the
+   noise prior. Truth-ish-to-MAP log-joint gap: 23.8 nats informative vs 3.5-4.3 alternates.
+2. **Geometry:** `informative` bimodal (2 verified modes, straight-path valley 6.3 nats;
+   pooled 600k-draw prior-IS: P(noise<0.15) = 0.277+-0.018, P(noise>0.30) = 0.592+-0.015,
+   low-basin ESS 129; nearest-mode mass split 0.40/0.60) — the D13 "~3x the mass" headline
+   softens to ~1.5-2x with honest SEs, direction unchanged, and it is the only INCOHERENT
+   config under the pre-registered rules. `toy_elicited` and `gamma_relaxed`: 27/27 starts
+   to a single verified mode (IS mass 1.000). `vague`: trimodal but coherent — dominant
+   near-truth mode holds 95.9% of pooled mass; two degenerate tiny-lengthscale modes
+   (ls ~0.018) hold 0.8%/3.4% (<5% rule).
+3. **Model selection (stage B, td7, D12 budgets/seed; baseline comparability certified by
+   a drift check — fresh informative vi/map reruns match the frozen `results_td7.json` to
+   0.00000):** HMC and MAP select Sin+Linear under EVERY config (hmc pw_kl_vcal tau=1:
+   0.673 informative / 0.681 gamma_relaxed / 0.685 vague / 0.696 toy_elicited; hard
+   assignment 200/200 everywhere). The new mass-faithful SIR arm (final numbers at
+   n_pred=1000 with bootstrap SEs over SIR draws and 3 per-IS-seed replicates) selects
+   Sin+Linear at tau=1 under ALL FOUR configs — including informative (0.276±0.003,
+   near-flat) — so the D12 speculation that "a mass-faithful answer would lean toward
+   VI's wrong-model conclusion" is REFUTED by the computed number: the informative prior
+   does not flip the mass-faithful conclusion, it dilutes it toward uniform and makes it
+   tau-FRAGILE (informative SIR row: Linear top at tau=0.1, Sinusoidal at 0.3, Sin+Linear
+   only from tau>=1; every alternate's SIR row is rank-stable at Sin+Linear across all
+   tau — gamma_relaxed 0.378±0.004, vague 0.432±0.007, toy_elicited 0.441±0.005 at tau=1,
+   per-seed scatter <=0.03; hard fractions 0.908-0.973 vs informative's 0.481).
+4. **VI (revises the W3 framing):** fit_vi lands in the wide smooth high-noise region under
+   EVERY config (noise 0.37-0.57, stable across 4 seeds x 4 configs) REGARDLESS of that
+   region's actual posterior mass (59% informative, 15% gamma_relaxed, 6% vague, 5%
+   toy_elicited), so VI/HMC max abs posterior difference is 0.45-0.48 everywhere.
+   PRE-REGISTRATION DEVIATION, disclosed: coherence criterion (iii) (VI-HMC agreement
+   <= 0.10) fails for every config and is hereby judged MIS-SPECIFIED — it tests fit_vi's
+   ADVI approximation quality (an entropy-favored wide basin), not posterior geometry; the
+   D12/D13 reading "VI migrates to the DOMINANT basin" was partly coincidental (under
+   informative the wide region happens to hold the majority mass). Criteria (i)+(ii) plus
+   the SIR arbiter carry the coherence verdict; VI is demoted from "bimodality diagnostic"
+   to "wide-basin detector" — its disagreement with HMC no longer implies multimodality.
+5. **kl_forward (strengthens W1; stated precisely):** 1.000 Sin+Linear under every tight
+   single-basin HMC/MAP arm. Under heterogeneous draw mixtures (all VI and SIR rows) its
+   SOFT tau=1 Boltzmann posterior collapses Sin+Linear to 0.000 — the aggregation
+   mean_i exp(-G_ij/tau) is dominated by the mixture's high-noise draws, whose kl_forward
+   G for Sin+Linear is enormous — while the per-draw HARD best-match rate stays majority
+   Sin+Linear on the alternates' mixtures (SIR hard fractions at n_pred=1000: 0.696
+   toy_elicited, 0.707 vague, 0.520 gamma_relaxed; the informative mixture degrades it to
+   0.241). An aggregation-level outlier sensitivity under draw heterogeneity, not
+   per-draw misranking — appendix-only framing confirmed and sharpened.
+
+**Decision (recommendation under a DISCLOSED DEVIATION from the pre-registered pattern
+table):** no pre-registered pattern fires cleanly. Pattern A required VI/HMC agreement,
+and criterion (iii) fails for EVERY config including the frozen informative baseline
+(finding 4); read strictly, the table returns pattern D ("all alternates incoherent"),
+which is absurd — a leg that fails identically everywhere cannot distinguish configs, and
+the failure is attributable to fit_vi, not to any posterior. Revised rule, adopted openly
+post hoc: coherence = criteria (i)+(ii), with the mass-faithful SIR row as the
+VI-independent arbiter. Under that rule the substance of pattern A holds: the bimodality
+and the VI/HMC disagreement are PRIOR-INDUCED artifacts of the `informative` config;
+recommendation for the paper — final toy numbers use the re-elicited `toy_elicited` prior
+(coherent geometry, honest data-statistics elicitation, healthiest sampler behavior:
+capped-td7 site ESS 41-72 vs the informative baseline's 11-18, uncapped 28-70 vs 4-27,
+and the strongest and most tau-stable mass-faithful result), with
+`informative` retained as the documented prior-misspecification / bimodality case study
+(the D12 story) and `vague` as the robustness appendix. The headline "BI* recovers the true
+mechanistic model" is NOT an artifact of the informative prior: it survives every prior and
+every mass-faithful measure tested; what the informative prior costs is decisiveness and
+tau-stability. **Spot-check (pre-registered rule FIRES; arbitration decided, uncapped arm
+recorded below):** for the adopted config the HMC draw occupancy contradicts the prior-IS
+mass far beyond 2 SE (P(noise<0.15): 1.000 vs 0.763±0.004). Three-way noise-marginal
+arbitration (stage `noise-marginal`, estimators sharing no failure mode) is UNANIMOUS
+against the capped chain: prior-IS pooled 0.763±0.004 / 0.191±0.004 / 0.046±0.001
+(mid-band ESS 3444, top mid draws on a smooth ridge 1.4-1.6 nats below the best);
+Jacobian-corrected RW-MH referee 0.796-0.843 / 0.140-0.175 / 0.016-0.037 across seeds
+42/1/2 with 38-44 lo/hi crossings per 30k chain (the ridge is traversable by a plain
+random-walk sampler); profile-Laplace quadrature of p(noise|y) (no sampling, 40/40 grid
+points PD) 0.763 / 0.138 / 0.023. The capped MAP-init NUTS chain (noise draws
+0.0495±0.0076, confined near the mode) under-explores the noise ridge even in this
+UNIMODAL geometry — the D8 Mauna disease pattern, now demonstrated on a well-behaved
+posterior. CONSEQUENCE for the paper: under toy_elicited the honest full-Bayes headline
+is the mass-faithful SIR number (Sin+Linear 0.441±0.005 bootstrap SE at tau=1, per-IS-seed
+0.419/0.438/0.431 at n_pred=1000), with the HMC row (0.696) reported as the
+density-mode-region answer under the same disclosure discipline W2 already imposes on the
+method default. Uncapped td10 arm (COMPLETE, 5.7 h): ALSO fully confined — occupancy
+1.000/0.000/0.000, noise draws 0.0516±0.0068 (q95 0.064), pw_kl_vcal tau=1 Sin+Linear
+0.683 vs capped 0.696 (cap again result-preserving, <=0.013 shift). So the confinement is
+NOT a depth-cap artifact: MAP-init NUTS with pyro-default adaptation under-explores the
+noise ridge on this posterior at any tree depth (step size adapted in the stiff
+near-mode region cannot diffuse up the ridge within 2000 draws), while a plain RW-MH
+crosses it ~40 times per 30k chain. Consequence stands: the SIR row is the honest
+full-Bayes number; the HMC row (either cap) is the density-mode-region answer. **Status (OPEN forks for the user):** (a) ratify
+`toy_elicited` adoption for the paper's final toy figures (regeneration of those figures
+is outside this study); (b) whether `toy_elicited` graduates into `PRIOR_CONFIGS`
+(touches the package — kept out of PR #2 scope here); (c) W3's verbatim paper phrasing
+needs its VI sentence revised per finding 4.
+
+**Result:** stage-A/B/is JSONs + sampler caches under `runs/prior_sensitivity/` (HMC arms
+~2.3-2.4 h wall each under parallel load); generated tables `docs/prior-sensitivity-study.md`;
+114 tests still pass (no package code touched). D12/D13 history preserved unmodified (this
+entry supersedes their mass-ratio and VI-framing numbers where noted).
