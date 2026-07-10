@@ -1224,7 +1224,10 @@ def figure_a(data, out_dir):
 
     names = data["model_names"]
     sl = names.index("Sin+Linear")
-    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(11.5, 4.6))
+    # Extra height plus a reserved bottom band (tight_layout rect below)
+    # keep the multi-line caption inside the figure: no negative-y text,
+    # no reliance on bbox_inches="tight" to rescue an overlap.
+    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(11.5, 5.4))
 
     xs = np.arange(len(names))
     w = 0.38
@@ -1246,7 +1249,7 @@ def figure_a(data, out_dir):
     ax_a.set_xticks(xs)
     ax_a.set_xticklabels(names)
     ax_a.set_ylabel("model posterior (pw_kl_vcal, tau = 1)")
-    ax_a.set_title("(a) BMS* posteriors, toy_elicited prior")
+    ax_a.set_title("(a) BMS* posteriors, data-elicited prior")
     ax_a.legend(fontsize=8, loc="upper left")
 
     ax_b.semilogx(data["taus"],
@@ -1284,8 +1287,8 @@ def figure_a(data, out_dir):
         f"the density-mode region (low-band occupancy {occ7:.3f} at td7 "
         f"and {occ10:.3f} at td10), so its bars answer conditionally on "
         f"that region.")
-    fig.text(0.01, -0.04, caption, fontsize=7.5, wrap=True)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.text(0.01, 0.015, caption, fontsize=7.5, wrap=True, va="bottom")
+    fig.tight_layout(rect=(0, 0.15, 1, 0.94))
     paths = _save_fig(fig, out_dir, "toy_model_posterior_elicited")
     plt.close(fig)
     return paths
