@@ -12,8 +12,9 @@ variance ~0.0625 = slope^2 — log-prior penalties of roughly -3, -8 and -18
 nats against the prior's own peak. This study asks whether reasonable
 re-elicited priors dissolve the bimodality and stabilize the BI*/BMS* result.
 
-Configs (alternates defined here, NOT added to bistar_gp.config — the package
-default is out of scope for this study):
+Configs (gamma_relaxed defined here; toy_elicited graduated to the registry
+as PRIOR_CONFIGS["toy_elicited_n20"] after the 2026-07-09 scope-tightened
+ratification, D18 Status — registry-only, still NOT the package default):
   informative    D12 baseline; stage B numbers come from the existing capped
                  run (runs/fit_method_metric_comparison/results_td7.json).
   vague          the pre-registered broad-LogNormal config in PRIOR_CONFIGS.
@@ -69,6 +70,11 @@ HMC only where justified):
             them through the same BMS* pipeline. No sampler cost; includes
             the informative config (the number D12's honest framing lacked).
   stage report  assembles docs/prior-sensitivity-study.md from the JSONs.
+  stage figures  Figures A (toy_model_posterior_elicited) and B
+            (prior_misspec_geometry) of the W4 plan, built ONLY from the
+            existing artifacts above (zero new sampling); every plotted
+            headline value is asserted equal to a pinned expectation
+            before plotting. Outputs under runs/prior_sensitivity/figures/.
 
 Artifacts under runs/prior_sensitivity/ (local by convention).
 
@@ -79,6 +85,7 @@ Usage:
         [--methods hmc vi map]
     python experiments/prior_sensitivity_study.py --stage is [--configs ...]
     python experiments/prior_sensitivity_study.py --stage report
+    python experiments/prior_sensitivity_study.py --stage figures
 """
 
 import sys, os, json, math, argparse
@@ -140,29 +147,13 @@ SITE_SPECS = {"ls": "se_lengthscale_prior", "os": "se_outputscale_prior",
 STUDY_CONFIGS = {
     "informative": PRIOR_CONFIGS["informative"],
     "vague": PRIOR_CONFIGS["vague"],
-    "toy_elicited": PriorConfig(
-        name="toy_elicited",
-        description=(
-            "Re-elicited from observable data statistics only (no truth "
-            "values): resolvable lengthscales fall between the observed "
-            "x-spacing (1.05) and the x-range (20), so the lengthscale "
-            "median is their geometric middle sqrt(1.05*20) ~= 4.5 with "
-            "sigma 0.9 (90% interval [1.0, 19.8] spans that band); "
-            "var(y) ~= 3 is split between components, so the SE outputscale "
-            "gets median 1.5; the linear kernel contributes lv*mean(x^2) "
-            "~= 37*lv to var(y), so lv gets median 1.5/37 ~= 0.04; noise "
-            "gets median 0.3 (~10% of var(y), a conventional SNR "
-            "assumption). LogNormal throughout, widths sigma 0.9-1.5."
-        ),
-        se_lengthscale_prior=("lognormal", math.log(4.5), 0.9),
-        se_lengthscale_bounds=(0.1, 100.0),
-        se_outputscale_prior=("lognormal", math.log(1.5), 1.0),
-        se_outputscale_bounds=(0.01, 100.0),
-        linear_variance_prior=("lognormal", math.log(0.04), 1.5),
-        linear_variance_bounds=(1e-4, 10.0),
-        noise_prior=("lognormal", math.log(0.3), 1.0),
-        noise_bounds=(1e-4, 10.0),
-    ),
+    # Graduated to the registry as `toy_elicited_n20` after the 2026-07-09
+    # scope-tightened ratification (D18 Status). Parameters are identical to
+    # the original in-script definition, so the cache fingerprint (which
+    # covers only the four prior parameter tuples) is unchanged and the
+    # cached draws stay valid; artifact filenames key off THIS dict key,
+    # which stays `toy_elicited`. Nothing keys off PriorConfig.name.
+    "toy_elicited": PRIOR_CONFIGS["toy_elicited_n20"],
     "gamma_relaxed": PriorConfig(
         name="gamma_relaxed",
         description=(
@@ -937,6 +928,493 @@ def stage_noise_marginal_one(name, pc, x, y, is_seeds):
     return out
 
 
+# ── Stage figures: paper figures from existing artifacts ──────────
+#
+# Figures A and B of the W4 plan, built ONLY from the artifacts the earlier
+# stages already wrote under runs/prior_sensitivity/ (plus the frozen D12
+# informative NUTS cache). Zero new sampling, zero new fitting: a missing
+# artifact is a hard error, never a trigger to regenerate.
+
+FIGURES_DIR = os.path.join(RUN_DIR, "figures")
+D12_INFORMATIVE_HMC_TD7 = D12_TD7_SAMPLES.format(method="hmc")
+
+# Every headline value the figures draw is asserted equal to these pinned
+# expectations (rtol=0, atol=1e-12) before any plotting happens, so an
+# artifact regeneration or a loader bug fails loudly instead of silently
+# shipping a changed paper figure. Pinned 2026-07-10 from the D18 artifacts;
+# the reading behind them is logged in Notes/DECISIONS.md D18.
+FIGURE_EXPECTATIONS = {
+    # Figure A(a): posteriors over candidates at tau=1 (pw_kl_vcal)
+    "sir_tau1": [0.18339001724428333, 0.1923955140897971,
+                 0.44067371117415843, 0.18354075749176121],
+    "sir_se_tau1": [0.0015634274134566867, 0.0014802847955890557,
+                    0.004603711128454453, 0.001562584075998181],
+    "sir_per_seed_sl_tau1": [0.4193920342606442, 0.43844892902038984,
+                             0.43064059968542645],
+    "hmc_td7_tau1": [0.09823365495671643, 0.10779548523929092,
+                     0.6956155236783261, 0.09835533612566655],
+    "hmc_td10_sl_tau1": 0.6829264460101571,
+    # Figure A(b): FULL posterior vectors across tau = 0.1/0.3/1/3/10, so
+    # the rank-stability annotation ("SIR top model: Sin+Linear at every
+    # tau") is validated against the competitors, not just the plotted
+    # Sin+Linear column.
+    "sir_posteriors_by_tau": [
+        [0.12080661834058654, 0.12471402532260904,
+         0.6336791776415797, 0.12080017869522483],
+        [0.11428321467711881, 0.1242309937092506,
+         0.6470214904679347, 0.11446430114569593],
+        [0.18339001724428333, 0.1923955140897971,
+         0.44067371117415843, 0.18354075749176121],
+        [0.22466292426479983, 0.2291661941022073,
+         0.3214361828057378, 0.22473469882725494],
+        [0.24206050570700036, 0.2436430426456574,
+         0.2722110986283088, 0.24208535301903347],
+    ],
+    "hmc_td7_posteriors_by_tau": [
+        [1.8299301151582423e-07, 3.977737421444433e-07,
+         0.9999992340789238, 1.8515432256175852e-07],
+        [0.0023803405721920705, 0.00317230514211834,
+         0.9920574210213365, 0.002389933264353046],
+        [0.09823365495671643, 0.10779548523929092,
+         0.6956155236783261, 0.09835533612566655],
+        [0.2006057698580975, 0.20707826728881676,
+         0.3916264832920806, 0.20068947956100516],
+        [0.23616904886943507, 0.23845080835495713,
+         0.2891814052482854, 0.23619873752732234],
+    ],
+    # Figure A caption: per-estimator predictive counts. The SIR hard
+    # fractions double as the proof that all 1000 resampled predictives
+    # contributed: validation checks every metric's fractions are exact
+    # multiples of 1/n_sir_draws summing to n_sir_draws (a dropped draw in
+    # extract_gp_predictives would change the denominator). NUTS counts
+    # come from the stage-B artifacts' n_draws / n_predictives fields.
+    "sir_hard_win_fractions": [0.012, 0.014, 0.973, 0.001],
+    "n_sir_draws": 1000,
+    "n_unique_sir_draws": 883,
+    "hmc_td7_n_draws": 2000,
+    "hmc_td7_n_predictives": 200,
+    "hmc_td10_n_draws": 2000,
+    "hmc_td10_n_predictives": 200,
+    # Figure B: band masses recomputed from the raw pooled IS archives must
+    # reproduce the stage-A JSON values (loader-vs-published cross-check)
+    "informative_band_masses": [0.27681233655255916, 0.13100921848624894,
+                                0.5921784449611923],
+    "informative_band_mass_ses": [0.017734119055865614, 0.007023808133515267,
+                                  0.015063383185777887],
+    "toy_elicited_band_masses": [0.7626600010969103, 0.19107789655272284,
+                                 0.04626210235036697],
+    "toy_elicited_band_mass_ses": [0.0042828766004713355,
+                                   0.0038377294106689635,
+                                   0.0008658211496931529],
+    # Figure B: noise COORDINATES of the verified 4-D joint-posterior modes
+    "informative_mode_noise_coords": [0.07359659801305256, 0.591688467884243],
+    "informative_valley_depth_nats": 6.342292769404359,
+    "toy_elicited_mode_noise_coords": [0.06186741902432317],
+    # Figure B: VI landings, MAP markers, NUTS occupancy
+    "informative_vi_noise_landings": [0.5554295364761581, 0.5455063804748477,
+                                      0.542531082579625, 0.5711517096958254],
+    "informative_map_noise": 0.07359770255695969,
+    "toy_elicited_vi_noise_landings": [0.46361706637812744,
+                                       0.48518030909454685,
+                                       0.44244467118404235,
+                                       0.4961007286508642],
+    "toy_elicited_map_noise": 0.061867347763041584,
+    "informative_nuts_occupancy_td7": [1.0, 0.0, 0.0],
+    "toy_elicited_nuts_occupancy_td7": [1.0, 0.0, 0.0],
+    "toy_elicited_nuts_occupancy_td10": [1.0, 0.0, 0.0],
+    "informative_nuts_n_draws": 2000,
+    "toy_elicited_nuts_n_draws_td7": 2000,
+    "toy_elicited_nuts_n_draws_td10": 2000,
+    # Figure B(b) arbitration citation (D18 Status)
+    "rwmh_lo_by_seed": [0.7958666666666666, 0.8082333333333334,
+                        0.8428333333333333],
+    "rwmh_lo_hi_crossings": [44, 40, 38],
+    "profile_laplace_lo": 0.7626153713752779,
+}
+
+FIGURE_TAUS = [0.1, 0.3, 1.0, 3.0, 10.0]
+
+
+def _figures_required_artifacts():
+    req = [os.path.join(RUN_DIR, f) for f in (
+        "results_is_toy_elicited.json",
+        "results_toy_elicited.json",
+        "results_toy_elicited_uncapped.json",
+        "stage_a_informative.json",
+        "stage_a_toy_elicited.json",
+        "results_noise_marginal_toy_elicited.json",
+        "samples_toy_elicited_hmc_td7.npz",
+        "samples_toy_elicited_hmc_td10.npz",
+    )]
+    req += [_is_draw_path(name, seed)
+            for name in ("informative", "toy_elicited") for seed in (0, 1, 2)]
+    req.append(D12_INFORMATIVE_HMC_TD7)
+    return req
+
+
+def figures_preflight():
+    """Fail fast, listing every absent artifact: the figures stage builds
+    ONLY from existing study outputs and never samples or refits."""
+    missing = [p for p in _figures_required_artifacts()
+               if not os.path.exists(p)]
+    if missing:
+        raise FileNotFoundError(
+            "stage figures builds only from existing study artifacts and "
+            "never samples; missing:\n  " + "\n  ".join(missing) +
+            "\nRegenerate with the stage a/b/is/noise-marginal commands in "
+            "the module docstring (expensive; see D18 for budgets).")
+
+
+def load_figure_data():
+    """Read-only assembly of every number the figures draw. Band masses are
+    recomputed from the raw pooled IS archives (not copied from the JSONs)
+    so validation cross-checks the raw draws against the published stage-A
+    values."""
+    figures_preflight()
+    sir = _load_json(os.path.join(RUN_DIR, "results_is_toy_elicited.json"))
+    res_b = _load_json(os.path.join(RUN_DIR, "results_toy_elicited.json"))
+    res_u = _load_json(os.path.join(RUN_DIR,
+                                    "results_toy_elicited_uncapped.json"))
+    nm = _load_json(os.path.join(RUN_DIR,
+                                 "results_noise_marginal_toy_elicited.json"))
+    stage_a = {name: _load_json(os.path.join(RUN_DIR,
+                                             f"stage_a_{name}.json"))
+               for name in ("informative", "toy_elicited")}
+
+    names = sir["model_names"]
+    sl = names.index("Sin+Linear")
+    sir_post = sir["metrics"]["pw_kl_vcal"]["posteriors"]
+    hmc_post = res_b["methods"]["hmc"]["metrics"]["pw_kl_vcal"]["posteriors"]
+    d = {
+        "model_names": names,
+        "taus": [float(t) for t in FIGURE_TAUS],
+        "sir_tau1": sir_post["1.0"],
+        "sir_se_tau1": sir["bootstrap_tau1"]["pw_kl_vcal"]["se"],
+        "sir_per_seed_sl_tau1": [
+            sir["per_is_seed_pw_kl_vcal_tau1"][s][sl] for s in ("0", "1", "2")],
+        "hmc_td7_tau1": hmc_post["1.0"],
+        "hmc_td10_sl_tau1": res_u["methods"]["hmc"]["metrics"]["pw_kl_vcal"]
+                                 ["posteriors"]["1.0"][sl],
+        "sir_posteriors_by_tau": [sir_post[str(t)] for t in FIGURE_TAUS],
+        "hmc_td7_posteriors_by_tau": [hmc_post[str(t)] for t in FIGURE_TAUS],
+        "sir_hard_win_fractions":
+            sir["metrics"]["pw_kl_vcal"]["hard_win_fractions"],
+        "sir_hard_win_fractions_by_metric": {
+            m: rec["hard_win_fractions"]
+            for m, rec in sir["metrics"].items()},
+        "n_sir_draws": sir["n_sir_draws"],
+        "n_unique_sir_draws": sir["n_unique_sir_draws"],
+        "hmc_td7_n_draws": res_b["methods"]["hmc"]["n_draws"],
+        "hmc_td7_n_predictives": res_b["methods"]["hmc"]["n_predictives"],
+        "hmc_td10_n_draws": res_u["methods"]["hmc"]["n_draws"],
+        "hmc_td10_n_predictives": res_u["methods"]["hmc"]["n_predictives"],
+        "rwmh_lo_by_seed": [r["P_noise_lo"] for r in nm["rw_mh"]],
+        "rwmh_lo_hi_crossings": [r["lo_hi_crossings"] for r in nm["rw_mh"]],
+        "profile_laplace_lo":
+            nm["profile_laplace"]["band_masses"]["P_noise_lo"],
+    }
+
+    for cfg in ("informative", "toy_elicited"):
+        ths, lml = load_pooled_is(cfg, (0, 1, 2))
+        summ = _is_summary(ths, lml)
+        d[f"{cfg}_band_masses"] = [summ["P_noise_lo"], summ["P_noise_mid"],
+                                   summ["P_noise_hi"]]
+        d[f"{cfg}_band_mass_ses"] = [summ["P_noise_lo_se"],
+                                     summ["P_noise_mid_se"],
+                                     summ["P_noise_hi_se"]]
+        d[f"{cfg}_noise_draws"] = ths[:, ORDER.index("noise")]
+        d[f"{cfg}_is_weights"] = np.exp(lml - lml.max())
+        rec = stage_a[cfg]
+        d[f"{cfg}_mode_noise_coords"] = [
+            r["values"]["noise"] for r in rec["modes"]
+            if r["verified_local_max"]]
+        d[f"{cfg}_vi_noise_landings"] = [
+            rec["vi_seed_means"][s]["noise"] for s in ("0", "1", "2", "42")]
+        d[f"{cfg}_map_noise"] = rec["map"]["values"]["noise"]
+    d["informative_valley_depth_nats"] = \
+        stage_a["informative"]["valleys"][0]["depth_below_lower_mode"]
+
+    def occ_and_n(path):
+        occ = basin_occupancy(path)
+        return ([occ["P_noise_lo"], occ["P_noise_mid"], occ["P_noise_hi"]],
+                occ["n"])
+
+    def noise_draws(path):
+        with np.load(path) as z:
+            return z["likelihood.noise_covar.noise_prior"]
+    te_td7 = os.path.join(RUN_DIR, "samples_toy_elicited_hmc_td7.npz")
+    te_td10 = os.path.join(RUN_DIR, "samples_toy_elicited_hmc_td10.npz")
+    d["informative_nuts_occupancy_td7"], d["informative_nuts_n_draws"] = \
+        occ_and_n(D12_INFORMATIVE_HMC_TD7)
+    d["toy_elicited_nuts_occupancy_td7"], d["toy_elicited_nuts_n_draws_td7"] \
+        = occ_and_n(te_td7)
+    d["toy_elicited_nuts_occupancy_td10"], \
+        d["toy_elicited_nuts_n_draws_td10"] = occ_and_n(te_td10)
+    d["informative_nuts_noise_draws"] = noise_draws(D12_INFORMATIVE_HMC_TD7)
+    d["toy_elicited_nuts_noise_draws_td7"] = noise_draws(te_td7)
+    return d
+
+
+def _check(cond, msg):
+    """Explicit raise instead of a bare assert so python -O cannot strip
+    the structural figure gates."""
+    if not cond:
+        raise AssertionError(msg)
+
+
+def validate_figure_data(data, expectations=FIGURE_EXPECTATIONS):
+    """Assert-equal gate (W4): every plotted headline value must match its
+    pinned expectation exactly (rtol=0, atol=1e-12) before plotting, and
+    every caption claim must be derivable from the loaded artifacts."""
+    from numpy.testing import assert_allclose
+    for key, expected in expectations.items():
+        assert_allclose(
+            np.asarray(data[key], dtype=float),
+            np.asarray(expected, dtype=float),
+            rtol=0, atol=1e-12,
+            err_msg=f"figure value drifted from its pinned expectation: "
+                    f"{key}")
+    _check(data["taus"] == [0.1, 0.3, 1.0, 3.0, 10.0],
+           "figure tau grid changed")
+    _check(data["model_names"] == ["Linear", "Sinusoidal", "Sin+Linear",
+                                   "Quadratic"],
+           "candidate model names or order changed")
+    # Rank-stability behind the panel-(b) annotation: Sin+Linear must be
+    # the SIR top model at EVERY tau, judged against the full vectors.
+    sl = data["model_names"].index("Sin+Linear")
+    for tau, row in zip(data["taus"], data["sir_posteriors_by_tau"]):
+        _check(int(np.argmax(row)) == sl,
+               f"SIR top model is not Sin+Linear at tau={tau}")
+    # Caption proof that all n_sir_draws predictives contributed: every
+    # metric's hard win fractions must be exact multiples of 1/n summing
+    # to n (a draw silently dropped in extract_gp_predictives would have
+    # changed the denominator).
+    n = data["n_sir_draws"]
+    for metric, fr in data["sir_hard_win_fractions_by_metric"].items():
+        scaled = np.asarray(fr, dtype=float) * n
+        _check(bool(np.allclose(scaled, np.round(scaled), atol=1e-9))
+               and int(np.round(scaled.sum())) == n,
+               f"SIR hard win fractions for {metric} are inconsistent "
+               f"with {n} contributing predictives")
+    print(f"  validated {len(expectations)} pinned figure values "
+          f"(rtol=0, atol=1e-12)")
+
+
+def _save_fig(fig, out_dir, stem):
+    paths = []
+    for ext in ("png", "pdf"):
+        p = os.path.join(out_dir, f"{stem}.{ext}")
+        fig.savefig(p, dpi=200, bbox_inches="tight")
+        paths.append(p)
+    return paths
+
+
+def figure_a(data, out_dir):
+    """Figure A `toy_model_posterior_elicited`: the N=20 money figure.
+    (a) grouped bars at tau=1, SIR (mass-faithful headline) vs NUTS td7
+    (density-mode-region answer), bootstrap-SE whiskers, per-IS-seed
+    Sin+Linear points, uniform reference. (b) Sin+Linear posterior vs tau."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    names = data["model_names"]
+    sl = names.index("Sin+Linear")
+    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(11.5, 4.6))
+
+    xs = np.arange(len(names))
+    w = 0.38
+    ax_a.bar(xs - w / 2, data["sir_tau1"], w,
+             yerr=data["sir_se_tau1"], capsize=3,
+             color="#2a6f97", label="SIR, mass-faithful (headline)")
+    ax_a.bar(xs + w / 2, data["hmc_td7_tau1"], w,
+             color="#c8875e", label="NUTS td7 (density-mode region)")
+    ax_a.scatter([xs[sl] - w / 2] * 3, data["sir_per_seed_sl_tau1"],
+                 s=22, facecolors="none", edgecolors="black", zorder=3,
+                 label="per-IS-seed SIR replicates")
+    ax_a.axhline(0.25, color="gray", ls="--", lw=1,
+                 label="uniform (0.25)")
+    ax_a.set_ylim(0, 0.80)
+    ax_a.text(xs[sl] + w / 2 + 0.22, data["hmc_td7_tau1"][sl] - 0.02,
+              f"td10: {data['hmc_td10_sl_tau1']:.3f}", fontsize=8,
+              ha="left")
+    ax_a.set_xticks(xs)
+    ax_a.set_xticklabels(names)
+    ax_a.set_ylabel("model posterior (pw_kl_vcal, tau = 1)")
+    ax_a.set_title("(a) BMS* posteriors, toy_elicited prior")
+    ax_a.legend(fontsize=8, loc="upper left")
+
+    ax_b.semilogx(data["taus"],
+                  [row[sl] for row in data["sir_posteriors_by_tau"]],
+                  marker="o", color="#2a6f97", label="SIR, mass-faithful")
+    ax_b.semilogx(data["taus"],
+                  [row[sl] for row in data["hmc_td7_posteriors_by_tau"]],
+                  marker="s", color="#c8875e", label="NUTS td7")
+    ax_b.axhline(0.25, color="gray", ls="--", lw=1)
+    ax_b.set_xlabel("tau (log scale)")
+    ax_b.set_ylabel("Sin+Linear posterior")
+    ax_b.set_title("(b) Sin+Linear vs tau")
+    ax_b.text(0.03, 0.05, "SIR top model: Sin+Linear at every tau",
+              transform=ax_b.transAxes, fontsize=8)
+    ax_b.legend(fontsize=8)
+
+    fig.suptitle("N=20 thesis toy under the re-elicited prior "
+                 "(registry: toy_elicited_n20)", fontsize=11)
+    occ7 = data["toy_elicited_nuts_occupancy_td7"][0]
+    occ10 = data["toy_elicited_nuts_occupancy_td10"][0]
+    caption = (
+        f"SIR: {data['n_sir_draws']} resampled predictives "
+        f"({data['n_unique_sir_draws']} unique hyperparameter draws) from "
+        f"pooled 3-seed prior-IS; whiskers are bootstrap SEs over SIR "
+        f"draws. NUTS td7: {data['hmc_td7_n_predictives']} predictives "
+        f"subsampled from {data['hmc_td7_n_draws']} draws; the chain is "
+        f"confined to the density-mode region (low-band occupancy "
+        f"{occ7:.3f} at td7 and {occ10:.3f} at td10), so its bars answer "
+        f"conditionally on that region while SIR carries the full-Bayes "
+        f"headline.")
+    fig.text(0.01, -0.04, caption, fontsize=7.5, wrap=True)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    paths = _save_fig(fig, out_dir, "toy_model_posterior_elicited")
+    plt.close(fig)
+    return paths
+
+
+NOISE_HIST_BINS = np.geomspace(5e-3, 2.0, 90)
+
+
+def _weighted_noise_hist(ax, noise, weights, color):
+    """Weighted histogram of the IS noise marginal, normalized against the
+    TOTAL weight rather than the in-window weight, so the display clip at
+    2.0 cannot inflate the plotted density (the informative config holds
+    0.20% of its weighted mass above the clip; band annotations always use
+    all draws via _is_summary)."""
+    bins = NOISE_HIST_BINS
+    mask = (noise >= bins[0]) & (noise <= bins[-1])
+    counts, edges = np.histogram(noise[mask], bins=bins,
+                                 weights=weights[mask] / weights.sum())
+    ax.stairs(counts / np.diff(edges), edges, fill=True, color=color,
+              alpha=0.35)
+
+
+def figure_b(data, out_dir):
+    """Figure B `prior_misspec_geometry`: IS-weighted noise-variance
+    marginals for `informative` (bimodal case study) and `toy_elicited`
+    (unimodal, NUTS-confined), shared log axis, D12 split lines."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(11.5, 4.8), sharex=True)
+
+    for ax, cfg, color, title in (
+            (ax_a, "informative", "#7a5195",
+             "(a) informative: prior-induced bimodality"),
+            (ax_b, "toy_elicited", "#2a6f97",
+             "(b) toy_elicited: unimodal, NUTS still confined")):
+        noise = data[f"{cfg}_noise_draws"]
+        weights = data[f"{cfg}_is_weights"]
+        _weighted_noise_hist(ax, noise, weights, color)
+        ax.set_xscale("log")
+        for split in (NOISE_SPLIT_LO, NOISE_SPLIT_HI):
+            ax.axvline(split, color="gray", ls="--", lw=1)
+        for coord in data[f"{cfg}_mode_noise_coords"]:
+            ax.axvline(coord, color=color, ls=":", lw=1.4)
+            ax.text(coord, 0.97, f"{coord:.4f}", rotation=90, fontsize=7,
+                    ha="right", va="top", transform=ax.get_xaxis_transform())
+        ax.set_xlim(NOISE_HIST_BINS[0], NOISE_HIST_BINS[-1])
+        masses = data[f"{cfg}_band_masses"]
+        ses = data[f"{cfg}_band_mass_ses"]
+        # Band centers in axes fractions, exact because xlim is pinned to
+        # the bin range 5e-3..2.0 (no autoscale margins): the 0.15 / 0.30
+        # splits fall at x-fractions 0.568 / 0.683.
+        for x_pos, m, s in zip((0.24, 0.625, 0.84), masses, ses):
+            ax.text(x_pos, 0.90, f"{m:.3f}±{s:.3f}", fontsize=8,
+                    ha="center", transform=ax.transAxes)
+        ax.plot(data[f"{cfg}_vi_noise_landings"],
+                [0.78] * 4, marker="v", ls="none", color="black",
+                markersize=5, transform=ax.get_xaxis_transform())
+        ax.text(data[f"{cfg}_vi_noise_landings"][0], 0.81, "VI (4 seeds)",
+                fontsize=7, ha="center",
+                transform=ax.get_xaxis_transform())
+        ax.plot([data[f"{cfg}_map_noise"]], [0.02], marker="^", ls="none",
+                color="black", markersize=6,
+                transform=ax.get_xaxis_transform())
+        ax.text(data[f"{cfg}_map_noise"], 0.055, "MAP", fontsize=7,
+                ha="center", transform=ax.get_xaxis_transform())
+        ax.set_xlabel("noise variance (log scale)")
+        ax.set_title(title, fontsize=10)
+    ax_a.set_ylabel("IS-weighted posterior density")
+
+    # (a): the 6.3-nat valley between the verified joint modes, plus a NUTS
+    # draw rug (the D12 chain reports only the low basin: 1.00/0.00/0.00).
+    lo_m, hi_m = data["informative_mode_noise_coords"]
+    ax_a.annotate("", xy=(hi_m, 0.50), xytext=(lo_m, 0.50),
+                  xycoords=ax_a.get_xaxis_transform(),
+                  arrowprops=dict(arrowstyle="<->", color="black", lw=0.9))
+    ax_a.text(math.sqrt(lo_m * hi_m), 0.52,
+              f"{data['informative_valley_depth_nats']:.3f}-nat valley\n"
+              f"(straight path, joint space)",
+              fontsize=7.5, ha="center",
+              transform=ax_a.get_xaxis_transform())
+    occ = data["informative_nuts_occupancy_td7"]
+    ax_a.plot(data["informative_nuts_noise_draws"],
+              np.full(len(data["informative_nuts_noise_draws"]), 0.965),
+              marker="|", ls="none", color="#c8875e", markersize=7,
+              alpha=0.08, transform=ax_a.get_xaxis_transform())
+    ax_a.text(0.03, 0.72,
+              f"NUTS td7 draw rug (top): occupancy\n"
+              f"{occ[0]:.2f} / {occ[1]:.2f} / {occ[2]:.2f} lo/mid/hi\n"
+              f"({data['informative_nuts_n_draws']} draws, low basin only)",
+              fontsize=7.5, transform=ax_a.transAxes, va="top")
+
+    # (b): confinement contrast + the three-way arbitration citation.
+    occ7 = data["toy_elicited_nuts_occupancy_td7"][0]
+    occ10 = data["toy_elicited_nuts_occupancy_td10"][0]
+    lo_mass = data["toy_elicited_band_masses"][0]
+    rw = data["rwmh_lo_by_seed"]
+    ax_b.plot(data["toy_elicited_nuts_noise_draws_td7"],
+              np.full(len(data["toy_elicited_nuts_noise_draws_td7"]), 0.965),
+              marker="|", ls="none", color="#c8875e", markersize=7,
+              alpha=0.08, transform=ax_b.get_xaxis_transform())
+    ax_b.text(
+        0.03, 0.72,
+        f"NUTS low-band occupancy {occ7:.3f} (td7)\n"
+        f"and {occ10:.3f} (td10) vs prior-IS mass\n"
+        f"{lo_mass:.3f}: mode-confined even here.\n"
+        f"Arbitration upheld the IS mass\n"
+        f"(RW-MH referee {min(rw):.3f}–{max(rw):.3f}\n"
+        f"across seeds 42/1/2, profile-Laplace\n"
+        f"quadrature {data['profile_laplace_lo']:.3f}).",
+        fontsize=7.5, transform=ax_b.transAxes, va="top")
+
+    caption = (
+        f"Pooled prior-IS noise marginals (weights exp(lml - max), 3 seeds "
+        f"per config); dotted verticals mark the noise coordinates of "
+        f"verified 4-D joint-posterior modes; dashed verticals are the D12 "
+        f"band split at 0.15/0.30; band annotations are pooled IS masses "
+        f"with delta-method SEs, computed from ALL draws. Densities are "
+        f"normalized against all draws too; the display clips at noise "
+        f"2.0, above which the informative config carries 0.20% of its "
+        f"mass. Orange rugs along the top: NUTS td7 noise draws "
+        f"({data['informative_nuts_n_draws']} and "
+        f"{data['toy_elicited_nuts_n_draws_td7']} per chain).")
+    fig.text(0.01, -0.05, caption, fontsize=7.5, wrap=True)
+    fig.tight_layout()
+    paths = _save_fig(fig, out_dir, "prior_misspec_geometry")
+    plt.close(fig)
+    return paths
+
+
+def build_figures(out_dir=None):
+    """Preflight, load, validate against the pinned expectations, then draw
+    Figures A and B. Returns the list of written paths."""
+    out_dir = out_dir or FIGURES_DIR
+    data = load_figure_data()
+    validate_figure_data(data)
+    os.makedirs(out_dir, exist_ok=True)
+    return figure_a(data, out_dir) + figure_b(data, out_dir)
+
+
 # ── Report ─────────────────────────────────────────────────────────
 
 def _load_json(path):
@@ -1380,7 +1858,8 @@ def render_report(model_names):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     parser.add_argument("--stage", required=True,
-                        choices=["a", "b", "is", "noise-marginal", "report"])
+                        choices=["a", "b", "is", "noise-marginal", "report",
+                                 "figures"])
     parser.add_argument("--uncapped", action="store_true",
                         help="stage b: pyro default max_tree_depth=10 — the "
                              "pre-registered spot-check arm (cache tag _td10, "
@@ -1403,6 +1882,12 @@ def main():
     args = parser.parse_args()
 
     os.makedirs(RUN_DIR, exist_ok=True)
+
+    if args.stage == "figures":
+        for p in build_figures():
+            print(f"  -> {p}")
+        return
+
     x, y, _ = generate_toy_data()   # thesis toy: N=20, defaults
     tag = "_smoke" if args.smoke else ""
 

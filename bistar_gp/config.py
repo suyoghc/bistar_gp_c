@@ -7,6 +7,7 @@ Defines:
 - Experiment parameters (n_points, n_samples, τ range, etc.)
 """
 
+import math
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -115,6 +116,36 @@ PRIOR_CONFIGS: Dict[str, PriorConfig] = {
         linear_variance_bounds=(0.01, 20.0),
         noise_prior=("gamma", 2.0, 0.5),              # concentrates near 4
         noise_bounds=(0.1, 50.0),
+    ),
+
+    # Registry-only entry: NOT the package default and deliberately absent
+    # from ExperimentConfig.prior_configs (no default-sweep change, no
+    # cached-run invalidation). Parameters are byte-identical to the
+    # prior-sensitivity study's in-script `toy_elicited` config
+    # (experiments/prior_sensitivity_study.py, D18); the study's cache
+    # fingerprint covers exactly these four parameter tuples.
+    "toy_elicited_n20": PriorConfig(
+        name="toy_elicited_n20",
+        description=(
+            "Re-elicited from the N=20 thesis-toy observable statistics; "
+            "D18. LogNormal medians from data statistics only, no truth "
+            "values: lengthscale 4.5 (geometric middle of x-spacing 1.05 "
+            "and x-range 20, sigma 0.9), outputscale 1.5 (~var(y)/2), "
+            "linear variance 0.04 (~var(y)/(2*mean(x^2))), noise 0.3 "
+            "(~10% of var(y)). Scope: the N=20 thesis-toy instance "
+            "(generate_toy_data() defaults: N=20, noise 0.5, seed 42) "
+            "ONLY, per the 2026-07-09 scope-tightened ratification; not a "
+            "global prior replacement (bms_star_toy.py's N=50 sweep and "
+            "the bistar_viz data convention keep their own priors)."
+        ),
+        se_lengthscale_prior=("lognormal", math.log(4.5), 0.9),
+        se_lengthscale_bounds=(0.1, 100.0),
+        se_outputscale_prior=("lognormal", math.log(1.5), 1.0),
+        se_outputscale_bounds=(0.01, 100.0),
+        linear_variance_prior=("lognormal", math.log(0.04), 1.5),
+        linear_variance_bounds=(1e-4, 10.0),
+        noise_prior=("lognormal", math.log(0.3), 1.0),
+        noise_bounds=(1e-4, 10.0),
     ),
 }
 
