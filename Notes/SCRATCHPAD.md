@@ -2,20 +2,33 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## Prior-sensitivity study (W2 gate) — DONE 2026-07-08, see D18
+## Prior-sensitivity study (W2 gate) — DONE 2026-07-08, CLOSED 2026-07-10 (D18)
 
 `experiments/prior_sensitivity_study.py` + `docs/prior-sensitivity-study.md` +
 `runs/prior_sensitivity/` (local). Bimodality is prior-induced (kernel Gamma(6,0.85)
 priors; noise prior innocent). Sin+Linear survives every prior under HMC/MAP and under
-the new mass-faithful SIR arm (even informative's SIR row: 0.276±0.003 at tau=1,
-tau-fragile). Spot-check arbitration: capped MAP-init NUTS under-explores the noise
-ridge even in the unimodal toy_elicited geometry — full-Bayes headline = SIR
-0.441±0.005, HMC 0.696 = density-mode-region answer.
-**Open forks for the user (D18 Status):** (a) ratify `toy_elicited` for final toy
-figures; (b) whether `toy_elicited` graduates into `PRIOR_CONFIGS` (package change,
-out of PR #2 scope); (c) revise W3's verbatim VI sentence (VI = wide-basin detector,
-not mass-faithful reporter — D18 finding 4). New study files are uncommitted; user to
-decide whether they ride on `fix/laplace-zmx` (PR #2) or a separate branch.
+the new mass-faithful SIR arm. Headline = SIR Sin+Linear 0.441 at tau=1,
+posterior-mass-faithful under the fixed data-elicited prior (W5/D18 terminology
+correction: ±0.005 is the conditional SIR bootstrap SE given the realized pooled IS
+draws and weights; independent-pool estimates 0.419/0.438/0.431 are the separate
+second uncertainty component, never combined); HMC 0.696 (td7) / 0.683 (td10) =
+density-mode-region answer. D18 Status forks a/b/c all CLOSED 2026-07-10
+(ratification 2026-07-09, scope-tightened to the N=20 thesis toy); the viz gate
+resolved "passed but not exercised" — full record in D18.
+
+## PR #4 (`feat/toy-elicited-n20-figures`, branched off main after PR #2/#3 merged)
+
+Implementation of the D18 ratification: `PRIOR_CONFIGS["toy_elicited_n20"]`
+(registry-only), STUDY_CONFIGS swap (fingerprint verified unchanged against the
+on-disk sidecars), `--stage figures` (Figures A/B from existing artifacts only,
+assert-equal validation at rtol=0/atol=1e-12), 7 regression tests
+(`tests/test_prior_sensitivity_figures.py`, incl. a hermetic synthetic-artifact
+test and negative validation gates, hardened after the codex 5.6 sol + Fable
+review round), D18 Status closure, `docs/fit-method-metric-comparison.md` and
+`docs/prior-sensitivity-study.md` regenerated via their generators. Local-only
+companions (gitignored, same session): W4 gate paragraph updated in
+Notes/WRITEUP_DECISIONS.md; kb/Wiki touch-ups (Paper Writing Guide 7.2, HMC vs MAP
+for GP Posteriors, Metric Choice Justification kl_forward paragraph).
 
 ## Done this session (D11/D12/D13, comparison campaign)
 
@@ -61,8 +74,8 @@ data-dependent basins), not a sample-count problem (the n=50 τ-sweep is healthy
 min ESS 955). Hardened: both ported scripts now default to seeded perturbed starts
 (--n-perturb 5) anchoring the IS proposal, and the trajectory port emits a per-stage
 per-model `ess_by_stage.md` diagnostic; stale first-layout legacy figures removed from
-`runs/viz_unification/`. **PR #2 is ready to flip from draft** (push + flip = user
-action). **Paper-grade artifact directory DONE (codex caveat resolved):**
+`runs/viz_unification/`. **PR #2 is ready to flip from draft** (since merged as
+a9253fb). **Paper-grade artifact directory DONE (codex caveat resolved):**
 `runs/viz_unification/` regenerated from empty in ONE clean harness run with the hardened
 scripts — zero ESS warnings in every log, same-run `ess_by_stage.md` (worst 166), 26
 figures, all artifacts in a single 10-min timestamp window; headline reproduced exactly
@@ -109,7 +122,7 @@ machinery committed at 641444a). Design decisions already made:
   estimator to the package. Lean (a); check the tail first. The analytic τ-rescale makes
   Laplace trajectories nearly free either way.
 - Then: figure regeneration + legacy comparison, codex review (stdin: `< /dev/null`!),
-  D16, flip D3 open item (1), PR #2 to Ready.
+  D16, flip D3 open item (1), PR #2 to Ready (since merged).
 
 ## Mauna candidate recheck post-D11 — DONE (2026-07-07)
 
@@ -130,12 +143,6 @@ machinery committed at 641444a). Design decisions already made:
 - VI framing: bimodality/prior-sensitivity story, with recorded paper phrasing (W3).
 - `Notes/WRITEUP_DECISIONS.md` is the new paper/writeup decision log (gitignored,
   local-only; entries W1–W3 so far).
-
-## OPEN: prior-sensitivity study before final paper numbers (from W2)
-
-- Re-elicit / revise the `informative` priors (truth-ish log joint −57.2 vs −33.4 MAP) and
-  re-run the method × metric comparison. Prior change invalidates the cached draws; use the
-  capped-depth arm (max_tree_depth 7, D12 addendum) — ~39 min, not 5.6 h.
 
 ## Done this session (on `fix/laplace-zmx`, PR #2)
 
@@ -328,6 +335,10 @@ Prose (CLAUDE.md writing-style rules):
 ## Branches / PRs
 
 - **PR #1** — MERGED to `main` (hygiene, 5 correctness fixes, plan, Notes workflow).
-- **PR #2** (`fix/laplace-zmx`, draft: https://github.com/suyoghc/bistar_gp_c/pull/2) — D3 core +
-  full caller migration + eval follow-ups + docs. Flip to "Ready" after the viz unification and
-  figure regeneration (the two held items above).
+- **PR #2** (`fix/laplace-zmx`) — MERGED to `main` 2026-07-10 (merge commit a9253fb;
+  original commits preserved, pinned hashes like a87356a stay valid).
+- **PR #3** (`study/prior-sensitivity`) — MERGED to `main` 2026-07-10 (merge commit
+  7069ea6).
+- **PR #4** (`feat/toy-elicited-n20-figures`) — OPEN:
+  https://github.com/suyoghc/bistar_gp_c/pull/4 (D18 ratification
+  implementation, commit 8141703; see the PR #4 section above).

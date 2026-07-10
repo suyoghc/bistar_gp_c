@@ -210,3 +210,44 @@ User review of the D18 study surfaced four issues; all addressed.
   per-IS-seed replicates (scatter <=0.03); all stale n=200 numbers reconciled across
   D18/W2/SCRATCHPAD.
 - Committed on `study/prior-sensitivity` (stacked on fix/laplace-zmx); PR #2 untouched.
+
+## 2026-07-10 — PR #4: toy_elicited_n20 graduation + D18 figures stage (Fable session)
+
+Implementation branch for the D18 ratification, built off main after the PR #2/#3
+merges (a9253fb, 7069ea6).
+
+- **Code:** `PRIOR_CONFIGS["toy_elicited_n20"]` (registry-only; params byte-identical
+  to the study config, N=20 provenance in the description); STUDY_CONFIGS swap with
+  the cache fingerprint verified unchanged against all four on-disk sidecars;
+  `--stage figures` building Figure A (toy_model_posterior_elicited) and Figure B
+  (prior_misspec_geometry) from existing artifacts only, with 34 pinned headline
+  values asserted equal at rtol=0/atol=1e-12 before plotting.
+- **Docs:** D18 Status forks a/b/c closed; viz gate recorded "passed but not
+  exercised" with the recheck table and the threshold-provenance caveat;
+  fit-method doc retitled via its generator; prior-sensitivity report regenerated
+  (description bullet now matches the registry entry); SCRATCHPAD cleaned. Local:
+  W4 gate paragraph updated; kb/Wiki touch-ups (Paper Writing Guide 7.2 data-priors
+  anchor, HMC vs MAP mode-confinement caveat, Metric Choice Justification kl_forward
+  paragraph).
+- **Review round (milestone):** codex GPT 5.6 sol (xhigh, read-only; verified 70
+  pinned scalars independently) + 21-agent Fable workflow (5 dimensions, adversarial
+  verification; 16 raw findings, 12 confirmed). All 15 confirmed findings fixed
+  before push: stale generated study doc, caption counts now loaded from validated
+  artifact fields (SIR hard-fraction denominators prove all 1000 predictives
+  contributed), histogram density normalized against all draws with the display clip
+  disclosed, rank-stability validated against full posterior vectors, test suite
+  hardened to 7 tests (negative gates + hermetic synthetic-artifact coverage).
+- **Shipped:** 121 tests pass; commit 8141703 pushed; PR #4 opened against main
+  (https://github.com/suyoghc/bistar_gp_c/pull/4).
+- **W5 follow-up (same day, codex review of the framing):** the earlier "full-Bayes
+  headline" wording is superseded by "posterior-mass-faithful under the fixed
+  data-elicited prior" (W5 in the local writeup log; committed correction in D18
+  Status). The prior medians use realized data summaries, continuous with thesis
+  Ch. 5 pp. 184-186 (which permits data-informed prior choice and cites empirical
+  Bayes) though the thesis does not document this exact var(y)-based rule.
+  Figure A now states the two-layer uncertainty explicitly: ±0.005 = conditional SIR
+  bootstrap SE given the realized pooled IS draws and weights; open points
+  0.419/0.438/0.431 = independent importance-pool variability; never combined.
+  Registry description gains the data-elicited disclosure; Figure B mode-label
+  crowding fixed. Terminology and disclosure only; no prior, scope, number, or
+  ranking change.

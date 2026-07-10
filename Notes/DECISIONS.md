@@ -965,13 +965,112 @@ NOT a depth-cap artifact: MAP-init NUTS with pyro-default adaptation under-explo
 noise ridge on this posterior at any tree depth (step size adapted in the stiff
 near-mode region cannot diffuse up the ridge within 2000 draws), while a plain RW-MH
 crosses it ~40 times per 30k chain. Consequence stands: the SIR row is the honest
-full-Bayes number; the HMC row (either cap) is the density-mode-region answer. **Status (OPEN forks for the user):** (a) ratify
-`toy_elicited` adoption for the paper's final toy figures (regeneration of those figures
-is outside this study); (b) whether `toy_elicited` graduates into `PRIOR_CONFIGS`
-(touches the package — kept out of PR #2 scope here); (c) W3's verbatim paper phrasing
-needs its VI sentence revised per finding 4.
+full-Bayes number; the HMC row (either cap) is the density-mode-region answer.
+
+**Status (CLOSED 2026-07-10; author ratification 2026-07-09, recorded in the local
+writeup log):**
+
+- (a) RATIFIED, scope-TIGHTENED: `toy_elicited` adopted for the paper's final toy
+  figures on the N=20 thesis-toy instance ONLY (`generate_toy_data()` defaults: N=20,
+  noise 0.5, seed 42, the D12/D18 instance), not as a global prior replacement:
+  `bms_star_toy.py`'s N=50 sweep and the `bistar_viz` data convention keep their
+  current priors (viz gate below). Reporting convention: the SIR estimate carries
+  the headline as the posterior-mass-faithful answer under the fixed data-elicited
+  prior (Sin+Linear 0.441, conditional SIR bootstrap SE 0.005, at tau=1;
+  independent-pool estimates 0.419/0.438/0.431 as the second uncertainty
+  component; terminology correction below), with the NUTS value beside it as the
+  answer conditional on the density-mode region (0.696 capped td7 / 0.683
+  uncapped td10). Figures A
+  (`toy_model_posterior_elicited`) and B (`prior_misspec_geometry`) implemented as
+  `--stage figures` in `experiments/prior_sensitivity_study.py` (this commit): built
+  only from the existing `runs/prior_sensitivity/` artifacts (zero new sampling),
+  every plotted headline value asserted equal to its pinned expectation
+  (rtol=0, atol=1e-12) before plotting, outputs under
+  `runs/prior_sensitivity/figures/`, captions carrying per-estimator predictive
+  counts rendered from validated artifact fields (SIR 1000 resampled predictives,
+  883 unique, with every metric's hard-fraction denominator proving all 1000
+  contributed; NUTS 200 predictives from 2000 draws) and the density-mode
+  disclosure; the rank-stability annotation is validated against the full
+  posterior vectors at every tau.
+- (b) GRADUATED registry-only: `PRIOR_CONFIGS["toy_elicited_n20"]`
+  (`bistar_gp/config.py`, this commit), parameters identical to the study's
+  in-script config; the `_n20` suffix encodes the dataset instance whose observable
+  statistics defined the elicitation. NOT the package default and NOT added to
+  `ExperimentConfig.prior_configs`, so the default sweep and every cached run stay
+  untouched. `STUDY_CONFIGS["toy_elicited"]` now points at the registry entry; the
+  cache fingerprint covers only the four prior parameter tuples and is verified
+  unchanged against the on-disk sidecars, and artifact filenames key off the
+  STUDY_CONFIGS dict key, which stays `toy_elicited`. Regression tests:
+  `tests/test_prior_sensitivity_figures.py` (registry params exact and out of the
+  default sweep; fingerprint pinned; figures preflight fails fast with all 15
+  required artifact names pinned; figures stage builds with every
+  fitting/sampling/predictive-extraction entry point monkeypatched to raise, the
+  validation gate's console line asserted, the output stems pinned, and a
+  completeness invariant tying every loaded headline value to a pinned
+  expectation; a hermetic synthetic-artifact test covers the loader schema and
+  both renderers on machines without runs/; negative tests prove the gate fails
+  on a drifted value and on SIR rank instability). The same commit retitles
+  `docs/fit-method-metric-comparison.md` as the informative
+  prior-misspecification case study via its generator (`render_markdown`),
+  regenerates it with `--render-only` (no sampling), and regenerates
+  `docs/prior-sensitivity-study.md` via `--stage report` so its toy_elicited
+  description bullet matches the registry entry.
+- (c) W3's verbatim VI sentence REVISED in the local writeup log (2026-07-09): VI
+  reads as a wide-basin detector, not a mass-faithful reporter (finding 4); the
+  paper phrasing now assesses posterior mass with sampler-independent estimators
+  (pooled prior-IS for basin mass, SIR through the BMS* pipeline for model
+  posteriors).
+
+**Terminology correction (2026-07-10, author decision; W5 in the local writeup
+log):** the "full-Bayes headline" wording used above and in the 2026-07-08/09
+narrative of this entry is superseded; the original text stays as written for
+provenance. `toy_elicited`'s medians were set from the realized N=20 sample's
+summaries (x-spacing, x-range, mean(x^2), var(y)), so the prior is DATA-ELICITED
+(empirical-Bayes-style, data-adaptive). The philosophy is continuous with thesis
+Chapter 5 pp. 184-186, which explicitly permits using some or all of the present
+data to choose plausible generating processes and priors and cites empirical
+Bayes; the thesis does not document this exact var(y)-based numerical
+elicitation rule. Consequently the SIR estimate is POSTERIOR-MASS-FAITHFUL
+CONDITIONAL ON THAT FIXED PRIOR, not an unqualified full-Bayes result: the
+end-to-end procedure does not propagate uncertainty in the data-driven
+prior-setting step. Uncertainty reporting is two-layered and the components are
+never combined into one error bar: the ±0.005 whisker is the conditional SIR
+bootstrap SE given the realized pooled IS draws and their estimated weights,
+while the independent-pool estimates 0.419/0.438/0.431 display the separate
+importance-pool variability. Figure A's legend and caption carry this wording.
+No change to the prior, the adoption scope, any numerical result, or any
+ranking conclusion.
+
+**Viz canonical-figure gate (ratification condition): PASSED BUT NOT EXERCISED
+(2026-07-10, read-only recheck).** Re-applying the D18 elicitation rule to the
+canonical viz data convention (`_viz_spaces.generate_data`: n=50, seed 42,
+uniform-random x, noise 0.3) put all four re-derived medians within one log-SD of
+the `toy_elicited_n20` medians:
+
+| site | viz-convention median | log-ratio vs toy_elicited_n20 | prior sigma | worst seed \|log-ratio\| (seeds 0,1,2,7,123) |
+|---|---|---|---|---|
+| ls | 2.712 | -0.506 | 0.9 | 0.531 |
+| os | 1.557 | +0.037 | 1.0 | 0.386 |
+| lv | 0.0460 | +0.139 | 1.5 | 0.293 |
+| noise | 0.3114 | +0.037 | 1.0 | 0.386 |
+
+Provenance caveat, to be repeated wherever this gate is cited: the quantitative
+one-log-SD-per-site threshold was declared in-session on 2026-07-10 immediately
+BEFORE the read-only calculation, blind to its output; it does not appear in the
+original ratification text and must never be described as original
+preregistration. Author decision: the gate stays unexercised;
+`p3_priors_canonical` / `t2_traj_canonical` stay under `informative` in the
+methods-validation / legacy-comparison role, and `assert_prior_parity` stays as
+is. Rationale: the switch would buy presentational consistency only, while the
+n=0 panel would become implicitly empirical-Bayes (a prior re-derived from the
+same data convention it then predicts), extra parity machinery would be needed,
+and the legacy comparison would lose continuity. Reconsideration condition:
+promoting the viz trajectory to a main-text scientific result requires a separate
+scoped sensitivity figure plus an explicit data-dependent-prior disclosure first.
 
 **Result:** stage-A/B/is JSONs + sampler caches under `runs/prior_sensitivity/` (HMC arms
 ~2.3-2.4 h wall each under parallel load); generated tables `docs/prior-sensitivity-study.md`;
-114 tests still pass (no package code touched). D12/D13 history preserved unmodified (this
+114 tests at the study commit ec127a9, which touched no package code (the Status closure
+above later added the registry entry and the figure tests, bringing the suite to 121).
+D12/D13 history preserved unmodified (this
 entry supersedes their mass-ratio and VI-framing numbers where noted).
