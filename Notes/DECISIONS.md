@@ -974,10 +974,13 @@ writeup log):**
   figures on the N=20 thesis-toy instance ONLY (`generate_toy_data()` defaults: N=20,
   noise 0.5, seed 42, the D12/D18 instance), not as a global prior replacement:
   `bms_star_toy.py`'s N=50 sweep and the `bistar_viz` data convention keep their
-  current priors (viz gate below). Reporting convention: the mass-faithful SIR
-  estimate carries the full-Bayes headline (Sin+Linear 0.441±0.005 at tau=1), with
-  the NUTS value beside it as the answer conditional on the density-mode region
-  (0.696 capped td7 / 0.683 uncapped td10). Figures A
+  current priors (viz gate below). Reporting convention: the SIR estimate carries
+  the headline as the posterior-mass-faithful answer under the fixed data-elicited
+  prior (Sin+Linear 0.441, conditional SIR bootstrap SE 0.005, at tau=1;
+  independent-pool estimates 0.419/0.438/0.431 as the second uncertainty
+  component; terminology correction below), with the NUTS value beside it as the
+  answer conditional on the density-mode region (0.696 capped td7 / 0.683
+  uncapped td10). Figures A
   (`toy_model_posterior_elicited`) and B (`prior_misspec_geometry`) implemented as
   `--stage figures` in `experiments/prior_sensitivity_study.py` (this commit): built
   only from the existing `runs/prior_sensitivity/` artifacts (zero new sampling),
@@ -1017,6 +1020,26 @@ writeup log):**
   paper phrasing now assesses posterior mass with sampler-independent estimators
   (pooled prior-IS for basin mass, SIR through the BMS* pipeline for model
   posteriors).
+
+**Terminology correction (2026-07-10, author decision; W5 in the local writeup
+log):** the "full-Bayes headline" wording used above and in the 2026-07-08/09
+narrative of this entry is superseded; the original text stays as written for
+provenance. `toy_elicited`'s medians were set from the realized N=20 sample's
+summaries (x-spacing, x-range, mean(x^2), var(y)), so the prior is DATA-ELICITED
+(empirical-Bayes-style, data-adaptive). The philosophy is continuous with thesis
+Chapter 5 pp. 184-186, which explicitly permits using some or all of the present
+data to choose plausible generating processes and priors and cites empirical
+Bayes; the thesis does not document this exact var(y)-based numerical
+elicitation rule. Consequently the SIR estimate is POSTERIOR-MASS-FAITHFUL
+CONDITIONAL ON THAT FIXED PRIOR, not an unqualified full-Bayes result: the
+end-to-end procedure does not propagate uncertainty in the data-driven
+prior-setting step. Uncertainty reporting is two-layered and the components are
+never combined into one error bar: the ±0.005 whisker is the conditional SIR
+bootstrap SE given the realized pooled IS draws and their estimated weights,
+while the independent-pool estimates 0.419/0.438/0.431 display the separate
+importance-pool variability. Figure A's legend and caption carry this wording.
+No change to the prior, the adoption scope, any numerical result, or any
+ranking conclusion.
 
 **Viz canonical-figure gate (ratification condition): PASSED BUT NOT EXERCISED
 (2026-07-10, read-only recheck).** Re-applying the D18 elicitation rule to the

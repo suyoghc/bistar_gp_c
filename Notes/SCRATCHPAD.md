@@ -7,10 +7,14 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 `experiments/prior_sensitivity_study.py` + `docs/prior-sensitivity-study.md` +
 `runs/prior_sensitivity/` (local). Bimodality is prior-induced (kernel Gamma(6,0.85)
 priors; noise prior innocent). Sin+Linear survives every prior under HMC/MAP and under
-the new mass-faithful SIR arm. Full-Bayes headline = SIR 0.441±0.005 at tau=1; HMC
-0.696 (td7) / 0.683 (td10) = density-mode-region answer. D18 Status forks a/b/c all
-CLOSED 2026-07-10 (ratification 2026-07-09, scope-tightened to the N=20 thesis toy);
-the viz gate resolved "passed but not exercised" — full record in D18.
+the new mass-faithful SIR arm. Headline = SIR Sin+Linear 0.441 at tau=1,
+posterior-mass-faithful under the fixed data-elicited prior (W5/D18 terminology
+correction: ±0.005 is the conditional SIR bootstrap SE given the realized pooled IS
+draws and weights; independent-pool estimates 0.419/0.438/0.431 are the separate
+second uncertainty component, never combined); HMC 0.696 (td7) / 0.683 (td10) =
+density-mode-region answer. D18 Status forks a/b/c all CLOSED 2026-07-10
+(ratification 2026-07-09, scope-tightened to the N=20 thesis toy); the viz gate
+resolved "passed but not exercised" — full record in D18.
 
 ## PR #4 (`feat/toy-elicited-n20-figures`, branched off main after PR #2/#3 merged)
 

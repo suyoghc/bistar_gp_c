@@ -239,3 +239,15 @@ merges (a9253fb, 7069ea6).
   hardened to 7 tests (negative gates + hermetic synthetic-artifact coverage).
 - **Shipped:** 121 tests pass; commit 8141703 pushed; PR #4 opened against main
   (https://github.com/suyoghc/bistar_gp_c/pull/4).
+- **W5 follow-up (same day, codex review of the framing):** the earlier "full-Bayes
+  headline" wording is superseded by "posterior-mass-faithful under the fixed
+  data-elicited prior" (W5 in the local writeup log; committed correction in D18
+  Status). The prior medians use realized data summaries, continuous with thesis
+  Ch. 5 pp. 184-186 (which permits data-informed prior choice and cites empirical
+  Bayes) though the thesis does not document this exact var(y)-based rule.
+  Figure A now states the two-layer uncertainty explicitly: ±0.005 = conditional SIR
+  bootstrap SE given the realized pooled IS draws and weights; open points
+  0.419/0.438/0.431 = independent importance-pool variability; never combined.
+  Registry description gains the data-elicited disclosure; Figure B mode-label
+  crowding fixed. Terminology and disclosure only; no prior, scope, number, or
+  ranking change.

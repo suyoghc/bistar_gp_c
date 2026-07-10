@@ -136,7 +136,12 @@ PRIOR_CONFIGS: Dict[str, PriorConfig] = {
             "(generate_toy_data() defaults: N=20, noise 0.5, seed 42) "
             "ONLY, per the 2026-07-09 scope-tightened ratification; not a "
             "global prior replacement (bms_star_toy.py's N=50 sweep and "
-            "the bistar_viz data convention keep their own priors)."
+            "the bistar_viz data convention keep their own priors). "
+            "Data-elicited, empirical-Bayes-style: the medians use the "
+            "realized sample's summaries, so results under this prior are "
+            "posterior-mass-faithful conditional on the fixed prior, not "
+            "unqualified full-Bayes (D18 terminology correction, "
+            "2026-07-10)."
         ),
         se_lengthscale_prior=("lognormal", math.log(4.5), 0.9),
         se_lengthscale_bounds=(0.1, 100.0),

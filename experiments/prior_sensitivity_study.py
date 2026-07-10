@@ -1211,9 +1211,13 @@ def _save_fig(fig, out_dir, stem):
 
 def figure_a(data, out_dir):
     """Figure A `toy_model_posterior_elicited`: the N=20 money figure.
-    (a) grouped bars at tau=1, SIR (mass-faithful headline) vs NUTS td7
-    (density-mode-region answer), bootstrap-SE whiskers, per-IS-seed
-    Sin+Linear points, uniform reference. (b) Sin+Linear posterior vs tau."""
+    (a) grouped bars at tau=1, SIR (posterior-mass-faithful under the fixed
+    data-elicited prior; the headline) vs NUTS td7 (density-mode-region
+    answer). Uncertainty is two-layered per the D18 terminology correction:
+    whiskers show the conditional SIR bootstrap SE given the realized
+    pooled IS draws and weights, open points show the separate variability
+    across the three independent importance pools; the two components are
+    never combined. (b) Sin+Linear posterior vs tau."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -1226,12 +1230,13 @@ def figure_a(data, out_dir):
     w = 0.38
     ax_a.bar(xs - w / 2, data["sir_tau1"], w,
              yerr=data["sir_se_tau1"], capsize=3,
-             color="#2a6f97", label="SIR, mass-faithful (headline)")
+             color="#2a6f97",
+             label="SIR, posterior-mass-faithful\n(fixed data-elicited prior)")
     ax_a.bar(xs + w / 2, data["hmc_td7_tau1"], w,
              color="#c8875e", label="NUTS td7 (density-mode region)")
     ax_a.scatter([xs[sl] - w / 2] * 3, data["sir_per_seed_sl_tau1"],
                  s=22, facecolors="none", edgecolors="black", zorder=3,
-                 label="per-IS-seed SIR replicates")
+                 label="independent importance pools")
     ax_a.axhline(0.25, color="gray", ls="--", lw=1,
                  label="uniform (0.25)")
     ax_a.set_ylim(0, 0.80)
@@ -1246,7 +1251,8 @@ def figure_a(data, out_dir):
 
     ax_b.semilogx(data["taus"],
                   [row[sl] for row in data["sir_posteriors_by_tau"]],
-                  marker="o", color="#2a6f97", label="SIR, mass-faithful")
+                  marker="o", color="#2a6f97",
+                  label="SIR, posterior-mass-faithful")
     ax_b.semilogx(data["taus"],
                   [row[sl] for row in data["hmc_td7_posteriors_by_tau"]],
                   marker="s", color="#c8875e", label="NUTS td7")
@@ -1258,20 +1264,26 @@ def figure_a(data, out_dir):
               transform=ax_b.transAxes, fontsize=8)
     ax_b.legend(fontsize=8)
 
-    fig.suptitle("N=20 thesis toy under the re-elicited prior "
+    fig.suptitle("N=20 thesis toy under the data-elicited prior "
                  "(registry: toy_elicited_n20)", fontsize=11)
     occ7 = data["toy_elicited_nuts_occupancy_td7"][0]
     occ10 = data["toy_elicited_nuts_occupancy_td10"][0]
+    pools = "/".join(f"{v:.3f}" for v in data["sir_per_seed_sl_tau1"])
     caption = (
         f"SIR: {data['n_sir_draws']} resampled predictives "
         f"({data['n_unique_sir_draws']} unique hyperparameter draws) from "
-        f"pooled 3-seed prior-IS; whiskers are bootstrap SEs over SIR "
-        f"draws. NUTS td7: {data['hmc_td7_n_predictives']} predictives "
-        f"subsampled from {data['hmc_td7_n_draws']} draws; the chain is "
-        f"confined to the density-mode region (low-band occupancy "
-        f"{occ7:.3f} at td7 and {occ10:.3f} at td10), so its bars answer "
-        f"conditionally on that region while SIR carries the full-Bayes "
-        f"headline.")
+        f"pooled 3-seed prior-IS; SIR bars are posterior-mass-faithful "
+        f"under the fixed data-elicited prior (its medians come from "
+        f"realized data summaries; D18 terminology correction). Whiskers "
+        f"are the conditional SIR bootstrap SE given the realized pooled "
+        f"IS draws and weights; the open points ({pools} for Sin+Linear) "
+        f"show the separate variability across three independent "
+        f"importance pools, and the two components are not combined. "
+        f"NUTS td7: {data['hmc_td7_n_predictives']} predictives subsampled "
+        f"from {data['hmc_td7_n_draws']} draws; the chain is confined to "
+        f"the density-mode region (low-band occupancy {occ7:.3f} at td7 "
+        f"and {occ10:.3f} at td10), so its bars answer conditionally on "
+        f"that region.")
     fig.text(0.01, -0.04, caption, fontsize=7.5, wrap=True)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     paths = _save_fig(fig, out_dir, "toy_model_posterior_elicited")
@@ -1317,10 +1329,13 @@ def figure_b(data, out_dir):
         ax.set_xscale("log")
         for split in (NOISE_SPLIT_LO, NOISE_SPLIT_HI):
             ax.axvline(split, color="gray", ls="--", lw=1)
+        # Mode-coordinate labels near the axis base, clear of the top row
+        # (band masses, VI markers, rug) that crowded them at y=0.97.
         for coord in data[f"{cfg}_mode_noise_coords"]:
             ax.axvline(coord, color=color, ls=":", lw=1.4)
-            ax.text(coord, 0.97, f"{coord:.4f}", rotation=90, fontsize=7,
-                    ha="right", va="top", transform=ax.get_xaxis_transform())
+            ax.text(coord, 0.13, f"{coord:.4f}", rotation=90, fontsize=7,
+                    ha="right", va="bottom",
+                    transform=ax.get_xaxis_transform())
         ax.set_xlim(NOISE_HIST_BINS[0], NOISE_HIST_BINS[-1])
         masses = data[f"{cfg}_band_masses"]
         ses = data[f"{cfg}_band_mass_ses"]
@@ -1333,8 +1348,10 @@ def figure_b(data, out_dir):
         ax.plot(data[f"{cfg}_vi_noise_landings"],
                 [0.78] * 4, marker="v", ls="none", color="black",
                 markersize=5, transform=ax.get_xaxis_transform())
-        ax.text(data[f"{cfg}_vi_noise_landings"][0], 0.81, "VI (4 seeds)",
-                fontsize=7, ha="center",
+        # Label anchored at the leftmost landing, extending left, so it
+        # cannot cross the high-mode line in panel (a).
+        ax.text(min(data[f"{cfg}_vi_noise_landings"]), 0.81, "VI (4 seeds) ",
+                fontsize=7, ha="right",
                 transform=ax.get_xaxis_transform())
         ax.plot([data[f"{cfg}_map_noise"]], [0.02], marker="^", ls="none",
                 color="black", markersize=6,
