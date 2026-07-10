@@ -16,7 +16,7 @@ density-mode-region answer. D18 Status forks a/b/c all CLOSED 2026-07-10
 (ratification 2026-07-09, scope-tightened to the N=20 thesis toy); the viz gate
 resolved "passed but not exercised" — full record in D18.
 
-## PR #4 (`feat/toy-elicited-n20-figures`, branched off main after PR #2/#3 merged)
+## PR #4 — MERGED to main 2026-07-10 (merge commit fcd70e2)
 
 Implementation of the D18 ratification: `PRIOR_CONFIGS["toy_elicited_n20"]`
 (registry-only), STUDY_CONFIGS swap (fingerprint verified unchanged against the
@@ -339,6 +339,6 @@ Prose (CLAUDE.md writing-style rules):
   original commits preserved, pinned hashes like a87356a stay valid).
 - **PR #3** (`study/prior-sensitivity`) — MERGED to `main` 2026-07-10 (merge commit
   7069ea6).
-- **PR #4** (`feat/toy-elicited-n20-figures`) — OPEN:
-  https://github.com/suyoghc/bistar_gp_c/pull/4 (D18 ratification
-  implementation, commit 8141703; see the PR #4 section above).
+- **PR #4** (`feat/toy-elicited-n20-figures`) — MERGED to `main` 2026-07-10
+  (merge commit fcd70e2; commits 8141703 + 5b77619 W5 terminology correction +
+  7dcb9cb Figure A caption layout; see the PR #4 section above).

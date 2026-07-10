@@ -251,3 +251,6 @@ merges (a9253fb, 7069ea6).
   Registry description gains the data-elicited disclosure; Figure B mode-label
   crowding fixed. Terminology and disclosure only; no prior, scope, number, or
   ranking change.
+- **MERGED:** PR #4 merged to main 2026-07-10 as fcd70e2 (after the W5
+  terminology commit 5b77619 and the Figure A caption-layout commit 7dcb9cb);
+  121 tests pass on merged main.
