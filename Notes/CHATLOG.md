@@ -159,3 +159,54 @@ re-elicitation study was explicitly NOT started and remains open.
   three Mauna scripts cap tree depth at 7 and MAP-fit the exact model/data
   passed to `fit_hmc`; verified to fail on the pre-fix source.
 - D8 and D16 got status addenda. Full suite: 114 passed.
+
+## 2026-07-08 — prior-sensitivity / re-elicitation study (W2 gate, D18)
+
+The remaining paper-facing research task from W2, run end to end in one session.
+
+- **New:** `experiments/prior_sensitivity_study.py` (staged pipeline: prior scorecard,
+  27-start mode hunt with valley checks, 3-seed prior-IS with SEs/per-basin ESS, capped
+  NUTS + VI + MAP via the D12 machinery with cache-fingerprint sidecars, mass-faithful
+  SIR arm, generated report). Tables: `docs/prior-sensitivity-study.md`; raw artifacts
+  `runs/prior_sensitivity/` (local). Decision rules pre-registered before stage-B reads.
+- **Preflight multi-agent review** (5 reviewers + adversarial verification) before the
+  expensive stage caught 4 substantive design/method flaws, including a truth-peeking
+  lengthscale prior in the re-elicited config (fixed, HMC arm rerun) and a false
+  unimodal verdict for `vague` from the original 4-start hunt.
+- **Headline (D18):** the D12 bimodality is PRIOR-INDUCED (kernel Gamma(6,0.85) priors;
+  noise prior innocent per the attribution arm). All re-elicited configs are unimodal /
+  coherent and select Sin+Linear under HMC, MAP, AND the mass-faithful SIR measure; even
+  informative's mass-faithful number selects Sin+Linear at tau>=1 (near-flat,
+  tau-fragile) — D12's "mass-faithful would lean wrong" speculation refuted. VI lands in
+  the wide high-noise region under every config regardless of mass (revises W3's
+  framing); kl_forward flips under any heterogeneous mixture (sharpens W1).
+- **Recommendation (user to ratify):** final toy numbers under `toy_elicited`;
+  informative becomes the prior-misspecification case study; vague the robustness
+  appendix. D12/D13 history preserved; D12 got a status addendum pointing to D18.
+- 114 tests pass; no package code touched (alternate configs defined in-script only).
+
+## 2026-07-09 — prior study review response: spot-check resolved, SIR hardened (D18 final)
+
+User review of the D18 study surfaced four issues; all addressed.
+
+- **"Pattern A" mislabel fixed:** the pre-registered VI/HMC-agreement leg failed for
+  every config including the baseline, so D18's Decision is rewritten as a DISCLOSED
+  DEVIATION (coherence = geometry + basin-agreement criteria, mass-faithful SIR row as
+  the VI-independent arbiter); W2's status note matches.
+- **Pre-registered spot-check ran and mattered:** toy_elicited HMC occupancy (1.000
+  low-band) contradicts prior-IS mass (0.763±0.004) by far over 2 SE. Three-way
+  arbitration (new stage `noise-marginal`: prior-IS per-band ESS, Jacobian-corrected
+  RW-MH referee with ~40 lo/hi crossings per chain, profile-Laplace quadrature) is
+  UNANIMOUS against the chain, and the uncapped td10 arm (5.7 h) is EQUALLY confined
+  (1.000/0.000/0.000, tau=1 0.683 vs capped 0.696). Conclusion: MAP-init NUTS
+  under-explores the noise ridge at any tree depth even in this unimodal geometry (the
+  D8 disease on a well-behaved posterior). Paper consequence: the full-Bayes headline
+  under toy_elicited is the mass-faithful SIR number 0.441±0.005; the HMC 0.696 is the
+  density-mode-region answer, disclosed.
+- **kl_forward claim made precise:** the tau=1 collapse (Sin+Linear 0.000) is the SOFT
+  aggregation only; hard best-match on the same mixtures stays 0.696/0.707/0.520
+  (alternates) and 0.241 (informative).
+- **SIR hardened to paper-grade:** n_pred=1000 with bootstrap SEs (<=0.007) and
+  per-IS-seed replicates (scatter <=0.03); all stale n=200 numbers reconciled across
+  D18/W2/SCRATCHPAD.
+- Committed on `study/prior-sensitivity` (stacked on fix/laplace-zmx); PR #2 untouched.
