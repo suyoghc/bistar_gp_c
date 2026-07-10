@@ -1074,3 +1074,155 @@ scoped sensitivity figure plus an explicit data-dependent-prior disclosure first
 above later added the registry entry and the figure tests, bringing the suite to 121).
 D12/D13 history preserved unmodified (this
 entry supersedes their mass-ratio and VI-framing numbers where noted).
+
+---
+
+## D19: Mauna Loa paper-grade study — plan + pre-registration v1.0 FROZEN before results (M1) — 2026-07-10
+
+**Problem:** D8 left paper-grade full-Bayes Mauna inference as an open fork (stuck chains at
+trend lengthscale 8 vs 32 with a 418-nat log-joint gap, kernel-site ESS ≈ 1), the W6
+provisional brief scoped the study (applied scalability demonstration; nothing pre-selected),
+and a planning-only session (2026-07-10) produced a staged design that went through four codex
+gpt-5.6-sol review rounds (round 1: 14 findings, FIX-FIRST, all accepted at least partially;
+rounds 2-4: decision addenda, scorecard corrections, ratifications). The plan, the author
+decisions, and the pre-registration had to land in one tracked, reviewed commit of planning
+artifacts only (docs, Notes, frozen planning scripts and JSONs; no package code) BEFORE any
+pilot, posterior, or BMS* result exists — otherwise arm or sampler selection
+could leak results into the design (the R3 class) and the study would lose its
+pre-registration standing.
+
+**Decision:** freeze everything currently definable in `docs/plan-d19-mauna.md` (staged plan +
+pre-registration v1.0 + decision record + committed evidence) in this single commit on
+`docs/d19-mauna-freeze`; M2a implementation follows as a separate infrastructure PR.
+
+- Staged design: Stage 0 elicitation (closed here except the era transcription) / Stage A
+  sampler-independent geometry per arm / Stage B strategies S1, S1f, S2, S3, S4 behind bounded
+  pilots on enabler E1 (direct-parameter potential; measured ~200x per-leapfrog advantage over
+  the deep-copy pyro path: 2.79 s vs 15.5 ms per gradient at N=461) / Stage C BMS* +
+  mass-faithful arm. Gates G0 / G-IS / G-referee / G-A / G-toy / G-B / G-C; milestones
+  M2a (provenance + loader + registry + metric + diagnostic schema), M2b (E1 + equivalence +
+  the real E1 NUTS microbenchmark + Della re-benchmark), M2c (S2/S3/S4 + M1 + estimator-
+  specific toy goldens), M2d (arms + orchestration + G0), M3 pilots, M4 full runs, M5 results
+  + the D19 author decision.
+- Author decisions recorded: **A1** nugget = measurement error + uncorrelated
+  monthly-aggregation/residual variance; M1's Matern-3/2 carries correlated short-term
+  discrepancy. **A2** arm priors v1 RATIFIED (P0 baseline; elicited kernel/noise blocks;
+  tables in the doc §7, identical to the committed scorecard script); v1b
+  examined-and-rejected, kept with its scorecard. **A3** M1 piloted, with the bounded
+  logit-normal lengthscale prior ls = 0.1 + 0.9·sigmoid(z), z ~ N(-1.2528, 1.082), hard
+  support [0.1, 1.0] y (q10/50/90 = 0.16/0.30/0.58), normalization/sampling/equivalence tests
+  at M2c. **A4** 4-ladder main universe + harmonized 3-set appendix: period frozen at 1.0,
+  shared D11 multi-start protocol replaces differential_evolution, code-level identity test on
+  the shared member (Quad+2Harm), separate normalizations always; pw_kl_vcal primary at tau
+  grid 0.1/0.3/1/3/10 (headline tau 1), kl_forward appendix. **A5** paper target = full N=461,
+  frozen before any pilot is read; blind pre-registered subsample fallback only if infeasible,
+  with the fallback design, exact N, and the infeasibility predicate (engineering/budget
+  evidence only, never adequacy or BMS* outcomes) frozen at M2b per the freeze-commit review.
+  **A6** pilot budgets PROVISIONAL until the M2b E1 NUTS microbenchmark (the E1 cost rows are
+  kernel-cost proxies). **A7** Della use gated on re-running `experiments/d19_bench.py` there,
+  threads pinned; embarrassingly parallel work only. **A8** mass-faithful arm REQUIRED TO
+  ATTEMPT, optional to deliver (O5 reports infeasibility; a confined chain is never
+  substituted). **A9** vendored checksummed dataset + runtime verification if licensing
+  permits, else deterministic retrieval + checksum; canonical year/month/co2 hash; the
+  document-only option REMOVED. **A10** seasonal period FROZEN at exactly 1.0 with
+  requires_grad(False) + assertion at M2a — the planning session verified live (codex catch)
+  that `raw_period_length` is a TRAINABLE plug-in today (fit_map moves 1.0 to 0.99962 in 100
+  iters under Interval(0.99, 1.01)), so every pre-D19 Mauna analysis is disclosed as
+  conditional on a data-fitted plug-in period ~0.9996. **A11** the PROVISIONAL W6 brief takes
+  precedence over the second W6 entry's computation-tree step 1: no method — including
+  MAP+Laplace — is primary before pilots; S4 competes like every strategy; MAP+Laplace
+  survives only as the O4 fallback carrier.
+- Pre-registration v1.0 (doc §6), frozen at this commit: arm roles + frozen order (P0,
+  P-comb-v1 = the first revised arm, P-comb+M1-v1, P-kernel-v1, P-noise; adoption candidates
+  must all reach the paper-target scale before selection); per-arm dossier hashed BEFORE any
+  BMS* probability under that arm is computed (sha256 in the study log, committed by the next
+  milestone); selection firewall + default-selection tie-breakers; outcome patterns O1-O5 with
+  no scientific-outcome predictions (risk-register likelihoods narrowed to engineering
+  feasibility); sequential stop rules keyed ONLY on geometry/adequacy/budget — the draft's
+  BMS-shift expansion trigger DELETED, and (freeze-review catch) the G-B seed-reproducibility
+  leg re-keyed from BMS* outputs to target-level agreement (per-site posterior means within 2
+  combined MCSEs; band occupancy within 0.05), with BMS* seed-stability demoted to Stage-C
+  reporting-only, so no gate reads BMS* output; budget reservation guaranteeing P0 + every
+  G-A-passing adoption candidate reach the paper-target scale before attribution arms spend,
+  else no prior selection occurs (P0 default, disclosed); the 60-month holdout SEALED until
+  the D19 decision is recorded (no inspection/scoring/persistence/selection use of test
+  VALUES; split metadata and the legacy loader's mechanical materialization permitted and
+  disclosed; training-only loader path queued at M2a; selection-relevant predictive checks =
+  training-span or rolling-origin with MAP/S4-level refits only); estimator-specific toy
+  goldens (S2/S3 must reproduce the D18 sampler-based noise-marginal references — prior-IS +
+  RW-MH referee — and the mass-faithful 0.441 family within pre-declared MC error, NOT the
+  confined 0.696, which stays an S1 regression characterization only; the freeze review
+  exposed the D18 profile-quadrature triplet 0.763/0.138/0.023 as non-normalized grid
+  integrals summing to 0.924, so it is historical-only with the corrected recompute queued at
+  M2c); coverage verdicts need a mass-bearing authority (gated IS, else the crossing-verified
+  referee) plus a corroborating reference within 3 authority-SEs (profile quadrature
+  corroborating-only; a profile curve alone is never a coverage authority; no available
+  authority = coverage undetermined and the strategy fails that scale); G-IS = pooled ESS >=
+  100 pilot floor, per-band ESS >= 100 in every band holding >= 5% authority mass, 3
+  independent 600k pools agreeing within 2 combined SEs, functional MCSE <= 0.02 for any
+  paper-quoted BMS* probability; 10 standing disclosures (td7 efficiency control;
+  "likelihood-favored under the current GP specification"; W5 data-elicited terminology incl.
+  y_std^2 = 212.68 ppm^2 scaling and x centering at 1977.711; the plug-in period history;
+  sub-150 screening-only; corrected D6 causal history; "the stationary zero-mean trend prior
+  assigns equal probability to rising and falling trajectories — the scorecard evaluates
+  magnitude only"). Every currently definable threshold carries its number (doc §6.15);
+  implementation-coupled predicates (E1 equivalence tolerances, S2/S3 test tolerances, G-toy
+  tolerances, divergence-clustering, M1 overlap diagnostic, final A6 budgets) are enumerated
+  with "numeric value fixed in M2a-M2c, before any pilot result is read"; amendments are
+  append-only v1.x, landing before the stage they affect (§6.16).
+- Source status (doc §8): OpenML 41187 v1, sha256(co2) 7e301efd...44cb9, counts
+  2225/521/461/60 verified; Thoning et al. 1989 + Komhyr et al. 1989 + NOAA GML pages
+  identified for the nugget memo; era/source transcription OPEN with the round-4 amendment
+  rule — material contradiction of the 0.2 ppm lower-reference interpretation triggers a
+  documented prereg amendment or a new named arm BEFORE Stage A.
+- Evidence committed: `experiments/d19_prior_scorecard.py` (port of the planning scorecard,
+  seeds [arm, 20260710] / [arm, 77] unchanged; VERIFIED this session to regenerate
+  `runs/d19_planning/scorecard_v2.json` byte-identically), `experiments/d19_bench.py` (the
+  A7/R6 re-benchmark vehicle), and `runs/d19_planning/{bench_sub,bench_full,scorecard_v2}.json`
+  (deliberately tracked: timing evidence is not regenerable and the scorecard JSON is the
+  determinism reference). Scorecard v2 (2000 draws/arm, B=1000 bootstrap, corrected
+  functionals): realized training references trend 46.59 / decadal 8.56 / seasonal 4.62 /
+  range 51.93 / diff-sd 1.19 ppm; adoption candidates P-comb-v1 and P-comb+M1-v1 pass ALL rows
+  with bootstrap confidence (trend pctile 0.938, CI [0.927, 0.949]); stability counts all zero
+  (v1's warnings were spurious arm64 BLAS flags, fixed in v2 by correlation-space Cholesky +
+  relative jitter ladder).
+- Housekeeping in the same commit: `.gitignore` gains `Notes/WRITEUP_DRAFT.md` (recorded as
+  pending on 2026-07-10 in the memory note; local prose stays untracked).
+
+**Alternatives considered:** freezing after M2a with the implementation-coupled numbers in
+hand (rejected: pilot results could be read before the freeze, which defeats pre-registration);
+leaving the plan as the chat deliverable without a tracked commit (rejected: unreviewable,
+mutable, and the seeds/artifacts would rot in a session scratchpad); one shared toy golden for
+every strategy (rejected as statistically backwards — codex round 1: a coverage-repairing
+sampler must not be required to reproduce the mode-confined number); v1b trend-os arm
+(examined-and-rejected under A2: chases the realized trend magnitude and inflates the prior
+range, q97.5 120 vs 93 ppm); giving the seasonal period a prior as an 8th site (rejected under
+A10: inventory churn everywhere downstream with no identified scientific need; revisit only on
+Stage-A seasonal misfit, as an amendment).
+
+**Freeze-commit review (same session, codex gpt-5.6-sol xhigh on the diff): FIX-FIRST, 10
+findings (6 HIGH, 2 MEDIUM, 2 LOW), every one resolved at documentation level BEFORE the
+freeze finalized** (the commit was amended; "round 5" markers in the doc flag each change):
+G-B seed reproducibility re-keyed off BMS* outputs to target-level agreement; M1/S3/S4 and
+selection predicates numerically frozen or §6.15-enumerated (frozen rolling-origin protocol,
+occupancy/correlation authority precedence, coverage SE formulas incl. chain occupancy SE,
+5x speed factor, ordinal coverage score, operational prior-pass rules); the D18
+profile-quadrature band triplet exposed as non-normalized (sum 0.924, boundary-straddling
+intervals dropped) and demoted to historical with the corrected recompute queued at M2c;
+budget reservation for adoption candidates with a no-selection rule if any ends unmeasured;
+holdout-seal semantics made literally true (the legacy loader materializes the split; a
+training-only loader path is an M2a item); the A5 fallback freeze pinned to M2b; the model.py
+citation corrected to lines 132-141; the scope label corrected to planning-artifacts-only.
+The reviewer independently verified the committed scorecard values/CIs, realized references,
+stability counts, benchmark timings, MAP/provenance values, arm tuples, and both seed
+formulas, and confirmed no package-code change and no new pilot/posterior/BMS* artifact in
+the diff. Thirteen §9.4 table cells were also corrected to the script's own %.3f rendering
+(x.xxx5 boundary values; the pinned P-comb-v1 trend 0.938 [0.927, 0.949] was unaffected).
+
+**Status: FROZEN-BEFORE-RESULTS (M1 complete).** No pilot, posterior, or BMS* number exists or
+was read; the only computation this session was the deterministic reproduction check of the
+already-ratified Stage-0 scorecard (whose acceptance rule was declared before any scorecard
+computation, in the planning session). OPEN items, all carried inside the doc: era/source
+transcription (§8, amendment rule armed); final A6 budgets + A5 fallback freeze at M2b;
+implementation-coupled predicate numbers at M2a-M2c (§6.15); G0 sign-off at M2d. Next: the
+M2a infrastructure PR.

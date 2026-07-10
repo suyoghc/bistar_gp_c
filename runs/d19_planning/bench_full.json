@@ -1,0 +1,111 @@
+{
+  "scale": "full",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "cpu_count": 14,
+  "torch_threads_default": 10,
+  "torch": "2.10.0",
+  "provenance": {
+    "openml_data_id": 41187,
+    "n_train_months": 461,
+    "n_test_months": 60,
+    "y_mean_ppm": 336.18776211135213,
+    "y_std_ppm": 14.58342466738224,
+    "x_offset_years": 1977.7109544468547,
+    "x_train_min": -19.544287780187915,
+    "x_train_max": 19.205712219812085,
+    "span_years": 38.75
+  },
+  "elapsed_s": 122.65426883287728,
+  "N": 461,
+  "map_fit": {
+    "n_iter": 300,
+    "total_s": 4.639354416169226,
+    "per_iter_s": 0.015464514720564088
+  },
+  "map_noise_variance_normalized": 0.0019327344825309568,
+  "map_hyperparameters": {
+    "likelihood.noise_covar.noise_prior": 0.0019327344825309568,
+    "covar_module.kernels.0.outputscale_prior": 0.9872415916957671,
+    "covar_module.kernels.0.base_kernel.lengthscale_prior": 4.410301493594865,
+    "covar_module.kernels.1.outputscale_prior": 0.09447687529707043,
+    "covar_module.kernels.1.base_kernel.lengthscale_prior": 2.6792312640436635,
+    "covar_module.kernels.2.outputscale_prior": 0.07466250647804652,
+    "covar_module.kernels.2.base_kernel.lengthscale_prior": 3.338983663765748
+  },
+  "initialize_model_s": 4.602631792193279,
+  "sampled_sites": [
+    "covar_module.kernels.0.base_kernel.lengthscale_prior",
+    "covar_module.kernels.0.outputscale_prior",
+    "covar_module.kernels.1.base_kernel.lengthscale_prior",
+    "covar_module.kernels.1.outputscale_prior",
+    "covar_module.kernels.2.base_kernel.lengthscale_prior",
+    "covar_module.kernels.2.outputscale_prior",
+    "likelihood.noise_covar.noise_prior"
+  ],
+  "n_sampled_sites": 7,
+  "period_length_sampled": false,
+  "dim_unconstrained": 7,
+  "logjoint": {
+    "median_s": 1.4862890830263495,
+    "min_s": 1.4525817499961704,
+    "max_s": 1.50504345796071,
+    "reps": 5
+  },
+  "gradient": {
+    "median_s": 2.793404000112787,
+    "min_s": 2.629978792043403,
+    "max_s": 2.8153192920144647,
+    "reps": 5
+  },
+  "hessian": {
+    "time_s": 33.84111287491396,
+    "eigenvalues": [
+      0.07466250647804651,
+      0.09447687529707043,
+      0.49362079584788354,
+      0.9999999999999998,
+      3.3389836637657475,
+      5.358462528087327,
+      31659.25746820179
+    ],
+    "min_eig": 0.07466250647804651,
+    "max_eig": 31659.25746820179,
+    "spd": true,
+    "n_below_1e-6_floor": 0,
+    "condition_number_after_floor": 424031.5382060039
+  },
+  "prior_eval_100": {
+    "total_s": 0.6251203748397529,
+    "per_eval_s": 0.006251203748397529,
+    "n_failed": 0
+  },
+  "prior_eval_1000": {
+    "total_s": 6.320171458180994,
+    "per_eval_s": 0.0063201714581809934,
+    "n_failed": 0,
+    "measured": true
+  },
+  "profile_grid_point": {
+    "profile_opt_n_iter": 150,
+    "profile_opt_total_s": 2.171213624998927,
+    "profile_opt_per_iter_s": 0.014474757499992847,
+    "laplace_det_bound_s": 33.84111287491396,
+    "composite_per_point_est_s": 36.01232649991289,
+    "note": "6-of-7-site profile via frozen raw_noise; Laplace-det cost bounded by the measured 7-dim Hessian time"
+  },
+  "single_thread": {
+    "logjoint": {
+      "median_s": 3.972429499961436,
+      "min_s": 3.9356952079106122,
+      "max_s": 4.000654417090118,
+      "reps": 3
+    },
+    "gradient": {
+      "median_s": 5.898023209068924,
+      "min_s": 5.867071375017986,
+      "max_s": 6.002640333026648,
+      "reps": 3
+    },
+    "prior_eval_per_eval_s": 0.00831342909950763
+  }
+}

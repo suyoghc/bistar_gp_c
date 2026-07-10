@@ -2,6 +2,30 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
+## D19 Mauna study — M1 FREEZE COMMITTED 2026-07-10 (branch `docs/d19-mauna-freeze`); M2a next
+
+- `docs/plan-d19-mauna.md` = the frozen record: staged plan (Stage 0/A/B/C, gates
+  G0/G-IS/G-referee/G-A/G-toy/G-B/G-C), measured cost table (E1 rows are kernel-cost
+  proxies pending the M2b NUTS microbenchmark), candidate-set matrix + harmonization
+  rule, risk register, milestone map M2a-M2d/M3/M4/M5, pre-registration v1.0,
+  decision record A1-A11, scorecard v2 + benchmark evidence. DECISIONS.md D19 is the
+  log entry; single planning-artifacts-only commit. Freeze-commit review (codex
+  gpt-5.6-sol, xhigh): FIX-FIRST, 10 findings, all resolved at documentation level
+  before the freeze finalized ("round 5" markers in the doc; details in D19 Status
+  and CHATLOG).
+- **HOLDOUT SEALED**: no selection analysis loads/plots/scores the 60 test months
+  until the D19 author decision is recorded (prereg §6.6).
+- **No BMS*/pilot/posterior result exists yet**; the ordering/blinding rule (§6.5)
+  governs from here on.
+- OPEN, tracked in the doc: era/source transcription (§8; amendment rule armed —
+  before Stage A); A6 budgets + A5 fallback design/infeasibility predicate at M2b;
+  implementation-coupled predicate numbers at M2a-M2c (§6.15, incl. the corrected
+  normalized profile band-mass recompute at M2c); G0 sign-off at M2d.
+- M2a scope (next PR, arm-independent): provenance gate + loader hardening (A9),
+  period freeze + assertion (A10), candidate registry + shared-member identity test
+  (A4), pw_kl_vcal wiring, diagnostic-retaining sampler result schema, training-only
+  loader path (holdout seal made mechanical, §6.6), slurm refresh.
+
 ## Prior-sensitivity study (W2 gate) — DONE 2026-07-08, CLOSED 2026-07-10 (D18)
 
 `experiments/prior_sensitivity_study.py` + `docs/prior-sensitivity-study.md` +

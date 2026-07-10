@@ -254,3 +254,55 @@ merges (a9253fb, 7069ea6).
 - **MERGED:** PR #4 merged to main 2026-07-10 as fcd70e2 (after the W5
   terminology commit 5b77619 and the Figure A caption-layout commit 7dcb9cb);
   121 tests pass on merged main.
+
+## 2026-07-10 — D19 M1 freeze commit: plan + pre-registration v1.0 (planning artifacts only)
+
+Session scope held exactly to the handoff: one reviewed commit on
+`docs/d19-mauna-freeze` containing planning artifacts only (documentation, Notes,
+reproduction/benchmark scripts, frozen planning JSONs) — no package code, no
+pilots, no expensive runs, no scientific result read before the commit.
+
+- **Recovered** the planning-session artifacts intact from the prior session's
+  scratchpad (d19_plan.md, bench_sub/full.json, d19_scorecard_v2.py,
+  scorecard_v2.json, the codex round-1 review) and backed them up into this
+  session's scratchpad.
+- **Synthesized** `docs/plan-d19-mauna.md`: the post-round-4 plan (all four codex
+  gpt-5.6-sol rounds folded in) — staged design with gates, measured cost table
+  (E1 rows labeled kernel-cost proxies pending the M2b NUTS microbenchmark),
+  candidate-set matrix with the harmonization rule, risk register (+R13 era
+  amendment), milestone map M2a-M2d/M3/M4/M5, pre-registration v1.0 (frozen arm
+  order, dossier-hash blinding, selection firewall, O1-O5, geometry/adequacy/
+  budget-only stop rules, SEALED 60-month holdout, estimator-specific toy goldens,
+  two-reference coverage arbitration, per-band IS ESS + independent pools +
+  functional MCSE floors, 10 standing disclosures, threshold inventory §6.15,
+  amendment protocol §6.16), decision record A1-A11, source status + era
+  amendment rule, scorecard v2 frozen record, benchmark artifacts, scalability
+  template.
+- **Ported + verified**: `experiments/d19_prior_scorecard.py` (seeds unchanged)
+  regenerates `runs/d19_planning/scorecard_v2.json` byte-identically — the only
+  computation this session (reproduction of the already-ratified Stage-0
+  scorecard). `experiments/d19_bench.py` committed as the A7 Della re-benchmark
+  vehicle; the three planning JSONs deliberately tracked under
+  `runs/d19_planning/`.
+- **Notes**: DECISIONS.md D19 entry (the commit-message source); SCRATCHPAD
+  D19-state section; `.gitignore` gains `Notes/WRITEUP_DRAFT.md` (the pending
+  entry from the PR #4 session).
+- **Review**: codex gpt-5.6-sol (xhigh) reviewed the freeze-commit diff:
+  FIX-FIRST, 10 findings (6 HIGH, 2 MEDIUM, 2 LOW), all resolved at
+  documentation level by amend BEFORE the freeze finalized ("round 5" markers in
+  the doc). Highest-value catches: the G-B seed-reproducibility leg was still
+  keyed on BMS* outputs (re-keyed to target-level agreement; BMS* seed-stability
+  demoted to Stage-C reporting-only); the D18 profile-quadrature band triplet
+  0.763/0.138/0.023 sums to 0.924 (non-normalized grid integrals — demoted to
+  historical, corrected recompute queued at M2c); coverage arbitration lacked an
+  authority-precedence and SE definition (frozen); budget truncation could
+  strand an adoption candidate (reservation rule added); "holdout never loaded"
+  was literally false (seal semantics restated; training-only loader queued at
+  M2a); the A5 fallback design freeze pinned to M2b. The reviewer independently
+  verified all committed numbers, seeds, and repo ground-truth claims. In the
+  same amend, 13 §9.4 table cells were aligned to the script's own %.3f
+  rendering (x.xxx5 boundary values; the pinned 0.938 [0.927, 0.949] headline
+  cell unaffected).
+- **Next**: M2a infrastructure PR (provenance/loader/A10 period freeze/candidate
+  registry/pw_kl_vcal/diagnostic schema/slurm refresh). The holdout stays sealed;
+  the ordering/blinding rule governs all subsequent compute.
