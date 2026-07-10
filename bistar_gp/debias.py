@@ -160,7 +160,7 @@ def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
     kernel_builder: callable that returns (kernel_components, names) — 
                     e.g. build_toy_kernels or build_mauna_loa_kernels
     """
-    from .model import build_model, build_likelihood
+    from .model import build_model, build_likelihood, select_hmc_sites, apply_hp_value
     from .decompose import decompose_additive_gp
 
     x_train, y_train, x_test = x_train.double(), y_train.double(), x_test.double()
@@ -170,9 +170,7 @@ def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
     total_mcmc = len(mcmc_samples[first_key])
     indices = np.random.choice(total_mcmc, min(n_posterior_samples, total_mcmc), replace=False)
 
-    # Only use kernel_components and noise_covar keys (not covar_module duplicates)
-    relevant_keys = [k for k in mcmc_samples.keys()
-                     if k.startswith("kernel_components") or k.startswith("noise_covar")]
+    relevant_keys = select_hmc_sites(mcmc_samples.keys())
 
     all_means = {n: [] for n in model.component_names}
     n_success = 0
@@ -185,25 +183,8 @@ def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
         # Set parameters from this MCMC sample
         for pyro_name in relevant_keys:
             val = float(mcmc_samples[pyro_name][idx])
-
             try:
-                if "noise_covar.noise" in pyro_name:
-                    fresh_likelihood.noise = val
-                    continue
-
-                # Parse: kernel_components.{idx}.{rest}
-                parts = pyro_name.split(".")
-                comp_idx = int(parts[1])
-                kernel = fresh_model.kernel_components[comp_idx]
-
-                if "base_kernel.lengthscale" in pyro_name:
-                    kernel.base_kernel.lengthscale = val
-                elif "base_kernel.period_length" in pyro_name:
-                    kernel.base_kernel.period_length = val
-                elif "outputscale" in pyro_name:
-                    kernel.outputscale = val
-                elif "variance" in pyro_name:
-                    kernel.variance = val
+                apply_hp_value(fresh_model, fresh_likelihood, pyro_name, val)
             except (IndexError, AttributeError, RuntimeError):
                 continue
 

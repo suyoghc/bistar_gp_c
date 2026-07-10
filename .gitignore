@@ -34,3 +34,6 @@ slurm-*.out
 
 # Knowledge base (LLM-generated, reproducible)
 kb/
+
+# Local paper/writeup decision notes
+Notes/WRITEUP_DECISIONS.md

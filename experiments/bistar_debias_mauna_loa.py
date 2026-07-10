@@ -385,18 +385,17 @@ def main():
             mcmc_samples = torch.load(args.use_cache, weights_only=False)
         else:
             print(f"\n── Running HMC ({args.n_hmc} samples, {args.n_warmup} warmup) ──")
-            kernels, names = build_mauna_loa_kernels()
-            likelihood = build_likelihood()
-            model_map, likelihood_map = build_model(x_train, y_train, kernels, names, likelihood)
-            fit_map(model_map, likelihood_map, x_train, y_train,
-                    n_iter=800, lr=0.02, print_every=200)
-
             kernels2, names2 = build_mauna_loa_kernels()
             likelihood2 = build_likelihood()
             model2, likelihood2 = build_model(x_train, y_train, kernels2, names2, likelihood2)
 
+            # MAP-fit THIS model so fit_hmc's init_to_map starts in the typical set, and
+            # cap the NUTS tree depth: the Mauna noise posterior concentrates near zero,
+            # so uncapped depth-10 trees are intractable (see DECISIONS D8).
+            fit_map(model2, likelihood2, x_train, y_train, n_iter=300, lr=0.02, verbose=False)
             mcmc_samples = fit_hmc(model2, likelihood2, x_train, y_train,
-                                   n_samples=args.n_hmc, n_warmup=args.n_warmup)
+                                   n_samples=args.n_hmc, n_warmup=args.n_warmup,
+                                   max_tree_depth=7)
 
             # Cache for reuse
             cache_path = os.path.join(args.output_dir, "hmc_samples.pt")

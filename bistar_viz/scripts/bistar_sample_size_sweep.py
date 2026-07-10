@@ -18,11 +18,12 @@ We show this with three scenarios:
    → This is the cleanest BI* demonstration.
 
 Usage:
-    python experiments/bistar_sample_size_sweep.py --priors informative vague misspecified_tight
+    python bistar_viz/scripts/bistar_sample_size_sweep.py --priors informative vague misspecified_tight
 """
 
 import sys, os, argparse
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# Repo root is two levels up (this file is in bistar_viz/scripts/).
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import torch
 import numpy as np
@@ -42,10 +43,7 @@ import bistar_gp.metrics_v2
 
 from bistar_gp.aggregation_v3 import average_gp_posterior
 from bistar_gp.induced_prior import build_toy_parameter_spaces
-from bistar_gp.laplace_evidence import (
-    compute_all_laplace_evidences,
-    compute_laplace_evidence,
-)
+from bistar_gp.laplace_evidence import model_posterior
 from bistar_gp.candidates import (
     LinearModel, SinusoidalModel, SinLinearModel, QuadraticModel,
 )
@@ -174,7 +172,7 @@ def main():
     # ══════════════════════════════════════════════════════════════
 
     all_posteriors = {}   # scenario → prior → n → {model: posterior}
-    all_decomp = {}       # scenario → prior → n → {model: LaplaceResult}
+    all_decomp = {}       # scenario → prior → n → {model: II-component dict}
 
     for scenario_name in args.scenarios:
         sc = SCENARIOS[scenario_name]
@@ -225,24 +223,15 @@ def main():
                 x_sub, y_sub = subsample_data(x_sc, y_sc, n_sub, seed=config.seed)
                 mle_params = fit_candidates(x_sub, y_sub, x_eval_sc)
 
-                for mn, ps in param_spaces.items():
-                    if mn in mle_params:
-                        for spec in ps.param_specs:
-                            if spec.name in mle_params[mn]:
-                                spec.mle_value = mle_params[mn][spec.name]
-
-                laplace = compute_all_laplace_evidences(
-                    param_spaces, x_sub, y_sub, x_eval_sc,
-                    avg_gp_sc, mle_params,
-                    metric_name=args.metric, tau=args.tau,
-                    prior_name=prior_name,
+                # Canonical model posterior + decomposition — Construction II
+                # (DECISIONS D3, docs/plan-zmx-laplace.md).
+                post = model_posterior(
+                    param_spaces, x_sub, y_sub, x_eval_sc, avg_gp_sc, mle_params,
+                    construction="II", metric_name=args.metric, tau=args.tau, occam=False,
                 )
-
-                log_evs = np.array([laplace[m].log_evidence for m in model_names])
-                log_evs -= log_evs.max()
-                ps = np.exp(log_evs) / np.exp(log_evs).sum()
-                posteriors_by_n[n_sub] = dict(zip(model_names, ps))
-                decomp_by_n[n_sub] = laplace
+                posteriors_by_n[n_sub] = {m: post.posteriors[m] for m in model_names}
+                # components[model] = {log_N, log_lik_at_map, G_at_map, gp_penalty, occam}
+                decomp_by_n[n_sub] = post.components
 
             all_posteriors[scenario_name][prior_name] = posteriors_by_n
             all_decomp[scenario_name][prior_name] = decomp_by_n
@@ -323,16 +312,16 @@ def main():
             fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
 
             for mn in model_names:
-                axes[0].plot(ns, [dbn[n][mn].log_lik_at_map for n in ns],
+                axes[0].plot(ns, [dbn[n][mn]["log_lik_at_map"] for n in ns],
                              'o-', color=colors[mn], linewidth=2, label=mn)
-                axes[1].plot(ns, [dbn[n][mn].prior_penalty for n in ns],
+                axes[1].plot(ns, [dbn[n][mn]["gp_penalty"] for n in ns],
                              'o-', color=colors[mn], linewidth=2, label=mn)
 
                 ratios = []
                 for n in ns:
-                    lr = dbn[n][mn]
-                    total = abs(lr.log_lik_at_map) + abs(lr.prior_penalty) + abs(lr.occam_factor)
-                    ratios.append(abs(lr.prior_penalty) / total if total > 0 else 0)
+                    c = dbn[n][mn]
+                    total = abs(c["log_lik_at_map"]) + abs(c["gp_penalty"]) + abs(c["occam"])
+                    ratios.append(abs(c["gp_penalty"]) / total if total > 0 else 0)
                 axes[2].plot(ns, ratios, 'o-', color=colors[mn], linewidth=2, label=mn)
 
             axes[0].set_ylabel("Data Fit (log lik)", fontsize=11)

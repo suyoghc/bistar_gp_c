@@ -58,12 +58,16 @@ def main():
     likelihood2 = build_likelihood()
     model2, likelihood2 = build_model(x_hmc, y_hmc, kernels2, names2, likelihood2)
 
-    print("Running HMC (300 samples, 200 warmup)...")
-    print("This will take several minutes with ~500 data points...")
+    # MAP-fit THIS model (on the HMC subsample — the earlier MAP model was fit on
+    # the full x_train) so init_to_map starts in the typical set, and cap the NUTS
+    # tree depth for the stiff near-zero-noise posterior (DECISIONS D8).
+    fit_map(model2, likelihood2, x_hmc, y_hmc, n_iter=300, lr=0.02, verbose=False)
+    print("Running HMC (100 samples, 100 warmup)...")
     mcmc_samples = fit_hmc(
         model2, likelihood2, x_hmc, y_hmc,
         n_samples=100,
         n_warmup=100,
+        max_tree_depth=7,
     )
 
     print("\nDecomposing HMC samples...")

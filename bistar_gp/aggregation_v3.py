@@ -41,31 +41,47 @@ torch.set_default_dtype(torch.float64)
 # Strategy 1: Averaged GP Posterior
 # ═══════════════════════════════════════════════════════════════════
 
-def average_gp_posterior(gp_samples: List[GPPosteriorSample]) -> GPPosteriorSample:
+def average_gp_posterior(gp_samples: List[GPPosteriorSample],
+                         weights=None) -> GPPosteriorSample:
     """
     Collapse GP samples into one averaged predictive distribution.
 
     The marginal predictive p(y*|X,y) = ∫ p(y*|X,y,θ) p(θ|X,y) dθ
     is approximated by the mixture of Gaussians from HMC samples.
-    For a Gaussian mixture, the mean and covariance of the mixture are:
+    For a Gaussian mixture with weights w_i (uniform 1/N by default), the
+    mean and covariance of the mixture are:
 
-      μ̄ = (1/N) Σ μ_i
-      Σ̄ = (1/N) Σ [Σ_i + (μ_i - μ̄)(μ_i - μ̄)^T]
+      μ̄ = Σ w_i μ_i
+      Σ̄ = Σ w_i [Σ_i + (μ_i - μ̄)(μ_i - μ̄)^T]
 
     The second term captures the inter-sample mean spread — this is
     the "hyperparameter uncertainty" that inflates the marginal variance.
+
+    weights: optional per-sample mixture weights (normalized internally).
+    Uniform is correct for genuine posterior draws; the weighted form exists
+    to reproduce legacy importance-weighted prior-draw figures in the viz
+    unification comparison harness (docs/plan-viz-unification.md §1.4).
     """
     N = len(gp_samples)
-    means = np.array([s.mean for s in gp_samples])   # (N, n_eval)
-    mu_bar = means.mean(axis=0)                        # (n_eval,)
+    if weights is None:
+        w = np.full(N, 1.0 / N)
+    else:
+        w = np.asarray(weights, dtype=float)
+        if (w.shape != (N,) or not np.all(np.isfinite(w)) or np.any(w < 0)
+                or w.sum() <= 0):
+            raise ValueError(
+                f"weights must be {N} finite non-negative values with positive sum")
+        w = w / w.sum()
 
-    # Average covariance + inter-sample mean spread
+    means = np.array([s.mean for s in gp_samples])   # (N, n_eval)
+    mu_bar = w @ means                                 # (n_eval,)
+
+    # Weighted average covariance + inter-sample mean spread
     n_eval = len(mu_bar)
     cov_bar = np.zeros((n_eval, n_eval))
-    for s in gp_samples:
+    for w_i, s in zip(w, gp_samples):
         diff = s.mean - mu_bar
-        cov_bar += s.cov + np.outer(diff, diff)
-    cov_bar /= N
+        cov_bar += w_i * (s.cov + np.outer(diff, diff))
 
     return GPPosteriorSample(
         mean=mu_bar,
@@ -292,7 +308,7 @@ def compute_log_marginal_likelihoods(
 
     Uses the same fresh-model rebuild approach as extract_gp_predictives.
     """
-    from bistar_gp.model import build_model
+    from bistar_gp.model import build_model, apply_hp_value
     from bistar_gp.decompose import compute_cholesky
 
     x_t = x_train.double() if isinstance(x_train, torch.Tensor) else torch.tensor(x_train).double()
@@ -321,20 +337,7 @@ def compute_log_marginal_likelihoods(
             # Set hyperparameters
             for pyro_name, val in sample.hyperparameters.items():
                 try:
-                    if "noise_covar.noise" in pyro_name:
-                        fresh_lik.noise = val
-                        continue
-                    parts = pyro_name.split(".")
-                    comp_idx = int(parts[1])
-                    kernel = fresh_model.kernel_components[comp_idx]
-                    if "period_length" in pyro_name:
-                        kernel.base_kernel.period_length = val
-                    elif "base_kernel.lengthscale" in pyro_name:
-                        kernel.base_kernel.lengthscale = val
-                    elif "outputscale" in pyro_name:
-                        kernel.outputscale = val
-                    elif "variance" in pyro_name:
-                        kernel.variance = val
+                    apply_hp_value(fresh_model, fresh_lik, pyro_name, val)
                 except (IndexError, AttributeError, RuntimeError):
                     continue
 
@@ -397,9 +400,13 @@ def soft_transfer_weighted(G_matrix: np.ndarray, tau: float,
         lw -= lw[valid].max()
         w = np.exp(lw)
 
-    # Weighted Boltzmann scores
+    # Weighted Boltzmann scores.
+    # Numerical stability: subtract a single GLOBAL scalar, which cancels in the
+    # cross-candidate normalization below. A per-candidate (axis=0) max does NOT
+    # cancel — it multiplies each candidate's score by exp(min_i G_ij / tau),
+    # distorting the posterior (same bug fixed in bms_star.soft_transfer).
     log_boltz = -G_matrix / tau
-    log_boltz -= log_boltz.max(axis=0, keepdims=True)
+    log_boltz -= log_boltz.max()
     boltz = np.exp(log_boltz)
 
     # Weighted average

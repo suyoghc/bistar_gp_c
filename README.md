@@ -100,6 +100,14 @@ Average GP-compatible density. Penalizes models with vast parameter wastelands.
 
 Both are computed via Laplace approximation to avoid Monte Carlo dimensionality bias.
 
+`laplace_evidence.laplace_log_Z_Mx(..., occam=False|True)` computes the **data-free** GP model prior `Z_Mx`, expanded at `argmin Ḡ` with the Hessian of `Ḡ` (no data likelihood). Model *selection* combines it with the data through `model_posterior(construction=...)`, an ablation ladder:
+
+- **baseline** — ordinary marginal likelihood, no GP.
+- **Construction I** — `Z_Mx · p_ord(D|M)` (GP acts as a class-level prior).
+- **Construction II** *(canonical)* — `∝ N(M) = ∫ p(y|φ)·exp(-Ḡ/τ)·p_ref(φ) dφ`, the Bayes-consistent posterior from a single GP-induced joint prior over (model, parameters).
+
+See `docs/plan-zmx-laplace.md` for the derivation and `Notes/DECISIONS.md` (D3) for the rationale.
+
 ### Temperature Parameter τ
 
 Controls the sharpness of the GP's influence:

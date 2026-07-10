@@ -51,12 +51,12 @@ from bistar_gp.induced_prior import (
     plot_prior_sharpness_summary,
 )
 from bistar_gp.laplace_evidence import (
-    compute_all_laplace_evidences,
-    compute_laplace_evidence,
+    model_posterior,
     plot_evidence_decomposition,
     plot_prior_penalty_comparison,
     plot_model_posteriors_by_prior,
     plot_tau_effect_on_evidence,
+    plot_ablation_ladder,
 )
 
 torch.set_default_dtype(torch.float64)
@@ -205,13 +205,11 @@ def main():
         print(f"  Part 2: Laplace Evidence Computation")
         print(f"{'─' * 60}")
 
-        laplace_results = compute_all_laplace_evidences(
-            param_spaces, x_train_np, y_train_np, x_eval,
-            avg_gp, mle_params,
-            metric_name=args.metric, tau=args.tau,
-            prior_name=prior_name,
+        mpr = model_posterior(
+            param_spaces, x_train_np, y_train_np, x_eval, avg_gp, mle_params,
+            construction="II", metric_name=args.metric, tau=args.tau, occam=False,
         )
-        all_laplace[prior_name] = laplace_results
+        all_laplace[prior_name] = mpr
 
     # ══════════════════════════════════════════════════════════════
     # Cross-prior comparison plots
@@ -280,6 +278,19 @@ def main():
                     dpi=150, bbox_inches='tight')
         plt.close(fig)
 
+        # Ablation ladder: baseline / Construction I / Construction II (DECISIONS D3).
+        # The Construction-II leg reuses the model_posterior result from Part 2
+        # (same metric/tau/occam) instead of re-optimizing N(M) per model.
+        fig = plot_ablation_ladder(
+            param_spaces, x_train_np, y_train_np, x_eval,
+            all_avg_gps[prior_name], mle_params,
+            metric_name=args.metric, tau=args.tau, prior_name=prior_name,
+            precomputed_II=all_laplace.get(prior_name),
+        )
+        fig.savefig(os.path.join(out_dir, f"ablation_ladder_{prior_name}.png"),
+                    dpi=150, bbox_inches='tight')
+        plt.close(fig)
+
     # ══════════════════════════════════════════════════════════════
     # SUMMARY TABLE
     # ══════════════════════════════════════════════════════════════
@@ -291,23 +302,20 @@ def main():
         model_names = list(param_spaces.keys())
 
         # Table 1: Evidence components
-        print(f"\n  Evidence = Data Fit + GP Prior Penalty + Occam Factor")
+        print(f"\n  log N(M) = Data Fit + GP Prior Penalty + Occam  (Construction II)")
         print(f"  {'Prior':<18} {'Model':<15} {'Fit':>8} {'GP Prior':>10} "
-              f"{'Occam':>8} {'Evidence':>10} {'Post':>8}")
+              f"{'Occam':>8} {'log N':>10} {'Post':>8}")
         print(f"  {'─' * 80}")
 
-        for prior_name, results in all_laplace.items():
-            log_evs = np.array([results[m].log_evidence for m in model_names])
-            log_evs_shifted = log_evs - log_evs.max()
-            posteriors = np.exp(log_evs_shifted) / np.exp(log_evs_shifted).sum()
-
-            for m_idx, model_name in enumerate(model_names):
-                lr = results[model_name]
-                marker = " ★" if posteriors[m_idx] == posteriors.max() else ""
+        for prior_name, mpr in all_laplace.items():
+            posteriors = np.array([mpr.posteriors[m] for m in model_names])
+            for model_name in model_names:
+                c = mpr.components[model_name]
+                marker = " ★" if mpr.posteriors[model_name] == posteriors.max() else ""
                 print(f"  {prior_name:<18} {model_name:<15} "
-                      f"{lr.log_lik_at_map:>8.1f} {lr.prior_penalty:>10.2f} "
-                      f"{lr.occam_factor:>8.1f} {lr.log_evidence:>10.1f} "
-                      f"{posteriors[m_idx]:>7.4f}{marker}")
+                      f"{c['log_lik_at_map']:>8.1f} {c['gp_penalty']:>10.2f} "
+                      f"{c['occam']:>8.1f} {c['log_N']:>10.1f} "
+                      f"{mpr.posteriors[model_name]:>7.4f}{marker}")
             print()
 
         # Table 2: Just posteriors
@@ -316,13 +324,10 @@ def main():
               f"{'Sin+Linear':>10} {'Quadratic':>10}")
         print(f"  {'─' * 62}")
 
-        for prior_name, results in all_laplace.items():
-            log_evs = np.array([results[m].log_evidence for m in model_names])
-            log_evs -= log_evs.max()
-            ps = np.exp(log_evs) / np.exp(log_evs).sum()
+        for prior_name, mpr in all_laplace.items():
             print(f"  {prior_name:<22}", end="")
-            for p in ps:
-                print(f" {p:>9.4f}", end="")
+            for m in model_names:
+                print(f" {mpr.posteriors[m]:>9.4f}", end="")
             print()
 
     print(f"\n  Results saved to {out_dir}/")

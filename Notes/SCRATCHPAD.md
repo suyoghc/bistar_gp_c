@@ -2,28 +2,317 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## In progress
+## Done this session (D11/D12/D13, comparison campaign)
 
-- **Z_Mx / Laplace reconciliation** — plan written (`docs/plan-zmx-laplace.md`), logged as
-  DECISIONS D3. Awaiting confirmation of **Construction II** as canonical, then implement on a
-  fresh `fix/laplace-zmx` branch after PR #1 lands.
+- **Method × metric comparison (D12, corrected by D13)** —
+  `experiments/fit_method_metric_comparison.py`, tables in
+  `docs/fit-method-metric-comparison.md` (+ capped-NUTS appendix
+  `docs/appendix-tree-depth-cap.md`, `_td7` outputs). Corrected headlines: toy posterior
+  BIMODAL under `informative` priors — low-noise mode = global DENSITY max (MAP, −33.4);
+  high-noise prior-scale mode holds ~3× the MASS (prior-IS 0.19/0.67). hmc/map/hmc_laplace
+  report the density-mode basin and pick Sin+Linear under every metric (hard assignment
+  200/200); VI migrates to the dominant-mass basin and picks Sinusoidal — thesis App. II
+  "VI ≈ HMC" does not replicate; reads as PRIOR MISSPECIFICATION expressed through method
+  choice. pw_kl_vcal ≡ pw_nll_gp empirically; kl_forward sharpest but brittle; pw_kl_vcal
+  default results-confirmed; METHOD default is now a real user fork (density mode vs mass —
+  see D12 Decision). depth-7 cap: ~9× cheaper, model posteriors shift ≤0.011. Raw draws
+  cached (`runs/fit_method_metric_comparison/samples_*.npz`) — sampler hours never re-paid.
+- **candidates.py restart-selection bug (D11)** — multi-start MLE selection was a no-op
+  (criterion constant n/2 at any MLE); Sin+Linear had collapsed to a degenerate near-linear
+  fit (same no-op + a tuple-unpack breakage in the two Mauna candidates, codex catch).
+  Fixed via full-NLL comparison at all six `_fit_mle` call sites + `tests/test_candidates.py`.
+  First-run outputs preserved as `results_degenerate_candidates.json`.
+- **fit_mcmc_simple sampled the wrong measure (D13)** — raw-space MH without the softplus
+  Jacobian; inflated small-hyperparameter mass ~3× and briefly inverted the D12 mass story
+  (caught by a post-commit codex verification, upheld by independent prior-IS + exact-mode
+  optimization; D12 corrected in place). Fixed via `_raw_log_jacobian` in the MH target +
+  analytic regression test. **92 tests pass.**
 
-## Open questions
+## Task 2 batch 2b — LANDED (D16 estimators + D17 ports/harness); remaining below
 
-- Confirm Construction II as the canonical posterior assembly (baseline / I as ablations).
-- Confirm Occam default = no-Occam (README's "faithful BI*"); with-Occam shown as sensitivity.
-- Should the process docs (this plan + `Notes/`) stay on the `fix/bms-correctness` PR, or move to a
-  separate branch so PR #1 is purely code?
+D17: both viz scripts ported onto the package (legacy pinned at a87356a), shared
+`_viz_spaces.py`, rerunnable comparison harness with an attribution ladder + τ-overlay.
+Headline: the legacy scripts CONTRADICTED each other at n=50 (priors: Linear 0.693;
+trajectory: Sin+Linear 0.934) — attributed dominantly to the priors script's hard-wired
+occam-ON convention (volume penalty against the d=5 true model), secondarily to pure
+Laplace; canonical figures (occam=False, IS estimator) select the true model 0.93–0.99.
+
+**Full-quality figures DONE (2026-07-06, corrected + hardened after codex post-run
+review):** canonical arms give Sin+Linear 0.86–0.99 at every n, both scripts exactly
+consistent at shared stages; codex's independent 200k-n_is rerun confirms the headline
+(n=50 canonical still 0.992). CORRECTION (codex): ESS warnings fired at the PRIMARY
+τ=0.3 for Sinusoidal at intermediate stages — a proposal-coverage gap (fixed starts miss
+data-dependent basins), not a sample-count problem (the n=50 τ-sweep is healthy at 200k,
+min ESS 955). Hardened: both ported scripts now default to seeded perturbed starts
+(--n-perturb 5) anchoring the IS proposal, and the trajectory port emits a per-stage
+per-model `ess_by_stage.md` diagnostic; stale first-layout legacy figures removed from
+`runs/viz_unification/`. **PR #2 is ready to flip from draft** (push + flip = user
+action). **Paper-grade artifact directory DONE (codex caveat resolved):**
+`runs/viz_unification/` regenerated from empty in ONE clean harness run with the hardened
+scripts — zero ESS warnings in every log, same-run `ess_by_stage.md` (worst 166), 26
+figures, all artifacts in a single 10-min timestamp window; headline reproduced exactly
+(canonical n=50 Sin+Linear 0.992 vs legacy priors Linear 0.693). codex's independent
+200k set kept at `runs/viz_unification_highis/` as the cross-check.
+The three deferred items are now ALL DONE (2026-07-07/08): Mauna candidate recheck
+post-D11 (523825c), non-viz figure regeneration (D3 item 2, see below), kb/Wiki update
+(D3 item 3). D3 is fully CLOSED.
+
+### superseded planning note (plan now at R2 + implementation addenda)
+
+Two adversarial verification runs (2026-07-06) resolved the open forks with measurements:
+pure Laplace FAILS the τ-sweep (ranking flip at τ≈88, gap 0.45 at τ=316, and 0.1–0.25
+mid-range distortion) AND plain MC fails low-τ (ESS<200 below τ≈0.3) — hybrid needed both
+ways; averaged-GP moment formulas match to 2e-16 with all port differences enumerated.
+R1 changes after codex review (all 9 outcomes dispositioned, plan §7): defensive-mixture
+IS (`is_log_Z_Mx`) replaces the fixed-window hybrid as the reference estimator (the R0
+blend was pure Laplace at exactly the τ=0.3 panels it claimed to fix); legacy scripts'
+verified inconsistencies (Linear bounds, occam ON vs OFF, multi-start styles) resolved by
+unify-with-disclosure; prior parity pinned to PRIOR_CONFIGS['informative'] (build_toy_kernels
+uses Gamma(2,2) — mismatch); rng= param on extract_gp_predictives; rerunnable harness via
+git-show of the pinned commit; 9-item test checklist in plan §6.
+
+### superseded design sketch (kept for the record)
+
+Port `bistar_viz/scripts/model_priors_laplace.py` (515 ln) and
+`model_prior_trajectory_laplace.py` (542 ln) onto `laplace_log_Z_Mx` (D10 unblocked; D15
+machinery committed at 641444a). Design decisions already made:
+- **Spaces**: build sigma-free `ModelParameterSpace`s IN the scripts mirroring their own
+  bounds/parameterizations (NOT `build_toy_parameter_spaces` — different bounds, plus a
+  sigma param that adds a flat direction; legacy-figure comparability wins).
+- **Multi-start**: external — loop each model's legacy `inits`, call
+  `laplace_log_Z_Mx(mle_params=init)` per start, keep min `G_at_min` (D11 lesson: Ḡ has
+  local minima in ω; package API stays single-start).
+- **Averaged GP**: replace prior-IS `compute_averaged_gp` with `extract_gp_predictives`
+  plus `aggregation_v3.average_gp_posterior`; draw source via `--gp-method` flag (map
+  default for the n-sweep figures per D9's "clean deterministic demonstrations" case;
+  vi/hmc selectable; the n=0 stage via `sample_prior` + `condition_on_data=False`).
+  Disclose the estimator change vs legacy prior-IS figures.
+- **Trajectory-script fork (surface with evidence, don't silently resolve)**: it uses a
+  Laplace/MC HYBRID (`compute_Z_hybrid`: Laplace low-τ, uniform-box MC log Z high-τ,
+  sigmoid blend) because pure Laplace degrades as τ flattens exp(−Ḡ/τ). Option (a) pure
+  Laplace + verify the high-τ tail vs the legacy hybrid; (b) add an optional MC Z_Mx
+  estimator to the package. Lean (a); check the tail first. The analytic τ-rescale makes
+  Laplace trajectories nearly free either way.
+- Then: figure regeneration + legacy comparison, codex review (stdin: `< /dev/null`!),
+  D16, flip D3 open item (1), PR #2 to Ready.
+
+## Mauna candidate recheck post-D11 — DONE (2026-07-07)
+
+- Reversal headline VERIFIED on the fixed restart selection: HMC reproduces
+  bit-identically, BMS* posteriors shift at most 0.00002 (Quad+2Harm 0.42218 vs Linear
+  0.11368 at pw_kl_forward@tau1). All 12 restarts of each Mauna candidate share one
+  basin (fixed frequencies) — the toy omega pathology has no analog here. Recheck
+  subsection in docs/impact-assessment-results.md; raw runs/mauna_recheck_postD11.json;
+  D11 Result updated.
+
+## D12/D13 gates RESOLVED (user, 2026-07-07) — logged in Notes/WRITEUP_DECISIONS.md
+
+- `metric_name="pw_kl_vcal"` RATIFIED as main/default; `kl_forward` to the appendix as a
+  covariance-sensitive stress-test metric (W1; no code change).
+- METHOD default: keep `hmc` for package/paper draft with the mass split disclosed loudly;
+  basin-occupancy check is a required diagnostic; prior-sensitivity / re-elicitation study
+  QUEUED before final paper numbers (W2). NOT switching the default to VI.
+- VI framing: bimodality/prior-sensitivity story, with recorded paper phrasing (W3).
+- `Notes/WRITEUP_DECISIONS.md` is the new paper/writeup decision log (gitignored,
+  local-only; entries W1–W3 so far).
+
+## OPEN: prior-sensitivity study before final paper numbers (from W2)
+
+- Re-elicit / revise the `informative` priors (truth-ish log joint −57.2 vs −33.4 MAP) and
+  re-run the method × metric comparison. Prior change invalidates the cached draws; use the
+  capped-depth arm (max_tree_depth 7, D12 addendum) — ~39 min, not 5.6 h.
+
+## Done this session (on `fix/laplace-zmx`, PR #2)
+
+- **Z_Mx / Laplace reconciliation** (DECISIONS D3) — Construction II canonical. Canonical API in
+  `laplace_evidence.py` (`laplace_log_Z_Mx`, `laplace_log_evidence_ordinary`/`_induced`,
+  `model_posterior(baseline|I|II)`, `_laplace_logdet`); callers migrated; figures redesigned
+  (decomposition + ablation ladder); deprecated `compute_(all_)laplace_evidence`/`LaplaceResult`
+  removed; module self-registers its default metric. **42 tests pass.**
+- **Eval follow-ups:** `pyproject.toml`; dedup `build_toy_kernels`; `InducedPriorResult` collision
+  renamed; optional RNG `seed=` on `fit_mcmc_simple`/`fit_hmc`; `numerical_hessian` boundary issue
+  fixed in the new module via `_laplace_logdet` (old copy removed).
+
+- **Code review (Fable, 8-angle) + D4 fixes** — review of the branch diff surfaced 33 findings
+  (10 severe). Fixed the top cluster (DECISIONS D4): stale `kernel_components` sample-key parsing
+  in `bms_star`/`debias`/`aggregation_v3`/`mechanism` (kernel posterior draws silently dropped),
+  double noise latent in `fit_hmc`, eval-mode MH target + duplicate proposal dim in
+  `fit_mcmc_simple`. New naming helpers `select_hmc_sites`/`apply_hp_value` in `model.py`.
+  **56 tests pass** (14 new).
+
+- **Review findings round 2 fixed (DECISIONS D5)** — occam flag now applies the −log V_ref
+  reference term consistently across constructions (ablation-ladder gaps volume-free); `Z_Mx`
+  computes τ analytically on H_Ḡ (clipping τ-invariant) and `n_clipped` propagates with a warning;
+  `soft_transfer_weighted` global-scalar max shift. **63 tests pass** (7 new).
+- **Last two severity-3 findings fixed** — `impact_assessment.compare()` diffs the union of old
+  and new keys (a section erroring on one side reports as CHANGED instead of vanishing; report is
+  now trustworthy for the Della rerun); `bistar_viz/scripts/bistar_sample_size_sweep.py` sys.path
+  bootstrap points at the repo root after the file move (runs directly again). **65 tests pass.**
+- **Multi-model review + D6 fix** — 5-model panel (Gemini 3.1 Pro / Kimi K2-thinking / GLM-5.2 via
+  OpenRouter; codex/gpt-5.5; Fable adjudicating). codex alone caught that `fit_hmc` sampled the
+  PRIOR not the posterior (`_hmc_pyro_model` discarded the return of `pyro_sample_from_prior()`).
+  Fixed in D6: score through the returned sampled module + new connection regression test. **66
+  tests pass.** Kimi's `×n` CRITICAL was a false positive (verified); `fit_mcmc_simple` Jacobian is
+  a pre-existing non-blocking follow-up. Panel verdict: NO-GO pre-fix, GO after D6.
+- **Prior/posterior predictive sampling (D7)** — `fit.sample_prior` (i.i.d., no NUTS) +
+  `extract_gp_predictives(condition_on_data=)`: one pipeline for both prior and posterior predictive
+  checks. **72 tests pass** (6 new). Adversarially reviewed: SHIP, no defects.
+
+- **Inference + G options, thesis-anchored (D9/D10)** — `fit_gp(method=hmc|vi|map|hmc_laplace)`,
+  one shared samples schema, defaults per thesis Ch.5 (full-Bayes sampling; VI was its primary
+  implementation, HMC the cross-check, MAP the contrast). D10: the "single-G decision" DISSOLVED —
+  viz variance-weighted MSE ≡ `pw_kl_vcal` (verified to 1e-12), so the default already matches both
+  thesis (KL variant) and viz figures; **viz unification UNBLOCKED**. Writeup-ready justifications in
+  `docs/inference-and-metric-options.md`. **84 tests pass** (9 new).
+
+## Still open (held deliberately)
+
+- **Remaining review findings** — ~20 severity-2 cleanups (duplication in laplace_evidence
+  closures, redundant recomputation in plot_ablation_ladder/tau sweeps, committed .pyc/.DS_Store
+  artifacts, walrus-in-ternary in impact_assessment, CLAUDE.md prose nits; full list in the
+  review output).
+- ~~**HMC archives invalid**~~ RESOLVED (2026-07-08): the five `bistar_gp/cache/*.npz`
+  caches regenerated fresh on the fixed code (pre-D2 originals quarantined in
+  `bistar_gp/cache/stale_preD2_20260214/`); the stale `runs/mauna_loa_sub150_hmc_*`
+  archive is superseded by the regenerated Mauna figure sets under `runs/figures_regen/`
+  (left on disk — never reuse). Impact assessment reran long ago (toy: Della; Mauna:
+  local 2026-07-04; recheck 523825c).
+
+- **Viz-script unification (UNBLOCKED by D10)** — port `model_priors_laplace.py` /
+  `model_prior_trajectory_laplace.py` onto `laplace_log_Z_Mx` with `metric_name="pw_kl_vcal"`
+  (proven identical to their G) and posterior draws (better estimator than their prior-IS).
+- **Old-vs-new impact assessment: toy sections DONE on Della** (job 10608943, 2026-07-03) —
+  `docs/impact-assessment-results.md`. Quantifies the D2 fixes: latent sites 7 down to 4, decompose
+  full_std order-of-magnitude correction, mcmc_simple ~8x tighter, soft_transfer shifts.
+  **`--mauna` section UNBLOCKED (D8)**: fit_hmc gained init_to_map + max_tree_depth; the
+  tree cap (7) is the operative fix — head-to-head 1.04 s/it vs 4.9–8.2 s/it, identical
+  posteriors. impact_assessment passes it via signature dispatch; both Mauna experiment
+  scripts fixed (were MAP-fitting one model, HMC-ing a fresh default one). codex review
+  FIX-FIRST findings verified + fixed (boundary-underflow init guard). **75 tests pass.**
+  **`--mauna` real-data results DONE (local, 2026-07-04)** — docs/impact-assessment-results.md
+  real-data section. Headline: BMS* model selection REVERSES on Mauna Loa CO2 (old picks
+  Linear 0.99; new picks Quad+2Harm 0.42) — the D4+D6 fixes change the scientific conclusion.
+  Mechanism: old HMC = prior (noise 1.58±1.09 ≈ GammaPrior), new = posterior (noise ≈0.001);
+  latent sites 13 down to 7; decompose 0.92 down to 0.03. NEW chain NOT converged (ESS≈1, Rhat 4–81) so exact
+  probs soft but DIRECTION robust (mechanistically forced by near-zero noise). Ran locally
+  (Della abandoned: della-h16 ~5× slower/op + thread-thrash + jitter-retry ballooning). Noise-
+  prior change remains a deliberately-untaken MODELING decision; converged full-Bayes = open fork.
+- ~~**Figure regeneration**~~ DONE (2026-07-08) — all non-viz figure sets regenerated on
+  the fixed code via the detached two-wave orchestrator `runs/figures_regen/regen.sh`
+  (system python3, miniconda base, torch 2.10): wave 1 rebuilt the five HMC caches
+  (`bms_star_toy --force-rerun`, uncapped as shipped, ~18 h) plus toy_example x2,
+  mauna_loa, and the bms_star_mauna_loa + debias chain (debias fed
+  `--use-cache runs/figures_regen/bms_mauna_loa/hmc_samples.pt` to bypass its own
+  un-capped default-init HMC block — that bug is flagged as a separate task); wave 2 ran
+  the five cache-dependent scripts (induced_prior, induced_prior_v2, sample_size_sweep,
+  v2/v3_comparison). 151 figures (18 under `runs/figures_regen/`, 133 in
+  `bistar_gp/results/`), zero errors across 11 logs (`runs/figures_regen/logs/`). The
+  full-data Mauna BMS* chain mixes slowly even at depth 7 (~8 min/step) — figures carry
+  the D8 convergence caveat. Sandbox-era viz scripts (mechanism_unified, pipeline_figure,
+  model_priors_montecarlo, model_prior_both) import nothing from bistar_gp — unaffected
+  by the fixes, not regenerated.
+  ADDENDUM (2026-07-08, post-codex closeout check): codex noted 76 February PNGs still
+  mixed into `bistar_gp/results/` alongside the fresh set. Resolved: 68 were prior-config
+  gaps the wave-2 defaults skipped — regenerated from the fresh caches
+  (`--priors low_noise high_noise` for induced_prior x2; `--priors vague
+  misspecified_tight low_noise high_noise` for v3_comparison; `*gapfill.log`); the 8 true
+  orphans (renamed `bms_tau_informative`, six `mauna_loa_map_*` from a February
+  CWD-in-results run — regenerated equivalents in `runs/figures_regen/mauna_loa/` — and
+  the v2 tau=10 grid point) are quarantined in `bistar_gp/results/stale_preD2_20260214/`.
+  `bistar_gp/results/` now contains ONLY post-fix figures (203) outside the quarantine.
+- ~~**kb/Wiki/GP-Induced Model Priors.md**~~ DONE (2026-07-07) — rewritten to
+  Construction II canonical (gitignored, local).
+- **Occam default** — currently `occam=False` (faithful BI*); with-Occam intended as sensitivity.
+- Minor: remove the 13 `sys.path` hacks now that `pyproject.toml` exists (`pip install -e .`);
+  add a cache key covering all result-determining config.
+
+## Cleanup backlog — 8-angle review findings (2026-07-01), annotated vs D4–D13
+
+Reconstructed from the original review; every FIXED/OPEN status re-verified against the
+tree at HEAD 6573ff0. 33 kept findings + 1 refuted. Anchored by symbol (lines have moved).
+Fold the `laplace_evidence.py` efficiency items into the viz unification (D10 unblocked it) —
+you'll be editing those plot functions anyway.
+
+### OPEN — execute these
+
+Correctness-adjacent / deferred:
+- [x] laplace_evidence.py :: numerical_hessian + _laplace_logdet :: not bounds-aware; the
+  [1e-8,1e12] clip CONSTANTS set the Occam term at a bound-pinned MAP (~+9.2 nats/flat dir).
+  D5 surfaced n_clipped but deferred the bounds-aware refactor :: S3-PLAU
+- [x] laplace_evidence.py :: plot_evidence_decomposition / plot_prior_penalty_comparison ::
+  read Construction-II-only component keys (log_lik_at_map, gp_penalty) with no
+  `result.construction` guard → KeyError on a construction="I"/"baseline" result :: S2
+
+Efficiency (redundant recompute — also speeds figure regeneration):
+- [x] laplace_evidence.py :: plot_tau_effect_on_evidence :: re-runs full Laplace at every τ
+  though baseline is τ-independent and Construction-I rescales analytically :: S2
+- [x] laplace_evidence.py :: plot_ablation_ladder :: recomputes laplace_log_evidence_ordinary
+  for both "baseline" and "I" per model (identical inputs) :: S2
+- [x] laplace_evidence.py :: laplace_log_evidence_induced :: recomputes ll_at via
+  _log_likelihood though _laplace_log_N's detail already holds log_lik_at_map :: S2
+- [x] experiments/bistar_induced_prior_v2.py :: main → plot_ablation_ladder :: re-runs
+  model_posterior(construction="II") already computed earlier in the same loop :: S2
+- [x] laplace_evidence.py :: numerical_hessian :: computes f0=f(x) but never uses it, and the
+  diagonal (i==j) uses the 4-point cross stencil (~2d+1 redundant objective evals) :: S2
+
+Duplication / reuse:
+- [x] laplace_evidence.py :: neg_log_f/neg_log_joint closures + _log_likelihood +
+  compute_G_at_params :: the `noise_param, 0.3 <= 0` guard and magic 0.3 default are
+  copy-pasted across 5 sites (drift silently desyncs Z_Mx / ordinary / N(M)) :: S2
+- [x] laplace_evidence.py :: _log_likelihood :: re-implements the iid Gaussian log-likelihood
+  (incl. the 0.3 default) rather than reusing a shared primitive :: S2
+- [x] laplace_evidence.py :: model_posterior :: hand-rolls shift-by-max softmax
+  (np.exp(logk - logk.max())) — another copy of a normalization snippet :: S2
+- [x] experiments/impact_assessment.py :: mauna() :: duplicates the pyro latent-site
+  trace/count block verbatim from collect() :: S2
+- [~] tests/test_laplace_zmx.py :: lin_space()/quad_space() :: re-implement Linear/Quadratic
+  ModelParameterSpace that bistar_gp.induced_prior already builds :: S2-PLAU
+
+Dead code / artifacts:
+- [x] laplace_evidence.py :: _packers :: returns (pack, unpack) but `pack` is dead at all 3
+  call sites (`_, unpack = _packers(...)`) :: S2
+- [x] bistar_viz/scripts/bistar_sample_size_sweep.py :: per-n_sub loop :: dead mutation
+  `spec.mle_value = ...` (nothing reads it; leftover from removed compute_all_laplace_evidences) :: S2
+- [x] conftest.py :: root sys.path shim :: now redundant — pyproject.toml exists and its own
+  comment says "Remove once the project ships a pyproject.toml" (ties into the 13 sys.path hacks) :: S2
+- [x] experiments/practice_EvansEtAL/__pycache__/*.pyc :: 6 committed .pyc artifacts the D1
+  hygiene sweep missed :: S2
+
+Prose (CLAUDE.md writing-style rules):
+- [x] README.md :: "Z_Mx is the **data-free** GP model prior" :: "X is the Y" label ban :: S2
+- [x] docs/plan-zmx-laplace.md :: "...are the ingredients." :: "ingredient" metaphor ban :: S2
+
+### OPEN — severity-1 (never addressed — FLAGGED)
+- [x] **laplace_evidence.py :: module imports :: `build_toy_parameter_spaces` and
+  `average_gp_posterior` imported but unused (1 occurrence each) :: S1**
+- [x] **Notes/DECISIONS.md :: prose :: right-arrow (→) chars — CLAUDE.md ban; 16 occurrences and
+  GROWING (D4–D13 entries added more) :: S1**
+
+### FIXED
+- [x] bms_star.py :: extract_gp_predictives :: stale 'kernel_components' filter dropped kernel draws :: S5 → D4
+- [x] fit.py :: fit_hmc/_hmc_pyro_model :: noise prior registered twice → phantom prior-only latent :: S4 → D4 (+D6)
+- [x] mechanism.py :: *_mechanism_config hp_patterns :: 'kernel_components.*' no longer matched :: S4 → D4
+- [x] fit.py :: fit_mcmc_simple :: MH target scored in eval mode (data twice) :: S4 → D4 (D13 added Jacobian)
+- [x] debias.py :: decompose_model_hmc :: same stale 'kernel_components' filter :: S4 → D4
+- [x] aggregation_v3.py :: soft_transfer_weighted :: per-candidate (axis=0) max shift distorted posteriors :: S4 → D5
+- [x] laplace_evidence.py :: ordinary vs model_posterior :: occam=False V_ref inconsistent across constructions :: S4 → D5
+- [x] laplace_evidence.py :: _laplace_logdet/_laplace_log_integral :: n_clipped discarded :: S3 → D5 (floor magnitude still OPEN)
+- [x] impact_assessment.py :: compare() :: key set only from NEW json (old-only vanished) :: S3 → severity-3 pair
+- [x] bistar_viz/scripts/bistar_sample_size_sweep.py :: sys.path bootstrap :: '..' = bistar_viz/ not root :: S3 → severity-3 pair
+- [x] bistar_viz/scripts/bistar_sample_size_sweep.py :: docstring :: stale 'python experiments/...' path :: S2 → severity-3 pair
+- [x] impact_assessment.py :: compare() :: walrus-in-ternary counter :: S2 → fixed w/ compare() union commit
+
+### SUPERSEDED (not actionable)
+- [~] Notes/DECISIONS.md :: D3 status in a later commit than the change (same-commit rule) :: S2 —
+  past-commit process observation; D4–D13 all comply going forward
+- [~] Notes/SCRATCHPAD.md :: "This is the *" openers :: S1 — flagged content gone (rewritten); watch style
+
+### REFUTED by the review's own verifier (do NOT action)
+- impact_assessment.py :: _git_sha :: claimed to dup run_manager._git_hash — REFUTED (both exist)
 
 ## Branches / PRs
 
-- **`fix/bms-correctness`** (PR #1: https://github.com/suyoghc/bistar_gp_c/pull/1) — repo hygiene +
-  5 correctness fixes + Z_Mx plan + Notes scaffold. Not yet merged.
-
-## Follow-ups from the codebase evaluation (not yet scheduled)
-
-- De-dup `build_toy_kernels` (defined twice, model.py:52 and :117) and the `InducedPriorResult`
-  name collision (induced_prior.py:155 vs mechanism.py:270).
-- RNG seeding for MAP/HMC; cache key that covers all result-determining config.
-- Fix `numerical_hessian` boundary regularization (fabricates curvature at boundary MAPs).
-- Add `pyproject.toml` to remove the 13 `sys.path` hacks and the `conftest.py` stopgap.
+- **PR #1** — MERGED to `main` (hygiene, 5 correctness fixes, plan, Notes workflow).
+- **PR #2** (`fix/laplace-zmx`, draft: https://github.com/suyoghc/bistar_gp_c/pull/2) — D3 core +
+  full caller migration + eval follow-ups + docs. Flip to "Ready" after the viz unification and
+  figure regeneration (the two held items above).

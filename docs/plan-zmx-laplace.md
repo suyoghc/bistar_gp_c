@@ -78,8 +78,8 @@ This evidence is Occam-independent (the `V_ref` cancels), consistent with the kb
 aggregation."
 
 ### 1.4 Full model posterior
-The assembly is the central modeling decision; see §2. The data-free `Z_Mx` (§1.2),
-within-model evidence (§1.3), and the joint-prior foundation (§2.1) are the ingredients.
+The assembly is the central modeling decision; see §2. It combines the data-free `Z_Mx`
+(§1.2), the within-model evidence (§1.3), and the joint-prior foundation (§2.1).
 
 ---
 

@@ -80,6 +80,45 @@ def test_soft_transfer_normalize_per_draw_still_available():
     assert np.all(p >= 0)
 
 
+# ── soft_transfer_weighted (aggregation_v3) — same bug family as fix 1 ──
+
+def _wposteriors(G, tau=1.0, log_weights=None):
+    from bistar_gp.aggregation_v3 import soft_transfer_weighted
+    G = np.asarray(G, dtype=float)
+    lw = np.zeros(G.shape[0]) if log_weights is None else np.asarray(log_weights, float)
+    names = [f"m{j}" for j in range(G.shape[1])]
+    return soft_transfer_weighted(G, tau, names, lw).instance_posteriors
+
+
+def test_weighted_soft_transfer_matches_direct_formula():
+    """Must equal the documented Σ_i w_i exp(-G_ij/τ) / Σ_i w_i, normalized."""
+    G = rng.gamma(2.0, 1.0, size=(7, 4))
+    lw = rng.normal(0, 1, size=7)
+    tau = 1.3
+    w = np.exp(lw - lw.max())
+    direct = (w[:, None] * np.exp(-G / tau)).sum(axis=0) / w.sum()
+    direct = direct / direct.sum()
+    assert np.allclose(_wposteriors(G, tau, lw), direct, atol=1e-12)
+
+
+def test_weighted_equal_mass_candidates_split_evenly():
+    """Two candidates with equal weighted Boltzmann mass but different best-draw
+    G must get exactly 0.5/0.5. The old per-candidate (axis=0) max shift
+    multiplied each candidate's score by exp(min_i G_ij/τ), breaking this."""
+    tau = 1.0
+    g = -np.log(0.5 * (1.0 + np.exp(-3.0)))   # both draws at the log-mean-exp of [0, 3]
+    G = np.array([[0.0, g],
+                  [3.0, g]])
+    assert np.allclose(_wposteriors(G, tau), [0.5, 0.5], atol=1e-12)
+
+
+def test_weighted_invariant_to_global_G_offset():
+    G = rng.gamma(2.0, 1.0, size=(6, 4))
+    lw = rng.normal(0, 1, size=6)
+    base = _wposteriors(G, 0.9, lw)
+    assert np.allclose(base, _wposteriors(G + 123.4, 0.9, lw), atol=1e-10)
+
+
 # ── compute_G_matrix failure-sentinel ──────────────────────────────
 
 @pytest.fixture

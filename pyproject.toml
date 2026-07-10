@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bistar_gp"
+version = "0.1.0"
+description = "BI* and BMS* with Gaussian Processes (Chandramouli & Shiffrin) — GP-backed Bayesian bias mitigation and model comparison"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "gpytorch>=1.11",
+    "pyro-ppl>=1.8",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "scikit-learn>=1.3",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[tool.setuptools]
+packages = ["bistar_gp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
