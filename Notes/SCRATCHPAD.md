@@ -335,5 +335,6 @@ Prose (CLAUDE.md writing-style rules):
   original commits preserved, pinned hashes like a87356a stay valid).
 - **PR #3** (`study/prior-sensitivity`) — MERGED to `main` 2026-07-10 (merge commit
   7069ea6).
-- **PR #4** (`feat/toy-elicited-n20-figures`) — IN FLIGHT: D18 ratification
-  implementation (see the PR #4 section above).
+- **PR #4** (`feat/toy-elicited-n20-figures`) — OPEN:
+  https://github.com/suyoghc/bistar_gp_c/pull/4 (D18 ratification
+  implementation, commit 8141703; see the PR #4 section above).
