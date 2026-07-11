@@ -1,0 +1,117 @@
+{
+  "scale": "sub",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "cpu_count": 14,
+  "torch_threads_default": 10,
+  "torch": "2.10.0",
+  "provenance": {
+    "openml_data_id": 41187,
+    "n_train_months": 461,
+    "n_test_months": 60,
+    "y_mean_ppm": 336.18776211135213,
+    "y_std_ppm": 14.58342466738224,
+    "x_offset_years": 1977.7109544468547,
+    "x_train_min": -19.544287780187915,
+    "x_train_max": 19.205712219812085,
+    "span_years": 38.75,
+    "raw_rows_prefilter": 2225,
+    "raw_columns": [
+      "year",
+      "month",
+      "day",
+      "weight",
+      "flag",
+      "station",
+      "co2"
+    ],
+    "raw_rows_post_co2_gt0": 2225,
+    "sha256_co2_column": "7e301efd6dbd2b4007723368aa69ebd2259ea6aa1d431650c209df181f244cb9",
+    "openml_version": "1",
+    "openml_name": "mauna-loa-atmospheric-co2"
+  },
+  "elapsed_s": 11.810831375187263,
+  "sub_design": {
+    "rule": "np.linspace over indices, 150 points, whole span",
+    "n": 150,
+    "stride_months_mean": 3.120805369127517,
+    "unique_calendar_months_covered": 12,
+    "span_years": 38.75
+  },
+  "N": 150,
+  "map_fit": {
+    "n_iter": 300,
+    "total_s": 1.4572432080749422,
+    "per_iter_s": 0.004857477360249807
+  },
+  "map_noise_variance_normalized": 0.0017203990064236674,
+  "map_hyperparameters": {
+    "likelihood.noise_covar.noise_prior": 0.0017203990064236674,
+    "covar_module.kernels.0.outputscale_prior": 1.0979647911919592,
+    "covar_module.kernels.0.base_kernel.lengthscale_prior": 4.761847793686714,
+    "covar_module.kernels.1.outputscale_prior": 0.10309475747441989,
+    "covar_module.kernels.1.base_kernel.lengthscale_prior": 2.6361691993838723,
+    "covar_module.kernels.2.outputscale_prior": 0.06920919911880853,
+    "covar_module.kernels.2.base_kernel.lengthscale_prior": 3.5716618559050755
+  },
+  "initialize_model_s": 0.11934341606684029,
+  "sampled_sites": [
+    "covar_module.kernels.0.base_kernel.lengthscale_prior",
+    "covar_module.kernels.0.outputscale_prior",
+    "covar_module.kernels.1.base_kernel.lengthscale_prior",
+    "covar_module.kernels.1.outputscale_prior",
+    "covar_module.kernels.2.base_kernel.lengthscale_prior",
+    "covar_module.kernels.2.outputscale_prior",
+    "likelihood.noise_covar.noise_prior"
+  ],
+  "n_sampled_sites": 7,
+  "period_length_sampled": false,
+  "dim_unconstrained": 7,
+  "logjoint": {
+    "median_s": 0.05175624997355044,
+    "min_s": 0.05007724999450147,
+    "max_s": 0.05278354114852846,
+    "reps": 5
+  },
+  "gradient": {
+    "median_s": 0.08455962501466274,
+    "min_s": 0.08190716686658561,
+    "max_s": 0.08880454092286527,
+    "reps": 5
+  },
+  "hessian": {
+    "time_s": 0.7936640419065952,
+    "eigenvalues": [
+      0.06920919911880839,
+      0.1030947574744199,
+      0.5489823955959796,
+      1.0,
+      3.571661855905076,
+      5.272338398767745,
+      3166.980647095594
+    ],
+    "min_eig": 0.06920919911880839,
+    "max_eig": 3166.980647095594,
+    "spd": true,
+    "n_below_1e-6_floor": 0,
+    "condition_number_after_floor": 45759.533232843474
+  },
+  "prior_eval_100": {
+    "total_s": 0.21457891585305333,
+    "per_eval_s": 0.0021457891585305333,
+    "n_failed": 0
+  },
+  "prior_eval_1000": {
+    "total_s": 2.1323666248936206,
+    "per_eval_s": 0.0021323666248936205,
+    "n_failed": 0,
+    "measured": true
+  },
+  "profile_grid_point": {
+    "profile_opt_n_iter": 150,
+    "profile_opt_total_s": 0.5261015419382602,
+    "profile_opt_per_iter_s": 0.0035073436129217346,
+    "laplace_det_bound_s": 0.7936640419065952,
+    "composite_per_point_est_s": 1.3197655838448554,
+    "note": "6-of-7-site profile via frozen raw_noise; Laplace-det cost bounded by the measured 7-dim Hessian time"
+  }
+}
