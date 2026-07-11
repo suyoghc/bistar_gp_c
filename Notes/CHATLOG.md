@@ -449,3 +449,14 @@ pilots, no expensive runs, no scientific result read before the commit.
   decomposition rule, Della hold), UserWarning layer on the three affected
   samplers (defaults untouched; disposition fork OPEN). Suite 207+1 with the
   new warnings firing.
+- **Ratifications + D27 (author-forwarded codex decision set, implemented)**:
+  v1.9 records all seven dispositions + three orchestrator corrections (A5
+  pre-fire evaluability, S1/S1f implementation pinning, warnings kept on
+  legacy paths). API rerouted: fit_hmc/fit_gp("hmc") = E1-backed;
+  fit_hmc_legacy_pyro explicit; vi/hmc_laplace gated behind allow_legacy=True.
+  M2bR rerun protocol frozen (docs/m2br-corrected-impact-protocol.md, hash in
+  v1.9; six runs, 120-min budget, stop-and-report). Superseded banners on the
+  four affected docs; scope-of-claim rule (repo replication, not the thesis).
+  Implementation: two codex gpt-5.6-sol (xhigh) subagents (API refactor;
+  protocol extraction), Fable verification + prereg/decision prose. Suite 212
+  passed + 1 skipped, verified directly. Branch ready for a DRAFT PR.

@@ -666,3 +666,103 @@ Della thread-pinning numbers then land as their own addendum, as before.
 candidate set, no battery value of v1.4/v1.6, no budget of v1.5/v1.6. The
 API warning layer changes no default and removes nothing; the default
 disposition is the recorded OPEN author fork (D26).
+
+---
+
+## v1.9 — author ratifications; A5 trigger correction; A6 dimensional clarification; API disposition D27; frozen M2bR rerun protocol — 2026-07-11
+
+**Prereg anchor:** §6.13 (O4), §6.15, §6.16, §2 Stage B (strategy
+identities), addenda v1.5/v1.6/v1.8, decision D27,
+`docs/d22-d24-impact-audit.md` §4 (dispositions). Provenance: the author
+forwarded the codex gpt-5.6-sol recommendation set with the instruction to
+implement it; three orchestrator corrections were applied and are marked
+below. No pilot, posterior, or Mauna BMS* number exists.
+
+**1. Ratifications (author, 2026-07-11).**
+- Historical results: every pre-D22 HMC, VI, and hmc_laplace result is
+  UNVALIDATED AND SUPERSEDED pending corrected reruns — not merely caveated.
+  Old numbers stay as provenance only; superseded banners applied to
+  `docs/impact-assessment-results.md`, `docs/fit-method-metric-comparison.md`,
+  `docs/prior-sensitivity-study.md`, `docs/appendix-tree-depth-cap.md`.
+- The v1.6 firewall reading: RATIFIED. Environment, timing, configuration,
+  and leapfrog-count fields are legitimate engineering fields;
+  hyperparameters, samples, acceptance, divergences, model scores, and
+  posterior summaries remain forbidden in benchmark artifacts.
+- A5 exact N = 232: RATIFIED (whole-span phase-coverage rationale), with the
+  trigger corrected in item 2.
+- The Della hold (v1.8 item 5): RATIFIED.
+- The M2b PR opens as DRAFT.
+- Scope-of-claim language rule: D22-D24 invalidate THIS repository's
+  attempted HMC/VI replication (a pyro/gpytorch integration); they establish
+  nothing about the thesis's original implementation (gpflow/ADVI) or its
+  conclusions. Every superseded banner, decision entry, and future report
+  sentence carries this framing.
+
+**2. A5 trigger correction (supersedes the v1.6 item-7 S1 branch).** The
+legacy S1 gradient path is not a validated scientific vehicle (D23), so its
+survival can neither establish nor rescue full-N feasibility, and the v1.6
+branch "a survivor set containing only S1 fires the fallback" is REMOVED.
+Corrected trigger:
+- Paper-target ELIGIBILITY: a strategy is eligible iff it passes G-B
+  validity at sub-150 AND is not the legacy S1 gradient path (S1 remains a
+  sub-150 pilot/diagnostic strategy only; orchestrator correction (a): its
+  exclusion is stated at eligibility, and "valid at N=232" is not a
+  pre-fire condition — pilots run at sub-150, and the post-fire N=232 run
+  still re-passes ALL gates at that scale per A5).
+- The fallback FIRES iff at least one eligible strategy exists and EVERY
+  eligible strategy's projected full-N=461 cost exceeds its frozen budget
+  (costing per v1.6 item 7: leapfrog projection for S1f/S2/S3, cubic law
+  for S4).
+- If NO eligible strategy passes G-B at sub-150, the study reports outcome
+  pattern O4 (§6.13: MAP+Laplace carries the figures, joint-posterior
+  claims rescoped per W6, with O4's degraded sub-case if S4 also fails) —
+  a smaller dataset is never a cure for absent validity.
+
+**3. A6 dimensional clarification (pre-ratification; codex correctly
+declined the ceilings as stated).** Every A6 budget is LOCAL WALL-CLOCK
+time on the executing machine — never aggregate core-hours; parallelism
+does not stretch a wall budget. Pilot budgets bind per strategy x scale and
+cover the complete 4-chain pilot (aggregate wall over all four chains,
+sequential or parallel), INCLUSIVE of MAP initialization, warmup,
+adaptation, and jitter retries. Paper-target budgets bind per strategy x
+arm at the stated scale with the same inclusions. The Stage-A budget binds
+per arm for the core geometry work; gated IS pools carry their own §6.15
+budgets. Dev-day figures are calendar effort, not compute. With these
+dimensions attached, the v1.5/v1.6 ceilings are RATIFIED: S1f and S2
+anchored by E1 measurements; S3 and S4 remain HARD AUTHOR CEILINGS, never
+measured projections (v1.2 point 7).
+
+**4. Strategy identities pinned across the API change (orchestrator
+correction (b)).** D27 routes the public `fit_hmc` (and
+`fit_gp(method="hmc")`) through the battery-gated E1 path and retains the
+legacy pyro implementation as `fit_hmc_legacy_pyro`; `fit_vi` and
+`fit_hmc_laplace` are unavailable through the scientific API pending repair
+(explicit `allow_legacy=True` opt-in only, warnings retained on every
+legacy path — orchestrator correction (c): the explicit name is the
+opt-in, the warning stays as the seatbelt). Plan §2 Stage B strategy
+identities bind to IMPLEMENTATIONS, not public aliases: S1 = the legacy
+pyro path (now `fit_hmc_legacy_pyro`); S1f = the E1 path (now the public
+`fit_hmc`). Every plan reference resolves accordingly; the microbenchmark
+already measures S1 through the legacy path by name.
+
+**5. M2bR corrected-impact rerun protocol: FROZEN.** The complete protocol
+— recovered original D12/D18 parameters with file:line citations, the
+six-run frozen list (2000 draws + 1000 warmup, seed 42, td7/td10 pairs,
+four D18 prior configurations through `fit_hmc_e1`), diagnostics and
+comparison plan, the unchanged-arm re-verification at atol=1e-12, the
+120-minute budget arithmetic, and the stop-and-report rule (reserve the
+final 10 minutes for persistence; never extend after inspecting results) —
+resides in `docs/m2br-corrected-impact-protocol.md`, frozen at
+
+```
+sha256 2d4a827777d9f6eafdc189f2f962d63b539e04a744cf5f4d58ba4683eaaf5a83
+```
+
+It executes ONLY in the M2bR PR after the M2b merge; no VI or hmc_laplace
+run occurs before those methods are repaired; any protocol change is a new
+addendum. Budget authorization: at most 2 hours local wall (author,
+2026-07-11).
+
+**What this addendum does NOT change:** no gate of §6.7, no arm, no
+candidate set, no battery value of v1.4/v1.6, no microbenchmark number of
+v1.5. The plan's §6.15 M2c obligations are unchanged.

@@ -123,7 +123,9 @@ def test_fit_hmc_map_init_and_tree_cap_smoke(toy_model):
     x, y = x[:12], y[:12]
     kers, names = build_toy_kernels()
     m, l = build_model(x, y, kers, names)
-    s = fit_hmc(m, l, x, y, n_samples=2, n_warmup=2, verbose=False, seed=0,
+    from bistar_gp.fit import fit_map
+    fit_map(m, l, x, y, n_iter=100, lr=0.05, verbose=False)
+    s = fit_hmc(m, l, x, y, n_samples=2, n_warmup=8, verbose=False, seed=0,
                 init_to_map=True, max_tree_depth=4)
     assert len(s) == 4, sorted(s)
     assert all(np.isfinite(v).all() for v in s.values())

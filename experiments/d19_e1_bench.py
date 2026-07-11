@@ -7,8 +7,9 @@ families per scale: (1) per-evaluation cost of the S1 oracle potential
 against the E1 direct potential, value and value+gradient, which checks the
 ~200x deep-copy overhead claim E1 exists to remove; (2) short td7 NUTS runs
 on both paths, priced in wall milliseconds per sampling-stage leapfrog. The
-S1 pyro path runs only at the smallest requested scale because A6 confines
-it to sub-150 work; S1f runs at every scale.
+By plan Stage B, S1 denotes the legacy Pyro path and runs only at the smallest
+requested scale because A6 confines it to sub-150 work; S1f runs at every
+scale.
 
 Persistence firewall (prereg addendum v1.2, point 6; a preregistration
 constraint, not a style choice): this script persists and prints ONLY timing
@@ -215,15 +216,21 @@ def run_s1f(model, likelihood, x, y, args):
 
 
 def run_s1(model, likelihood, x, y, args):
-    """S1: NUTS on the pyro traced path (fit_hmc), timing fields only."""
-    from bistar_gp.fit import fit_hmc
+    """S1: legacy Pyro NUTS (fit_hmc_legacy_pyro), timing fields only."""
+    import warnings
+
+    from bistar_gp.fit import fit_hmc_legacy_pyro
 
     t0 = time.perf_counter()
-    samples, diagnostics = fit_hmc(
-        model, likelihood, x, y,
-        n_samples=args.n_samples, n_warmup=args.n_warmup, verbose=False,
-        seed=args.seed, init_to_map=True, max_tree_depth=args.max_tree_depth,
-        return_diagnostics=True)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message="fit_hmc_legacy_pyro is the LEGACY path",
+            category=UserWarning)
+        samples, diagnostics = fit_hmc_legacy_pyro(
+            model, likelihood, x, y,
+            n_samples=args.n_samples, n_warmup=args.n_warmup, verbose=False,
+            seed=args.seed, init_to_map=True,
+            max_tree_depth=args.max_tree_depth, return_diagnostics=True)
     wall_s = time.perf_counter() - t0
     del samples  # firewall: discarded unread (v1.2 point 6)
     rec = nuts_record(wall_s, diagnostics, args)

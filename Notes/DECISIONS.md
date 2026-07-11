@@ -1790,3 +1790,59 @@ any VI default exists either way; (b) ratification checklist items in the audit 
 (c) the M2bR corrected-impact rerun budget.
 
 **Status:** adopted and committed on feat/d19-m2b-e1; M2c blocked on M2bR.
+
+## D27: author ratifications implemented — API rerouted through E1, A5 trigger corrected, A6 dimensioned, M2bR rerun protocol frozen, Draft PR — 2026-07-11
+
+**Problem:** D26 left seven ratification items open. The author forwarded the codex
+recommendation set resolving all of them and instructed implementation (with codex
+gpt-5.6-sol xhigh subagents doing the heavy lifting). Three recommendations needed
+correction before implementation: (a) the A5 condition "at least one otherwise valid
+strategy passes at N=232" is not evaluable pre-fire (pilots run at sub-150; N=232 runs
+only after firing) — implemented as sub-150 G-B eligibility + post-fire revalidation;
+(b) the plan's S1/S1f identities had to be pinned to IMPLEMENTATIONS before the public
+alias flip, or Stage B becomes self-referential; (c) warnings stay on the legacy paths
+after routing (the explicit name is the opt-in, the warning is the seatbelt).
+
+**Decision (all recorded in prereg addendum v1.9; dispositions in
+docs/d22-d24-impact-audit.md §4):**
+- Ratified: superseded-not-caveated standing for all pre-D22 HMC/VI/hmc_laplace results
+  (banners applied to the four affected docs); the v1.6 firewall reading; A5 N=232; the
+  Della hold; the Draft-PR route; the scope-of-claim language rule (defects concern THIS
+  repository's pyro/gpytorch replication, never the thesis's gpflow/ADVI implementation
+  or its conclusions).
+- A5 trigger corrected: eligibility = non-legacy G-B survivors at sub-150; fallback fires
+  iff at least one eligible strategy exists and every one is full-N infeasible under the
+  frozen budgets; no eligible survivor = outcome O4 (§6.13), never a scale change; the
+  v1.6 "S1-only fires the fallback" branch is removed and the legacy S1 path is excluded
+  from paper-target vehicle eligibility (sub-150 pilot/diagnostic only).
+- A6 ratified only after dimensioning: all budgets are LOCAL WALL-CLOCK, per strategy x
+  scale (x arm at paper target), covering the complete 4-chain pilot, inclusive of
+  MAP-init/warmup/adaptation/jitter retries; core-hours are never the budgeted quantity;
+  S3/S4 remain hard author ceilings.
+- API disposition IMPLEMENTED (codex subagent A, verified independently): public fit_hmc
+  and fit_gp("hmc") now route through the battery-gated E1 path (diagnostics carry
+  sampler="nuts_e1"); the pyro implementation is retained as fit_hmc_legacy_pyro
+  (warning kept, historical reproduction and benchmarks only — the microbenchmark pins
+  S1 to it by name); fit_vi and fit_hmc_laplace raise RuntimeError through the
+  scientific API and run only under keyword-only allow_legacy=True with their warnings;
+  dispatch, docstrings, and tests updated. Suite 212 passed + 1 skipped (verified
+  directly, not just from the subagent report).
+- M2bR corrected-impact rerun protocol FROZEN before any run (codex subagent B extracted
+  every original D12/D18 parameter with file:line citations):
+  docs/m2br-corrected-impact-protocol.md, sha256 2d4a8277...5a83, pinned in v1.9 — six
+  runs (2000+1000, seed 42, td7/td10, four D18 prior configurations via fit_hmc_e1),
+  atol=1e-12 unchanged-arm re-verification, 120-minute budget with a stop-and-report
+  rule, no VI/hmc_laplace until repaired. Executes only in the M2bR PR after the M2b
+  merge.
+
+**OPEN (M2c/pilot design, noted while verifying):** corrected gradients explore far more
+aggressively than the broken legacy guidance, so short or weakly-initialized E1 chains
+can reach states where the additive-kernel Cholesky exhausts jitter and NotPSDError
+aborts the run (observed in a deliberately weak verification probe; the suite's fixtures
+use proper MAP-init and are stable). Whether the SAMPLING wrapper should map NotPSDError
+to +infinity potential (reject-and-continue, Stan-style) instead of crashing is a target-
+definition choice that must be preregistered before pilots — it does not change the
+battery (E1Potential itself keeps raise-parity with the oracle, v1.4 gate h).
+
+**Status:** implemented and committed on feat/d19-m2b-e1; M2b PR opens as DRAFT; M2bR
+next (after merge), M2c blocked on M2bR.
