@@ -1638,3 +1638,45 @@ reference); torch.autograd.functional.hessian with vectorize/functorch strategie
 underlying custom Functions); reporting to gpytorch upstream (queued alongside D23's, OPEN).
 
 **Status:** implemented at M2b; battery green (29 tests).
+
+## D25: E1 NUTS microbenchmark — the plan's "~200x deep-copy penalty" was mostly the D22 plate; final A6 budgets + frozen A5 fallback (prereg v1.5) — 2026-07-11
+
+**Problem:** M2b owed three §6.15 numbers: the real E1 NUTS microbenchmark (replacing the
+§1.2 kernel-cost proxy rows), final A6 pilot budgets, and the A5 subsample-fallback design +
+infeasibility predicate. The microbenchmark also had to respect the v1.2 point-6 firewall
+(timing/potential-eval/leapfrog fields only).
+
+**Decision:** `experiments/d19_e1_bench.py` (firewalled: fits verbose=False, samples deleted
+unread, only leapfrog_counts consumed from diagnostics; an AST-audited persist path) ran
+locally at sub-150 and full-461 (td7, 50w+50d, seed 0, 20-rep per-eval medians); artifact
+`runs/d19_planning/e1_nuts_microbench.json`. Headlines, recorded in prereg v1.5:
+
+- The corrected S1 potential costs 6.0/10.5 ms (value, sub/full) and 7.4/14.4 ms
+  (value+gradient) — the plan's measured 51.8 ms/1.486 s and 84.6 ms/2.793 s rows were
+  measurements of the PLATED (D22) target. The Stage-B "~200x per-leapfrog advantage"
+  motivation for E1 dissolves into: 1.2-3.2x per-evaluation advantage + D23 immunity +
+  no deep copy.
+- The D23 mechanism showed up on cue: S1 saturated td7 (127 leapfrogs/draw) where S1f
+  needed 6.7/draw at sub-150 — ~17x less wall per draw from correct gradients alone.
+- S1f full-461: 23.9 ms/leapfrog wall; a saturated 400-iteration chain projects to ~20 min.
+
+Final A6 budgets frozen on SATURATED bounds (count-independent): S1f sub-150 2 h (measured
+bound 56 min), S1 sub-150-only 6 h (measured anchor ~25 min for 4x400), paper-target
+full-461 E1-path 4 h per strategy x arm (measured bound 81 min, x1.5 overhead, doubled);
+S2 2 h / S3 2 dev-days + 4 h / S4 30 min stay AUTHOR-APPROVED CEILINGS per v1.2 point 7;
+Stage A 1.5 h/arm and toy smoke 30 min unchanged. A5 fallback frozen: whole-span
+season-preserving `linspace` subsample (the existing sub-150 rule), N_fb = 232 (step 1.991
+cycles all 12 phases; (461/232)^3 = 7.8x dense-solve reduction; N=231's exact step 2.0
+would lock six fixed phases), and a timing/leapfrog/budget-only infeasibility predicate
+(90th-percentile pilot leapfrogs capped at 127, x1600 iterations, x1.5 overhead, vs the
+frozen budgets; adequacy and BMS* outputs barred). Della thread-pinning numbers stay OWED
+until the A7 Della re-run of experiments/d19_bench.py (whose pre-D22 anchors are equally
+superseded).
+
+**Alternatives considered:** freezing budgets on observed leapfrog counts (rejected:
+single-seed 50w+50d geometry sensitivity; saturated bounds are count-independent);
+N_fb = 231 or 150 for the fallback (231 locks six phases; 150 wastes the validated
+sub-150-to-232 headroom and triples the projected-cost cushion needlessly).
+
+**Status:** v1.5 landed append-only; microbenchmark artifact committed. OPEN at M2b close:
+the A7 Della re-benchmark (user-executed, thread-pinned) and its addendum.

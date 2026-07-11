@@ -353,3 +353,101 @@ passed, 1 structure-conditional skip).
 **What this addendum does NOT change:** no gate of §6.7, no arm, no
 candidate set. A6 final budgets and the A5 fallback design remain owed as
 the next M2b addendum, after the microbenchmark.
+
+---
+
+## v1.5 — E1 NUTS microbenchmark results; final A6 budgets; frozen A5 subsample-fallback design (M2b, round 5) — 2026-07-11
+
+**Prereg anchor:** §1.2 (E1 rows "PENDING the M2b E1 NUTS microbenchmark"),
+§6.15 rows "A6 pilot budgets finalized" and "A5 subsample-fallback", §7
+A5/A6/A7, addenda v1.2 (points 6-7) and v1.3. No pilot, posterior, or Mauna
+BMS* number exists; the microbenchmark persisted timing, potential-
+evaluation, and leapfrog-count fields only (`experiments/d19_e1_bench.py`,
+artifact `runs/d19_planning/e1_nuts_microbench.json`, firewall note embedded
+in the artifact; samples and scientific diagnostics discarded unread).
+
+### Microbenchmark (local, macOS arm64 14 cores, 10 torch threads; td7,
+50 warmup + 50 draws, seed 0, single chain; medians over 20 reps for
+per-eval rows)
+
+| Quantity | sub-150 | full N=461 |
+|---|---|---|
+| S1 potential value (corrected target) | 6.01 ms | 10.52 ms |
+| E1 potential value | 1.90 ms | 5.37 ms |
+| S1 value+gradient (one leapfrog's work) | 7.39 ms | 14.44 ms |
+| E1 value+gradient | 3.33 ms | 12.19 ms |
+| per-evaluation advantage, S1/E1 | 3.2x value / 2.2x grad | 2.0x / 1.2x |
+| S1f NUTS: wall, sampling leapfrogs | 5.53 s, 334 (6.7/draw) | 32.97 s, 1378 (27.6/draw) |
+| S1f wall ms/leapfrog (warmup overhead inside) | 16.6 | 23.9 |
+| S1 NUTS: wall, sampling leapfrogs | 94.26 s, 6350 (127/draw — saturated) | not run (§1.3: pyro path sub-150 only) |
+| S1 wall ms/leapfrog | 14.8 | — |
+
+**Cost-story revision (supersedes the §1.1/§1.2 anchors for planning):** the
+plan's measured pyro-potential rows (51.8 ms sub / 1.486 s full per value,
+84.6 ms / 2.793 s per gradient) were measurements of the PLATED (D22) target,
+whose obs term evaluated a batch of N identical MVNs; on the corrected
+target those costs are 6.0/10.5 ms and 7.4/14.4 ms. The Stage-B motivation
+sentence "the measured ~200x per-leapfrog advantage over the deep-copy path"
+therefore no longer describes evaluation cost: post-correction, E1's
+per-evaluation advantage is 1.2-3.2x. E1's operative advantages are (a)
+D23 immunity — correct gradients on every coordinate, where S1's broken
+kernel-site gradients saturated td7 in the microbenchmark (127
+leapfrogs/draw vs S1f's 6.7 at sub-150: ~17x fewer leapfrogs per draw and
+~17x less wall per draw, from guidance quality rather than evaluation
+cost) — and (b) no per-evaluation deep copy. Single-seed, single-chain,
+50w+50d caveat: leapfrog counts are geometry- and adaptation-dependent;
+budgets below therefore freeze on the SATURATED bound (127 leapfrogs per
+iteration at td7), which is count-independent.
+
+### Final A6 budgets (frozen; pilot shape everywhere: 4 chains x
+(200 warmup + 200 draws), seeds 0/1/2/3, td7 — §6.15)
+
+| Item | Frozen budget | Anchor and label |
+|---|---|---|
+| E1 build + battery + microbenchmark | DONE: ~1 dev-day; compute ~3 min | under the provisional 2 dev-days + 30 min |
+| Toy smoke (G-toy), per strategy | 30 min | unchanged from provisional |
+| S1f pilot, sub-150 | 2 h | MEASURED saturated bound: 4 x 400 x 127 x 16.6 ms = 56 min; 2 h keeps a 2.1x cushion |
+| S2 pilot, sub-150 (E1 vehicle) | 2 h | AUTHOR-APPROVED CEILING (v1.2 point 7): mass-convention overhead unmeasured until M2c |
+| S3 pilot | 2 dev-days + 4 h sub-150 | AUTHOR-APPROVED CEILING (v1.2 point 7) until M2c |
+| S4 pilot | 30 min | AUTHOR-APPROVED CEILING (v1.2 point 7) until M2c |
+| S1 pilot, sub-150 ONLY | 6 h | measured anchor: the saturated 100-iteration microbench chain cost 94 s, so 4 x 400 iterations projects to ~25 min; the 6 h ceiling absorbs pathological adaptation |
+| Stage A per arm | 1.5 h core + gated IS pools | unchanged from provisional |
+| Paper-target run (full N=461), per G-B-surviving strategy x arm, E1 path | 4 h | MEASURED saturated bound: 4 x 400 x 127 x 23.9 ms = 81 min; x1.5 engineering overhead = 2.0 h; 4 h doubles that |
+| S1 pyro path at full N | none | barred without explicit author exception (§1.3, unchanged) |
+
+Della thread-pinning numbers remain OWED: they land as their own addendum
+after `experiments/d19_bench.py` runs on Della (A7), before any Della job
+assignment. Note for that re-run: the pre-D22 Della anchors also measured
+the plated target and are superseded the same way.
+
+### Frozen A5 subsample fallback (design rule, exact N, infeasibility predicate)
+
+- **Design rule:** whole-span, season-preserving index subsample of the 461
+  training months: `indices = np.round(np.linspace(0, 460, N_fb)).astype(int)`
+  — the same frozen rule the sub-150 design already uses (§1.1,
+  `experiments/d19_bench.py`, the microbenchmark above), so every pilot
+  validates the same subsampling geometry the fallback would ship.
+- **Exact N:** N_fb = 232. The step 460/231 = 1.991 months keeps the full
+  38.4-year span (trend identifiability), cycles through all twelve
+  month-of-year phases across consecutive years (N_fb = 231 gives step
+  exactly 2.0 and would lock sampling to six fixed phases forever), and cuts
+  the dominant dense-solve cost by (461/232)^3 = 7.8x.
+- **Infeasibility predicate (engineering/budget evidence only, per A5):**
+  the fallback fires iff, for EVERY strategy that passed G-B validity at
+  sub-150, the projected paper-target cost at full N=461 exceeds that
+  strategy's frozen paper-target budget above, with
+  projected cost = (median per-leapfrog wall cost at full N on the executing
+  platform: this microbenchmark locally, or the A7 Della re-measurement for
+  Della jobs) x (the 90th percentile of the strategy's own sub-150 pilot
+  per-draw leapfrog counts, capped at 127) x 1600 iterations (4 chains x
+  400) x 1.5 engineering overhead. Admissible inputs: timing,
+  potential-evaluation, leapfrog-count, and budget fields ONLY; adequacy
+  diagnostics and BMS* outputs are barred from the trigger. Evaluated once,
+  before any M3 full-scale assignment; the arithmetic and outcome are
+  committed with the run log. If the predicate fires, the N=232 fallback is
+  validated through ALL gates at that scale and disclosed as the paper
+  target (A5).
+
+**What this addendum does NOT change:** no gate of §6.7, no arm, no
+candidate set, no battery value of v1.4. S3/S4 numbers above remain
+ceilings, never measured projections, until M2c (v1.2 point 7).
