@@ -1471,3 +1471,66 @@ equivalence battery + the real E1 NUTS microbenchmark + Della re-benchmark (A7) 
 budgets + the A5 fallback design/infeasibility predicate. M2c: S2/S3/S4, M1 prior tests,
 G-toy tolerances, the divergence-clustering predicate (defined against the D20 schema),
 corrected normalized profile band masses. M2d: arms + orchestration + G0 sign-off.
+
+## D21: E1 coordinate convention — pyro sample-site coordinates are public, gpytorch raw is internal-only (prereg addendum v1.2, first M2b addendum) — 2026-07-11
+
+**Problem:** the frozen plan's Stage-B definition of E1 ("the unconstrained log joint
+assembled from gpytorch raw parameters, analytic prior log-probs, and constraint Jacobians,
+exposed as a pyro potential_fn") leaves the NUTS coordinate system ambiguous, and its literal
+reading picks the WRONG one: gpytorch raw parameters are softplus coordinates, while the S1
+pyro path (fit_hmc) samples in pyro's biject_to(support) coordinates — log-space for the
+seven Gamma/LogNormal sites. Building E1's sampler on raw coordinates would (a) make S1f a
+covert reparameterization of S1 (different geometry, different step sizes, different
+leapfrog counts), contaminating the S1-vs-S1f "identical target, cheap leapfrogs"
+comparison and pre-judging S3, the strategy whose whole point is a coordinate change under
+test; (b) invite the meaningless direct comparison of a softplus-raw potential against
+pyro's log-coordinate potential, which differ by a genuine change-of-variables term; and
+(c) leave open the D6-class composition error of using ExactMarginalLogLikelihood (which
+already adds registered priors and divides by N) as a pure likelihood under an explicit
+prior sum.
+
+**Decision:** author-directed 7-point clarification, recorded as prereg addendum v1.2 in
+`docs/prereg-addenda-d19.md` (the FIRST M2b addendum, §6.16 append-only, committed before
+any E1 code exists):
+
+1. E1's PUBLIC NUTS coordinates = the exact pyro unconstrained sample-site coordinates
+   returned by `pyro.infer.mcmc.util.initialize_model` on `_hmc_pyro_model` — same site
+   set, order, and support transforms as S1; the same objects fit_hmc_laplace already
+   consumes (bistar_gp/fit.py:474). Per state: theta_s = transforms[s].inv(u_s);
+   autograd-preserving functional substitution of theta into the gpytorch parameters (no
+   .data writes on the gradient path); direct GP evaluation on the same module (no
+   pyro_sample_from_prior deep copy); pyro's own support-transform log-Jacobians added,
+   one per site. S1f = S1 in target AND coordinates; gpytorch raw is at most an internal
+   evaluation representation.
+2. No softplus-raw vs log-coordinate potential comparison except through the explicit
+   coordinate map and its change-of-variables Jacobian (D13 _raw_log_jacobian pattern,
+   internal checks only).
+3. Full observation marginal log_prob(y) computed exactly once per evaluation;
+   ExactMarginalLogLikelihood never used as a pure likelihood + priors (it adds priors
+   and divides by N); every canonical prior exactly once, every pyro support Jacobian
+   exactly once; duplicate-prior/duplicate-site inventory tests in the battery (D6 class).
+4. The A10-frozen period is absent from the seven-site E1 vector; battery tests exclusion
+   and that it stays exactly 1.0; its old Interval boundaries are removed from the E1
+   boundary stress points (no Interval-constrained coordinate remains among the 7 sites).
+5. Posterior-predictive equality is defined on paired identical constrained
+   hyperparameter states, never as pointwise equality of independent NUTS chains; any
+   retained chain-level comparison needs a preregistered distributional/MC-error
+   criterion frozen before the chains are run.
+6. The real-data E1 NUTS microbenchmark (training-only loader) persists ONLY timing,
+   potential-evaluation, and leapfrog-count fields; samples and scientific diagnostics
+   are discarded without printing or serialization (§6.5 blinding).
+7. M2b finalizes measured cost projections only for E1/S1f and directly shared machinery;
+   S3/S4 numbers freeze as author-approved ceilings (the A6 provisional values) until
+   their M2c implementations are benchmarked — never labeled measured projections.
+
+**Alternatives considered:** gpytorch-raw public coordinates (the literal plan reading) —
+rejected as a covert reparameterization, above; sampling raw coordinates with the D13
+raw-Jacobian correction — correct as a density but still a different sampler geometry, so
+it answers an S3-shaped question, not the S1f one; deferring the convention to
+implementation time — rejected, this is exactly the class of silent fork §6.16 exists to
+pin before code makes the choice by accident.
+
+**Status:** addendum v1.2 landed (append-only; v1.1 untouched); E1 implementation follows
+on branch `feat/d19-m2b-e1` under this convention. The E1 numeric tolerances +
+point-generation distributions, final A6 budgets, and the A5 fallback design remain owed
+as their own M2b addenda per §6.15.

@@ -65,3 +65,117 @@ available, as §6.6 explicitly permits.
 implementation-coupled §6.15 values stay owed at M2b (E1 tolerances, A6
 budgets, A5 fallback) and M2c (S2/S3/G-toy tolerances, divergence-clustering
 predicate, M1 overlap diagnostic, corrected profile band masses).
+
+---
+
+## v1.2 — E1 coordinate convention (first M2b addendum, pre-implementation) — 2026-07-11
+
+**Prereg anchor:** §2 Stage B (Enabler E1 paragraph), §6.15 (row "E1
+equivalence tolerances + frozen point-generation distributions"), §6.16
+addendum protocol, decisions A5/A6/A10/A11 (§7). Author-directed
+clarification, recorded BEFORE any E1 code, benchmark number, or pilot
+result exists (§6.16 ordering satisfied). The frozen plan's Stage-B sentence
+defines E1 as "the unconstrained log joint assembled from gpytorch raw
+parameters, analytic prior log-probs, and constraint Jacobians"; per §6.16
+that text stays untouched, and this addendum GOVERNS the coordinate
+convention it left ambiguous. Rationale: as written, the sentence permits an
+E1 whose NUTS coordinates are gpytorch raw (softplus) parameters — a
+DIFFERENT unconstrained parameterization from the S1 pyro path, which
+samples in pyro's `biject_to(support)` coordinates (log-space for the
+Gamma/LogNormal sites). Sampling in a different coordinate system is a
+reparameterization, and reparameterization is the S3 strategy under test;
+letting it into E1 silently would both contaminate the S1-vs-S1f comparison
+(no longer "statistically identical target, cheap leapfrogs") and pre-judge
+S3.
+
+**(1) Public coordinates are pyro's; gpytorch raw is internal-only.** E1's
+PUBLIC NUTS coordinates are the exact pyro unconstrained sample-site
+coordinates returned by `pyro.infer.mcmc.util.initialize_model` on the S1
+target (`_hmc_pyro_model`), with the same site set, site order, and support
+transforms as S1 (`fit_hmc`) — the same objects `fit_hmc_laplace` already
+consumes (`init_params, potential_fn, transforms, _ = initialize_model(...)`).
+GPyTorch raw parameters may serve as an internal evaluation representation
+only; they never define the sampling coordinates. For each pyro-coordinate
+state u, E1 evaluates as follows:
+
+- constrained value: theta_s = `transforms[s].inv(u_s)`, where `transforms`
+  is the site-transform dict returned by `initialize_model` (the oracle's own
+  transform; `transforms[s]` maps constrained to unconstrained, its `.inv`
+  recovers theta);
+- theta is mapped into the corresponding gpytorch parameter WITHOUT breaking
+  autograd (functional parameter substitution in the differentiable graph; no
+  `.data` writes on the gradient path);
+- the GP marginal is evaluated directly on the same module — no
+  per-evaluation deep copy (`pyro_sample_from_prior()`'s copy is exactly the
+  ~200x cost E1 exists to remove);
+- the same support-transform log-Jacobian terms pyro applies are added, one
+  per site.
+
+Consequence: S1f is S1 in BOTH target and coordinates; only the evaluation
+path differs. Any change of sampling coordinates remains reserved for S3 and
+arrives with its own Jacobian log-determinant and M2c equivalence gates; E1
+must not become S3 by accident.
+
+**(2) No cross-parameterization comparison without the explicit map.** A
+softplus gpytorch-raw potential is never compared directly against pyro's
+log-coordinate potential — the two differ by a genuine change-of-variables
+term, so a "match" or "mismatch" between them is meaningless as stated. If an
+internal raw-coordinate formulation is tested at all, the comparison goes
+through the explicit coordinate map u to raw and its change-of-variables
+Jacobian (D13's `_raw_log_jacobian` pattern applies to that internal check
+only, not to E1's public target).
+
+**(3) Single-evaluation composition rule (the D6/D13 error classes).** Each
+E1 potential evaluation computes the full observation marginal log p(y |
+theta) exactly once, as the summed `log_prob(y)` of the noise-added marginal
+MVN. `gpytorch.mlls.ExactMarginalLogLikelihood` is NOT used as a pure
+likelihood with priors added on top: it already incorporates registered prior
+log-probs and divides by N, so composing it with an explicit prior sum
+double-counts every prior and mis-scales the likelihood. Every canonical
+prior enters exactly once; every pyro support Jacobian enters exactly once.
+The M2b battery includes duplicate-prior and duplicate-site inventory tests
+targeting exactly the D6 error class (a site or prior term entering twice, or
+a latent silently dropped).
+
+**(4) Frozen period exclusion.** The A10-frozen annual period is absent from
+the seven-site E1 coordinate vector (site inventory: trend ls+os, seasonal
+ls+os, medium ls+os, noise — the M2a `test_pyro_sampled_site_inventory_stays_seven`
+inventory). The battery tests that E1 excludes it and that it remains exactly
+1.0 through E1 evaluations. The period's old Interval boundaries are REMOVED
+from the E1 boundary stress-point sets: with the period frozen, no
+Interval-constrained coordinate remains among the seven sites, so those
+stress points would probe a coordinate that no longer exists. Boundary stress
+points are therefore near-zero noise, near-singular kernels, and extreme
+lengthscale/outputscale magnitudes.
+
+**(5) Posterior-predictive equality gate: paired states, not chains.** The
+battery's posterior-predictive equality item is DEFINED on paired identical
+constrained hyperparameter states: one frozen set of theta states is pushed
+through both evaluation paths' predictive machinery and compared pointwise.
+Pointwise equality is NOT demanded of independent NUTS chains — two correct
+samplers of the same target do not produce equal draws. If a chain-level
+comparison is retained at all, it must use a preregistered
+distributional/MC-error criterion, frozen in the M2b tolerance addendum
+before any chain used in the comparison is run.
+
+**(6) Microbenchmark persistence firewall.** The real-data E1 NUTS
+microbenchmark runs on the training-only loader (`load_mauna_loa_training`;
+the v1.1 seal note continues to govern) and may persist ONLY timing fields,
+potential-evaluation counts/costs, and leapfrog counts. Samples and
+scientific diagnostics (posterior summaries, R-hat/ESS, divergence
+locations, acceptance statistics, any per-site value) are discarded without
+printing or serialization — the benchmark exists to price a leapfrog, not to
+preview a posterior (§6.5 ordering/blinding).
+
+**(7) Cost-projection labeling.** M2b finalizes measured cost projections
+ONLY for E1/S1f and machinery they directly share. S3 and S4 numbers are
+frozen as AUTHOR-APPROVED CEILINGS (the A6 provisional values) until their
+M2c implementations can be benchmarked; they are never labeled measured
+projections.
+
+**What this addendum does NOT change:** the battery's enumerated content
+(§6.15 row) except as clarified in (4) and (5); no gate of §6.7; no arm,
+candidate set, or v1.0-frozen threshold. The E1 numeric tolerances +
+point-generation distributions, the A6 final budgets, and the A5 fallback
+design still land as their own M2b addenda per §6.15, after this convention
+is in force.
