@@ -598,3 +598,71 @@ Bit-exact means a difference of zero; the measurement was a worst RELATIVE
 difference of 1.4e-16 (toy structure; 0.0 on the Mauna structure). The
 phrase reads: "within 1e-9 relative (measured worst: 1.4e-16 relative)".
 No tolerance, gate, state set, or claim of substance changes.
+
+---
+
+## v1.8 — D22-D24 impact amendment: goldens retirement, corrective milestone M2bR, shared Hessian protocol, Della hold (M2b close) — 2026-07-11
+
+**Prereg anchor:** §4 (milestone map), §6.5, §6.9 (G-toy goldens), §6.15,
+§7 A7/A11, addenda v1.3/v1.6. Adopted from the codex meta-review of the M2b
+closeout (author-forwarded): D22-D24 changed the scientific baseline, not
+merely the benchmark implementation, so they receive their own corrective
+treatment BEFORE M2c. Companion artifact: `docs/d22-d24-impact-audit.md`
+(artifact classification with dependency verification + the author
+ratification checklist). No pilot, posterior, or Mauna BMS* number exists.
+
+**1. Goldens retirement (§6.9).** Every golden or reference value derived
+from pre-correction fit_hmc / fit_vi / fit_hmc_laplace output is RETIRED as
+a characterization of any sampler's correct behavior — including the D18
+HMC 0.696/0.683 pair wherever §6.9 references it. References that survive
+(dependency-verified in the audit): prior-IS, SIR, and the D13-corrected
+RW-MH, all of which score through the direct likelihood
+(`_mh_log_joint`), plus MAP and prior-predictive quantities. The M2c G-toy
+tolerances will be defined against corrected-sampler behavior WITHOUT using
+newly observed E1 scientific outcomes to set them (the v1.4/v1.6 discipline:
+references are independent oracles or held-out estimator families, never
+the gated object's own output).
+
+**2. Corrective milestone M2bR (inserted between M2b and M2c).** Scope:
+(a) author ratification of the impact audit's classifications and of the
+checklist items (audit doc §4); (b) the public-API disposition decision
+(D26 fork; interim warning layer ships with M2b); (c) a SMALL preregistered
+corrected-impact rerun — the D12 toy method x metric comparison and the D18
+HMC/VI arms re-executed on corrected samplers (S1f for HMC; VI only if an
+E1-based VI exists by then, else VI is reported unavailable-pending-repair)
+with its budget and comparison plan frozen as an addendum BEFORE it runs;
+(d) `experiments/d19_bench.py` reworked to the v1.2-point-6 timing-only
+firewall (it currently persists a MAP hyperparameter value under the
+M1-era convention) and its pre-D22 anchors marked superseded; (e) the
+W2/W3 writeup-decision re-openings recorded in the W-log. M2c does not
+begin until M2bR closes with author sign-off.
+
+**3. Shared Hessian protocol (M2c obligation, widened from v1.6).** The
+v1.6 first-order rule binds not only the S2 mass matrix but EVERY consumer
+of a GP-hyperparameter Hessian: S4's Laplace construction, Laplace
+determinants, and any profile-Laplace machinery. One shared protocol is
+frozen at M2c before use: central differences of validated first
+gradients, a step-size stability check, symmetrization, directional-
+curvature verification against second differences of the potential, and
+disclosed eigenvalue regularization. (`laplace_evidence.numerical_hessian`
+already differentiates a candidate-space objective by finite differences
+and is out of this protocol's scope.)
+
+**4. Benchmark interpretation decomposition rule.** Any use of the v1.5
+microbenchmark reports the three factors SEPARATELY — cost per
+potential/gradient evaluation; leapfrogs per iteration; wall per
+iteration/draw — and never presents the composite sub-150 ratio (~19x
+leapfrogs, ~17x wall) as a pure E1 evaluation speedup: the composite mixes
+the 1.2-3.2x per-evaluation advantage with the D23 guidance difference.
+The saturated S1 measurement stands as a historical engineering
+observation about the pre-correction path.
+
+**5. Della hold (A7 precondition added).** The A7 Della re-benchmark does
+not run until item 2(d) completes and the reworked script's firewall is
+verified the way the M2b microbenchmark's was (key-inventory audit). The
+Della thread-pinning numbers then land as their own addendum, as before.
+
+**What this addendum does NOT change:** no gate of §6.7, no arm, no
+candidate set, no battery value of v1.4/v1.6, no budget of v1.5/v1.6. The
+API warning layer changes no default and removes nothing; the default
+disposition is the recorded OPEN author fork (D26).

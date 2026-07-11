@@ -1748,3 +1748,45 @@ phrase corrected via the wording-only erratum addendum v1.7 (appended, not edite
 round-2 discipline holds even for typography). Verification of these three was mechanical
 (grep/diff); no further codex round. Final: battery 30 passed + 1 skip (31 collected),
 full suite 207 passed + 1 skipped.
+
+## D26: codex meta-review adopted — D22-D24 get their own corrective milestone (M2bR); impact audit; API warning layer; Della hold — 2026-07-11
+
+**Problem:** the M2b closeout treated D22-D24 as side notes on a completed enabler PR. The
+author-forwarded codex meta-review argued, correctly, that they changed the scientific
+baseline: historical results need an impact audit with dependency verification (not a blanket
+caveat), the public inference API cannot keep advertising known-defective samplers, D24 binds
+S4/profile-Laplace as well as S2, retired goldens need a preregistration amendment before any
+rerun, the composite microbenchmark ratio invites over-reading, two effectively-author
+decisions (A5 N=232, A6 ceilings, the firewall field list) were made implicitly, and Della
+must wait for a firewall-clean benchmark vehicle.
+
+**Decision (adopted, executed this session):**
+- `docs/d22-d24-impact-audit.md` — artifact classification with per-item dependency
+  verification: UNAFFECTED includes the D18 SIR/prior-IS numbers (verified: they score
+  through `_mh_log_joint`, prior_sensitivity_study.py:233), fit_mcmc_simple, MAP/MLE,
+  scorecards, Z_Mx/laplace_evidence (FD Hessians, candidate space), and the D17 canonical
+  figures (--gp-method map); INVALID PENDING RERUN includes every HMC/VI/hmc_laplace number
+  (D18 0.696/0.683 and the VI arm, D12 hmc/vi/hmc_laplace columns incl. the VI-migration
+  reading — possibly a D23 artifact, not a mass phenomenon — W2/W3 reasoning, D8 posterior
+  claims, all HMC caches); NEEDS TRACING covers the regenerated figure sets and
+  impact-assessment cross-references. Audit §4 carries the explicit author ratification
+  checklist (N=232 derivation, A6 ceilings, exact firewall fields).
+- Prereg addendum v1.8: goldens retirement (§6.9) keeping only direct-likelihood
+  references; corrective milestone M2bR between M2b and M2c (ratifications, API
+  disposition, a small preregistered corrected-impact rerun of the D12/D18 sampler arms,
+  d19_bench.py firewall rework, W-log re-openings); the shared first-order Hessian
+  protocol widened to S4/Laplace/profile-Laplace consumers (M2c); the benchmark
+  decomposition rule (never present the composite ~19x/~17x as an E1 evaluation speedup);
+  the A7 Della hold until the reworked vehicle passes a key-inventory firewall audit.
+- API warning layer (interim, no default changed, nothing removed): fit_hmc, fit_vi, and
+  fit_hmc_laplace now emit UserWarnings naming their defects (D23; D23-ELBO; D23+D24) and
+  pointing to the gated fit_hmc_e1; fit_hmc's "production-grade" docstring corrected.
+- SCRATCHPAD status downgraded from "M2b DONE except Della" to "M2b code complete; closeout
+  gated on M2bR"; the branch stays pre-PR (open as DRAFT when the author is ready).
+
+**OPEN (author forks):** (a) API disposition — route fit_gp("hmc") through E1 at M2bR close
+(recommended) vs keep defaults with warnings until M2c; an E1-based VI is required before
+any VI default exists either way; (b) ratification checklist items in the audit §4;
+(c) the M2bR corrected-impact rerun budget.
+
+**Status:** adopted and committed on feat/d19-m2b-e1; M2c blocked on M2bR.

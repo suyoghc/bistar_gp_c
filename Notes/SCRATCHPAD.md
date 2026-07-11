@@ -2,7 +2,7 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## D19 Mauna study — M2a infrastructure DONE (D20, branch `feat/d19-m2a-infra`, PR opened 2026-07-11); M2b next
+## D19 Mauna study — M2a DONE (D20); M2b code complete, gated on M2bR (D21-D26)
 
 - `docs/plan-d19-mauna.md` = the frozen record (a077c6e, immutable; merged to main
   as e86e90a): staged plan, gates, cost table (E1 rows are kernel-cost proxies
@@ -24,20 +24,30 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   `load_mauna_loa_training` from now on.
 - **No BMS*/pilot/posterior result exists yet**; the ordering/blinding rule (§6.5)
   governs from here on.
-- **M2b DONE except Della (D21-D25, branch `feat/d19-m2b-e1`, 2026-07-11)**:
-  prereg addenda v1.2-v1.5 (append-only, each committed before the work it
-  governs): v1.2 author coordinate convention (E1 public coordinates = pyro
-  initialize_model sites; gpytorch raw internal-only); v1.3 the D22/D23
-  S1-target findings; v1.4 frozen battery tolerances + point sets; v1.5
-  microbenchmark + final A6 budgets + frozen A5 fallback (N_fb=232, linspace
-  rule, timing/leapfrog/budget-only predicate). Code: `bistar_gp/e1_potential.py`
-  (E1Potential + fit_hmc_e1), the battery `tests/test_e1_potential.py` (31
-  collected), 
-  firewalled `experiments/d19_e1_bench.py` + artifact
-  `runs/d19_planning/e1_nuts_microbench.json`. Suite 207 passed + 1 skip
-  after two codex gpt-5.6-sol (xhigh) review rounds (14 + 5 findings, all
-  resolved; prereg v1.6 carries the corrections append-only after be08285's
-  in-place edits were reverted).
+- **M2b code COMPLETE; closeout gated on the M2bR corrective milestone (D21-D26,
+  branch `feat/d19-m2b-e1`, 2026-07-11; PR to open as DRAFT)**: the codex
+  meta-review (author-forwarded) reframed D22-D24 as a baseline change needing
+  its own milestone — adopted as prereg v1.8 + docs/d22-d24-impact-audit.md
+  (classification with dependency verification + author ratification checklist)
+  + an interim UserWarning layer on fit_hmc/fit_vi/fit_hmc_laplace (no default
+  changed; fork OPEN in D26). M2bR before M2c: ratifications, API disposition,
+  small preregistered corrected-impact rerun (D12/D18 sampler arms),
+  d19_bench.py firewall rework, W2/W3 re-openings.
+- **M2b contents**: prereg addenda v1.2-v1.8 (append-only): v1.2 author
+  coordinate convention (E1 public coordinates = pyro initialize_model sites;
+  gpytorch raw internal-only); v1.3 the D22/D23 S1-target findings; v1.4
+  frozen battery tolerances + point sets; v1.5 microbenchmark + final A6
+  budgets + frozen A5 fallback (N_fb=232, linspace rule,
+  timing/leapfrog/budget-only predicate); v1.6 codex-round corrections
+  (append-only after be08285's in-place edits were reverted); v1.7 wording
+  erratum; v1.8 the D22-D24 impact amendment (M2bR). Code:
+  `bistar_gp/e1_potential.py` (E1Potential + fit_hmc_e1), the battery
+  `tests/test_e1_potential.py` (31 collected), firewalled
+  `experiments/d19_e1_bench.py` + artifact
+  `runs/d19_planning/e1_nuts_microbench.json`, UserWarning layer on the three
+  affected samplers. Suite 207 passed + 1 skip. Review: three codex
+  gpt-5.6-sol (xhigh) rounds (14 + 5 + 3 findings, all resolved) + the
+  adopted meta-review (D26).
 - **TWO CORRECTNESS FINDINGS while building E1 (author attention required)**:
   (D22) the obs pyro.plate made fit_hmc/fit_vi/fit_hmc_laplace target
   p(theta)L(theta)^N — FIXED, but every pre-fix HMC/VI result carries the
@@ -52,10 +62,10 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   "~200x deep-copy penalty" was mostly the plate: corrected S1 potential is
   6.0/10.5 ms (sub/full); E1's real advantages = correct gradients (S1
   saturates td7: 127 lf/draw vs S1f 6.7 at sub-150) + no deep copy.
-- **M2b still OWED**: the A7 Della re-benchmark (user runs
-  experiments/d19_bench.py on Della, threads pinned) + its thread-pinning
-  addendum, BEFORE any Della job assignment; note the pre-D22 Della anchors
-  are superseded the same way as §1.1.
+- **Della (A7) ON HOLD (v1.8)**: no Della run until d19_bench.py is reworked
+  to the timing-only firewall (it persists a MAP hyperparameter value under
+  the M1-era convention) and key-inventory audited; pre-D22 Della anchors are
+  superseded the same way as §1.1; the thread-pinning addendum lands after.
 - OPEN, tracked in the doc: era/source transcription (§8; amendment rule armed —
   before Stage A); M2c predicate numbers (S2/S3/G-toy tolerances,
   divergence-clustering against the D20 schema, M1 overlap diagnostic, corrected

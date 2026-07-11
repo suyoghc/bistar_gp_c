@@ -247,14 +247,39 @@ def _hmc_pyro_model(model, x, y):
     pyro.sample("obs", sampled.likelihood(output), obs=y)
 
 
+_D23_HMC_WARNING = (
+    "fit_hmc (the S1 pyro path) proposes with partially broken gradients: "
+    "pyro autograd through the traced gpytorch target loses the likelihood "
+    "gradient for every kernel hyperparameter site (D23, upstream; the "
+    "D22 wrong-measure defect is fixed). The target density is correct but "
+    "guidance is not — expect tree-depth saturation and poor mixing. The "
+    "battery-gated alternative on the identical target and coordinates is "
+    "bistar_gp.e1_potential.fit_hmc_e1 (S1f). See docs/prereg-addenda-d19.md "
+    "v1.3/v1.6/v1.8 and Notes/DECISIONS.md D22-D26.")
+
+_D23_VI_WARNING = (
+    "fit_vi's ELBO lacks kernel-site likelihood gradients entirely (D23, "
+    "upstream): kernel hyperparameter posteriors are effectively "
+    "prior-guided. Treat results as unvalidated pending an E1-based VI "
+    "(D26/M2bR). See docs/prereg-addenda-d19.md v1.3/v1.8.")
+
+_D24_LAPLACE_WARNING = (
+    "fit_hmc_laplace is affected by D23 (broken kernel-site gradients in "
+    "the z-space potential) and D24 (its create_graph whitening Hessian is "
+    "silently wrong). Retained as a historical diagnostic only (D26). See "
+    "docs/prereg-addenda-d19.md v1.6/v1.8.")
+
+
 def fit_hmc(model, likelihood, train_x, train_y,
             n_samples=500, n_warmup=200, verbose=True, seed=None,
             init_to_map=True, max_tree_depth=10, return_diagnostics=False):
     """
-    Hamiltonian Monte Carlo via Pyro's NUTS sampler.
+    Hamiltonian Monte Carlo via Pyro's NUTS sampler (the S1 pyro path).
 
-    This is the production-grade sampler — uses gradients to explore
-    the posterior efficiently, unlike random-walk MH.
+    KNOWN-DEFECTIVE GUIDANCE (D23): see _D23_HMC_WARNING above — the target
+    density is correct post-D22, the proposal gradients are not. The
+    battery-gated replacement on the identical target and coordinates is
+    bistar_gp.e1_potential.fit_hmc_e1.
 
     init_to_map: start each latent at the model's CURRENT constrained hyperparameter
         value instead of a random prior draw. Pass a MAP-fitted model (run fit_map
@@ -275,12 +300,16 @@ def fit_hmc(model, likelihood, train_x, train_y,
     Returns dict of parameter name -> numpy array of posterior samples
     (or the (samples, diagnostics) pair when return_diagnostics=True).
     """
+    import warnings
+
     import pyro
     from pyro.infer.mcmc import NUTS, MCMC
     from pyro.infer.autoguide.initialization import init_to_value, init_to_sample
     from functools import partial
 
     from .sampler_diagnostics import PotentialEvalTracker, diagnostics_from_pyro_mcmc
+
+    warnings.warn(_D23_HMC_WARNING, UserWarning, stacklevel=2)
 
     if seed is not None:
         pyro.set_rng_seed(seed)
@@ -401,11 +430,15 @@ def fit_vi(model, likelihood, train_x, train_y,
     (D8) — optimization has no step-size collapse — at the price of a Gaussian
     approximation whose adequacy in that funnel must itself be checked.
     """
+    import warnings
+
     import pyro
     from pyro.infer import SVI, Trace_ELBO
     from pyro.infer.autoguide import AutoMultivariateNormal
     from pyro.infer.autoguide.initialization import init_to_value
     from pyro.optim import Adam
+
+    warnings.warn(_D23_VI_WARNING, UserWarning, stacklevel=2)
 
     if seed is not None:
         pyro.set_rng_seed(seed)
@@ -469,10 +502,14 @@ def fit_hmc_laplace(model, likelihood, train_x, train_y,
     Falls back to identity whitening (plain unconstrained NUTS) if the
     Hessian is not usable. Returns the fit_hmc dict schema.
     """
+    import warnings
+
     import pyro
     from pyro.infer.mcmc import NUTS, MCMC
     from pyro.infer.mcmc.util import initialize_model
     from pyro.infer.autoguide.initialization import init_to_value
+
+    warnings.warn(_D24_LAPLACE_WARNING, UserWarning, stacklevel=2)
 
     if seed is not None:
         pyro.set_rng_seed(seed)

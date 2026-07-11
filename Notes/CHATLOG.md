@@ -440,3 +440,12 @@ pilots, no expensive runs, no scientific result read before the commit.
   three codex gpt-5.6-sol (xhigh) rounds, 14 + 5 + 3 findings, all resolved.
 - **Suite at close**: battery 30 passed + 1 skip; full 207 passed + 1 skipped.
   PR opening awaits the author (branch feat/d19-m2b-e1, 7 commits).
+- **Codex meta-review (author-forwarded) adopted (D26)**: M2b downgraded from
+  "done except Della" to "code complete, closeout gated on M2bR". New:
+  docs/d22-d24-impact-audit.md (dependency-verified classification — D18
+  SIR/prior-IS confirmed unaffected via _mh_log_joint; all HMC/VI/hmc_laplace
+  numbers unvalidated pending rerun), prereg v1.8 (goldens retirement, M2bR
+  milestone, shared Hessian protocol for S2/S4/profile-Laplace, benchmark
+  decomposition rule, Della hold), UserWarning layer on the three affected
+  samplers (defaults untouched; disposition fork OPEN). Suite 207+1 with the
+  new warnings firing.
