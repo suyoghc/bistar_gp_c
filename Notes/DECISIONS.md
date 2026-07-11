@@ -1610,3 +1610,31 @@ correct gradients against a known-wrong reference.
 
 **Status:** documented; battery consequence implemented at M2b. Upstream gpytorch issue
 report is a possible follow-up (OPEN).
+
+## D24: double-backward through the gpytorch marginal log-prob is silently wrong — battery and S2 must use first-order Hessians — 2026-07-11
+
+**Problem:** the battery's directional-Hessian gate first compared E1's create_graph
+double-backward v^T H v against the oracle potential's second central difference and failed
+at ~16% (toy, MAP state, direction seed 200: 3.3026 vs 3.9444). Three independent
+first-order references agree (oracle second difference, E1 second difference, central FD of
+E1's autograd gradient: 3.94436...), so the double-backward value is the wrong one, and it
+stays wrong under gpytorch.settings.fast_computations(covar_root_decomposition=False,
+log_prob=False, solves=False) — the defect is in the custom linear-operator autograd
+Functions behind MVN.log_prob, not in the fast approximation paths.
+
+**Decision:** the battery computes directional Hessians as central differences OF the
+(proven-correct) E1 autograd gradient, referenced against the oracle's second difference
+(tests/test_e1_potential.py::test_directional_hessians_agree, frozen in prereg v1.4), and a
+sentinel test (::test_double_backward_hessian_defect_is_still_present) asserts the defect
+persists so an environment upgrade forces a v1.4 revisit instead of silently changing what
+the gate measures. Binding consequence recorded in v1.4 for M2c: the S2 fixed-mass-matrix
+strategy must assemble its MAP Hessian from first-order differences of the E1 gradient,
+never via create_graph through the marginal. fit_hmc_laplace's whitening Hessian
+(torch.autograd.functional.hessian on the oracle potential) is affected by both D23 and D24;
+its results were already caveated wholesale in v1.3.
+
+**Alternatives considered:** gating on double-backward anyway (rejected: known-wrong
+reference); torch.autograd.functional.hessian with vectorize/functorch strategies (same
+underlying custom Functions); reporting to gpytorch upstream (queued alongside D23's, OPEN).
+
+**Status:** implemented at M2b; battery green (29 tests).

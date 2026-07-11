@@ -266,3 +266,90 @@ reproduce-the-old-number (§6.9).
 candidate set, no v1.0 threshold. The E1 tolerances + point sets (with the
 finite-difference gradient reference above), A6 budgets, and A5 fallback
 still land as their own M2b addenda.
+
+---
+
+## v1.4 — E1 equivalence battery: frozen tolerances, point-generation distributions, and references (M2b) — 2026-07-11
+
+**Prereg anchor:** §6.15 row "E1 equivalence tolerances + frozen
+point-generation distributions", §2 Stage B battery enumeration, addenda
+v1.2/v1.3. Frozen NOW, before any pilot result is read and before the E1
+microbenchmark runs. Implementation: `tests/test_e1_potential.py` — the
+constants below are its module-level frozen values; a tolerance revision is
+a new addendum, never an edit.
+
+**Fixtures (code-level gate; synthetic data only, §6.5):** toy structure
+(4 sites; x = linspace(0,5,40), y = sin(2x) + 0.3 N(0,1), torch seed 0) and
+the Mauna MODEL STRUCTURE on a synthetic monthly series (7 sites; n=120,
+numpy seed 0 — never real Mauna values). Both MAP-fitted (fit_map, 150
+iterations, lr 0.05) before the battery point sets are generated.
+
+**Frozen point-generation distributions:**
+- MAP neighborhoods: u_map plus sigma * N(0, I) per coordinate, sigma in
+  {0.1, 1.0}, torch.Generator seeds {0,1,2,3,4} per sigma, plus u_map itself
+  (11 states).
+- Prior draws: theta_s ~ prior_s under torch.manual_seed(s), s in
+  {100..109}, mapped to u by the oracle transforms (10 states).
+- Tail/boundary offsets on u_map by site-name substring (7 states):
+  near-zero noise (noise -15), large noise (+8), long/short lengthscales
+  (+-8), large/small outputscales-and-variance (+-8), and the near-singular
+  combination (lengthscale +8, outputscale/variance +8, noise -15). Per
+  v1.2 point 4 no period coordinate exists and no Interval boundary appears
+  among the sites; the pre-v1.2 "Interval boundaries" stress family is
+  formally EMPTY at M2b.
+- Invalid-SPD states (behavior-parity only): noise -40; and
+  outputscale/variance +30 with noise -40.
+- Directions (curvature gate): unit-normalized N(0, I) with generator seeds
+  {200, 201, 202}, at u_map, the sigma=0.1/seed-0 neighbor, and the
+  seed-100 prior draw.
+
+**Frozen tolerances (worst measured deviation on both structures, then the
+frozen bound; margins are the point of the gap):**
+
+| Gate | Measured worst | Frozen |
+|---|---|---|
+| potential vs oracle, relative to max(1, oracle) | 6.0e-16 | 1e-9 |
+| E1 autograd vs central FD of the ORACLE (per coordinate, step 1e-5 scaled; scale = max(1, max FD coordinate)) | 2.3e-7 | 1e-4 abs + 1e-4 * scale |
+| directional Hessian: FD of E1 gradient (step 1e-5) vs oracle second difference (step 1e-3), relative | 7.5e-6 | 1e-3 |
+| likelihood / prior / Jacobian components vs independent oracles | 1.7e-16 | 1e-9 relative |
+| transform round-trips (u and theta) | 1.1e-16 | 1e-10 |
+| paired-state posterior-predictive mean/variance | (exact-path identity) | 1e-9 relative |
+
+**References and defect routing:** the potential-value reference is the
+CORRECTED S1 oracle (v1.3). The gradient reference is central finite
+differences of that oracle — its autograd stays broken for kernel sites
+(D23) and a SENTINEL test asserts the defect is still present, so an
+environment upgrade that silently fixes it forces a review of this addendum
+rather than passing unnoticed. The curvature gate uses first-order machinery
+only: double-backward (create_graph) through the gpytorch marginal log-prob
+graph returns silently wrong directional Hessians (D24; measured 3.3026
+against a triple-agreeing true value 3.9444 on the toy at MAP, ~16% off,
+persisting with fast_computations disabled — so the defect is in the custom
+linear-operator autograd Functions, not the fast paths). A second sentinel
+pins D24. Consequences recorded now: any M2c S2 mass-matrix construction
+must assemble the MAP Hessian from first-order differences of the E1
+gradient (never create_graph through the marginal), and `fit_hmc_laplace`'s
+whitening Hessian — torch.autograd.functional.hessian on the oracle
+potential — is affected by BOTH D23 and D24, which the v1.3 standing caveat
+already covers at the results level.
+
+**Posterior-predictive equality (v1.2 point 5):** implemented as the
+paired-state gate — one frozen set of constrained states through both
+parameter-injection paths, pointwise-equal predictive mean and variance at a
+frozen 25-point grid. NO chain-level comparison is preregistered and none
+will run; the alternative left open by v1.2 ("if retained, a
+distributional/MC-error criterion") is hereby NOT retained.
+
+**Battery inventory (items in `tests/test_e1_potential.py`):** (a) site
+inventory/order + duplicate-prior/site guards (D6/D4 classes, v1.2 point 3);
+(b) potential agreement over all regular states; (c) gradient gates (oracle
+FD + self FD) + the D23 sentinel; (d) directional Hessians + the D24
+sentinel; (e) separate components against independent oracles; (f)
+round-trips; (g) paired-state predictive equality; (h) invalid-SPD behavior
+parity; (i) A10 period exclusion and immobility; (j) S1f sampler schema +
+diagnostics honesty contract. 29 tests; battery passes at this freeze (28
+passed, 1 structure-conditional skip).
+
+**What this addendum does NOT change:** no gate of §6.7, no arm, no
+candidate set. A6 final budgets and the A5 fallback design remain owed as
+the next M2b addendum, after the microbenchmark.
