@@ -587,3 +587,14 @@ v1.4/v1.5, this addendum governs.
 **What this addendum does NOT change:** no gate of §6.7, no arm, no
 candidate set, no v1.0 threshold, no data pin of v1.1, no convention of
 v1.2, no finding of v1.3. S3/S4 numbers remain ceilings until M2c.
+
+---
+
+## v1.7 — erratum to v1.6 correction 2 (wording only) — 2026-07-11
+
+Codex round 3 (final confirmation) flagged one self-contradictory phrase in
+v1.6 correction 2: "within 1e-9 relative (measured: bit-exact to 1.4e-16)".
+Bit-exact means a difference of zero; the measurement was a worst RELATIVE
+difference of 1.4e-16 (toy structure; 0.0 on the Mauna structure). The
+phrase reads: "within 1e-9 relative (measured worst: 1.4e-16 relative)".
+No tolerance, gate, state set, or claim of substance changes.

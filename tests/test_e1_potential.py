@@ -13,8 +13,11 @@ Battery structure (v1.4 item letters):
   (a) site inventory and ordering; duplicate-prior/site guards (D6 class)
   (b) potential agreement with the S1 oracle over the frozen point sets
   (c) gradient agreement — E1 autograd vs CENTRAL FINITE DIFFERENCES of the
-      oracle potential (v1.3: the oracle's own autograd is broken for kernel
-      sites and is never a reference), plus E1 autograd vs E1's own FD
+      oracle potential on the 26 jitter-free states (v1.3: the oracle's own
+      autograd is broken for kernel sites and is never a reference); at the
+      two jitter-engaged states, noise-coordinate connectedness only, with
+      kernel coordinates there explicitly ungated (v1.6 disclosed residual
+      exposure); plus E1 autograd vs E1's own FD
   (d) directional Hessians — central differences OF the E1 autograd gradient
       vs second differences of the oracle potential along frozen directions
       (first-order machinery only; double-backward is the D24 defect)
@@ -312,13 +315,17 @@ def _autograd(fn, u, sites):
 
 
 def test_e1_gradient_matches_oracle_finite_differences(battery):
-    """E1 autograd equals central finite differences of the ORACLE potential
-    on EVERY finite frozen regular state — MAP neighborhoods (both sigmas),
-    all prior draws, and the tail/boundary set (v1.3: the oracle's autograd
-    is broken for kernel sites and is never the reference; codex M2b round 1,
-    finding 2: a tail-only gradient defect must not slip past a subset
-    check). States whose oracle value or FD probes leave float64 are skipped
-    individually, with a floor on how many must remain comparable."""
+    """Gradient gates over ALL 28 frozen regular states, per v1.6: the 26
+    jitter-free states (MAP neighborhoods, prior draws, five clean tail
+    states) get the tight per-coordinate gate against central FD of the
+    ORACLE (v1.3: the oracle's own autograd is broken for kernel sites and
+    is never the reference); the two jitter-engaged states get the
+    noise-coordinate autograd-connectedness gate BEFORE any FD computation
+    (no FD step discriminates kernel disconnection there — v1.6
+    measurements; kernel coordinates at those two states are explicitly
+    ungated, a disclosed residual exposure). A state whose FD leaves float64
+    fails loudly, and an executed-label completeness check asserts every
+    frozen state ran its assigned gate."""
     structure, model, lik, x, y, e1 = battery
     all_states = _all_regular_states(e1, model)
     executed = set()

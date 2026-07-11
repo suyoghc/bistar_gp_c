@@ -1736,3 +1736,15 @@ tail_labels removed; SCRATCHPAD counts refreshed (31 collected battery / 207+1 s
 "potential values exact" reworded to machine-precision agreement (measured 1.5e-16
 relative, repeat-identical). Suite after round 2: battery 30 passed + 1 skip, full 207
 passed + 1 skipped.
+
+**Codex M2b review round 3 (gpt-5.6-sol, xhigh, final confirmation on 44639cf):**
+items (a)-(d) PASS — v1.4/v1.5 verified byte-identical to their as-committed text
+(sha-256 compared against 479457e), v1.6 verified consistent with the code, the silent-skip
+path verified dead, counts and wording verified landed. Remaining: three S1 wording nits
+(the battery overview still implied universal per-coordinate FD coverage; a stale
+skip-and-floor docstring; a self-contradictory "bit-exact to 1.4e-16" phrase in v1.6).
+Fixed same-PR: both test docstrings rewritten to the v1.6 tier language, and the v1.6
+phrase corrected via the wording-only erratum addendum v1.7 (appended, not edited — the
+round-2 discipline holds even for typography). Verification of these three was mechanical
+(grep/diff); no further codex round. Final: battery 30 passed + 1 skip (31 collected),
+full suite 207 passed + 1 skipped.

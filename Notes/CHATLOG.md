@@ -433,3 +433,10 @@ pilots, no expensive runs, no scientific result read before the commit.
   connectedness gates on the D23-spared noise coordinate at both jitter
   states, kernel coordinates there explicitly not gated with the residual
   exposure disclosed, execution-completeness assertion over all 28 states.
+- **Codex round 3**: (a)-(d) PASS (byte-identical restore verified by hash;
+  v1.6-code consistency; silent-skip dead; counts/wording landed); three S1
+  wording nits remained, fixed same-PR (test docstrings; v1.7 wording-only
+  erratum for one self-contradictory v1.6 phrase). M2b review record closed:
+  three codex gpt-5.6-sol (xhigh) rounds, 14 + 5 + 3 findings, all resolved.
+- **Suite at close**: battery 30 passed + 1 skip; full 207 passed + 1 skipped.
+  PR opening awaits the author (branch feat/d19-m2b-e1, 7 commits).
