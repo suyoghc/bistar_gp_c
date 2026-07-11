@@ -306,3 +306,67 @@ pilots, no expensive runs, no scientific result read before the commit.
 - **Next**: M2a infrastructure PR (provenance/loader/A10 period freeze/candidate
   registry/pw_kl_vcal/diagnostic schema/slurm refresh). The holdout stays sealed;
   the ordering/blinding rule governs all subsequent compute.
+
+## 2026-07-11 — PR #5 merge bookkeeping (ride-along from the freeze session)
+
+- **PR #5 opened** (2026-07-10, after author acceptance in chat): branch
+  `docs/d19-mauna-freeze` at a077c6e, base main, Ready, planning/documentation-only
+  pre-registration PR. Body: no implementation or pilot results; a077c6e = the
+  frozen-before-results baseline; tracked planning JSONs = deliberate evidentiary
+  artifacts; A6 + §6.15 implementation-coupled thresholds explicitly deferred; M2a
+  must not begin until the merge. Standing author rule: a077c6e is immutable —
+  corrections are follow-up commits or append-only prereg amendments (§6.16).
+- **PR #5 MERGED** 2026-07-11 (~00:37 EDT) as normal merge commit e86e90a (parents
+  ec290a8 + a077c6e); a077c6e verified an intact ancestor of main. No CI checks on
+  the repo. These lines ride with the M2a Notes commit per the PR #4 pattern
+  (author said stop after opening; no bookkeeping-only commit was made then).
+
+## 2026-07-11 — D19 M2a infrastructure PR (D20; branch feat/d19-m2a-infra)
+
+- **Scope discipline held**: infrastructure only — no pilots, no Stage-A/B runs, no
+  Mauna BMS* probability computed anywhere, no candidate fit to real Mauna data
+  (registry/harmonization tests are synthetic-fixture-only), no arm configs, no era
+  transcription. The one Mauna computation was the ALLOWED reproduction check:
+  experiments/d19_prior_scorecard.py regenerated runs/d19_planning/scorecard_v2.json
+  byte-identically (sha256 52b2d49d...6881) after the loader rewrite.
+- **Item summary (full record in DECISIONS.md D20)**: A9 vendored CC0 dataset +
+  canonical year/month/co2 sha256 5bcdc813...0910 (prereg addendum v1.1 in the new
+  docs/prereg-addenda-d19.md) + hard runtime verification + loader-defect fixes
+  (unbound-x_all fallback, unreachable except, no-op filter documented+asserted);
+  training-only loader (load_mauna_loa_training) making the §6.6 seal mechanical;
+  A10 period frozen at exactly 1.0 with requires_grad off + fit_map frozen-param
+  guard + 7-site inventory tests; A4 registry with both universes, the shared
+  Quad+2Harm aliased by construction, harmonized 3-set (period 1.0, sine
+  convention, D11 multi-start full-NLL, differential_evolution removed), loud
+  merge guard; pw_kl_vcal + tau grid 0.1/0.3/1/3/10 wired (kl_forward stays
+  appendix); SamplerDiagnostics schema (divergences/acceptance/leapfrog counts,
+  JSON round-trip, None-iff-unavailable honesty contract) behind
+  fit_hmc(return_diagnostics=True) with the D9 default return unchanged; slurm
+  refresh + AST argparse guard over all four .slurm files.
+- **Implementation route**: two codex gpt-5.6-sol (xhigh) subagents implemented the
+  registry/metric wiring and the slurm/guard items in a workspace-write sandbox;
+  Fable implemented loader/seal/period/diagnostics and integrated.
+- **Tests**: 175 passed after three review rounds (121 baseline + 54 new). Scorecard
+  byte-identity gate passed on every round; vendored-CSV vs live-fetch monthly
+  aggregation verified byte-identical.
+- **Review**: codex gpt-5.6-sol (xhigh, read-only) on the PR diff: FIX-FIRST, 8
+  findings (1 HIGH, 5 MEDIUM, 2 LOW), all fixed in the same PR before Ready —
+  highest-value catch: the rewritten study script still called the full loader and
+  plotted the sealed holdout (now on load_mauna_loa_training with a source-level
+  seal-guard test). Full list + fixes in DECISIONS.md D20 ("M2a PR-review round").
+  A parallel three-lens verification workflow (21 read-only agents; prereg-compliance /
+  correctness / test-adequacy with per-finding adversarial refutation) ran as an
+  independent second check: 18 raw findings, 13 confirmed (5 overlapping codex), all
+  net-new ones fixed in the same PR — notably the DISTRIBUTION-LEVEL kl_forward missing
+  from MAUNA_METRICS, five test-adequacy gaps, and the vendored CSV missing from wheel
+  package-data. Refutations recorded in the workflow transcript.
+- **Third round** (codex re-run, 170 confirmed): two follow-up findings, both
+  verified before acting. S2 (real) — the A4 universe firewall was caller-dependent;
+  run_bms_star now rejects mixed/partially-tagged universes at the shared boundary
+  (all-untagged legacy/toy still allowed), with direct regression tests. S3 (property
+  held) — proved fit_hmc(return_diagnostics=True) leaves the trajectory bit-identical
+  to the default path (two toy runs, same seed/MAP), locked in as a non-perturbation
+  test; no code change needed. Follow-up commit; suite 175.
+- **Next**: M2b (E1 direct potential + frozen equivalence battery + real E1 NUTS
+  microbenchmark + Della re-benchmark (A7) + A6 budgets + A5 fallback addendum).
+  Holdout stays sealed; §6.5 ordering/blinding governs.

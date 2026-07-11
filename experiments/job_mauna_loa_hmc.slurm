@@ -5,11 +5,12 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 #SBATCH --time=04:00:00
-#SBATCH --output=slurm-%j.out
+#SBATCH --output=logs/bms_mauna_loa_%j.out
 
 module purge
 module load anaconda3/2024.6
-conda activate bistar
+eval "$(conda shell.bash hook)"
+conda activate bistar_gp
 
-cd /scratch/network/sc8918/bistar_gp_project
-python experiments/bms_star_mauna_loa.py --mode hmc --subsample 150 --n-hmc 200 --n-warmup 100 --n-posterior 80 --n-eval 80
+cd /scratch/gpfs/SUYOGHC/bistar_gp_c/experiments
+python bms_star_mauna_loa.py --n-hmc 200 --n-warmup 100 --n-eval 300

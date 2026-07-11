@@ -1,15 +1,15 @@
 """
-BMS* on Mauna Loa CO2: Which parametric trend model best explains the data?
+BMS* on Mauna Loa CO2 using the harmonized appendix trend-law universe.
 
-Candidates:
-  1. Linear trend + sinusoidal seasonal
-  2. Quadratic trend + sinusoidal seasonal
-  3. Exponential trend + sinusoidal seasonal
+Decision A4 and plan section 3 freeze the seasonal period at 1.0, use two
+fixed-frequency sine harmonics, and apply the shared D11 multi-start full-NLL
+protocol to Linear+2Harm, Quad+2Harm, and Exponential+2Harm. This appendix
+universe provides a trend-law contrast only. Its BMS* normalization always
+remains separate from the four-model main ladder normalization.
 
-The GP decomposes into trend + seasonal + medium-term (sum kernel).
-BMS* scores each parametric candidate against the GP posterior (HMC draws).
-
-Expected result: Quadratic or Exponential wins (CO2 growth is accelerating).
+The GP decomposes into trend + seasonal + medium-term components. BMS* scores
+each parametric candidate against GP posterior draws, with ``pw_kl_vcal`` as
+the decision A4 primary metric and the frozen temperature grid reported in full.
 
 Usage:
     python bms_star_mauna_loa.py                    # full run
@@ -25,12 +25,20 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from scipy.optimize import minimize, differential_evolution
 
-from bistar_gp import load_mauna_loa, build_model
+from bistar_gp import load_mauna_loa_training, build_model
+# Registers pw_kl_vcal in bms_star.METRICS for the MAUNA_METRICS contract.
+import bistar_gp.metrics_v2  # noqa: F401
 from bistar_gp.model import build_mauna_loa_kernels, build_likelihood
 from bistar_gp.fit import fit_map, print_hyperparameters, fit_hmc
-from bistar_gp.candidates import CandidateModel, CandidateResult
+from bistar_gp.mauna_loa_candidates import (
+    APPENDIX_TREND3,
+    MAUNA_HEADLINE_TAU,
+    MAUNA_METRICS,
+    MAUNA_TAU_GRID,
+    assert_single_universe,
+    build_universe,
+)
 from bistar_gp.bms_star import (
     extract_gp_predictives,
     run_bms_star,
@@ -41,199 +49,6 @@ from bistar_gp.bms_star import (
 )
 
 torch.set_default_dtype(torch.float64)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Mauna Loa Candidate Models
-# ═══════════════════════════════════════════════════════════════════
-#
-# Each candidate captures: trend(t) + seasonal(t) + noise
-# The GP has 3 additive components. Candidates are simpler parametric
-# approximations of the full signal. BMS* measures which parametric
-# form best matches the GP posterior.
-
-class LinearSeasonalModel(CandidateModel):
-    """
-    y = a*t + b + A*sin(2π*t/P + φ₁) + B*cos(4π*t/P + φ₂) + ε
-
-    Linear trend + first two Fourier harmonics for seasonal cycle.
-    Two harmonics needed because CO2 seasonal is asymmetric
-    (sharp spring drawdown, gradual fall release).
-    """
-    name = "Linear+Seasonal"
-
-    def __init__(self):
-        self.params_ = None
-        self.sigma = 1.0
-
-    def _predict_fn(self, x, p):
-        a, b, A1, P, phi1, A2, phi2 = p
-        return a * x + b + A1 * np.sin(2 * np.pi * x / P + phi1) + \
-               A2 * np.cos(4 * np.pi * x / P + phi2)
-
-    def fit(self, x, y):
-        def neg_ll(params):
-            p = params[:-1]
-            log_sigma = params[-1]
-            sigma2 = np.exp(2 * log_sigma)
-            mu = self._predict_fn(x, p)
-            residuals = y - mu
-            n = len(y)
-            return 0.5 * n * np.log(2 * np.pi * sigma2) + 0.5 * np.sum(residuals**2) / sigma2
-
-        # Estimate initial values
-        # Linear trend from endpoints
-        a_init = (y[-1] - y[0]) / (x[-1] - x[0]) if len(x) > 1 else 0.0
-        b_init = np.mean(y) - a_init * np.mean(x)
-
-        bounds = [
-            (a_init * 0.5, a_init * 2.0),   # a (slope)
-            (b_init - 1.0, b_init + 1.0),    # b (intercept)
-            (0.01, 1.0),                      # A1 (seasonal amplitude)
-            (0.9, 1.1),                       # P (period ~ 1 year)
-            (-np.pi, np.pi),                  # phi1
-            (0.001, 0.5),                     # A2 (2nd harmonic)
-            (-np.pi, np.pi),                  # phi2
-            (np.log(0.01), np.log(1.0)),      # log(sigma)
-        ]
-
-        result = differential_evolution(neg_ll, bounds, seed=42, maxiter=500,
-                                        tol=1e-8, polish=True)
-        self.params_ = result.x[:-1]
-        self.sigma = np.exp(result.x[-1])
-
-    def predict(self, x_eval):
-        mean = self._predict_fn(x_eval, self.params_)
-        return self._make_result(
-            x_eval, mean, self.sigma**2,
-            {f"p{i}": float(v) for i, v in enumerate(self.params_)},
-        )
-
-
-class QuadraticSeasonalModel(CandidateModel):
-    """
-    y = a*t² + b*t + c + A*sin(2π*t/P + φ₁) + B*cos(4π*t/P + φ₂) + ε
-
-    Quadratic trend captures the observed acceleration in CO2 growth.
-    Should outperform linear. The 'correct' answer for Mauna Loa.
-    """
-    name = "Quadratic+Seasonal"
-
-    def __init__(self):
-        self.params_ = None
-        self.sigma = 1.0
-
-    def _predict_fn(self, x, p):
-        a, b, c, A1, P, phi1, A2, phi2 = p
-        return a * x**2 + b * x + c + A1 * np.sin(2 * np.pi * x / P + phi1) + \
-               A2 * np.cos(4 * np.pi * x / P + phi2)
-
-    def fit(self, x, y):
-        def neg_ll(params):
-            p = params[:-1]
-            log_sigma = params[-1]
-            sigma2 = np.exp(2 * log_sigma)
-            mu = self._predict_fn(x, p)
-            residuals = y - mu
-            n = len(y)
-            return 0.5 * n * np.log(2 * np.pi * sigma2) + 0.5 * np.sum(residuals**2) / sigma2
-
-        # Polyfit for initial estimates
-        coeffs = np.polyfit(x, y, 2)
-        a_init, b_init, c_init = coeffs
-
-        bounds = [
-            (a_init * 0.1, a_init * 5.0) if a_init > 0 else (a_init * 5.0, a_init * 0.1),
-            (b_init - 1.0, b_init + 1.0),
-            (c_init - 1.0, c_init + 1.0),
-            (0.01, 1.0),                       # A1
-            (0.9, 1.1),                         # P
-            (-np.pi, np.pi),                    # phi1
-            (0.001, 0.5),                       # A2
-            (-np.pi, np.pi),                    # phi2
-            (np.log(0.001), np.log(0.5)),       # log(sigma)
-        ]
-
-        result = differential_evolution(neg_ll, bounds, seed=42, maxiter=500,
-                                        tol=1e-8, polish=True)
-        self.params_ = result.x[:-1]
-        self.sigma = np.exp(result.x[-1])
-
-    def predict(self, x_eval):
-        mean = self._predict_fn(x_eval, self.params_)
-        return self._make_result(
-            x_eval, mean, self.sigma**2,
-            {f"p{i}": float(v) for i, v in enumerate(self.params_)},
-        )
-
-
-class ExponentialSeasonalModel(CandidateModel):
-    """
-    y = a*exp(b*t) + c + A*sin(2π*t/P + φ₁) + B*cos(4π*t/P + φ₂) + ε
-
-    Exponential trend — models accelerating growth as compound process.
-    Similar to quadratic over the observed range but diverges in extrapolation.
-    """
-    name = "Exponential+Seasonal"
-
-    def __init__(self):
-        self.params_ = None
-        self.sigma = 1.0
-
-    def _predict_fn(self, x, p):
-        a, b, c, A1, P, phi1, A2, phi2 = p
-        # Clamp to avoid overflow
-        exponent = np.clip(b * x, -50, 50)
-        return a * np.exp(exponent) + c + A1 * np.sin(2 * np.pi * x / P + phi1) + \
-               A2 * np.cos(4 * np.pi * x / P + phi2)
-
-    def fit(self, x, y):
-        def neg_ll(params):
-            p = params[:-1]
-            log_sigma = params[-1]
-            sigma2 = np.exp(2 * log_sigma)
-            try:
-                mu = self._predict_fn(x, p)
-                if not np.all(np.isfinite(mu)):
-                    return 1e10
-                residuals = y - mu
-                n = len(y)
-                return 0.5 * n * np.log(2 * np.pi * sigma2) + 0.5 * np.sum(residuals**2) / sigma2
-            except (OverflowError, FloatingPointError):
-                return 1e10
-
-        bounds = [
-            (0.01, 10.0),                      # a (amplitude)
-            (0.001, 0.2),                       # b (growth rate)
-            (-5.0, 5.0),                        # c (offset)
-            (0.01, 1.0),                        # A1
-            (0.9, 1.1),                         # P
-            (-np.pi, np.pi),                    # phi1
-            (0.001, 0.5),                       # A2
-            (-np.pi, np.pi),                    # phi2
-            (np.log(0.001), np.log(0.5)),       # log(sigma)
-        ]
-
-        result = differential_evolution(neg_ll, bounds, seed=42, maxiter=500,
-                                        tol=1e-8, polish=True)
-        self.params_ = result.x[:-1]
-        self.sigma = np.exp(result.x[-1])
-
-    def predict(self, x_eval):
-        mean = self._predict_fn(x_eval, self.params_)
-        return self._make_result(
-            x_eval, mean, self.sigma**2,
-            {f"p{i}": float(v) for i, v in enumerate(self.params_)},
-        )
-
-
-def build_mauna_loa_candidates():
-    """Return all 3 candidate trend models for Mauna Loa BMS*."""
-    return [
-        LinearSeasonalModel(),
-        QuadraticSeasonalModel(),
-        ExponentialSeasonalModel(),
-    ]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -253,26 +68,28 @@ def main():
 
     print("=" * 60)
     print("  BMS* on Mauna Loa CO₂")
-    print("  Candidates: Linear, Quadratic, Exponential (all + Seasonal)")
+    print("  Candidates: Linear, Quadratic, Exponential (all + 2Harm)")
     print("=" * 60)
 
-    # ── 1. Load data ──────────────────────────────────────────────
-    x_train, y_train, x_test, y_test, info = load_mauna_loa(
+    # ── 1. Load data (TRAINING-ONLY; §6.6 holdout seal) ───────────
+    # The 60-month holdout is SEALED until the D19 author decision
+    # (docs/plan-d19-mauna.md §6.6): this study-facing script never receives
+    # test values. Split metadata (counts, cutoff rule) is permitted.
+    x_train, y_train, info = load_mauna_loa_training(
         normalize=True, test_years=5.0
     )
     x_np = x_train.numpy()
     y_np = y_train.numpy()
-    print(f"\n  Train: {len(x_train)}, Test: {len(x_test)}")
+    print(f"\n  Train: {info['n_train']}, Test (sealed holdout): {info['n_test']}")
     print(f"  Normalization: y_mean={info['y_mean']:.2f}, y_std={info['y_std']:.2f}")
 
-    # Evaluation grid — covers train + test range
-    x_all = torch.cat([x_train, x_test])
-    x_eval_np = np.linspace(x_all.min().item(), x_all.max().item(), args.n_eval)
+    # Evaluation grid — training span only while the holdout stays sealed
+    x_eval_np = np.linspace(x_train.min().item(), x_train.max().item(), args.n_eval)
     x_eval = torch.tensor(x_eval_np).double()
 
     # ── 2. Fit candidate models ───────────────────────────────────
     print("\n── Fitting Candidate Models ──")
-    candidates = build_mauna_loa_candidates()
+    candidates = build_universe(APPENDIX_TREND3)
     candidate_results = []
 
     for cand in candidates:
@@ -303,10 +120,9 @@ def main():
 
     if args.map_only:
         print("\n  --map-only: Skipping HMC. No BMS* scoring.")
-        # Still plot candidates vs data
+        # Still plot candidates vs data (training span only; holdout sealed)
         fig, ax = plt.subplots(figsize=(12, 6))
         ax.scatter(x_np, y_np, c='k', marker='x', s=10, alpha=0.5, label='Train')
-        ax.scatter(x_test.numpy(), y_test.numpy(), c='red', marker='.', s=10, alpha=0.5, label='Test')
         colors = ['#e74c3c', '#3498db', '#2ecc71']
         for cr, color in zip(candidate_results, colors):
             ax.plot(x_eval_np, cr.mean, color=color, linewidth=2, label=cr.name)
@@ -355,12 +171,14 @@ def main():
 
     # ── 6. Run BMS* ───────────────────────────────────────────────
     print("\n── Running BMS* ──")
-    metrics = ["pw_mse", "pw_nll", "pw_hellinger", "pw_kl_forward", "pw_kl_symmetric"]
-    taus = np.logspace(-1, 2, 25)
+    # Guard the EXACT normalization input (A4: universes never merge).
+    assert_single_universe(candidate_results)
+    metrics = list(MAUNA_METRICS)
+    taus = np.array(MAUNA_TAU_GRID)
     results = run_bms_star(gp_samples, candidate_results, metrics, taus)
 
-    # Print results at key τ values
-    for tau in [0.5, 1.0, 5.0, 10.0]:
+    # Decision A4 reports every pre-registered temperature.
+    for tau in MAUNA_TAU_GRID:
         print_bms_star_table(results, tau)
 
     # ── 7. Save results ───────────────────────────────────────────
@@ -369,11 +187,9 @@ def main():
     # Summary JSON
     summary = {"n_gp_samples": len(gp_samples), "n_candidates": len(candidate_results)}
     for metric_name in metrics:
-        taus_sorted = sorted(results[metric_name].keys())
-        mid_tau = taus_sorted[len(taus_sorted) // 2]
-        bms = results[metric_name][mid_tau]
+        bms = results[metric_name][MAUNA_HEADLINE_TAU]
         summary[metric_name] = {
-            "tau": float(mid_tau),
+            "tau": float(MAUNA_HEADLINE_TAU),
             "posteriors": {name: float(p) for name, p in
                           zip(bms.instance_names, bms.instance_posteriors)},
             "winner": bms.instance_names[int(np.argmax(bms.instance_posteriors))],
@@ -406,11 +222,11 @@ def main():
     fig3.savefig(path3, bbox_inches="tight", dpi=150)
     print(f"  Saved: {path3}")
 
-    # Custom: candidates vs data with test set
+    # Custom: candidates vs training data (holdout sealed; §6.6 — the test
+    # months are scored once, after the D19 decision, as the labeled
+    # extrapolation check, never plotted here before unsealing)
     fig4, ax = plt.subplots(figsize=(14, 6))
     ax.scatter(x_np, y_np, c='k', marker='x', s=10, alpha=0.3, label='Train')
-    ax.scatter(x_test.numpy(), y_test.numpy(), c='red', marker='.', s=15,
-              alpha=0.5, label='Test (held out)')
     colors = ['#e74c3c', '#3498db', '#2ecc71']
     for cr, color in zip(candidate_results, colors):
         ax.plot(x_eval_np, cr.mean, color=color, linewidth=2, label=cr.name)

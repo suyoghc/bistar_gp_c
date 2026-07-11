@@ -24,5 +24,10 @@ test = ["pytest>=7.0"]
 [tool.setuptools]
 packages = ["bistar_gp"]
 
+[tool.setuptools.package-data]
+# The A9 provenance gate hard-fails without the vendored, checksummed Mauna
+# raw record; a wheel that omits it ships a loader that cannot load (D20).
+bistar_gp = ["datasets/*.csv"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
