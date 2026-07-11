@@ -1226,3 +1226,151 @@ computation, in the planning session). OPEN items, all carried inside the doc: e
 transcription (§8, amendment rule armed); final A6 budgets + A5 fallback freeze at M2b;
 implementation-coupled predicate numbers at M2a-M2c (§6.15); G0 sign-off at M2d. Next: the
 M2a infrastructure PR.
+
+## D20: D19 M2a infrastructure — provenance gate, holdout-seal API, period freeze, candidate registry, metric wiring, diagnostics schema, slurm guard — 2026-07-11
+
+**Problem:** the frozen D19 pre-registration (docs/plan-d19-mauna.md, a077c6e, merged e86e90a)
+promises seven arm-independent infrastructure pieces at M2a, before any pilot result may be
+read (§4 milestone map, §6.15/§6.16 ordering): the A9 data-provenance gate with the canonical
+year/month/co2 hash; a training-only loader making the §6.6 holdout seal mechanical; the A10
+seasonal-period freeze (the plug-in period was still trainable and drifted to ~0.9996 under
+fit_map — standing disclosure 4); the A4 candidate-set registry with the harmonized 3-set
+appendix universe (historically: trainable P in (0.9, 1.1), cos second harmonic,
+differential_evolution — all divergent from the ladder); pw_kl_vcal + the frozen tau grid
+wired to the Mauna scripts; a diagnostic-retaining sampler result schema (fit_hmc discarded
+the pyro MCMC object, losing the divergences/depth-saturation/acceptance that gate G-B reads);
+and the stale-slurm refresh. The recorded loader defects (dead synthetic fallback reaching
+`np.argsort(x_all)` with `x_all` unbound on fetch failure; unreachable second `except`;
+undocumented no-op co2>0 filter) rode along.
+
+**Decision:** one infrastructure PR (branch `feat/d19-m2a-infra`), no pilots, no Mauna BMS*
+output, no candidate fit to real Mauna data anywhere (all harmonization/registry/metric tests
+run on synthetic fixtures):
+
+- **A9 provenance gate** (`bistar_gp/data.py`, rewritten): OpenML 41187 is licensed CC0
+  (checked 2026-07-11 via the OpenML API), so the vendored branch of A9 applies — the full
+  2225-row raw record is vendored at `bistar_gp/datasets/mauna_loa_co2_openml41187.csv`
+  (all 7 columns; station/day/weight/flag kept because the §8 era transcription reads them;
+  file sha256 6e50ccd10d6132da6df272f5e2b30d2f02c5134cda6bbd3a1b2b69fbe48d30eb). Every load
+  verifies: the canonical year/month/co2 sha256
+  5bcdc813b4c3b570c9947acfaa0d3ff8cb5f89094b3e4e5121f72535a0cc0910 (float64 tobytes, column
+  order year/month/co2, fetched row order — the same serialization the M1 benchmark used;
+  recorded as PREREG ADDENDUM v1.1 in the new docs/prereg-addenda-d19.md), the M1 co2-only
+  pin 7e301efd...44cb9 (continuity, plan §6.2), and counts 2225 raw (pre AND post the §6.2
+  co2>0 filter, asserted to stay a no-op) / 521 monthly / 461 train / 60 test at the prereg
+  cutoff. Hard RuntimeError on any mismatch (`_verify_mauna_provenance`, data.py:96).
+  Sources: `source="vendored"` default (offline, deterministic), `source="openml"`
+  retrieval verified against the same pins (data.py:67; verified to yield byte-identical
+  tensors). The dead fallback and unreachable except are gone; `_synthetic_mauna_loa` is
+  deleted (a silent synthetic substitute is exactly what A9 forbids).
+- **Training-only API** (`load_mauna_loa_training`, data.py:240): returns (x_train, y_train,
+  info) — test y values never returned, logged, or persisted by this entry point; split
+  METADATA (461/60, cutoff rule) rides in info as §6.6 explicitly permits. The provenance
+  layer still reads the full artifact for checksum verification (seal semantics are
+  application-layer; full-artifact verification necessarily streams test-era rows and is
+  permitted). Study-facing D19 code uses this entry point from now on; the default
+  `load_mauna_loa` keeps its exact 5-tuple contract and values.
+- **A10 period freeze** (`bistar_gp/model.py:121-178` + `bistar_gp/fit.py:29`):
+  raw_period_length filled to exactly 0.0 — which maps to exactly 1.0 under
+  Interval(0.99, 1.01) in float64 (verified numerically) — plus requires_grad_(False) in
+  build_mauna_loa_kernels; `assert_mauna_period_frozen(model)` checker (model.py:124);
+  fit_map snapshots every requires_grad=False parameter at entry and asserts it unchanged at
+  exit, so every MAP/multi-start path enforces the freeze structurally. Disclosed side
+  effect: fit_mcmc_simple no longer proposes the period (its param_list filters on
+  requires_grad; pre-A10 the period WAS a proposal dimension). The pyro sampled-site
+  inventory stays 7 (the period carries no prior). Tests:
+  tests/test_mauna_period_freeze.py (7 — exact 1.0 at build, fit_map 100-iter hold,
+  3-restart multi-start hold, guard trip on violation, 7-site inventory via
+  initialize_model, no period site, MH exclusion).
+- **A4 candidate registry** (`bistar_gp/mauna_loa_candidates.py`): one module now hosts BOTH
+  universes — MAIN_LADDER (the unchanged 4-ladder) and APPENDIX_TREND3 (harmonized 3-set) in
+  an immutable MappingProxyType registry (line 463) with per-universe roles and the A4
+  separate-normalization rule; `build_universe(key)` tags every fresh instance with
+  `.universe` (line 484); `assert_single_universe` raises on empty/untagged/mixed
+  collections (line 498) and the study script calls it before run_bms_star, so merging the
+  two universes into one normalization is loudly erroneous. Harmonized appendix members
+  LinearHarmonic2Model (line 210) and ExponentialHarmonic2Model (line 311) use the ladder
+  convention: period frozen at 1.0 (fixed 2π/4π frequencies; the historical trainable
+  P in (0.9, 1.1) is gone), sine second harmonic (replacing the historical cos — the two
+  conventions are prediction-equivalent, tested on canonicalized predictions rather than
+  raw phase parameters), and the shared D11 multi-start full-NLL protocol through
+  CandidateModel._fit_mle (differential_evolution removed from
+  experiments/bms_star_mauna_loa.py entirely). The shared member is the SAME class object
+  in both universes (`AppendixQuadHarmonic2Model = QuadHarmonic2Model`, line 451), so the
+  §3 cross-universe identity holds by construction. Tests:
+  tests/test_mauna_candidate_registry.py (7, synthetic fixtures only): composition/tags,
+  class-and-fit identity of the shared member, historical-cos ground truth reproduced by
+  the harmonized sine model, restarts routed through _fit_mle (spy) + no
+  differential_evolution import remains, merge-guard accept/reject, metric/tau contracts,
+  synthetic end-to-end BMS* normalization.
+- **Metric wiring (A4-metric)** (registry module lines 37-47):
+  MAUNA_PRIMARY_METRIC="pw_kl_vcal"; MAUNA_METRICS = pw_kl_vcal first + the five legacy
+  Mauna metrics (kl_forward stays appendix-sensitivity); MAUNA_TAU_GRID =
+  (0.1, 0.3, 1.0, 3.0, 10.0); MAUNA_HEADLINE_TAU = 1.0. bms_star_mauna_loa.py imports
+  bistar_gp.metrics_v2 for METRICS registration, scores MAUNA_METRICS over the frozen grid
+  (replacing np.logspace(-1, 2, 25)), prints tables at every prereg tau, and keys the
+  summary JSON on the headline tau instead of the mid-grid heuristic. No Mauna BMS* value
+  was computed anywhere in M2a.
+- **Diagnostics schema** (`bistar_gp/sampler_diagnostics.py`, new): frozen dataclass
+  SamplerDiagnostics (schema_version 1, line 65) — chain-major divergence_draws
+  (post-warmup indices, pyro's own convention at hmc.py:414), acceptance_rate,
+  leapfrog_counts, site_names in samples-dict order; JSON to_dict/from_dict rejecting
+  unknown keys and foreign versions; an honesty contract enforced at construction (a
+  diagnostic is None exactly when named in `unavailable` — never fabricated zeros); derived
+  n_divergences/divergence_rate/tree_depths/depth_saturation_rate (saturation predicate:
+  leapfrogs >= 2^max_tree_depth - 1; 127 at td7, matching the D8 record). Pyro 1.9.1 does
+  not expose per-iteration tree depth, so it is recovered observationally:
+  PotentialEvalTracker (line 37) wraps the model callable — one traced call per leapfrog,
+  verified by probe — and an MCMC hook_fn snapshots cumulative counts per iteration;
+  sampling-stage deltas are per-draw leapfrog counts (leapfrog_counts_from_records,
+  line 194). `fit_hmc(..., return_diagnostics=True)` returns (samples, SamplerDiagnostics)
+  (fit.py:228); the DEFAULT return stays the unchanged D9 dict of site -> (n,) constrained
+  arrays (zero overhead when off: no hook, no wrapper). The M2c divergence-clustering
+  predicate (§6.15) will be defined against this schema. Tests:
+  tests/test_sampler_diagnostics.py (9 — default-path backward compat, structured shapes +
+  site ordering, plausibility, JSON round-trip, unknown-key/version rejection, 4-chain
+  payload rates, unavailable honesty incl. constructor enforcement, hook-record
+  derivation, shape validation).
+- **Slurm refresh** (`experiments/job_mauna_loa_hmc.slurm`): stale
+  --mode/--subsample/--n-posterior dropped; aligned to sibling conventions
+  (anaconda3/2024.6, conda env bistar_gp, cd /scratch/gpfs/SUYOGHC/bistar_gp_c/experiments);
+  invocation `python bms_star_mauna_loa.py --n-hmc 200 --n-warmup 100 --n-eval 300`. New
+  guard tests/test_slurm_argparse.py (5 parametrized invocations across all four .slurm
+  files): shlex-parses every slurm python invocation and asserts each --flag exists in the
+  target's argparse via AST (source-level, in the test_experiment_hmc_pattern.py spirit);
+  verified to fail against the pre-refresh file.
+- **Regression gates**: experiments/d19_prior_scorecard.py re-run after the loader rewrite
+  regenerates runs/d19_planning/scorecard_v2.json BYTE-IDENTICALLY (sha256
+  52b2d49d8a8d14f9348c78970ec8ef2e40481406eee8f42b6e4af3e9ca836881 unchanged) — the allowed
+  reproduction check, not a new result; the monthly aggregation was additionally verified
+  byte-identical between the vendored CSV and a live OpenML fetch. Full suite: 158 passed
+  (121 baseline + 37 new), zero failures.
+
+**Alternatives considered:** deterministic retrieval + runtime checksum without vendoring
+(rejected: CC0 permits vendoring, which removes the network dependency the gate would
+otherwise re-pay at every load; the retrieval path is kept as a verified secondary source);
+hashing the CSV file bytes as the canonical identity (rejected: the canonical hash is defined
+over the parsed year/month/co2 VALUES so vendored and OpenML sources verify to one pin; the
+file hash is recorded in the addendum as tamper evidence only); a 3-column vendored file
+(rejected: the station column feeds the §8 era transcription); giving the period a prior
+instead of freezing (rejected in A10 itself — sampled-site inventory churn for no identified
+scientific need); a separate appendix Quadratic+2Harm implementation with an equality test
+against the ladder (rejected: two code paths can drift; the class alias makes drift
+structurally impossible and turns the §3 identity test into a guard); attaching the live pyro
+MCMC object to the legacy dict (rejected: not serializable, not stable — exactly what the
+plan forbids); recovering tree depth via a NUTS subclass (rejected: pyro keeps depth in local
+scope; the eval-counter observation is exact for leapfrog counts and forks no pyro
+internals); zero-filling unavailable diagnostics (rejected: fabricated zeros would pass G-B
+silently; the honesty contract makes absence loud and constructor-enforced).
+
+**Status:** M2a COMPLETE. Suite green (158), scorecard byte-identity gate passed, prereg
+addendum v1.1 (canonical hash + vendoring record) landed in docs/prereg-addenda-d19.md; no
+scientific number was produced or read (the scorecard re-run reproduces the already-ratified
+M1 artifact). Implementation route: two codex gpt-5.6-sol (xhigh) subagents built the
+registry/metric wiring and the slurm refresh/guard in a workspace-write sandbox; the
+loader/seal/period/diagnostics work and integration are Fable's; PR-diff review by codex
+gpt-5.6-sol (xhigh) before Ready. OPEN and owed at M2b (unchanged from D19): E1 + frozen
+equivalence battery + the real E1 NUTS microbenchmark + Della re-benchmark (A7) + final A6
+budgets + the A5 fallback design/infeasibility predicate. M2c: S2/S3/S4, M1 prior tests,
+G-toy tolerances, the divergence-clustering predicate (defined against the D20 schema),
+corrected normalized profile band masses. M2d: arms + orchestration + G0 sign-off.

@@ -15,10 +15,20 @@ DEFAULT_JITTER = 1e-4
 
 
 def fit_map(model, likelihood, train_x, train_y, n_iter=500, lr=0.05, verbose=True, print_every=50):
-    """MAP estimation via Adam + marginal likelihood. Returns loss history."""
+    """MAP estimation via Adam + marginal likelihood. Returns loss history.
+
+    Gradient-frozen parameters (requires_grad=False, e.g. the A10 Mauna
+    seasonal period) are asserted unchanged at exit, so every MAP and
+    multi-start path that goes through fit_map enforces the freeze rather
+    than trusting the optimizer to skip them.
+    """
     train_x, train_y = train_x.double(), train_y.double()
     model.train()
     likelihood.train()
+
+    frozen = [(name, param, param.detach().clone())
+              for name, param in model.named_parameters()
+              if not param.requires_grad]
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
@@ -41,6 +51,12 @@ def fit_map(model, likelihood, train_x, train_y, n_iter=500, lr=0.05, verbose=Tr
 
         if verbose and (i + 1) % print_every == 0:
             print(f"  Iter {i+1}/{n_iter} — Loss: {losses[-1]:.4f}")
+
+    for name, param, before in frozen:
+        assert torch.equal(param.data, before), (
+            f"frozen parameter {name} changed during fit_map "
+            f"({before.tolist()} became {param.data.tolist()}); the A10-class "
+            "freeze contract is violated")
 
     model.eval()
     likelihood.eval()
@@ -209,7 +225,7 @@ def _hmc_pyro_model(model, x, y):
 
 def fit_hmc(model, likelihood, train_x, train_y,
             n_samples=500, n_warmup=200, verbose=True, seed=None,
-            init_to_map=True, max_tree_depth=10):
+            init_to_map=True, max_tree_depth=10, return_diagnostics=False):
     """
     Hamiltonian Monte Carlo via Pyro's NUTS sampler.
 
@@ -226,13 +242,21 @@ def fit_hmc(model, likelihood, train_x, train_y,
         sample-site name (verified). init_to_map=False falls back to init_to_sample.
     max_tree_depth: NUTS leapfrog-tree-depth cap (default 10 = pyro default, up to 1023
         steps). Lower it (6–8) for stiff posteriors to bound per-iteration cost.
+    return_diagnostics: keep the D9 default return unchanged when False. When
+        True, return (samples, SamplerDiagnostics) — the D20 serializable
+        record of divergences, acceptance, and per-draw leapfrog counts that
+        the pyro MCMC object used to take with it when discarded (the G-B
+        gate and the M2c divergence-clustering predicate consume this).
 
-    Returns dict of parameter name -> numpy array of posterior samples.
+    Returns dict of parameter name -> numpy array of posterior samples
+    (or the (samples, diagnostics) pair when return_diagnostics=True).
     """
     import pyro
     from pyro.infer.mcmc import NUTS, MCMC
     from pyro.infer.autoguide.initialization import init_to_value, init_to_sample
     from functools import partial
+
+    from .sampler_diagnostics import PotentialEvalTracker, diagnostics_from_pyro_mcmc
 
     if seed is not None:
         pyro.set_rng_seed(seed)
@@ -253,8 +277,14 @@ def fit_hmc(model, likelihood, train_x, train_y,
     else:
         init_strategy = init_to_sample
 
+    model_fn = partial(_hmc_pyro_model, model)
+    tracker = None
+    if return_diagnostics:
+        tracker = PotentialEvalTracker(model_fn)
+        model_fn = tracker
+
     nuts = NUTS(
-        partial(_hmc_pyro_model, model),
+        model_fn,
         jit_compile=False,
         step_size=0.1,
         adapt_step_size=True,
@@ -268,6 +298,7 @@ def fit_hmc(model, likelihood, train_x, train_y,
         num_samples=n_samples,
         warmup_steps=n_warmup,
         disable_progbar=(not verbose),
+        hook_fn=(tracker.hook if tracker is not None else None),
     )
 
     with gpytorch.settings.cholesky_jitter(DEFAULT_JITTER):
@@ -282,9 +313,24 @@ def fit_hmc(model, likelihood, train_x, train_y,
     if verbose:
         mcmc_run.summary()
 
+    diagnostics = None
+    if return_diagnostics:
+        diagnostics = diagnostics_from_pyro_mcmc(
+            mcmc_run,
+            sampler="nuts_pyro",
+            n_draws=n_samples,
+            n_warmup=n_warmup,
+            site_names=tuple(raw_samples.keys()),
+            max_tree_depth=max_tree_depth,
+            step_size=getattr(nuts, "step_size", None),
+            eval_records=tracker.records,
+        )
+
     model.eval()
     likelihood.eval()
 
+    if return_diagnostics:
+        return samples, diagnostics
     return samples
 
 
@@ -482,7 +528,9 @@ def fit_gp(model, likelihood, train_x, train_y, method="hmc", **kwargs):
 
       "hmc"          full-Bayes NUTS (default; thesis-equivalent — the chapter
                      validated HMC against its primary VI implementation).
-                     Accepts fit_hmc kwargs (init_to_map, max_tree_depth, ...).
+                     Accepts fit_hmc kwargs (init_to_map, max_tree_depth, ...;
+                     return_diagnostics=True makes it return the
+                     (samples, SamplerDiagnostics) pair instead — D20).
       "vi"           ADVI-style SVI, the thesis chapter's PRIMARY
                      implementation (Appendix II); no NUTS-style step-size
                      pathology, but a Gaussian posterior approximation.

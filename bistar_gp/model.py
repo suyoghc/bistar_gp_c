@@ -118,6 +118,32 @@ def apply_hp_value(model, likelihood, pyro_name, value):
 
 # ── Kernel builders ──────────────────────────────────────────────
 
+MAUNA_FROZEN_PERIOD = 1.0  # A10: seasonal period frozen at exactly 1.0
+
+
+def assert_mauna_period_frozen(model):
+    """A10 invariant check: every periodic component stays at exactly 1.0.
+
+    Call after any MAP / multi-start / sampling path that touches a Mauna
+    model. Verifies, for each PeriodicKernel among the model's components,
+    that the constrained period equals MAUNA_FROZEN_PERIOD bit-exactly and
+    that its raw parameter remains gradient-frozen. Raises AssertionError with
+    the offending value otherwise.
+    """
+    checked = 0
+    for kernel in model.kernel_components:
+        base = getattr(kernel, "base_kernel", kernel)
+        if isinstance(base, PeriodicKernel):
+            period = base.period_length.item()
+            assert period == MAUNA_FROZEN_PERIOD, (
+                f"A10 violation: period_length = {period!r}, expected exactly "
+                f"{MAUNA_FROZEN_PERIOD} (docs/plan-d19-mauna.md A10)")
+            assert not base.raw_period_length.requires_grad, (
+                "A10 violation: raw_period_length is trainable again")
+            checked += 1
+    assert checked > 0, "no PeriodicKernel found; nothing to check"
+
+
 def build_mauna_loa_kernels():
     """Trend + Seasonal + Medium-term for CO2 decomposition."""
     trend = ScaleKernel(
@@ -131,14 +157,26 @@ def build_mauna_loa_kernels():
 
     seasonal = ScaleKernel(
         PeriodicKernel(
-            period_length_constraint=Interval(0.99, 1.01),  # keep this one fixed
+            period_length_constraint=Interval(0.99, 1.01),
             lengthscale_constraint=Positive(),
             lengthscale_prior=GammaPrior(3.0, 2.0),
         ),
         outputscale_constraint=Positive(),
         outputscale_prior=GammaPrior(3.0, 1.0),
     )
-    seasonal.base_kernel.period_length = 1.0
+    # A10 period freeze (D19/D20): the old "keep this one fixed" comment was
+    # aspirational — raw_period_length stayed requires_grad=True, so fit_map
+    # drifted the plug-in period to ~0.9996 (standing disclosure 4 in
+    # docs/plan-d19-mauna.md §6.14). Freeze it at EXACTLY 1.0: raw = 0 under
+    # Interval(0.99, 1.01) maps to lower + (upper-lower)*sigmoid(0) = 1.0
+    # exactly in float64 (verified), and with requires_grad off the period has
+    # no gradient, no optimizer state, and no fit_mcmc_simple proposal
+    # dimension. It carries no prior, so the pyro sample-site inventory stays
+    # at 7 (asserted in tests).
+    with torch.no_grad():
+        seasonal.base_kernel.raw_period_length.fill_(0.0)
+    seasonal.base_kernel.raw_period_length.requires_grad_(False)
+    assert seasonal.base_kernel.period_length.item() == MAUNA_FROZEN_PERIOD
 
     medium = ScaleKernel(
         RBFKernel(

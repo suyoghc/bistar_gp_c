@@ -1,24 +1,55 @@
 """
-Parametric candidate models for Mauna Loa BMS* comparison.
+Candidate registry for the two Mauna Loa BMS* universes.
 
-Complexity ladder:
-  1. Linear         y = a·t + b                                          (2 params)
-  2. Quadratic      y = a·t² + b·t + c                                   (3 params)
-  5. Quad+Sin       y = a·t² + b·t + c + A·sin(2πt + φ)                  (5 params)
-  7. Quad+2Harm     y = a·t² + b·t + c + A₁sin(2πt+φ₁) + A₂sin(4πt+φ₂)  (7 params)
+The main four-model ladder compares trend and seasonal complexity. The
+harmonized three-model appendix compares linear, quadratic, and exponential
+trend laws while holding two seasonal harmonics fixed at periods 1 and 0.5.
+All seasonal candidates therefore use fixed angular frequencies 2*pi and
+4*pi and the sine phase convention.
 
-Frequencies are FIXED at annual (2π) and semi-annual (4π) in normalized
-time where period = 1 year.  This is appropriate for Mauna Loa where
-periodicity is known a priori — we are not discovering the frequency,
-we are asking whether the seasonal component improves the model.
+Decision A4 requires separate BMS* normalizations for these universes. They
+must never be merged into one candidate normalization. Study scripts call
+``assert_single_universe`` immediately before ``run_bms_star`` so accidental
+cross-universe comparisons fail loudly. The appendix's quadratic member aliases
+the ladder's ``QuadHarmonic2Model``, making shared-member identity structural.
 
-Reuses LinearModel and QuadraticModel from candidates.py.
+The module deliberately does not import ``metrics_v2``. Consumers perform that
+side-effect import before using ``MAUNA_METRICS`` so this registry stays light.
 """
 
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Callable, Mapping, Sequence, Tuple
+
 import numpy as np
-from bistar_gp.candidates import CandidateModel, CandidateResult
+from bistar_gp.candidates import (
+    CandidateModel,
+    CandidateResult,
+    LinearModel,
+    QuadraticModel,
+)
 
 TWO_PI = 2 * np.pi
+
+MAIN_LADDER = "main_ladder"
+APPENDIX_TREND3 = "appendix_trend3"
+
+MAUNA_PRIMARY_METRIC = "pw_kl_vcal"
+MAUNA_METRICS = (
+    "pw_kl_vcal",
+    "pw_mse",
+    "pw_nll",
+    "pw_hellinger",
+    "pw_kl_forward",  # Appendix-sensitivity metric under decision A4.
+    "pw_kl_symmetric",
+)
+MAUNA_TAU_GRID = (0.1, 0.3, 1.0, 3.0, 10.0)
+MAUNA_HEADLINE_TAU = 1.0
+
+A4_NORMALIZATION_RULE = (
+    "Decision A4: normalize this universe separately and never merge it with "
+    "another Mauna BMS* universe."
+)
 
 
 class QuadSinModel(CandidateModel):
@@ -159,6 +190,248 @@ class QuadHarmonic2Model(CandidateModel):
         )
 
 
+def _harmonic_initialization(x, residuals):
+    """Return canonical sine amplitudes and phases from a linear projection."""
+    design = np.column_stack([
+        np.sin(TWO_PI * x),
+        np.cos(TWO_PI * x),
+        np.sin(2 * TWO_PI * x),
+        np.cos(2 * TWO_PI * x),
+    ])
+    s1, c1, s2, c2 = np.linalg.lstsq(design, residuals, rcond=None)[0]
+    return (
+        np.hypot(s1, c1),
+        np.arctan2(c1, s1),
+        np.hypot(s2, c2),
+        np.arctan2(c2, s2),
+    )
+
+
+class LinearHarmonic2Model(CandidateModel):
+    """
+    y = a*t + b + A1*sin(2*pi*t + phi1) + A2*sin(4*pi*t + phi2) + eps.
+
+    Decision A4 freezes the seasonal period at 1.0 and replaces the historical
+    cosine second harmonic with the equivalent sine phase convention. Decision
+    D11 governs fitting: twelve L-BFGS-B starts combine amplitude scales
+    ``(0.5, 1.0, 1.5)`` with phase-offset pairs ``(0, 0)``, ``(pi/2, 0)``,
+    ``(0, pi/2)``, and ``(pi, pi)``; the full Gaussian NLL selects the winner.
+    """
+
+    name = "Linear+2Harm"
+
+    def __init__(self):
+        self.a = 0.0
+        self.b = 0.0
+        self.A1 = 0.0
+        self.phi1 = 0.0
+        self.A2 = 0.0
+        self.phi2 = 0.0
+        self.sigma = 1.0
+
+    @staticmethod
+    def _f(x, params):
+        a, b, A1, phi1, A2, phi2 = params
+        return (a * x + b
+                + A1 * np.sin(TWO_PI * x + phi1)
+                + A2 * np.sin(2 * TWO_PI * x + phi2))
+
+    def fit(self, x, y):
+        design = np.column_stack([
+            x,
+            np.ones_like(x),
+            np.sin(TWO_PI * x),
+            np.cos(TWO_PI * x),
+            np.sin(2 * TWO_PI * x),
+            np.cos(2 * TWO_PI * x),
+        ])
+        a, b, s1, c1, s2, c2 = np.linalg.lstsq(design, y, rcond=None)[0]
+        A1, phi1 = np.hypot(s1, c1), np.arctan2(c1, s1)
+        A2, phi2 = np.hypot(s2, c2), np.arctan2(c2, s2)
+        coefficients = np.array([a, b, s1, c1, s2, c2])
+        residuals = y - np.sum(design * coefficients, axis=1)
+        log_sigma = np.log(max(np.std(residuals), 1e-6))
+
+        best_nll = np.inf
+        best_params = None
+        phase_offsets = [
+            (0.0, 0.0),
+            (np.pi / 2, 0.0),
+            (0.0, np.pi / 2),
+            (np.pi, np.pi),
+        ]
+        bounds = [(None, None)] * 6 + [(-20.0, 5.0)]
+        for amplitude_scale in [0.5, 1.0, 1.5]:
+            for phi1_offset, phi2_offset in phase_offsets:
+                p0 = [
+                    a,
+                    b,
+                    amplitude_scale * A1,
+                    phi1 + phi1_offset,
+                    amplitude_scale * A2,
+                    phi2 + phi2_offset,
+                    log_sigma,
+                ]
+                try:
+                    result, nll = self._fit_mle(
+                        x, y, self._f, p0, bounds=bounds,
+                    )
+                    if nll < best_nll:
+                        best_nll = nll
+                        best_params = result
+                except Exception:
+                    continue
+
+        if best_params is not None:
+            self.a, self.b = best_params[0], best_params[1]
+            self.A1, self.phi1 = best_params[2], best_params[3]
+            self.A2, self.phi2 = best_params[4], best_params[5]
+            self.sigma = np.exp(best_params[6])
+        else:
+            self.a, self.b = a, b
+            self.A1, self.phi1 = A1, phi1
+            self.A2, self.phi2 = A2, phi2
+            self.sigma = np.exp(log_sigma)
+
+    def predict(self, x_eval):
+        mean = self._f(
+            x_eval,
+            [self.a, self.b, self.A1, self.phi1, self.A2, self.phi2],
+        )
+        return self._make_result(
+            x_eval,
+            mean,
+            self.sigma ** 2,
+            {"a": self.a, "b": self.b,
+             "A1": self.A1, "phi1": self.phi1,
+             "A2": self.A2, "phi2": self.phi2, "sigma": self.sigma},
+        )
+
+
+class ExponentialHarmonic2Model(CandidateModel):
+    """
+    y = a*exp(b*t) + c + A1*sin(2*pi*t + phi1) + A2*sin(4*pi*t + phi2) + eps.
+
+    The exponent is clamped to ``[-50, 50]`` as in the historical appendix
+    class. Decision A4 freezes the period at 1.0 and uses the sine convention.
+    The D11 grid uses data-scaled ``a`` values paired with
+    ``b in (0.01, 0.05, 0.1, 0.2)``, amplitude scales ``(0.5, 1.0)``, and phase
+    offsets ``(0, 0)`` and ``(pi/2, pi/2)``. The best full Gaussian NLL wins.
+    """
+
+    name = "Exponential+2Harm"
+
+    def __init__(self):
+        self.a = 0.0
+        self.b = 0.0
+        self.c = 0.0
+        self.A1 = 0.0
+        self.phi1 = 0.0
+        self.A2 = 0.0
+        self.phi2 = 0.0
+        self.sigma = 1.0
+
+    @staticmethod
+    def _f(x, params):
+        a, b, c, A1, phi1, A2, phi2 = params
+        exponent = np.clip(b * x, -50, 50)
+        return (a * np.exp(exponent) + c
+                + A1 * np.sin(TWO_PI * x + phi1)
+                + A2 * np.sin(2 * TWO_PI * x + phi2))
+
+    def fit(self, x, y):
+        slope = np.polyfit(x, y, 1)[0]
+        x_mid = float(np.mean(x))
+        trend_scale = max(float(np.ptp(y)), float(np.std(y)), 1e-3)
+        trend_starts = []
+        for b_init in [0.01, 0.05, 0.1, 0.2]:
+            if abs(slope) > 1e-8:
+                a_init = slope / (
+                    b_init * np.exp(np.clip(b_init * x_mid, -50, 50))
+                )
+            else:
+                a_init = trend_scale
+            trend_starts.append((a_init, b_init))
+
+        best_nll = np.inf
+        best_params = None
+        bounds = [
+            (None, None),
+            (-1.0, 1.0),
+            (None, None),
+            (None, None),
+            (None, None),
+            (None, None),
+            (None, None),
+            (-20.0, 5.0),
+        ]
+        for a_init, b_init in trend_starts:
+            exponent = np.clip(b_init * x, -50, 50)
+            c_init = float(np.mean(y - a_init * np.exp(exponent)))
+            trend_residuals = y - a_init * np.exp(exponent) - c_init
+            A1, phi1, A2, phi2 = _harmonic_initialization(
+                x, trend_residuals,
+            )
+            noise_residuals = trend_residuals - (
+                A1 * np.sin(TWO_PI * x + phi1)
+                + A2 * np.sin(2 * TWO_PI * x + phi2)
+            )
+            log_sigma = np.log(max(np.std(noise_residuals), 1e-6))
+
+            for amplitude_scale in [0.5, 1.0]:
+                for phase_offset in [0.0, np.pi / 2]:
+                    p0 = [
+                        a_init,
+                        b_init,
+                        c_init,
+                        amplitude_scale * A1,
+                        phi1 + phase_offset,
+                        amplitude_scale * A2,
+                        phi2 + phase_offset,
+                        log_sigma,
+                    ]
+                    try:
+                        result, nll = self._fit_mle(
+                            x, y, self._f, p0, bounds=bounds,
+                        )
+                        if nll < best_nll:
+                            best_nll = nll
+                            best_params = result
+                    except Exception:
+                        continue
+
+        if best_params is not None:
+            self.a, self.b, self.c = best_params[0], best_params[1], best_params[2]
+            self.A1, self.phi1 = best_params[3], best_params[4]
+            self.A2, self.phi2 = best_params[5], best_params[6]
+            self.sigma = np.exp(best_params[7])
+        else:
+            a_init, b_init = trend_starts[0]
+            exponent = np.clip(b_init * x, -50, 50)
+            c_init = float(np.mean(y - a_init * np.exp(exponent)))
+            residuals = y - a_init * np.exp(exponent) - c_init
+            A1, phi1, A2, phi2 = _harmonic_initialization(x, residuals)
+            self.a, self.b, self.c = a_init, b_init, c_init
+            self.A1, self.phi1 = A1, phi1
+            self.A2, self.phi2 = A2, phi2
+            self.sigma = max(np.std(residuals), 1e-6)
+
+    def predict(self, x_eval):
+        mean = self._f(
+            x_eval,
+            [self.a, self.b, self.c,
+             self.A1, self.phi1, self.A2, self.phi2],
+        )
+        return self._make_result(
+            x_eval,
+            mean,
+            self.sigma ** 2,
+            {"a": self.a, "b": self.b, "c": self.c,
+             "A1": self.A1, "phi1": self.phi1,
+             "A2": self.A2, "phi2": self.phi2, "sigma": self.sigma},
+        )
+
+
 def build_mauna_loa_candidates():
     """
     Return the 4 candidate models for Mauna Loa BMS*.
@@ -171,3 +444,80 @@ def build_mauna_loa_candidates():
     """
     from bistar_gp.candidates import LinearModel, QuadraticModel
     return [LinearModel(), QuadraticModel(), QuadSinModel(), QuadHarmonic2Model()]
+
+
+# Both names intentionally reference one class object. No appendix-specific
+# quadratic implementation can drift from the main ladder under decision A4.
+AppendixQuadHarmonic2Model = QuadHarmonic2Model
+
+
+@dataclass(frozen=True)
+class MaunaUniverseSpec:
+    """Immutable factories, role, and A4 normalization rule for one universe."""
+
+    member_factories: Tuple[Callable[[], CandidateModel], ...]
+    role: str
+    normalization_rule: str = A4_NORMALIZATION_RULE
+
+
+MAUNA_UNIVERSES: Mapping[str, MaunaUniverseSpec] = MappingProxyType({
+    MAIN_LADDER: MaunaUniverseSpec(
+        member_factories=(
+            LinearModel,
+            QuadraticModel,
+            QuadSinModel,
+            QuadHarmonic2Model,
+        ),
+        role="Primary BMS* universe.",
+    ),
+    APPENDIX_TREND3: MaunaUniverseSpec(
+        member_factories=(
+            LinearHarmonic2Model,
+            AppendixQuadHarmonic2Model,
+            ExponentialHarmonic2Model,
+        ),
+        role="Trend-law contrast only.",
+    ),
+})
+
+
+def build_universe(key):
+    """Build fresh candidates for one registered universe and tag each member."""
+    try:
+        spec = MAUNA_UNIVERSES[key]
+    except KeyError as exc:
+        available = ", ".join(sorted(MAUNA_UNIVERSES))
+        raise KeyError(f"Unknown Mauna universe {key!r}; choose from {available}") from exc
+
+    models = [factory() for factory in spec.member_factories]
+    for model in models:
+        model.universe = key
+    return models
+
+
+def assert_single_universe(models: Sequence[CandidateModel]):
+    """Reject empty, untagged, or cross-universe candidate collections."""
+    members = list(models)
+    if not members:
+        raise ValueError("Mauna candidate collection is empty")
+
+    untagged = [
+        getattr(model, "name", type(model).__name__)
+        for model in members
+        if not hasattr(model, "universe")
+    ]
+    if untagged:
+        raise ValueError(
+            "Untagged Mauna candidate members: " + ", ".join(untagged)
+        )
+
+    universes = {model.universe for model in members}
+    if len(universes) != 1:
+        offenders = ", ".join(
+            f"{getattr(model, 'name', type(model).__name__)} "
+            f"[{model.universe}]"
+            for model in members
+        )
+        raise ValueError("Mixed Mauna candidate universes: " + offenders)
+
+    return next(iter(universes))
