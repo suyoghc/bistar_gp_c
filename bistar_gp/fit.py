@@ -216,7 +216,7 @@ def _mh_log_joint(mll, model, likelihood, train_x, train_y):
 
 def _hmc_pyro_model(model, x, y):
     """Pyro NUTS target for fit_hmc: sample every prior once, score y through
-    the SAMPLED module.
+    the SAMPLED module, count the marginal likelihood exactly once.
 
     gpytorch's model.pyro_sample_from_prior() deep-copies the model, applies the
     sampled hyperparameters to the COPY, and RETURNS it — the original `model` is
@@ -227,13 +227,24 @@ def _hmc_pyro_model(model, x, y):
     is an ExactGP submodule, so `sampled.likelihood` carries the sampled noise and
     each hyperparameter latent — the kernel sites "covar_module.kernels.{i}.*_prior"
     plus "likelihood.noise_covar.noise_prior" — is emitted exactly once.
+
+    The obs site is emitted BARE — no pyro.plate (D22). The marginal
+    `sampled.likelihood(output)` is a single MultivariateNormal whose EVENT
+    dimension already covers all N data points; wrapping it in
+    `pyro.plate("data", N)` expands it to a batch of N identical MVNs, each
+    scored against the full y, so the potential silently became
+    N * log p(y | theta) + log p(theta) — the marginal likelihood counted N
+    times over, a likelihood-raised-to-the-N tempered target (verified
+    numerically against pyro's initialize_model potential, and reproduced on
+    a minimal pyro-only model; plate 40x on the toy, exact to 1e-12). A plate
+    is for conditionally independent per-datum likelihood factors, which an
+    exact-GP marginal is not.
     """
     import pyro
 
     sampled = model.pyro_sample_from_prior()
     output = sampled(x)
-    with pyro.plate("data", y.shape[0]):
-        pyro.sample("obs", sampled.likelihood(output), obs=y)
+    pyro.sample("obs", sampled.likelihood(output), obs=y)
 
 
 def fit_hmc(model, likelihood, train_x, train_y,

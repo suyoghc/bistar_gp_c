@@ -1534,3 +1534,79 @@ pin before code makes the choice by accident.
 on branch `feat/d19-m2b-e1` under this convention. The E1 numeric tolerances +
 point-generation distributions, final A6 budgets, and the A5 fallback design remain owed
 as their own M2b addenda per §6.15.
+
+## D22: fit_hmc/fit_vi/fit_hmc_laplace sampled p(theta) L(theta)^N — the obs plate multiplied the marginal likelihood by N — 2026-07-11
+
+**Problem:** `_hmc_pyro_model` (bistar_gp/fit.py) emitted the observation site inside
+`pyro.plate("data", y.shape[0])`. The observation marginal `sampled.likelihood(output)` is a
+single MultivariateNormal whose EVENT dimension already covers all N data points; a plate
+declares conditionally independent per-datum factors, so pyro expanded the MVN to a batch of
+N identical copies and scored the full y against each. The traced target — shared by fit_hmc
+(S1), fit_hmc_laplace, and fit_vi's ELBO — was therefore p(theta) p(y|theta)^N: a
+likelihood-raised-to-the-N tempered posterior, not the posterior. Discovered during M2b E1
+implementation: the first equivalence probe of the v1.2 single-count composition rule against
+the S1 oracle disagreed by exactly N x log p(y|theta) (toy N=40: obs log-prob -864.851 =
+40 x -21.621; the initialize_model potential matched the N-fold composition to 1e-12; a
+minimal pyro-only model with no gpytorch reproduced the factor and removing the plate
+restored the single count). The plate predates D4 (came with the original fit_hmc) and
+survived D6, both review panels, and the M2a three-lens workflow — every prior check verified
+site inventories and latent-to-likelihood CONNECTION, never the obs term's multiplicity.
+
+**Decision:** emit the obs site bare (one-line fix in `_hmc_pyro_model`, docstring records
+the defect). Regression tests pin the semantics at paired states with independently computed
+oracles: the traced obs log-prob equals the independent marginal log p(y|theta) (ratio test
+names the N-fold failure explicitly), and the initialize_model potential equals
+-(log p(y|theta) + sum log p(theta_s) + sum log|dtheta_s/du_s|) with every term assembled
+once (tests/test_model_and_fit.py::test_hmc_target_counts_marginal_likelihood_once,
+::test_hmc_potential_is_single_count_composition). Suite 177 passed. Prereg addendum v1.3
+records the correction and redefines "S1" as the corrected target (docs/prereg-addenda-d19.md).
+
+**Alternatives considered:** keeping the plate and making E1 reproduce the N-fold target for
+battery agreement — rejected: it ships a known wrong measure into a paper-grade study and
+violates the author's v1.2 point 3 directly. Rescaling by plate subsampling — no; there is
+nothing to subsample, the factors are not per-datum.
+
+**Result:** all pre-fix pyro-path results carry a standing caveat (enumerated in v1.3): D8
+Mauna impact-assessment HMC, D12 method x metric HMC/VI, D18 HMC headline 0.696/0.683 and
+its VI arm, regenerated HMC figure caches. Unaffected: MAP, fit_mcmc_simple (D13 measure),
+prior-IS/SIR/profile quadrature, M2a infrastructure. Re-labeling ratified records is a
+QUEUED author decision (OPEN); no pilot or Mauna BMS* number existed, so the D19 study is
+unaffected going forward.
+
+## D23: pyro NUTS gradients through the traced gpytorch target are broken for kernel sites — documented S1 property; E1 gradient gate uses finite differences — 2026-07-11
+
+**Problem:** with D22 fixed, E1's potential VALUES matched the S1 oracle to 1.4e-14 over
+MAP-neighborhood and dispersed states, but autograd GRADIENTS disagreed at O(1) on gradient
+scale. Central-finite-difference arbitration on every coordinate showed E1's autograd exact
+and the ORACLE's autograd wrong for all three kernel sites (toy SE lengthscale: autograd
+-0.0499 vs FD -1.0820) while exact for the noise site. Mechanism, instrumented: gpytorch's
+prior-value injection in `_pyro_sample_from_prior` runs `setting_closure(module, value)` ->
+`initialize()` -> `raw_*.data.copy_(...)`, which severs the autograd graph from the
+pyro-conditioned value into the kernel parameters — the NUTS gradient for those coordinates
+omits the likelihood contribution entirely and reflects only prior + Jacobian terms. The
+noise site alone survives because gpytorch's non-strict fallback REPLACES raw_noise with the
+graph-connected tensor (verified: raw_noise becomes a non-leaf Tensor during the traced
+call). So S1's NUTS has been proposing with a partially wrong gradient field; acceptance
+still uses exact potential values, so the invariant target stays the potential's density —
+an efficiency/guidance defect stacked on D22's wrong measure, and a candidate mechanical
+explanation (hypothesis, untested) for the recorded S1 pathologies: step-size collapse,
+tree-depth saturation, ESS ~ 1 on Mauna.
+
+**Decision:** no S1 code change (the defect is upstream gpytorch behavior inside the
+deep-copy trace path; S1 stays "the pyro path" per the plan). Recorded in prereg addendum
+v1.3 with two binding consequences: (a) the E1 battery's gradient reference is CENTRAL
+FINITE DIFFERENCES of the corrected oracle potential, never the oracle's autograd; E1's
+autograd must additionally match its own finite differences; (b) every S1-vs-S1f comparison
+(the microbenchmark included) discloses the asymmetry — identical target, different
+per-leapfrog cost AND different gradient-field correctness. E1 is immune by construction:
+theta enters the SAME module via torch.func.functional_call, no .data writes on the gradient
+path (v1.2 point 1).
+
+**Alternatives considered:** patching gpytorch's initialize/setting closures to preserve
+grad — upstream surgery with unknown blast radius across every gpytorch consumer, and S1's
+role in the study is "the current pyro path", which this would silently rewrite; filing the
+oracle's autograd as the battery gradient reference anyway — rejected, it would gate E1's
+correct gradients against a known-wrong reference.
+
+**Status:** documented; battery consequence implemented at M2b. Upstream gpytorch issue
+report is a possible follow-up (OPEN).

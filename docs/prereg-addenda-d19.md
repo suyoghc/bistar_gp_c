@@ -179,3 +179,90 @@ candidate set, or v1.0-frozen threshold. The E1 numeric tolerances +
 point-generation distributions, the A6 final budgets, and the A5 fallback
 design still land as their own M2b addenda per §6.15, after this convention
 is in force.
+
+---
+
+## v1.3 — S1 target correction: the pyro path counted the marginal likelihood N times (M2b, pre-battery) — 2026-07-11
+
+**Prereg anchor:** §2 Stage B (strategy S1 "current `fit_hmc` (MAP-init, td7,
+pyro path)"; the E1 battery's reference "agreement with the pyro potential"),
+§6.15, §6.16, addendum v1.2 point 3. Recorded BEFORE any E1 battery number,
+benchmark, or pilot result exists; discovered while implementing E1 under the
+v1.2 single-count composition rule, whose first equivalence probe against the
+S1 oracle exposed the defect.
+
+**Finding 1 (D22, FIXED).** `_hmc_pyro_model` — the traced target shared by
+`fit_hmc` (S1), `fit_hmc_laplace`, and `fit_vi` — emitted the observation
+site inside `pyro.plate("data", N)`. The observation marginal is a single
+MultivariateNormal whose EVENT dimension already covers all N data points;
+the plate expanded it to a batch of N identical MVNs, each scored against
+the full y. The sampled target was therefore
+
+    p(theta) * p(y | theta)^N     (likelihood raised to the N),
+
+not the posterior. Evidence, all exact: the traced obs log-prob equals
+N x the independently computed marginal (toy N=40: -864.851 = 40 x -21.621);
+the initialize_model potential equals the N-fold composition to 1e-12; a
+minimal pyro-only model (no gpytorch) reproduces the factor exactly, and
+removing the plate restores the single count. Fix: the obs site is emitted
+bare (`bistar_gp/fit.py::_hmc_pyro_model`); regression tests pin the traced
+obs log-prob to the independent marginal and the full potential to the
+single-count composition -(log p(y|theta) + sum log p(theta_s) +
+sum log|dtheta_s/du_s|) at paired states
+(`tests/test_model_and_fit.py::test_hmc_target_counts_marginal_likelihood_once`,
+`::test_hmc_potential_is_single_count_composition`).
+
+**Meaning of "S1" from this addendum on:** the corrected target. The E1
+battery gates against the corrected pyro potential; v1.2's requirement that
+E1 compute the marginal exactly once and the battery's "agreement with the
+pyro potential" are now consistent rather than contradictory.
+
+**Finding 2 (D23, DOCUMENTED — not fixable inside S1).** Pyro's autograd
+through the traced target is BROKEN for every kernel hyperparameter site:
+gpytorch's prior-value injection (`setting_closure` -> `initialize` ->
+`.data.copy_`) severs the graph from the conditioned sample value into the
+kernel parameters, so the NUTS gradient for those coordinates omits the
+likelihood contribution entirely (finite-difference arbitration on the toy:
+autograd -0.0499 vs true -1.0820 for the SE lengthscale, with E1's autograd
+matching finite differences on every coordinate to 1e-9-scale). The noise
+site alone keeps a connected graph (gpytorch's non-strict attribute-replace
+fallback happens to preserve it). Consequences, recorded now:
+
+- S1's NUTS proposes with a partially wrong gradient field. The invariant
+  target is still defined by the potential (acceptance uses exact
+  potential values), so this is an efficiency/guidance defect layered on
+  top of Finding 1's wrong-measure defect — a candidate mechanical
+  explanation for the recorded S1 pathologies (step-size collapse,
+  tree-depth saturation, ESS ~ 1), which remains a HYPOTHESIS until the
+  microbenchmark and pilots read on the corrected code.
+- The E1 GRADIENT gate cannot reference the oracle's autograd. The battery's
+  gradient reference is CENTRAL FINITE DIFFERENCES of the corrected oracle
+  potential (the function defines the target; its autograd is an
+  implementation artifact of the deep-copy path). E1's autograd is
+  additionally required to match its own finite differences.
+- Any S1-vs-S1f comparison (microbenchmark included) carries a disclosed
+  asymmetry: identical target, different per-leapfrog cost AND different
+  gradient-field correctness. Cost-per-leapfrog remains well-defined for
+  both; cost-per-effective-draw comparisons must cite this addendum.
+
+**Standing caveat on pre-existing results (disclosure, no relabeling here):**
+every result produced through `fit_hmc`, `fit_hmc_laplace`, or `fit_vi`
+before this correction sampled (or variationally approximated) the
+likelihood-to-the-N target with the Finding-2 gradient field: the D8 Mauna
+impact-assessment HMC runs, the D12 method x metric HMC/VI numbers, the D18
+prior-sensitivity HMC headline (0.696 td7 / 0.683 td10) and its VI arm, and
+the regenerated figure caches. Unaffected: MAP (no pyro), `fit_mcmc_simple`
+(D13-corrected measure, single-count mll x n), all prior-IS / SIR /
+profile-quadrature numbers (no pyro NUTS), and the A9/A10/A4 M2a
+infrastructure. Re-interpretation or re-labeling of already-ratified records
+(D12/D18 and the W-series writeup decisions) is a pending author decision,
+queued explicitly — nothing in those records is edited by this addendum. The
+D19 study itself is unaffected going forward: no pilot, posterior, or Mauna
+BMS* number exists yet (§6.16 ordering satisfied), and G-toy goldens (M2c)
+were always defined as estimator-specific rather than
+reproduce-the-old-number (§6.9).
+
+**What this addendum does NOT change:** no gate of §6.7, no arm, no
+candidate set, no v1.0 threshold. The E1 tolerances + point sets (with the
+finite-difference gradient reference above), A6 budgets, and A5 fallback
+still land as their own M2b addenda.
