@@ -308,19 +308,24 @@ frozen bound; margins are the point of the gap):**
 
 | Gate | Measured worst | Frozen |
 |---|---|---|
-| potential vs oracle, relative to max(1, oracle) | 6.0e-16 | 1e-9 |
-| E1 autograd vs central FD of the ORACLE (per coordinate, step 1e-5 scaled; scale = max(1, max FD coordinate)) | 2.3e-7 | 1e-4 abs + 1e-4 * scale |
+| potential vs oracle, relative to max(1, \|oracle\|) — absolute-value convention pinned, codex M2b round 1 | 6.0e-16 | 1e-9 |
+| E1 autograd vs central FD of the ORACLE, over EVERY finite frozen regular state (both MAP sigmas, all ten prior draws, all finite tail/boundary states; comparable-state floor 20; coverage widened from a subset, codex M2b round 1) — per coordinate, step 1e-5 scaled; scale = max(1, max FD coordinate) | 2.3e-7 (MAP/prior states) | 1e-4 abs + 1e-4 * scale |
+| ... near_zero_noise state only: per coordinate vs the state gradient scale (adaptive-jitter evaluation noise caps FD accuracy there, step-independent; a disconnected gradient errs at order 1 of scale, which this gate exists to catch) | 4.2e-2 | 0.2 x scale |
+| ... near_singular state only: FD carries NO signal there (measured \|autograd - FD\| of order the gradient scale on both structures, from jitter-branch discontinuities between the FD probes, with potential values exact) — the frozen connectedness gate is E1-vs-oracle autograd agreement on the D23-spared noise coordinate; the state stays in the value, round-trip, and parity gates | 1.4e-16 | 1e-9 relative |
+| ... the five remaining tail states (large_noise, long/short lengthscales, large/small outputscales): clean FD (no jitter engagement), tight gate applies | 5.2e-7 of scale | 1e-4 abs + 1e-4 x scale |
 | directional Hessian: FD of E1 gradient (step 1e-5) vs oracle second difference (step 1e-3), relative | 7.5e-6 | 1e-3 |
 | likelihood / prior / Jacobian components vs independent oracles | 1.7e-16 | 1e-9 relative |
 | transform round-trips (u and theta) | 1.1e-16 | 1e-10 |
 | paired-state posterior-predictive mean/variance | (exact-path identity) | 1e-9 relative |
 
-**References and defect routing:** the potential-value reference is the
-CORRECTED S1 oracle (v1.3). The gradient reference is central finite
+**References and defect routing:** potential values are gated against the
+CORRECTED S1 oracle (v1.3); gradients are gated against central finite
 differences of that oracle — its autograd stays broken for kernel sites
-(D23) and a SENTINEL test asserts the defect is still present, so an
-environment upgrade that silently fixes it forces a review of this addendum
-rather than passing unnoticed. The curvature gate uses first-order machinery
+(D23) and a SENTINEL test asserts, per kernel site over three frozen states
+with the noise site pinned to agreement (sharpened from a max-over-sites
+check, codex M2b round 1), that the defect is still present, so an
+environment upgrade that silently fixes any site forces a review of this
+addendum rather than passing unnoticed. The curvature gate uses first-order machinery
 only: double-backward (create_graph) through the gpytorch marginal log-prob
 graph returns silently wrong directional Hessians (D24; measured 3.3026
 against a triple-agreeing true value 3.9444 on the toy at MAP, ~16% off,
@@ -347,8 +352,10 @@ FD + self FD) + the D23 sentinel; (d) directional Hessians + the D24
 sentinel; (e) separate components against independent oracles; (f)
 round-trips; (g) paired-state predictive equality; (h) invalid-SPD behavior
 parity; (i) A10 period exclusion and immobility; (j) S1f sampler schema +
-diagnostics honesty contract. 29 tests; battery passes at this freeze (28
-passed, 1 structure-conditional skip).
+diagnostics honesty contract; plus an eval-mode-entry regression guarding
+the train-mode enforcement (D4 class; added with the codex M2b round 1
+fixes). 31 collected at this freeze (30 passed, 1 structure-conditional
+skip).
 
 **What this addendum does NOT change:** no gate of §6.7, no arm, no
 candidate set. A6 final budgets and the A5 fallback design remain owed as
@@ -365,6 +372,19 @@ BMS* number exists; the microbenchmark persisted timing, potential-
 evaluation, and leapfrog-count fields only (`experiments/d19_e1_bench.py`,
 artifact `runs/d19_planning/e1_nuts_microbench.json`, firewall note embedded
 in the artifact; samples and scientific diagnostics discarded unread).
+
+**Recorded firewall reading (codex M2b round 1, finding 3; awaits author
+ratification with this PR):** beyond the three field families, the artifact
+carries run configuration (seed, iteration counts, tree depth) and
+environment provenance (package versions, thread count, platform, host,
+timestamp, git sha) plus fixed caveat strings. The v1.2 point-6 exclusion is
+read as targeting samples and scientific diagnostics; configuration and
+provenance fields are science-free and necessary to interpret the timings.
+No hyperparameter value, MAP value, sample, acceptance, divergence, or
+step-size field exists in the artifact (AST-audited key inventory). The
+script's real-data error path additionally suppresses exception MESSAGES
+(class name only) so a raising library call cannot leak a value; full
+tracebacks remain available on the synthetic path.
 
 ### Microbenchmark (local, macOS arm64 14 cores, 10 torch threads; td7,
 50 warmup + 50 draws, seed 0, single chain; medians over 20 reps for
@@ -392,8 +412,9 @@ therefore no longer describes evaluation cost: post-correction, E1's
 per-evaluation advantage is 1.2-3.2x. E1's operative advantages are (a)
 D23 immunity — correct gradients on every coordinate, where S1's broken
 kernel-site gradients saturated td7 in the microbenchmark (127
-leapfrogs/draw vs S1f's 6.7 at sub-150: ~17x fewer leapfrogs per draw and
-~17x less wall per draw, from guidance quality rather than evaluation
+leapfrogs/draw vs S1f's 6.7 at sub-150: ~19x fewer leapfrogs per draw,
+6350/334, and ~17x less wall per draw, 94.26 s/5.53 s — ratio pair
+corrected, codex M2b round 1 — from guidance quality rather than evaluation
 cost) — and (b) no per-evaluation deep copy. Single-seed, single-chain,
 50w+50d caveat: leapfrog counts are geometry- and adaptation-dependent;
 budgets below therefore freeze on the SATURATED bound (127 leapfrogs per
@@ -413,6 +434,7 @@ iteration at td7), which is count-independent.
 | S1 pilot, sub-150 ONLY | 6 h | measured anchor: the saturated 100-iteration microbench chain cost 94 s, so 4 x 400 iterations projects to ~25 min; the 6 h ceiling absorbs pathological adaptation |
 | Stage A per arm | 1.5 h core + gated IS pools | unchanged from provisional |
 | Paper-target run (full N=461), per G-B-surviving strategy x arm, E1 path | 4 h | MEASURED saturated bound: 4 x 400 x 127 x 23.9 ms = 81 min; x1.5 engineering overhead = 2.0 h; 4 h doubles that |
+| Paper-target run (full N=461), S4 | 1 h | AUTHOR-APPROVED CEILING (v1.2 point 7); costing law in the A5 predicate below (codex M2b round 1) |
 | S1 pyro path at full N | none | barred without explicit author exception (§1.3, unchanged) |
 
 Della thread-pinning numbers remain OWED: they land as their own addendum
@@ -433,20 +455,37 @@ the plated target and are superseded the same way.
   exactly 2.0 and would lock sampling to six fixed phases forever), and cuts
   the dominant dense-solve cost by (461/232)^3 = 7.8x.
 - **Infeasibility predicate (engineering/budget evidence only, per A5):**
-  the fallback fires iff, for EVERY strategy that passed G-B validity at
-  sub-150, the projected paper-target cost at full N=461 exceeds that
-  strategy's frozen paper-target budget above, with
-  projected cost = (median per-leapfrog wall cost at full N on the executing
-  platform: this microbenchmark locally, or the A7 Della re-measurement for
-  Della jobs) x (the 90th percentile of the strategy's own sub-150 pilot
-  per-draw leapfrog counts, capped at 127) x 1600 iterations (4 chains x
-  400) x 1.5 engineering overhead. Admissible inputs: timing,
-  potential-evaluation, leapfrog-count, and budget fields ONLY; adequacy
-  diagnostics and BMS* outputs are barred from the trigger. Evaluated once,
-  before any M3 full-scale assignment; the arithmetic and outcome are
-  committed with the run log. If the predicate fires, the N=232 fallback is
-  validated through ALL gates at that scale and disclosed as the paper
-  target (A5).
+  the fallback fires iff the projected paper-target cost at full N=461
+  exceeds the frozen paper-target budget for EVERY strategy that passed G-B
+  validity at sub-150, with strategy-specific costing (completed so the
+  quantifier is evaluable for every possible survivor set — codex M2b
+  round 1, finding 1):
+  - NUTS strategies on the E1 vehicle (S1f, S2, S3): projected cost =
+    (median per-leapfrog wall cost at full N on the executing platform: this
+    microbenchmark locally, or the A7 Della re-measurement for Della jobs)
+    x (the 90th percentile of the strategy's own sub-150 pilot per-draw
+    leapfrog counts, capped at 127) x 1600 iterations (4 chains x 400)
+    x 1.5 engineering overhead, against the 4 h paper-target budget above.
+  - S4 (MAP+Laplace; no leapfrogs): projected cost = (measured sub-150 S4
+    pilot wall time) x (461/150)^3 = 29.0 x 1.5 engineering overhead — the
+    cubic law §1.2 licenses for fixed-count dense-solve operations — against
+    an S4 paper-target budget of 1 h, set now as an AUTHOR-APPROVED CEILING
+    consistent with v1.2 point 7 (M2c may refine it by addendum; for
+    reference, the corrected first-order full-N machinery prices a MAP fit
+    at 4.6 s and a 7-site FD Hessian at ~0.2 s, so 1 h is generous).
+  - S1 (pyro path): never enters the full-N projection — full-N pyro-path
+    chains are barred by §1.3 regardless of pilot outcomes, so S1's G-B
+    survival cannot establish full-N feasibility. If the G-B survivor set
+    contains ONLY S1, full N=461 has no admissible vehicle and the fallback
+    fires by the standing bar (an explicit author exception under §1.3
+    would arrive as its own addendum with its own budget, before any such
+    run).
+  Admissible inputs: timing, potential-evaluation, leapfrog-count, and
+  budget fields ONLY; adequacy diagnostics and BMS* outputs are barred from
+  the trigger. Evaluated once, before any M3 full-scale assignment; the
+  arithmetic and outcome are committed with the run log. If the predicate
+  fires, the N=232 fallback is validated through ALL gates at that scale and
+  disclosed as the paper target (A5).
 
 **What this addendum does NOT change:** no gate of §6.7, no arm, no
 candidate set, no battery value of v1.4. S3/S4 numbers above remain

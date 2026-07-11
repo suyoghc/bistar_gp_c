@@ -370,3 +370,57 @@ pilots, no expensive runs, no scientific result read before the commit.
 - **Next**: M2b (E1 direct potential + frozen equivalence battery + real E1 NUTS
   microbenchmark + Della re-benchmark (A7) + A6 budgets + A5 fallback addendum).
   Holdout stays sealed; §6.5 ordering/blinding governs.
+
+## 2026-07-11 — D19 M2b: E1 coordinate convention, two S1 correctness findings, battery, microbenchmark (branch feat/d19-m2b-e1)
+
+- **Session opened with the author's 7-point revision** of the E1 coordinate
+  convention (recorded verbatim in prereg addendum v1.2 + D21, committed BEFORE
+  any E1 code per §6.16): E1's public NUTS coordinates are the exact pyro
+  initialize_model sample-site coordinates (S1's sites/order/transforms);
+  gpytorch raw parameters demoted to an internal evaluation representation;
+  single-count composition rule; frozen-period exclusion; paired-state
+  posterior-predictive gate; microbenchmark persistence firewall; S3/S4 numbers
+  frozen as ceilings until M2c.
+- **D22 (found by the first E1 equivalence probe)**: the obs plate in
+  _hmc_pyro_model multiplied the marginal likelihood by N — fit_hmc, fit_vi,
+  fit_hmc_laplace all targeted p(theta)L(theta)^N. One-line fix, paired-state
+  regression tests, prereg v1.3, standing caveat on every pre-fix HMC/VI
+  result. Survived D4/D6, two panels, and the M2a three-lens workflow because
+  every prior check tested site inventory/connection, never obs multiplicity.
+- **D23**: FD arbitration showed pyro autograd through the traced gpytorch
+  target loses the likelihood gradient on all kernel sites (gpytorch
+  .data.copy_ in prior injection; noise survives via a non-strict fallback,
+  instrumented). S1 keeps proposing with the broken field (upstream); E1 is
+  immune by construction; battery gradient reference switched to central FD.
+- **D24**: double-backward through the marginal log-prob silently wrong (~16%),
+  persists with fast_computations off; battery Hessian gate rebuilt on
+  first-order machinery; sentinels pin both D23 and D24; S2 mass-matrix
+  consequence recorded for M2c.
+- **E1 + battery**: bistar_gp/e1_potential.py (functional_call substitution, no
+  deep copy, no .data writes; fit_hmc_e1 = S1f vehicle) and the 29-test battery
+  with v1.4-frozen tolerances (worst measured: potential 6e-16, gradient
+  2.3e-7, curvature 7.5e-6; margins 2-6 orders). Suite 205 passed + 1 skip.
+- **Microbenchmark (firewalled, v1.2 point 6)**: the plan's "~200x deep-copy
+  penalty" was mostly the plate — corrected S1 potential 6.0/10.5 ms vs plated
+  51.8 ms/1.486 s; E1 per-eval advantage 1.2-3.2x; S1 saturated td7 (127
+  lf/draw) where S1f needed 6.7. Final A6 budgets frozen on saturated bounds;
+  A5 fallback frozen (N=232, linspace rule, engineering-only predicate) in
+  v1.5 + D25.
+- **Process**: author halted the Claude multi-agent review mid-flight (token
+  budget); review re-run via codex gpt-5.6-sol (xhigh) per author instruction;
+  codex findings and dispositions recorded below in this entry once resolved.
+- **Della re-benchmark (A7) remains user-executed and owed** before any Della
+  assignment.
+- **Codex round 1 dispositions (all 14 fixed same-PR)**: A5 predicate completed
+  for S4/S1-only survivor sets (S4 cubic costing vs a new 1 h ceiling; S1-only
+  fires the fallback via the §1.3 bar); gradient gate widened to every finite
+  frozen state, which surfaced that FD cannot referee the jitter-engaged tail
+  states — three-tier gate frozen (0.2-of-scale at near_zero_noise;
+  autograd-connectedness on the noise coordinate at near_singular, where FD
+  carries zero signal; tight gate elsewhere); bench firewall reading recorded
+  for author ratification + sanitized real-path errors (exception class only);
+  fit_hmc_e1 gained init_to_map parity; eval-mode-entry regression added;
+  per-site D23 sentinel; independent site-order oracle; max(1,|oracle|)
+  convention pinned; 19x/17x leapfrog-wall ratio pair corrected; docstring/
+  prose/stale-line fixes; fork_rng hygiene. Battery 30 passed + 1 skip; suite
+  207 passed + 1 skipped.

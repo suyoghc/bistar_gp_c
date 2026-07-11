@@ -40,6 +40,7 @@ import json
 import os
 import platform
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -362,5 +363,25 @@ def main():
         print(f"\nwrote {args.out}")
 
 
+def _firewalled_main():
+    """Sanitized error path (v1.2 point 6; codex M2b round 1, finding 3): a
+    raising library call could embed hyperparameter or data values in its
+    exception message, so on the real-data path only the exception CLASS
+    reaches stdout/stderr. Debug reproduction belongs on --synthetic, where
+    the full traceback is science-free and allowed to print."""
+    if "--synthetic" in sys.argv[1:]:
+        main()
+        return
+    try:
+        main()
+    except SystemExit:
+        raise
+    except BaseException as exc:
+        print(f"aborted: {type(exc).__name__} (message suppressed by the "
+              "v1.2 persistence firewall; rerun with --synthetic to debug)",
+              file=sys.stderr)
+        raise SystemExit(1) from None
+
+
 if __name__ == "__main__":
-    main()
+    _firewalled_main()

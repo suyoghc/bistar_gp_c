@@ -24,12 +24,34 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   `load_mauna_loa_training` from now on.
 - **No BMS*/pilot/posterior result exists yet**; the ordering/blinding rule (§6.5)
   governs from here on.
-- **M2b next (arm-independent)**: E1 direct-parameter potential + the frozen
-  equivalence battery (tolerances + point sets fixed BEFORE any pilot is read,
-  §6.15); the real E1 NUTS microbenchmark (replaces the kernel-cost proxy rows);
-  Della re-benchmark via experiments/d19_bench.py, threads pinned (A7); final A6
-  budgets + the A5 subsample-fallback design/infeasibility predicate as one prereg
-  addendum (round 5).
+- **M2b DONE except Della (D21-D25, branch `feat/d19-m2b-e1`, 2026-07-11)**:
+  prereg addenda v1.2-v1.5 (append-only, each committed before the work it
+  governs): v1.2 author coordinate convention (E1 public coordinates = pyro
+  initialize_model sites; gpytorch raw internal-only); v1.3 the D22/D23
+  S1-target findings; v1.4 frozen battery tolerances + point sets; v1.5
+  microbenchmark + final A6 budgets + frozen A5 fallback (N_fb=232, linspace
+  rule, timing/leapfrog/budget-only predicate). Code: `bistar_gp/e1_potential.py`
+  (E1Potential + fit_hmc_e1), 29-test battery `tests/test_e1_potential.py`,
+  firewalled `experiments/d19_e1_bench.py` + artifact
+  `runs/d19_planning/e1_nuts_microbench.json`. Suite 205 passed + 1 skip.
+- **TWO CORRECTNESS FINDINGS while building E1 (author attention required)**:
+  (D22) the obs pyro.plate made fit_hmc/fit_vi/fit_hmc_laplace target
+  p(theta)L(theta)^N — FIXED, but every pre-fix HMC/VI result carries the
+  v1.3 standing caveat (D8 Mauna impact HMC, D12 hmc/vi numbers, D18 HMC
+  headline 0.696/0.683, HMC figure caches); re-labeling ratified records =
+  QUEUED author decision. (D23) pyro autograd through the traced gpytorch
+  target loses kernel-site likelihood gradients (noise survives by accident);
+  S1 stays as-is (upstream), E1 immune; battery gradient reference = central
+  FD of the oracle. Also (D24) create_graph double-backward through the
+  marginal log-prob is silently wrong (~16%): S2's M2c mass matrix must be
+  built from first-order FD of the E1 gradient. The planning cost table's
+  "~200x deep-copy penalty" was mostly the plate: corrected S1 potential is
+  6.0/10.5 ms (sub/full); E1's real advantages = correct gradients (S1
+  saturates td7: 127 lf/draw vs S1f 6.7 at sub-150) + no deep copy.
+- **M2b still OWED**: the A7 Della re-benchmark (user runs
+  experiments/d19_bench.py on Della, threads pinned) + its thread-pinning
+  addendum, BEFORE any Della job assignment; note the pre-D22 Della anchors
+  are superseded the same way as §1.1.
 - OPEN, tracked in the doc: era/source transcription (§8; amendment rule armed —
   before Stage A); M2c predicate numbers (S2/S3/G-toy tolerances,
   divergence-clustering against the D20 schema, M1 overlap diagnostic, corrected

@@ -1496,7 +1496,7 @@ any E1 code exists):
 1. E1's PUBLIC NUTS coordinates = the exact pyro unconstrained sample-site coordinates
    returned by `pyro.infer.mcmc.util.initialize_model` on `_hmc_pyro_model` — same site
    set, order, and support transforms as S1; the same objects fit_hmc_laplace already
-   consumes (bistar_gp/fit.py:474). Per state: theta_s = transforms[s].inv(u_s);
+   consumes (bistar_gp/fit.py:485). Per state: theta_s = transforms[s].inv(u_s);
    autograd-preserving functional substitution of theta into the gpytorch parameters (no
    .data writes on the gradient path); direct GP evaluation on the same module (no
    pyro_sample_from_prior deep copy); pyro's own support-transform log-Jacobians added,
@@ -1680,3 +1680,32 @@ sub-150-to-232 headroom and triples the projected-cost cushion needlessly).
 
 **Status:** v1.5 landed append-only; microbenchmark artifact committed. OPEN at M2b close:
 the A7 Della re-benchmark (user-executed, thread-pinned) and its addendum.
+
+**Codex M2b review round (gpt-5.6-sol, xhigh, read-only, on ac9f495..479457e): FIX-FIRST,
+14 findings, all resolved in the same PR before Ready.** Dispositions: (1 S4) the A5
+predicate was unevaluable for S4/S1-only survivor sets — completed with strategy-specific
+costing (S4: cubic-scaled pilot wall vs a new 1 h paper-target ceiling; S1: excluded, the
+§1.3 bar fires the fallback for an S1-only survivor set); (2 S4) the gradient gate covered
+a subset of states — widened to every finite frozen regular state (comparable-state floor
+20), which immediately exposed that FD cannot referee the two jitter-engaged tail states:
+near_zero_noise gets a 0.2-of-scale gate (measured 4.2e-2 worst; disconnection errs at
+order 1) and near_singular, where FD carries no signal at all (measured |ag - fd| of order
+the scale with values exact), gets an E1-vs-oracle autograd connectedness gate on the
+D23-spared noise coordinate (measured 1.4e-16; frozen 1e-9); the five clean tail states
+keep the tight gate (measured 5.2e-7 of scale) — three-tier design frozen in v1.4; (3 S4) the artifact's config/environment fields exceed a
+strict reading of the v1.2 point-6 field list — reading recorded in v1.5 for author
+ratification, real-data error path now suppresses exception messages (class name only);
+(4 S2) fit_hmc_e1 gained init_to_map with fit_hmc's exact fallback semantics; (5 S2) new
+eval-mode-entry regression test (D4 class); (6 S2) D23 sentinel now per kernel site over
+three states with the noise site pinned to agreement; (7 S2) site-order test now compares
+against an independent initialize_model call; (8 S2) tolerance convention pinned to
+max(1, |oracle|) in v1.4; (9 S2) leapfrog ratio corrected to 19x (6350/334), wall ratio
+17x, in v1.5; (10 S1) module docstring's stale ~200x motivation replaced with the v1.5
+story; (11 S1) battery overview's Hessian description corrected to first-order machinery;
+(12 S1) D21's fit.py:474 reference updated to :485; (13 S1) prior-draw state generation
+wrapped in torch.random.fork_rng (RNG-bleed hygiene); (14 S1) label-pattern prose
+rewritten in the module docstring and v1.4. Codex verified clean: coordinate map, Jacobian
+direction, prior summation, functional overrides, train enforcement, A10/site guards,
+sample schema, seeding, diagnostics wiring, plate-removal blast radius, addenda
+append-only discipline, no scientific value in the diff or artifact, budget arithmetic
+(56.07 min, 81.02 min, 2.03 h, 7.846x recomputed). Suite after fixes: see the PR record.

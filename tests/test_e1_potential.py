@@ -14,8 +14,9 @@ Battery structure (v1.4 item letters):
   (c) gradient agreement — E1 autograd vs CENTRAL FINITE DIFFERENCES of the
       oracle potential (v1.3: the oracle's own autograd is broken for kernel
       sites and is never a reference), plus E1 autograd vs E1's own FD
-  (d) directional Hessians — E1 double-backward HVP vs second differences of
-      the oracle potential along frozen directions
+  (d) directional Hessians — central differences OF the E1 autograd gradient
+      vs second differences of the oracle potential along frozen directions
+      (first-order machinery only; double-backward is the D24 defect)
   (e) likelihood vs prior/Jacobian components, each against an independent
       oracle at paired constrained states
   (f) transform round-trips
@@ -56,6 +57,17 @@ torch.set_default_dtype(torch.float64)
 TOL_POTENTIAL_REL = 1e-9        # |dV| <= TOL * max(1, |V_oracle|)
 TOL_GRAD_ABS = 1e-4             # per coordinate, vs central FD of the oracle
 TOL_GRAD_REL = 1e-4             # ... relative to max coordinate magnitude
+TOL_GRAD_NEARZERO_REL = 0.2     # near_zero_noise state, per coordinate vs the
+                                # state gradient scale: adaptive-jitter noise
+                                # caps FD accuracy there (measured 4.2e-2
+                                # worst); a disconnected gradient errs at
+                                # order 1 of scale
+TOL_GRAD_CONNECTED = 1e-9       # near_singular state: FD carries no signal
+                                # (measured |ag - fd| of order the scale, from
+                                # jitter-branch discontinuities between FD
+                                # probes), so the gate is E1-vs-oracle
+                                # autograd agreement on the D23-spared noise
+                                # coordinate (measured 1.4e-16 worst)
 TOL_HVP_REL = 1e-3              # directional Hessian vs oracle 2nd difference
 TOL_COMPONENT_REL = 1e-9        # likelihood / prior / Jacobian pieces
 TOL_ROUNDTRIP = 1e-10           # u -> theta -> u and theta -> raw -> theta
@@ -148,10 +160,13 @@ def _map_neighborhood_states(e1):
 def _prior_draw_states(e1, model):
     priors = {t[0]: t[2] for t in model.named_priors()}
     states = []
-    for seed in PRIOR_DRAW_SEEDS:
-        torch.manual_seed(seed)
-        theta = {s: priors[s].sample() for s in e1.sites}
-        states.append((f"prior/seed{seed}", e1.unconstrain(theta)))
+    # fork_rng: the frozen seeds must not leak into the process-global RNG
+    # that later (or reordered) tests inherit.
+    with torch.random.fork_rng():
+        for seed in PRIOR_DRAW_SEEDS:
+            torch.manual_seed(seed)
+            theta = {s: priors[s].sample() for s in e1.sites}
+            states.append((f"prior/seed{seed}", e1.unconstrain(theta)))
     return states
 
 
@@ -188,13 +203,31 @@ def _finite_potential(fn, u):
 def test_site_inventory_and_order_match_s1(battery):
     """E1's public coordinates are exactly the initialize_model sites, in the
     order initialize_model produced them, one per registered prior (v1.2
-    point 1)."""
+    point 1). The order reference is an INDEPENDENT initialize_model call —
+    not E1's own init_params, which the same constructor produced (codex M2b
+    round 1, finding 7)."""
+    import pyro
+    from functools import partial
+    from pyro.infer.mcmc.util import initialize_model
+    from pyro.infer.autoguide.initialization import init_to_value
+    from bistar_gp.fit import _hmc_pyro_model, _map_init_values
+
     structure, model, lik, x, y, e1 = battery
     expected = 7 if structure == "mauna_structure" else 4
     assert len(e1.sites) == expected, e1.sites
     assert list(e1.sites) == list(e1.init_params), "site order authority broken"
     assert set(e1.sites) == {t[0] for t in model.named_priors()}
     assert len(set(e1.sites)) == len(e1.sites)
+
+    model.train()
+    lik.train()
+    pyro.clear_param_store()
+    with gpytorch.settings.cholesky_jitter(DEFAULT_JITTER):
+        independent_init, _, _, _ = initialize_model(
+            partial(_hmc_pyro_model, model), model_args=(x, y),
+            init_strategy=init_to_value(values=_map_init_values(model)))
+    assert list(e1.sites) == list(independent_init), (
+        "E1 site order diverges from a fresh initialize_model trace")
 
 
 def test_duplicate_prior_registration_raises():
@@ -276,20 +309,57 @@ def _autograd(fn, u, sites):
 
 def test_e1_gradient_matches_oracle_finite_differences(battery):
     """E1 autograd equals central finite differences of the ORACLE potential
-    on MAP-neighborhood and prior-draw states (v1.3: the oracle's autograd is
-    broken for kernel sites and is never the reference)."""
+    on EVERY finite frozen regular state — MAP neighborhoods (both sigmas),
+    all prior draws, and the tail/boundary set (v1.3: the oracle's autograd
+    is broken for kernel sites and is never the reference; codex M2b round 1,
+    finding 2: a tail-only gradient defect must not slip past a subset
+    check). States whose oracle value or FD probes leave float64 are skipped
+    individually, with a floor on how many must remain comparable."""
     structure, model, lik, x, y, e1 = battery
-    states = _map_neighborhood_states(e1)[:6] + _prior_draw_states(e1, model)[:4]
-    for label, u in states:
+    tail_labels = {label for label, _spec in TAIL_OFFSETS}
+    checked = 0
+    for label, u in _all_regular_states(e1, model):
         if _finite_potential(e1.oracle_potential_fn, u) is None:
             continue
-        fd = _central_fd_grad(e1.oracle_potential_fn, u, e1.sites)
+        try:
+            fd = _central_fd_grad(e1.oracle_potential_fn, u, e1.sites)
+        except RuntimeError:
+            continue
+        if not all(bool(torch.isfinite(fd[s]).all()) for s in e1.sites):
+            continue
         ag = _autograd(e1.potential_fn, u, e1.sites)
         scale = max(1.0, max(float(fd[s].abs().max()) for s in e1.sites))
-        for s in e1.sites:
-            d = float((ag[s] - fd[s]).abs().max())
-            assert d <= TOL_GRAD_ABS + TOL_GRAD_REL * scale, (
-                f"{label} / {s}: |e1 autograd - oracle FD| = {d} (scale {scale})")
+        if label == "near_singular":
+            # FD carries no signal at this state (jitter-branch
+            # discontinuities between the probes; measured |ag - fd| of
+            # order the scale on BOTH structures with values exact). The
+            # connectedness gate instead: E1 autograd must equal the
+            # ORACLE autograd on the noise coordinate, the one site whose
+            # oracle graph the D23 defect spares (measured 1.4e-16).
+            ag_oracle = _autograd(e1.oracle_potential_fn, u, e1.sites)
+            noise_sites = [s for s in e1.sites if "noise" in s]
+            assert noise_sites
+            for s in noise_sites:
+                rel = float((ag[s] - ag_oracle[s]).abs().max()) / max(
+                    1.0, float(ag_oracle[s].abs().max()))
+                assert rel <= TOL_GRAD_CONNECTED, (
+                    f"{label} / {s}: E1 vs oracle autograd rel diff {rel}")
+        elif label == "near_zero_noise":
+            # Adaptive-jitter evaluation noise caps FD accuracy here; a
+            # disconnected gradient still errs at order 1 of the scale.
+            for s in e1.sites:
+                d = float((ag[s] - fd[s]).abs().max())
+                assert d <= TOL_GRAD_NEARZERO_REL * scale, (
+                    f"{label} / {s}: |e1 autograd - oracle FD| = {d} "
+                    f"(scale {scale})")
+        else:
+            for s in e1.sites:
+                d = float((ag[s] - fd[s]).abs().max())
+                assert d <= TOL_GRAD_ABS + TOL_GRAD_REL * scale, (
+                    f"{label} / {s}: |e1 autograd - oracle FD| = {d} "
+                    f"(scale {scale})")
+        checked += 1
+    assert checked >= 20, f"only {checked} states had finite oracle FD gradients"
 
 
 def test_e1_gradient_matches_its_own_finite_differences(battery):
@@ -308,18 +378,34 @@ def test_e1_gradient_matches_its_own_finite_differences(battery):
 
 def test_oracle_autograd_defect_is_still_present(battery):
     """The D23 defect this battery routes around: pyro autograd through the
-    traced gpytorch target loses the likelihood gradient on kernel sites. If
-    an environment upgrade FIXES this, the test fails to alert us that the
-    v1.3 disclosure (and the S1-vs-S1f asymmetry note) needs revisiting."""
+    traced gpytorch target loses the likelihood gradient on EVERY kernel
+    site, while the noise site stays connected. Pinned per site (codex M2b
+    round 1, finding 6: a partial upstream fix must not hide behind a
+    max-over-sites check), over three frozen states so a site whose
+    likelihood gradient happens to vanish at one state cannot fake a pass or
+    a fail. If an environment upgrade fixes any kernel site, this fails to
+    force a v1.3 revisit."""
     structure, model, lik, x, y, e1 = battery
-    label, u = _map_neighborhood_states(e1)[1]
-    fd = _central_fd_grad(e1.oracle_potential_fn, u, e1.sites)
-    ag = _autograd(e1.oracle_potential_fn, u, e1.sites)
-    kernel_sites = [s for s in e1.sites if "noise" not in s]
-    mismatch = max(float((ag[s] - fd[s]).abs().max()) for s in kernel_sites)
-    assert mismatch > 1e-2, (
-        "oracle autograd now matches FD on kernel sites — the D23 defect is "
-        "gone in this environment; revisit prereg v1.3 before trusting this run")
+    states = _map_neighborhood_states(e1)[:3]
+    per_site = {s: 0.0 for s in e1.sites}
+    noise_ok = {s: True for s in e1.sites}
+    for label, u in states:
+        fd = _central_fd_grad(e1.oracle_potential_fn, u, e1.sites)
+        ag = _autograd(e1.oracle_potential_fn, u, e1.sites)
+        for s in e1.sites:
+            rel = float((ag[s] - fd[s]).abs().max()) / max(
+                1.0, float(fd[s].abs().max()))
+            per_site[s] = max(per_site[s], rel)
+    for s in e1.sites:
+        if "noise" in s:
+            assert per_site[s] <= TOL_GRAD_ABS + TOL_GRAD_REL, (
+                f"noise site {s} no longer agrees with FD: {per_site[s]}")
+        else:
+            assert per_site[s] > 1e-2, (
+                f"oracle autograd now matches FD on kernel site {s} "
+                f"(worst rel mismatch {per_site[s]}) — the D23 defect is "
+                "gone for it in this environment; revisit prereg v1.3 "
+                "before trusting this run")
 
 
 # ── (d) directional Hessians ───────────────────────────────────────────────
@@ -431,6 +517,26 @@ def test_components_match_independent_oracles(battery):
         assert float(lj) == pytest.approx(jac_ref, rel=TOL_COMPONENT_REL), label
         assert float(e1.potential_fn(u)) == pytest.approx(
             -(float(lm) + float(lp) + float(lj)), rel=TOL_COMPONENT_REL), label
+
+
+def test_eval_mode_entry_cannot_poison_the_target(battery):
+    """Entering E1 with the model in eval mode must return the same value as
+    the train-mode target (components() forces train mode). Without that
+    enforcement, gpytorch would score the posterior predictive conditioned on
+    the data — the D4 data-reused-twice target (codex M2b round 1,
+    finding 5)."""
+    structure, model, lik, x, y, e1 = battery
+    label, u = _map_neighborhood_states(e1)[0]
+    reference = float(e1.potential_fn(u))
+    model.eval()
+    lik.eval()
+    try:
+        poisoned_or_same = float(e1.potential_fn(u))
+    finally:
+        model.train()
+        lik.train()
+    assert poisoned_or_same == pytest.approx(reference, rel=TOL_POTENTIAL_REL), (
+        "eval-mode entry changed the E1 target — train-mode enforcement lost")
 
 
 # ── (f) round-trips ────────────────────────────────────────────────────────

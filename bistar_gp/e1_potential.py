@@ -1,11 +1,17 @@
-"""E1 direct-parameter potential (D19 M2b; plan §2 Stage B, prereg addendum v1.2).
+"""E1 direct-parameter potential (D19 M2b; plan §2 Stage B, prereg addenda v1.2-v1.5).
 
 The S1 pyro path (fit_hmc) pays a full model deep copy per potential
-evaluation (`pyro_sample_from_prior()`), the measured ~200x per-leapfrog
-overhead the D19 cost table records. E1 removes the copy while keeping the
-target AND the coordinates bit-compatible with S1, so S1f ("adapted baseline
-on E1") is S1 with cheap leapfrogs — not a reparameterization, which is the
-S3 strategy under test and must stay there (addendum v1.2, point 1).
+evaluation (`pyro_sample_from_prior()`) and proposes with partially broken
+gradients: gpytorch's prior-value injection severs the autograd graph for
+every kernel hyperparameter site (D23), so S1's NUTS moves those coordinates
+as if the likelihood did not exist. E1 keeps the target AND the coordinates
+bit-compatible with S1 while fixing both defects by construction — measured
+(prereg v1.5): a 1.2-3.2x per-evaluation advantage plus correct gradients
+that kept S1f at 6.7 leapfrogs per draw where S1 saturated td7 at 127.
+(The plan's original "~200x deep-copy penalty" motivation was dominated by
+the D22 plate defect and is superseded by v1.5.) S1f ("adapted baseline on
+E1") is S1 with a corrected evaluation path — not a reparameterization,
+which is the S3 strategy under test and must stay there (v1.2, point 1).
 
 Coordinate convention (v1.2): the PUBLIC NUTS coordinates are the exact pyro
 unconstrained sample-site coordinates returned by
@@ -23,11 +29,11 @@ Composition rule (v1.2, point 3): for a pyro-coordinate state u,
                     + sum_s log |d theta_s / d u_s| )        [each Jacobian once]
 
 with theta_s = transforms[s].inv(u_s) via the oracle's own site transform.
-The observation term is the summed `log_prob(y)` of the noise-added marginal
-MVN, computed directly — never `ExactMarginalLogLikelihood`, which already
-adds registered prior log-probs and divides by N, so composing it with an
-explicit prior sum double-counts every prior and mis-scales the likelihood
-(the D6 error class).
+E1 computes the observation term directly, as the summed `log_prob(y)` of
+the noise-added marginal MVN — never through `ExactMarginalLogLikelihood`,
+which already adds registered prior log-probs and divides by N, so composing
+it with an explicit prior sum double-counts every prior and mis-scales the
+likelihood (the D6 error class).
 
 Evaluation path: theta maps into the corresponding gpytorch raw parameters
 through each constraint's `inverse_transform` and the model is evaluated on
@@ -135,16 +141,30 @@ class E1Potential:
             sampling vehicle.
     """
 
-    def __init__(self, model, likelihood, train_x, train_y, jitter=DEFAULT_JITTER):
+    def __init__(self, model, likelihood, train_x, train_y, jitter=DEFAULT_JITTER,
+                 init_to_map=True):
         import pyro
         from functools import partial
         from pyro.infer.mcmc.util import initialize_model
-        from pyro.infer.autoguide.initialization import init_to_value
+        from pyro.infer.autoguide.initialization import init_to_sample, init_to_value
 
         train_x, train_y = train_x.double(), train_y.double()
         self._model, self._likelihood = model, likelihood
         self._x, self._y = train_x, train_y
         self._jitter = jitter
+
+        # Mirror fit_hmc's initialization surface exactly (S1f parity):
+        # MAP-init with the same boundary-guarded value dict and the same
+        # fallback to init_to_sample.
+        if init_to_map:
+            try:
+                init_strategy = init_to_value(values=_map_init_values(model))
+            except ValueError as e:
+                logger.warning(
+                    "init_to_map: %s; falling back to init_to_sample", e)
+                init_strategy = init_to_sample
+        else:
+            init_strategy = init_to_sample
 
         model.train()
         likelihood.train()
@@ -152,7 +172,7 @@ class E1Potential:
         with gpytorch.settings.cholesky_jitter(jitter):
             init_params, potential_fn, transforms, _ = initialize_model(
                 partial(_hmc_pyro_model, model), model_args=(train_x, train_y),
-                init_strategy=init_to_value(values=_map_init_values(model)))
+                init_strategy=init_strategy)
 
         self.sites = tuple(init_params)
         self.init_params = {s: v.detach().clone() for s, v in init_params.items()}
@@ -219,20 +239,23 @@ class E1Potential:
             return self._oracle_potential(u)
 
 
-def build_e1_potential(model, likelihood, train_x, train_y, jitter=DEFAULT_JITTER):
+def build_e1_potential(model, likelihood, train_x, train_y, jitter=DEFAULT_JITTER,
+                       init_to_map=True):
     """Build the E1 potential for a MAP-fitted model. Returns E1Potential."""
-    return E1Potential(model, likelihood, train_x, train_y, jitter=jitter)
+    return E1Potential(model, likelihood, train_x, train_y, jitter=jitter,
+                       init_to_map=init_to_map)
 
 
 def fit_hmc_e1(model, likelihood, train_x, train_y,
                n_samples=500, n_warmup=200, verbose=True, seed=None,
-               max_tree_depth=10, return_diagnostics=False,
+               init_to_map=True, max_tree_depth=10, return_diagnostics=False,
                jitter=DEFAULT_JITTER):
     """S1f: NUTS on the E1 potential — fit_hmc's sampler settings, statistically
     identical target and coordinates, no per-leapfrog deep copy.
 
-    Mirrors fit_hmc exactly where the two share surface: MAP-init (pass a
-    MAP-fitted model), step_size 0.1 with adaptation, target_accept_prob 0.8,
+    Mirrors fit_hmc exactly where the two share surface: init_to_map with the
+    same boundary-guarded fallback to init_to_sample (pass a MAP-fitted
+    model), step_size 0.1 with adaptation, target_accept_prob 0.8,
     max_tree_depth, the returned dict schema (site name -> (n,) constrained
     numpy array), and return_diagnostics -> (samples, SamplerDiagnostics)
     with sampler="nuts_e1" (leapfrog counts derived from potential
@@ -247,7 +270,8 @@ def fit_hmc_e1(model, likelihood, train_x, train_y,
     if seed is not None:
         pyro.set_rng_seed(seed)
 
-    e1 = build_e1_potential(model, likelihood, train_x, train_y, jitter=jitter)
+    e1 = build_e1_potential(model, likelihood, train_x, train_y, jitter=jitter,
+                            init_to_map=init_to_map)
 
     potential = e1.potential_fn
     tracker = None
