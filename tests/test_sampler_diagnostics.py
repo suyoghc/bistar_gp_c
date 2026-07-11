@@ -53,6 +53,38 @@ def hmc_run():
     return samples, diag
 
 
+def test_diagnostics_path_does_not_perturb_the_trajectory():
+    """The core promise of return_diagnostics: it OBSERVES the run without
+    changing its target or RNG trajectory (D20 review round 3). Two identical
+    toy models from the same MAP state and seed — one with diagnostics, one
+    without — must produce bit-identical sample keys and draws. The tracker
+    wraps the model callable transparently and the MCMC hook consumes no
+    model RNG, so any divergence would be a real perturbation bug."""
+    def fresh():
+        x = torch.linspace(0, 6, 15)
+        y = torch.sin(x) + 0.25 * x
+        kernels, names = build_toy_kernels()
+        model, lik = build_model(x, y, kernels, names)
+        fit_map(model, lik, x, y, n_iter=40, lr=0.05, verbose=False)
+        return model, lik, x, y
+
+    mA, likA, xA, yA = fresh()
+    plain = fit_hmc(mA, likA, xA, yA, n_samples=8, n_warmup=8, verbose=False,
+                    seed=123, max_tree_depth=4, return_diagnostics=False)
+
+    mB, likB, xB, yB = fresh()
+    observed, diag = fit_hmc(mB, likB, xB, yB, n_samples=8, n_warmup=8,
+                             verbose=False, seed=123, max_tree_depth=4,
+                             return_diagnostics=True)
+
+    assert list(plain.keys()) == list(observed.keys())
+    for site in plain:
+        assert np.array_equal(plain[site], observed[site]), (
+            f"diagnostics path perturbed site {site}")
+    # and the observation actually captured something (no silent all-unavailable)
+    assert diag.leapfrog_counts is not None
+
+
 def test_default_return_is_the_unchanged_d9_dict():
     x = torch.linspace(0, 6, 12)
     y = torch.sin(x)

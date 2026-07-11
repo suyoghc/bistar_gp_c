@@ -1439,7 +1439,28 @@ Refuted, no action (refutation reasoning in the workflow transcript): the two
 assert-vs-python -O findings, training-loader test_years flexibility, and two findings
 whose factual basis the codex-round fixes had already removed.
 
-**Status:** M2a COMPLETE. Suite green (170), scorecard byte-identity gate passed, prereg
+**Third review round (codex gpt-5.6-sol independent re-run of the full suite — 170 passed
+confirmed — plus two follow-up findings, both verified before acting and both fixed in a
+follow-up commit):**
+- S2 (real gap): the A4 universe firewall was caller-dependent — run_bms_star
+  (bistar_gp/bms_star.py:480) accepted mixed/partially-tagged candidate universes and
+  would silently normalize cross-universe probabilities; only the Mauna script called
+  assert_single_universe. Fixed at the shared boundary: _assert_candidate_universes_
+  consistent runs at the top of run_bms_star before any G matrix — all-untagged allowed
+  (legacy/toy), any tagged requires every result tagged with one universe, mixed or
+  partial raises. Direct run_bms_star regression tests for all three cases
+  (tests/test_bms_star_universe_firewall.py); the Mauna script's stricter
+  assert_single_universe(candidate_results) call is kept as an earlier, Mauna-specific
+  guard (it also rejects all-untagged, which Mauna candidates never are).
+- S3 (property held; regression test added): verified empirically that
+  fit_hmc(return_diagnostics=True) leaves the sampled trajectory BIT-IDENTICAL to the
+  default path — two toy models from the same MAP state and seed produce identical sample
+  keys and draws (the PotentialEvalTracker wraps the model callable transparently and the
+  MCMC hook consumes no model RNG). Locked in as
+  test_diagnostics_path_does_not_perturb_the_trajectory. No code change needed; the
+  diagnostics path observes without altering the run.
+
+**Status:** M2a COMPLETE. Suite green (175), scorecard byte-identity gate passed, prereg
 addendum v1.1 (canonical hash + vendoring record) landed in docs/prereg-addenda-d19.md; no
 scientific number was produced or read (the scorecard re-run reproduces the already-ratified
 M1 artifact). Implementation route: two codex gpt-5.6-sol (xhigh) subagents built the

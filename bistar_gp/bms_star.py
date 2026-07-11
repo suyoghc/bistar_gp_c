@@ -477,6 +477,35 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
     )
 
 
+def _assert_candidate_universes_consistent(candidate_results):
+    """Firewall the A4 separate-normalization rule at the shared BMS* boundary.
+
+    run_bms_star normalizes candidate probabilities over ONE universe; the
+    D19 pre-registration (decision A4, plan section 3) forbids merging the
+    Mauna 4-ladder and harmonized 3-set into one normalization. Enforcing
+    that only in the Mauna script is caller-dependent — any other caller
+    could pass a mixed set and receive silently normalized cross-universe
+    probabilities — so the check runs here, before any G matrix is computed:
+
+    - every result untagged (universe is None): allowed (legacy/toy callers
+      with plain candidates carry no universe and no A4 obligation);
+    - any result tagged: EVERY result must be tagged with the SAME universe;
+    - mixed tags, or a mix of tagged and untagged: raise before computing G.
+    """
+    universes = [getattr(cr, "universe", None) for cr in candidate_results]
+    tagged = {u for u in universes if u is not None}
+    if not tagged:
+        return  # all untagged: legacy/toy, no A4 rule applies
+    if None in universes or len(tagged) > 1:
+        labels = ", ".join(
+            f"{getattr(cr, 'name', '?')}[{getattr(cr, 'universe', None)}]"
+            for cr in candidate_results)
+        raise ValueError(
+            "run_bms_star received candidates spanning multiple universes or "
+            f"a mix of tagged and untagged results ({labels}); decision A4 "
+            "forbids merging Mauna candidate universes into one normalization")
+
+
 def run_bms_star(gp_samples: List[GPPosteriorSample],
                  candidate_results: list,
                  metric_names: List[str] = None,
@@ -496,6 +525,8 @@ def run_bms_star(gp_samples: List[GPPosteriorSample],
         metric_names = list(METRICS.keys())
     if taus is None:
         taus = np.logspace(-1, 2, 20)
+
+    _assert_candidate_universes_consistent(candidate_results)
 
     instance_names = [cr.name for cr in candidate_results]
     results = {}

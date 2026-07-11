@@ -346,9 +346,9 @@ pilots, no expensive runs, no scientific result read before the commit.
 - **Implementation route**: two codex gpt-5.6-sol (xhigh) subagents implemented the
   registry/metric wiring and the slurm/guard items in a workspace-write sandbox;
   Fable implemented loader/seal/period/diagnostics and integrated.
-- **Tests**: 170 passed after both review rounds (121 baseline + 49 new). Scorecard
-  byte-identity gate passed twice (post-rewrite and post-review-fixes);
-  vendored-CSV vs live-fetch monthly aggregation verified byte-identical.
+- **Tests**: 175 passed after three review rounds (121 baseline + 54 new). Scorecard
+  byte-identity gate passed on every round; vendored-CSV vs live-fetch monthly
+  aggregation verified byte-identical.
 - **Review**: codex gpt-5.6-sol (xhigh, read-only) on the PR diff: FIX-FIRST, 8
   findings (1 HIGH, 5 MEDIUM, 2 LOW), all fixed in the same PR before Ready —
   highest-value catch: the rewritten study script still called the full loader and
@@ -360,6 +360,13 @@ pilots, no expensive runs, no scientific result read before the commit.
   net-new ones fixed in the same PR — notably the DISTRIBUTION-LEVEL kl_forward missing
   from MAUNA_METRICS, five test-adequacy gaps, and the vendored CSV missing from wheel
   package-data. Refutations recorded in the workflow transcript.
+- **Third round** (codex re-run, 170 confirmed): two follow-up findings, both
+  verified before acting. S2 (real) — the A4 universe firewall was caller-dependent;
+  run_bms_star now rejects mixed/partially-tagged universes at the shared boundary
+  (all-untagged legacy/toy still allowed), with direct regression tests. S3 (property
+  held) — proved fit_hmc(return_diagnostics=True) leaves the trajectory bit-identical
+  to the default path (two toy runs, same seed/MAP), locked in as a non-perturbation
+  test; no code change needed. Follow-up commit; suite 175.
 - **Next**: M2b (E1 direct potential + frozen equivalence battery + real E1 NUTS
   microbenchmark + Della re-benchmark (A7) + A6 budgets + A5 fallback addendum).
   Holdout stays sealed; §6.5 ordering/blinding governs.
