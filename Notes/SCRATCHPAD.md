@@ -31,9 +31,13 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   S1-target findings; v1.4 frozen battery tolerances + point sets; v1.5
   microbenchmark + final A6 budgets + frozen A5 fallback (N_fb=232, linspace
   rule, timing/leapfrog/budget-only predicate). Code: `bistar_gp/e1_potential.py`
-  (E1Potential + fit_hmc_e1), 29-test battery `tests/test_e1_potential.py`,
+  (E1Potential + fit_hmc_e1), the battery `tests/test_e1_potential.py` (31
+  collected), 
   firewalled `experiments/d19_e1_bench.py` + artifact
-  `runs/d19_planning/e1_nuts_microbench.json`. Suite 205 passed + 1 skip.
+  `runs/d19_planning/e1_nuts_microbench.json`. Suite 207 passed + 1 skip
+  after two codex gpt-5.6-sol (xhigh) review rounds (14 + 5 findings, all
+  resolved; prereg v1.6 carries the corrections append-only after be08285's
+  in-place edits were reverted).
 - **TWO CORRECTNESS FINDINGS while building E1 (author attention required)**:
   (D22) the obs pyro.plate made fit_hmc/fit_vi/fit_hmc_laplace target
   p(theta)L(theta)^N — FIXED, but every pre-fix HMC/VI result carries the

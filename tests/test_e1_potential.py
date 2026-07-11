@@ -1,12 +1,13 @@
 """E1 equivalence battery (D19 M2b; plan §2 Stage B + §6.15 row 1; prereg
-addenda v1.2/v1.3/v1.4).
+addenda v1.2-v1.6).
 
 Gates the E1 direct-parameter potential against the corrected S1 pyro target
 BEFORE any science use. The numeric tolerances and point-generation
-distributions below are FROZEN by prereg addendum v1.4
-(docs/prereg-addenda-d19.md) — do not tune them to make a failure pass; an
-E1 defect is fixed in E1, and a genuine tolerance revision is a new
-append-only addendum.
+distributions below are FROZEN by prereg addenda v1.4 and v1.6
+(docs/prereg-addenda-d19.md; v1.6 carries the codex-round corrections and
+the gradient-gate redesign with its measured discrimination limits). Do not
+tune them to make a failure pass; an E1 defect is fixed in E1, and a genuine
+tolerance revision is a new append-only addendum.
 
 Battery structure (v1.4 item letters):
   (a) site inventory and ordering; duplicate-prior/site guards (D6 class)
@@ -52,22 +53,25 @@ from bistar_gp.model import (
 
 torch.set_default_dtype(torch.float64)
 
-# ── Frozen battery constants (prereg addendum v1.4) ─────────────────────────
+# ── Frozen battery constants (prereg addenda v1.4 + v1.6) ─────────────────────────
 
 TOL_POTENTIAL_REL = 1e-9        # |dV| <= TOL * max(1, |V_oracle|)
 TOL_GRAD_ABS = 1e-4             # per coordinate, vs central FD of the oracle
 TOL_GRAD_REL = 1e-4             # ... relative to max coordinate magnitude
-TOL_GRAD_NEARZERO_REL = 0.2     # near_zero_noise state, per coordinate vs the
-                                # state gradient scale: adaptive-jitter noise
-                                # caps FD accuracy there (measured 4.2e-2
-                                # worst); a disconnected gradient errs at
-                                # order 1 of scale
-TOL_GRAD_CONNECTED = 1e-9       # near_singular state: FD carries no signal
-                                # (measured |ag - fd| of order the scale, from
-                                # jitter-branch discontinuities between FD
-                                # probes), so the gate is E1-vs-oracle
-                                # autograd agreement on the D23-spared noise
-                                # coordinate (measured 1.4e-16 worst)
+TOL_GRAD_CONNECTED = 1e-9       # jitter-engaged states (near_zero_noise,
+                                # near_singular): no FD reference at any step
+                                # size discriminates kernel-coordinate
+                                # disconnection there (v1.6 measurements), so
+                                # the frozen gate is E1-vs-oracle autograd
+                                # agreement on the D23-spared noise coordinate
+                                # (measured 1.4e-16 worst); kernel-coordinate
+                                # gradients at these two states are
+                                # EXPLICITLY NOT GATED — disclosed residual
+                                # exposure, v1.6 correction 2
+
+# The two frozen states whose adaptive-jitter evaluation noise defeats every
+# finite-difference gradient reference (v1.6).
+JITTER_ENGAGED_LABELS = ("near_zero_noise", "near_singular")
 TOL_HVP_REL = 1e-3              # directional Hessian vs oracle 2nd difference
 TOL_COMPONENT_REL = 1e-9        # likelihood / prior / Jacobian pieces
 TOL_ROUNDTRIP = 1e-10           # u -> theta -> u and theta -> raw -> theta
@@ -316,26 +320,18 @@ def test_e1_gradient_matches_oracle_finite_differences(battery):
     check). States whose oracle value or FD probes leave float64 are skipped
     individually, with a floor on how many must remain comparable."""
     structure, model, lik, x, y, e1 = battery
-    tail_labels = {label for label, _spec in TAIL_OFFSETS}
-    checked = 0
-    for label, u in _all_regular_states(e1, model):
-        if _finite_potential(e1.oracle_potential_fn, u) is None:
-            continue
-        try:
-            fd = _central_fd_grad(e1.oracle_potential_fn, u, e1.sites)
-        except RuntimeError:
-            continue
-        if not all(bool(torch.isfinite(fd[s]).all()) for s in e1.sites):
-            continue
+    all_states = _all_regular_states(e1, model)
+    executed = set()
+    for label, u in all_states:
         ag = _autograd(e1.potential_fn, u, e1.sites)
-        scale = max(1.0, max(float(fd[s].abs().max()) for s in e1.sites))
-        if label == "near_singular":
-            # FD carries no signal at this state (jitter-branch
-            # discontinuities between the probes; measured |ag - fd| of
-            # order the scale on BOTH structures with values exact). The
-            # connectedness gate instead: E1 autograd must equal the
-            # ORACLE autograd on the noise coordinate, the one site whose
-            # oracle graph the D23 defect spares (measured 1.4e-16).
+        if label in JITTER_ENGAGED_LABELS:
+            # Connectedness gate, independent of any FD computation (v1.6
+            # correction 2): E1 autograd must equal the ORACLE autograd on
+            # the noise coordinate, the one site whose oracle graph the D23
+            # defect spares. Kernel coordinates at these two states carry
+            # the DISCLOSED residual exposure — no FD step discriminates
+            # disconnection there (the substituted D23-broken gradient
+            # passes any band the correct gradient passes; measured).
             ag_oracle = _autograd(e1.oracle_potential_fn, u, e1.sites)
             noise_sites = [s for s in e1.sites if "noise" in s]
             assert noise_sites
@@ -344,22 +340,24 @@ def test_e1_gradient_matches_oracle_finite_differences(battery):
                     1.0, float(ag_oracle[s].abs().max()))
                 assert rel <= TOL_GRAD_CONNECTED, (
                     f"{label} / {s}: E1 vs oracle autograd rel diff {rel}")
-        elif label == "near_zero_noise":
-            # Adaptive-jitter evaluation noise caps FD accuracy here; a
-            # disconnected gradient still errs at order 1 of the scale.
-            for s in e1.sites:
-                d = float((ag[s] - fd[s]).abs().max())
-                assert d <= TOL_GRAD_NEARZERO_REL * scale, (
-                    f"{label} / {s}: |e1 autograd - oracle FD| = {d} "
-                    f"(scale {scale})")
-        else:
-            for s in e1.sites:
-                d = float((ag[s] - fd[s]).abs().max())
-                assert d <= TOL_GRAD_ABS + TOL_GRAD_REL * scale, (
-                    f"{label} / {s}: |e1 autograd - oracle FD| = {d} "
-                    f"(scale {scale})")
-        checked += 1
-    assert checked >= 20, f"only {checked} states had finite oracle FD gradients"
+            executed.add(label)
+            continue
+        fd = _central_fd_grad(e1.oracle_potential_fn, u, e1.sites)
+        assert all(bool(torch.isfinite(fd[s]).all()) for s in e1.sites), (
+            f"{label}: oracle FD left float64 — a frozen state stopped being "
+            "comparable; that is a battery failure, not a skip (v1.6)")
+        scale = max(1.0, max(float(fd[s].abs().max()) for s in e1.sites))
+        for s in e1.sites:
+            d = float((ag[s] - fd[s]).abs().max())
+            assert d <= TOL_GRAD_ABS + TOL_GRAD_REL * scale, (
+                f"{label} / {s}: |e1 autograd - oracle FD| = {d} "
+                f"(scale {scale})")
+        executed.add(label)
+    # Execution completeness (v1.6): every frozen regular state runs its
+    # assigned gate — silent coverage shrinkage fails loudly.
+    assert executed == {label for label, _u in all_states}, (
+        sorted({label for label, _u in all_states} - executed))
+    assert len(all_states) == 28, len(all_states)
 
 
 def test_e1_gradient_matches_its_own_finite_differences(battery):

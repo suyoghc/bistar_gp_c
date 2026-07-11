@@ -1709,3 +1709,30 @@ direction, prior summation, functional overrides, train enforcement, A10/site gu
 sample schema, seeding, diagnostics wiring, plate-removal blast radius, addenda
 append-only discipline, no scientific value in the diff or artifact, budget arithmetic
 (56.07 min, 81.02 min, 2.03 h, 7.846x recomputed). Suite after fixes: see the PR record.
+
+**Codex M2b review round 2 (gpt-5.6-sol, xhigh, on the round-1 fix commit be08285):
+FIX-FIRST — 12 of 14 round-1 findings verified FIXED, 2 PARTIAL, 5 new findings; all
+resolved.** The two substantive catches, both verified before acting: (a) APPEND-ONLY
+VIOLATION — be08285 edited the committed v1.4/v1.5 addenda in place, and among the edits
+were gradient tolerances revised after observing test failures (the tune-to-pass pattern
+the battery forbids). Cure: docs/prereg-addenda-d19.md restored to its as-committed v1.5
+state and ALL corrections re-landed as append-only addendum v1.6 (the intermediate
+in-place text survives only in branch history for audit). (b) THE JITTER-STATE GRADIENT
+GATES DID NOT DISCRIMINATE — codex measured that substituting the D23-disconnected oracle
+gradient passes the 0.2-of-scale near_zero_noise gate on every kernel coordinate (2.0e-3
+to 5.4e-2 of shared scale on the Mauna structure), refuting the "disconnection errs at
+order 1 of scale" claim per coordinate; an independent big-step FD probe (h 1e-3/1e-2,
+both structures) then showed even the CORRECT gradient deviates at order 1 per kernel
+coordinate at both jitter-engaged states — no FD reference discriminates there at any
+step. Frozen v1.6 design: tight FD gate at the 26 clean states (worst 2.3e-7/5.2e-7 of
+scale), noise-coordinate autograd-connectedness gate at near_zero_noise AND near_singular
+(measured 1.4e-16, frozen 1e-9), kernel-coordinate gradients at those two states
+EXPLICITLY NOT GATED — a disclosed residual exposure with its bounding structure recorded,
+instead of a non-discriminating tolerance dressed as a gate. Also fixed: the gradient test
+computed FD before the connectedness branch (a non-finite FD would have silently skipped
+the FD-independent gate) — jitter states now run first and an executed-label completeness
+assertion replaces the >=20 floor (all 28 states must run their assigned gate); dead
+tail_labels removed; SCRATCHPAD counts refreshed (31 collected battery / 207+1 suite);
+"potential values exact" reworded to machine-precision agreement (measured 1.5e-16
+relative, repeat-identical). Suite after round 2: battery 30 passed + 1 skip, full 207
+passed + 1 skipped.

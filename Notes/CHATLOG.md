@@ -424,3 +424,12 @@ pilots, no expensive runs, no scientific result read before the commit.
   convention pinned; 19x/17x leapfrog-wall ratio pair corrected; docstring/
   prose/stale-line fixes; fork_rng hygiene. Battery 30 passed + 1 skip; suite
   207 passed + 1 skipped.
+- **Codex round 2 (on the fix commit)**: 12/14 FIXED verified, 2 PARTIAL, 5 new
+  findings — the big ones: the round-1 fixes had edited committed addenda in
+  place (restored; everything re-landed as append-only v1.6) and the
+  jitter-state gradient gates did not actually discriminate disconnection
+  (codex mutation-tested it; an independent big-step FD probe confirmed no FD
+  reference works there at any step). v1.6 freezes the honest design:
+  connectedness gates on the D23-spared noise coordinate at both jitter
+  states, kernel coordinates there explicitly not gated with the residual
+  exposure disclosed, execution-completeness assertion over all 28 states.
