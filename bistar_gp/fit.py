@@ -20,11 +20,24 @@ def fit_map(model, likelihood, train_x, train_y, n_iter=500, lr=0.05, verbose=Tr
     Gradient-frozen parameters (requires_grad=False, e.g. the A10 Mauna
     seasonal period) are asserted unchanged at exit, so every MAP and
     multi-start path that goes through fit_map enforces the freeze rather
-    than trusting the optimizer to skip them.
+    than trusting the optimizer to skip them. Modules carrying an A10
+    freeze-target stamp (`_a10_frozen_period`, set by build_mauna_loa_kernels)
+    are additionally checked at ENTRY against the stamped value, so a period
+    mutated before the fit — frozen but already off 1.0 — fails here instead
+    of surviving as an unchanged wrong value.
     """
     train_x, train_y = train_x.double(), train_y.double()
     model.train()
     likelihood.train()
+
+    for mod_name, module in model.named_modules():
+        target = getattr(module, "_a10_frozen_period", None)
+        if target is not None:
+            value = module.period_length.item()
+            assert value == target, (
+                f"A10 violation at fit_map entry: {mod_name}.period_length = "
+                f"{value!r}, stamped freeze target {target!r} "
+                "(docs/plan-d19-mauna.md A10)")
 
     frozen = [(name, param, param.detach().clone())
               for name, param in model.named_parameters()

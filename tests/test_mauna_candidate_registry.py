@@ -168,7 +168,12 @@ def test_metric_and_temperature_contracts_are_registered():
     }
     assert MAUNA_PRIMARY_METRIC == "pw_kl_vcal"
     assert MAUNA_METRICS[0] == MAUNA_PRIMARY_METRIC
-    assert set(MAUNA_METRICS[1:]) == legacy_metrics
+    # Five legacy metrics plus the DISTRIBUTION-LEVEL kl_forward, the A4
+    # appendix-sensitivity addition (plan sections 2 and 7: "existing Mauna
+    # metrics plus kl_forward"); pw_kl_forward is one of the legacy five and
+    # does not satisfy that clause.
+    assert set(MAUNA_METRICS[1:]) == legacy_metrics | {"kl_forward"}
+    assert MAUNA_METRICS[-1] == "kl_forward"
     assert all(metric in METRICS for metric in MAUNA_METRICS)
     assert MAUNA_TAU_GRID == (0.1, 0.3, 1.0, 3.0, 10.0)
     assert MAUNA_HEADLINE_TAU == 1.0
@@ -207,3 +212,79 @@ def test_synthetic_appendix_bms_star_probabilities_normalize(
         probabilities = results[MAUNA_PRIMARY_METRIC][tau].instance_posteriors
         assert np.isfinite(probabilities).all()
         assert probabilities.sum() == pytest.approx(1.0, abs=1e-12)
+
+
+def test_results_carry_universe_and_guard_validates_normalization_input():
+    """Universe identity must survive into CandidateResult so the guard can
+    validate the exact list handed to run_bms_star (review finding 5)."""
+    rng = np.random.default_rng(11)
+    x = np.linspace(0.0, 6.0, 90)
+    y = 0.4 * x + 0.6 * np.sin(2 * np.pi * x) + 0.02 * rng.standard_normal(90)
+
+    main = build_universe(MAIN_LADDER)
+    appendix = build_universe(APPENDIX_TREND3)
+    main_results, appendix_results = [], []
+    for model in main:
+        model.fit(x, y)
+        main_results.append(model.predict(x))
+    for model in appendix:
+        model.fit(x, y)
+        appendix_results.append(model.predict(x))
+
+    assert all(r.universe == MAIN_LADDER for r in main_results)
+    assert all(r.universe == APPENDIX_TREND3 for r in appendix_results)
+    assert assert_single_universe(appendix_results) == APPENDIX_TREND3
+    with pytest.raises(ValueError, match="Mixed"):
+        assert_single_universe(main_results + appendix_results[:1])
+    # An untagged result (built outside build_universe) is rejected too.
+    bare = LinearHarmonic2Model()
+    bare.fit(x, y)
+    with pytest.raises(ValueError, match="Untagged"):
+        assert_single_universe(appendix_results + [bare.predict(x)])
+
+
+def test_exponential_forced_fallback_sigma_uses_full_residuals(monkeypatch):
+    """When every restart raises, the fallback sigma must come from the
+    residuals of the full trend-plus-harmonics mean, not the trend-only
+    residuals whose std the harmonics inflate (review finding 6)."""
+    rng = np.random.default_rng(23)
+    x = np.linspace(0.0, 8.0, 96)
+    true_noise = 0.05
+    y = (0.5 * np.exp(0.05 * x) + 1.0
+         + 0.8 * np.sin(2 * np.pi * x + 0.3)
+         + 0.3 * np.sin(4 * np.pi * x + 1.1)
+         + true_noise * rng.standard_normal(96))
+
+    def always_fail(self, *args, **kwargs):
+        raise RuntimeError("forced restart failure")
+
+    monkeypatch.setattr(
+        "bistar_gp.candidates.CandidateModel._fit_mle", always_fail)
+    model = ExponentialHarmonic2Model()
+    model.fit(x, y)
+    # The harmonic amplitude alone is 0.8; a trend-only-residual sigma would
+    # be near hypot(0.8, 0.3)/sqrt(2) ~ 0.6. The full-residual sigma must be
+    # far below that (the lstsq harmonics absorb the seasonal signal).
+    assert model.sigma < 0.3
+    result = model.predict(x)
+    assert result.noise_var == pytest.approx(model.sigma ** 2)
+
+
+def test_experiment_script_wiring_is_pinned():
+    """Source-level pin for the A4 metric/tau wiring (workflow finding C11):
+    reverting the experiment to a hand-rolled metric list or the legacy
+    logspace tau grid must fail loudly, not silently drop the prereg grid."""
+    script = (Path(__file__).resolve().parent.parent / "experiments"
+              / "bms_star_mauna_loa.py").read_text()
+    for required in (
+        "import bistar_gp.metrics_v2",
+        "metrics = list(MAUNA_METRICS)",
+        "taus = np.array(MAUNA_TAU_GRID)",
+        "results[metric_name][MAUNA_HEADLINE_TAU]",
+        "assert_single_universe(candidate_results)",
+        "build_universe(APPENDIX_TREND3)",
+    ):
+        assert required in script, (
+            f"bms_star_mauna_loa.py lost its A4 wiring: {required!r} missing")
+    assert "np.logspace" not in script, (
+        "the legacy logspace tau grid must not replace MAUNA_TAU_GRID")

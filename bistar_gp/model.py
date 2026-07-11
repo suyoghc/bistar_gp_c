@@ -176,6 +176,12 @@ def build_mauna_loa_kernels():
     with torch.no_grad():
         seasonal.base_kernel.raw_period_length.fill_(0.0)
     seasonal.base_kernel.raw_period_length.requires_grad_(False)
+    # Freeze-target stamp: fit_map verifies, at entry, that every stamped
+    # module still holds its frozen value, so a period mutated BEFORE a fit
+    # (frozen-but-moved, which the unchanged-at-exit guard alone would let
+    # through) fails at the next MAP/multi-start call (M2a review round,
+    # finding 4).
+    seasonal.base_kernel._a10_frozen_period = MAUNA_FROZEN_PERIOD
     assert seasonal.base_kernel.period_length.item() == MAUNA_FROZEN_PERIOD
 
     medium = ScaleKernel(

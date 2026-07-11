@@ -22,6 +22,12 @@ class CandidateResult:
     cov: np.ndarray           # (n_eval, n_eval)
     noise_var: float
     parameters: Dict[str, float]
+    # Universe identity for the Mauna A4 separate-normalization rule: stamped
+    # by _make_result from the producing model's tag, so the guard can
+    # validate the exact list handed to run_bms_star rather than the model
+    # list it was derived from. None for non-registry candidates (the toy
+    # universe has no A4 rule).
+    universe: Optional[str] = None
 
 
 class CandidateModel:
@@ -70,6 +76,7 @@ class CandidateModel:
             cov=cov,
             noise_var=noise_var,
             parameters=params_dict,
+            universe=getattr(self, "universe", None),
         )
 
 

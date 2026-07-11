@@ -82,13 +82,17 @@ def test_observed_diagnostics_are_plausible(hmc_run):
     _, diag = hmc_run
     assert diag.unavailable == ()
     # leapfrog counts: one chain, one entry per post-warmup draw, each at
-    # least 1 and consistent with the depth cap accounting used by G-B.
+    # least 1 AND bounded by the depth cap (a NUTS tree at cap d takes at
+    # most 2**d - 1 leapfrogs; the probe verified the counter delta equals
+    # the leapfrog count exactly). The upper bound BINDS the observation to
+    # the cap: fabricated or overhead-inflated counts would exceed it and
+    # fake saturation (workflow finding C9).
     (counts,) = diag.leapfrog_counts
     assert len(counts) == N_DRAWS
-    assert all(c >= 1 for c in counts)
+    assert all(1 <= c <= 2 ** TREE_DEPTH - 1 for c in counts)
     assert 0.0 <= diag.depth_saturation_rate <= 1.0
     (depths,) = diag.tree_depths
-    assert all(d >= 0 for d in depths)
+    assert all(0 <= d <= TREE_DEPTH for d in depths)
     (acc,) = diag.acceptance_rate
     assert 0.0 <= acc <= 1.0
     (div_idx,) = diag.divergence_draws
@@ -167,8 +171,45 @@ def test_leapfrog_counts_derivation_from_hook_records():
                ("Sample", 0, 44), ("Sample", 1, 59), ("Sample", 2, 62)]
     assert leapfrog_counts_from_records(records) == (15, 15, 3)
     assert leapfrog_counts_from_records([("Warmup", 0, 9)]) is None
-    # no-warmup runs: draw 0 measured from 0, documented as contaminated
-    assert leapfrog_counts_from_records([("Sample", 0, 12)]) == (12,)
+    # No-warmup runs have no clean baseline: the first delta would absorb
+    # initialization overhead and could fake depth saturation, so counts are
+    # UNAVAILABLE rather than contaminated (review finding 2).
+    assert leapfrog_counts_from_records([("Sample", 0, 12)]) is None
+
+
+def test_partial_chain_diagnostics_are_unavailable_not_fabricated():
+    """A diagnostics payload missing a chain key must not coerce into
+    'chain had zero divergences' or a NaN acceptance (review finding 3)."""
+
+    class PartialMCMC:
+        num_chains = 2
+
+        def diagnostics(self):
+            return {"divergences": {"chain 0": [1]},        # chain 1 missing
+                    "acceptance rate": {"chain 0": 0.9}}    # chain 1 missing
+
+    diag = diagnostics_from_pyro_mcmc(
+        PartialMCMC(), sampler="partial", n_draws=5, n_warmup=2,
+        site_names=("a",))
+    assert diag.divergence_draws is None
+    assert diag.acceptance_rate is None
+    assert "divergence_draws" in diag.unavailable
+    assert "acceptance_rate" in diag.unavailable
+
+
+def test_acceptance_rate_validated_and_json_rejects_nonfinite():
+    with pytest.raises(ValueError, match="acceptance_rate"):
+        SamplerDiagnostics(sampler="x", n_chains=1, n_draws=2, n_warmup=1,
+                           site_names=("a",),
+                           divergence_draws=((),),
+                           acceptance_rate=(float("nan"),),
+                           leapfrog_counts=((1, 1),))
+    with pytest.raises(ValueError, match="acceptance_rate"):
+        SamplerDiagnostics(sampler="x", n_chains=1, n_draws=2, n_warmup=1,
+                           site_names=("a",),
+                           divergence_draws=((),),
+                           acceptance_rate=(1.5,),
+                           leapfrog_counts=((1, 1),))
 
 
 def test_shape_validation_is_loud():

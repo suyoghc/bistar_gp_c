@@ -17,6 +17,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 EXPERIMENTS_DIR = REPO_ROOT / "experiments"
 
 
+def _is_python_interpreter(token):
+    """Match python/python3/python3.x, bare or path-prefixed."""
+    name = Path(token).name
+    return name == "python" or name.startswith("python3")
+
+
 def _slurm_invocations():
     """Return every direct Python-script invocation in every Slurm file."""
     invocations = []
@@ -27,15 +33,26 @@ def _slurm_invocations():
                 continue
             tokens = shlex.split(stripped, comments=True)
             for index, token in enumerate(tokens[:-1]):
-                if token == "python" and tokens[index + 1].endswith(".py"):
+                if not _is_python_interpreter(token):
+                    continue
+                # Skip interpreter options (python -u, -O, ...) between the
+                # interpreter and the script token, so an option-carrying
+                # invocation stays covered instead of silently dropping out.
+                script_index = index + 1
+                while (script_index < len(tokens)
+                       and tokens[script_index].startswith("-")):
+                    script_index += 1
+                if script_index >= len(tokens):
+                    continue
+                if tokens[script_index].endswith(".py"):
                     invocations.append(
                         pytest.param(
                             slurm_path,
                             lineno,
                             stripped,
-                            tokens[index + 1],
-                            tokens[index + 2 :],
-                            id=f"{slurm_path.name}:{lineno}-{tokens[index + 1]}",
+                            tokens[script_index],
+                            tokens[script_index + 1:],
+                            id=f"{slurm_path.name}:{lineno}-{tokens[script_index]}",
                         )
                     )
                     break
@@ -92,3 +109,18 @@ def test_slurm_flags_match_target_argparse(
         "on submission; see the M2a refresh rationale in "
         "plan-d19-mauna.md section 0."
     )
+
+
+def test_every_slurm_file_has_a_recognized_invocation():
+    """Coverage guard for the guard: a job rewritten to an unrecognized
+    launcher form would silently drop out of the parametrization above and
+    its flags would go unchecked. Every Slurm file must contribute at least
+    one recognized python invocation (M2a review round, finding 8)."""
+    covered = {param.values[0] for param in _slurm_invocations()}
+    all_slurm = set(EXPERIMENTS_DIR.glob("*.slurm"))
+    assert all_slurm, "no Slurm files found under experiments/"
+    uncovered = sorted(p.name for p in all_slurm - covered)
+    assert not uncovered, (
+        f"Slurm file(s) with no recognized python invocation: {uncovered}; "
+        "extend _is_python_interpreter/_slurm_invocations rather than losing "
+        "flag coverage")

@@ -1263,14 +1263,14 @@ run on synthetic fixtures):
   retrieval verified against the same pins (data.py:67; verified to yield byte-identical
   tensors). The dead fallback and unreachable except are gone; `_synthetic_mauna_loa` is
   deleted (a silent synthetic substitute is exactly what A9 forbids).
-- **Training-only API** (`load_mauna_loa_training`, data.py:240): returns (x_train, y_train,
+- **Training-only API** (`load_mauna_loa_training`, data.py:244): returns (x_train, y_train,
   info) — test y values never returned, logged, or persisted by this entry point; split
   METADATA (461/60, cutoff rule) rides in info as §6.6 explicitly permits. The provenance
   layer still reads the full artifact for checksum verification (seal semantics are
   application-layer; full-artifact verification necessarily streams test-era rows and is
   permitted). Study-facing D19 code uses this entry point from now on; the default
   `load_mauna_loa` keeps its exact 5-tuple contract and values.
-- **A10 period freeze** (`bistar_gp/model.py:121-178` + `bistar_gp/fit.py:29`):
+- **A10 period freeze** (`bistar_gp/model.py:121-190` + `bistar_gp/fit.py:42`):
   raw_period_length filled to exactly 0.0 — which maps to exactly 1.0 under
   Interval(0.99, 1.01) in float64 (verified numerically) — plus requires_grad_(False) in
   build_mauna_loa_kernels; `assert_mauna_period_frozen(model)` checker (model.py:124);
@@ -1284,28 +1284,31 @@ run on synthetic fixtures):
   initialize_model, no period site, MH exclusion).
 - **A4 candidate registry** (`bistar_gp/mauna_loa_candidates.py`): one module now hosts BOTH
   universes — MAIN_LADDER (the unchanged 4-ladder) and APPENDIX_TREND3 (harmonized 3-set) in
-  an immutable MappingProxyType registry (line 463) with per-universe roles and the A4
+  an immutable MappingProxyType registry (line 476) with per-universe roles and the A4
   separate-normalization rule; `build_universe(key)` tags every fresh instance with
-  `.universe` (line 484); `assert_single_universe` raises on empty/untagged/mixed
-  collections (line 498) and the study script calls it before run_bms_star, so merging the
+  `.universe` (line 497); `assert_single_universe` raises on empty/untagged/mixed
+  collections (line 511) and the study script calls it before run_bms_star, so merging the
   two universes into one normalization is loudly erroneous. Harmonized appendix members
-  LinearHarmonic2Model (line 210) and ExponentialHarmonic2Model (line 311) use the ladder
+  LinearHarmonic2Model (line 215) and ExponentialHarmonic2Model (line 316) use the ladder
   convention: period frozen at 1.0 (fixed 2π/4π frequencies; the historical trainable
   P in (0.9, 1.1) is gone), sine second harmonic (replacing the historical cos — the two
   conventions are prediction-equivalent, tested on canonicalized predictions rather than
   raw phase parameters), and the shared D11 multi-start full-NLL protocol through
   CandidateModel._fit_mle (differential_evolution removed from
   experiments/bms_star_mauna_loa.py entirely). The shared member is the SAME class object
-  in both universes (`AppendixQuadHarmonic2Model = QuadHarmonic2Model`, line 451), so the
+  in both universes (`AppendixQuadHarmonic2Model = QuadHarmonic2Model`, line 464), so the
   §3 cross-universe identity holds by construction. Tests:
   tests/test_mauna_candidate_registry.py (7, synthetic fixtures only): composition/tags,
   class-and-fit identity of the shared member, historical-cos ground truth reproduced by
   the harmonized sine model, restarts routed through _fit_mle (spy) + no
   differential_evolution import remains, merge-guard accept/reject, metric/tau contracts,
   synthetic end-to-end BMS* normalization.
-- **Metric wiring (A4-metric)** (registry module lines 37-47):
+- **Metric wiring (A4-metric)** (registry module lines 37-52):
   MAUNA_PRIMARY_METRIC="pw_kl_vcal"; MAUNA_METRICS = pw_kl_vcal first + the five legacy
-  Mauna metrics (kl_forward stays appendix-sensitivity); MAUNA_TAU_GRID =
+  Mauna metrics + the DISTRIBUTION-LEVEL kl_forward as the A4 appendix-sensitivity
+  addition (plan §2/§7 "existing Mauna metrics plus kl_forward" — the pointwise
+  pw_kl_forward is one of the legacy five and does not satisfy that clause;
+  verification-workflow catch); MAUNA_TAU_GRID =
   (0.1, 0.3, 1.0, 3.0, 10.0); MAUNA_HEADLINE_TAU = 1.0. bms_star_mauna_loa.py imports
   bistar_gp.metrics_v2 for METRICS registration, scores MAUNA_METRICS over the frozen grid
   (replacing np.logspace(-1, 2, 25)), prints tables at every prereg tau, and keys the
@@ -1320,11 +1323,11 @@ run on synthetic fixtures):
   n_divergences/divergence_rate/tree_depths/depth_saturation_rate (saturation predicate:
   leapfrogs >= 2^max_tree_depth - 1; 127 at td7, matching the D8 record). Pyro 1.9.1 does
   not expose per-iteration tree depth, so it is recovered observationally:
-  PotentialEvalTracker (line 37) wraps the model callable — one traced call per leapfrog,
+  PotentialEvalTracker (line 40) wraps the model callable — one traced call per leapfrog,
   verified by probe — and an MCMC hook_fn snapshots cumulative counts per iteration;
   sampling-stage deltas are per-draw leapfrog counts (leapfrog_counts_from_records,
-  line 194). `fit_hmc(..., return_diagnostics=True)` returns (samples, SamplerDiagnostics)
-  (fit.py:228); the DEFAULT return stays the unchanged D9 dict of site -> (n,) constrained
+  line 203). `fit_hmc(..., return_diagnostics=True)` returns (samples, SamplerDiagnostics)
+  (fit.py:239); the DEFAULT return stays the unchanged D9 dict of site -> (n,) constrained
   arrays (zero overhead when off: no hook, no wrapper). The M2c divergence-clustering
   predicate (§6.15) will be defined against this schema. Tests:
   tests/test_sampler_diagnostics.py (9 — default-path backward compat, structured shapes +
@@ -1343,8 +1346,9 @@ run on synthetic fixtures):
   regenerates runs/d19_planning/scorecard_v2.json BYTE-IDENTICALLY (sha256
   52b2d49d8a8d14f9348c78970ec8ef2e40481406eee8f42b6e4af3e9ca836881 unchanged) — the allowed
   reproduction check, not a new result; the monthly aggregation was additionally verified
-  byte-identical between the vendored CSV and a live OpenML fetch. Full suite: 158 passed
-  (121 baseline + 37 new), zero failures.
+  byte-identical between the vendored CSV and a live OpenML fetch. Full suite after both
+  review rounds: 170 passed (121 baseline + 49 new), zero failures; the byte-identity gate
+  re-ran and re-passed on the final loader state.
 
 **Alternatives considered:** deterministic retrieval + runtime checksum without vendoring
 (rejected: CC0 permits vendoring, which removes the network dependency the gate would
@@ -1363,7 +1367,79 @@ scope; the eval-counter observation is exact for leapfrog counts and forks no py
 internals); zero-filling unavailable diagnostics (rejected: fabricated zeros would pass G-B
 silently; the honesty contract makes absence loud and constructor-enforced).
 
-**Status:** M2a COMPLETE. Suite green (158), scorecard byte-identity gate passed, prereg
+**M2a PR-review round (codex gpt-5.6-sol xhigh on the PR diff, read-only): FIX-FIRST, 8
+findings (1 HIGH, 5 MEDIUM, 2 LOW), ALL fixed in the same PR before Ready:**
+1. HIGH — the rewritten bms_star_mauna_loa.py still called the full loader, plotted the 60
+   sealed test values, and extended its evaluation grid through the holdout, contradicting
+   the D20/addendum claim that study-facing code uses the training-only entry point. Fixed:
+   the script consumes load_mauna_loa_training, evaluates on the training span only, and
+   plots no test point; a source-level seal guard
+   (tests/test_mauna_provenance.py::test_study_script_stays_on_the_training_only_loader)
+   makes any regression loud.
+2. MEDIUM — n_warmup=0 leapfrog counts included initialization overhead yet reported as
+   available (could fake depth saturation). Fixed: no clean warmup baseline means counts
+   are UNAVAILABLE (leapfrog_counts_from_records returns None).
+3. MEDIUM — a diagnostics payload missing a chain key coerced to zero divergences / NaN
+   acceptance while the field stayed "available", and to_json could emit non-standard NaN.
+   Fixed: per-chain observations require EVERY chain key present and finite, else
+   unavailable; acceptance validated finite in [0, 1] at construction; to_json uses
+   allow_nan=False.
+4. MEDIUM — fit_map asserted frozen params unchanged but never equal to 1.0, so a
+   frozen-but-premutated period would survive a fit. Fixed: build_mauna_loa_kernels stamps
+   _a10_frozen_period on the seasonal kernel and fit_map asserts the stamped value at
+   ENTRY.
+5. MEDIUM — universe tags were lost on CandidateResult and the guard validated the model
+   list, not the list run_bms_star consumes. Fixed: CandidateResult carries `universe`
+   (stamped by _make_result), assert_single_universe accepts models or results and treats
+   None as untagged, and the script guards candidate_results directly.
+6. MEDIUM — ExponentialHarmonic2Model's all-restarts-failed fallback computed sigma from
+   trend-only residuals (harmonics inflated the predictive variance). Fixed: sigma from
+   the full trend-plus-harmonics residuals; forced-fallback test added.
+7. LOW — the canonical hash used native-endian bytes while the addendum freezes
+   little-endian. Fixed: explicit dtype "<f8" (bytes identical on this little-endian
+   host; hash unchanged, verified).
+8. LOW — the slurm guard recognized only literal `python`, so a job switched to python3
+   dropped out of coverage silently. Fixed: python/python3/python3.x including
+   path-prefixed forms, plus a coverage test asserting every .slurm file contributes a
+   recognized invocation.
+The reviewer explicitly verified: plan doc untouched, addenda append-only, scorecard JSON
+untouched at the pinned hash, loader aggregation-order equivalence, default fit_hmc return
+unchanged, synthetic-only tests, no scope creep.
+
+**Parallel verification workflow (independent second check, 21 read-only agents: three
+audit lenses — prereg-compliance / correctness / test-adequacy — each finding then
+adversarially refuted by a separate agent): 18 raw findings, 13 confirmed, 5 refuted.**
+Five confirmed findings duplicated the codex list (the study-script seal breach, NaN
+acceptance fabrication, slurm python-only matching, no-warmup contamination — fixed
+above). Net-new confirmed findings, ALL fixed in the same PR:
+- MEDIUM: MAUNA_METRICS omitted the DISTRIBUTION-LEVEL kl_forward — the plan's "existing
+  Mauna metrics plus kl_forward" (§2 Stage C, §7 A4) adds the covariance-sensitive joint
+  metric; the pointwise pw_kl_forward is one of the legacy five and does not satisfy that
+  clause. Fixed: "kl_forward" appended to MAUNA_METRICS as the appendix-sensitivity entry
+  (same METRICS call signature; run_bms_star consumes it directly).
+- MEDIUM (test adequacy): the A9 gate was only tested through the private helper — added
+  test_public_loaders_actually_run_the_gate (a perturbed pin makes BOTH public loaders
+  refuse); the openml source path was untested — added fetch-failure (the exact pre-A9
+  UnboundLocalError class, now a clean RuntimeError) and tampered-upstream-frame tests,
+  both network-free via monkeypatch.
+- MEDIUM (test adequacy): fit_map's own exit guard had no failing-path coverage — added a
+  hostile-optimizer test (Adam.step monkeypatched to mutate the frozen raw parameter
+  mid-fit; fit_map must refuse to return).
+- MEDIUM (test adequacy): real-run leapfrog counts were only lower-bounded — now bound to
+  the depth cap (1 <= count <= 2^d - 1, tree depths <= d), so inflated counts cannot fake
+  saturation nor deflated ones hide it.
+- MEDIUM (test adequacy): the script's metric/tau wiring was unpinned — added a
+  source-level pin test (MAUNA_METRICS / MAUNA_TAU_GRID / headline tau /
+  guard-on-candidate_results present; np.logspace banned from the script).
+- LOW: the vendored CSV was excluded from wheels/sdists — pyproject.toml gains
+  [tool.setuptools.package-data] bistar_gp = ["datasets/*.csv"] (an installed package's
+  loader would otherwise hard-fail by construction).
+- LOW: stale D20 line anchors after the fix round — recomputed against the final tree.
+Refuted, no action (refutation reasoning in the workflow transcript): the two
+assert-vs-python -O findings, training-loader test_years flexibility, and two findings
+whose factual basis the codex-round fixes had already removed.
+
+**Status:** M2a COMPLETE. Suite green (170), scorecard byte-identity gate passed, prereg
 addendum v1.1 (canonical hash + vendoring record) landed in docs/prereg-addenda-d19.md; no
 scientific number was produced or read (the scorecard re-run reproduces the already-ratified
 M1 artifact). Implementation route: two codex gpt-5.6-sol (xhigh) subagents built the

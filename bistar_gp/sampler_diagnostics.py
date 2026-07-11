@@ -110,6 +110,12 @@ class SamplerDiagnostics:
                 if bad:
                     raise ValueError(
                         f"divergence_draws chain {c} indices out of range: {bad}")
+        if self.acceptance_rate is not None:
+            bad = [a for a in self.acceptance_rate
+                   if not (math.isfinite(a) and 0.0 <= a <= 1.0)]
+            if bad:
+                raise ValueError(
+                    f"acceptance_rate entries outside finite [0, 1]: {bad}")
 
     # ── derived quantities (None whenever their observation is None) ──
 
@@ -162,7 +168,10 @@ class SamplerDiagnostics:
         return {f.name: listify(getattr(self, f.name)) for f in fields(self)}
 
     def to_json(self):
-        return json.dumps(self.to_dict())
+        # allow_nan=False: non-finite values would serialize as the
+        # non-standard NaN token and break strict JSON consumers; the
+        # validation above keeps them out, this keeps them out loudly.
+        return json.dumps(self.to_dict(), allow_nan=False)
 
     @classmethod
     def from_dict(cls, payload):
@@ -195,19 +204,20 @@ def leapfrog_counts_from_records(records):
     """Per-draw leapfrog counts from PotentialEvalTracker records.
 
     Only sampling-stage iterations are counted; the baseline for the first
-    sampling draw is the last warmup snapshot (clean, per the probe), or 0
-    when there was no warmup (then the first draw's count includes
-    initialization overhead — callers with n_warmup=0 should treat draw 0 as
-    contaminated). Returns a tuple of counts, or None if no sampling-stage
-    records exist.
+    sampling draw is the last warmup snapshot (clean, per the probe). Without
+    a warmup snapshot there is no clean baseline — the first delta would
+    absorb initialization overhead and could fake depth saturation — so a
+    no-warmup record stream returns None (unavailable) rather than a
+    contaminated count (M2a review round, finding 2). Returns a tuple of
+    counts, or None when counts cannot be derived honestly.
     """
     warmup_cums = [c for stage, _i, c in records
                    if not stage.lower().startswith("sample")]
     sample_cums = [c for stage, _i, c in records
                    if stage.lower().startswith("sample")]
-    if not sample_cums:
+    if not sample_cums or not warmup_cums:
         return None
-    counts, prev = [], (warmup_cums[-1] if warmup_cums else 0)
+    counts, prev = [], warmup_cums[-1]
     for c in sample_cums:
         counts.append(c - prev)
         prev = c
@@ -231,18 +241,25 @@ def diagnostics_from_pyro_mcmc(mcmc_run, *, sampler, n_draws, n_warmup,
         diag = {}
     unavailable = []
 
-    if isinstance(diag.get("divergences"), dict):
+    # A per-chain observation counts as available only when EVERY chain
+    # reported it: a missing chain key silently coerced to "no divergences"
+    # or a NaN acceptance would be a fabricated observation, the exact
+    # failure the honesty contract exists to prevent (M2a review round,
+    # finding 3).
+    chain_keys = [f"chain {c}" for c in range(n_chains)]
+
+    div = diag.get("divergences")
+    if isinstance(div, dict) and all(k in div for k in chain_keys):
         divergence_draws = tuple(
-            tuple(int(t) for t in diag["divergences"].get(f"chain {c}", []))
-            for c in range(n_chains))
+            tuple(int(t) for t in div[k]) for k in chain_keys)
     else:
         divergence_draws = None
         unavailable.append("divergence_draws")
 
-    if isinstance(diag.get("acceptance rate"), dict):
-        acceptance_rate = tuple(
-            float(diag["acceptance rate"].get(f"chain {c}", float("nan")))
-            for c in range(n_chains))
+    acc = diag.get("acceptance rate")
+    if (isinstance(acc, dict) and all(k in acc for k in chain_keys)
+            and all(math.isfinite(float(acc[k])) for k in chain_keys)):
+        acceptance_rate = tuple(float(acc[k]) for k in chain_keys)
     else:
         acceptance_rate = None
         unavailable.append("acceptance_rate")

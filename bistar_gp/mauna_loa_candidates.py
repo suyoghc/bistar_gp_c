@@ -36,12 +36,17 @@ APPENDIX_TREND3 = "appendix_trend3"
 
 MAUNA_PRIMARY_METRIC = "pw_kl_vcal"
 MAUNA_METRICS = (
-    "pw_kl_vcal",
+    "pw_kl_vcal",       # A4 primary (W1-ratified default)
+    # The five legacy Mauna metrics (plan section 0), kept for continuity:
     "pw_mse",
     "pw_nll",
     "pw_hellinger",
-    "pw_kl_forward",  # Appendix-sensitivity metric under decision A4.
+    "pw_kl_forward",
     "pw_kl_symmetric",
+    # A4 appendix-sensitivity addition: the DISTRIBUTION-LEVEL forward KL
+    # (covariance-sensitive, unlike the pointwise pw_kl_forward above) —
+    # "existing Mauna metrics plus kl_forward" in plan sections 2 and 7.
+    "kl_forward",
 )
 MAUNA_TAU_GRID = (0.1, 0.3, 1.0, 3.0, 10.0)
 MAUNA_HEADLINE_TAU = 1.0
@@ -409,12 +414,20 @@ class ExponentialHarmonic2Model(CandidateModel):
             a_init, b_init = trend_starts[0]
             exponent = np.clip(b_init * x, -50, 50)
             c_init = float(np.mean(y - a_init * np.exp(exponent)))
-            residuals = y - a_init * np.exp(exponent) - c_init
-            A1, phi1, A2, phi2 = _harmonic_initialization(x, residuals)
+            trend_residuals = y - a_init * np.exp(exponent) - c_init
+            A1, phi1, A2, phi2 = _harmonic_initialization(x, trend_residuals)
             self.a, self.b, self.c = a_init, b_init, c_init
             self.A1, self.phi1 = A1, phi1
             self.A2, self.phi2 = A2, phi2
-            self.sigma = max(np.std(residuals), 1e-6)
+            # sigma from the residuals of the FULL fallback mean (trend plus
+            # harmonics); the trend-only residual std would inflate the
+            # predictive covariance relative to the returned mean and distort
+            # BMS* scores (M2a review round, finding 6).
+            noise_residuals = trend_residuals - (
+                A1 * np.sin(TWO_PI * x + phi1)
+                + A2 * np.sin(2 * TWO_PI * x + phi2)
+            )
+            self.sigma = max(np.std(noise_residuals), 1e-6)
 
     def predict(self, x_eval):
         mean = self._f(
@@ -495,28 +508,35 @@ def build_universe(key):
     return models
 
 
-def assert_single_universe(models: Sequence[CandidateModel]):
-    """Reject empty, untagged, or cross-universe candidate collections."""
-    members = list(models)
+def assert_single_universe(members: Sequence):
+    """Reject empty, untagged, or cross-universe candidate collections.
+
+    Accepts model instances (tagged by build_universe) AND CandidateResult
+    objects (tagged by _make_result from the producing model), so callers
+    can — and should — validate the EXACT list handed to run_bms_star, not
+    just the model list it was derived from (M2a review round, finding 5).
+    An entry whose universe is missing or None counts as untagged.
+    """
+    members = list(members)
     if not members:
         raise ValueError("Mauna candidate collection is empty")
 
     untagged = [
-        getattr(model, "name", type(model).__name__)
-        for model in members
-        if not hasattr(model, "universe")
+        getattr(member, "name", type(member).__name__)
+        for member in members
+        if getattr(member, "universe", None) is None
     ]
     if untagged:
         raise ValueError(
             "Untagged Mauna candidate members: " + ", ".join(untagged)
         )
 
-    universes = {model.universe for model in members}
+    universes = {member.universe for member in members}
     if len(universes) != 1:
         offenders = ", ".join(
-            f"{getattr(model, 'name', type(model).__name__)} "
-            f"[{model.universe}]"
-            for model in members
+            f"{getattr(member, 'name', type(member).__name__)} "
+            f"[{member.universe}]"
+            for member in members
         )
         raise ValueError("Mixed Mauna candidate universes: " + offenders)
 

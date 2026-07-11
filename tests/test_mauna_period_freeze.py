@@ -109,6 +109,41 @@ def test_fit_map_guard_trips_if_a_frozen_param_is_moved():
         assert_mauna_period_frozen(model)
 
 
+def test_fit_map_exit_guard_catches_in_fit_mutation(monkeypatch):
+    """Failing-path coverage for fit_map's OWN exit assertion (workflow
+    finding C7): simulate an optimizer that ignores requires_grad by mutating
+    the frozen raw parameter inside step(); fit_map must refuse to return."""
+    x, y = synthetic_monthly()
+    kernels, names = build_mauna_loa_kernels()
+    model, lik = build_model(x, y, kernels, names)
+    base = model.kernel_components[1].base_kernel
+
+    orig_step = torch.optim.Adam.step
+
+    def hostile_step(self, *args, **kwargs):
+        out = orig_step(self, *args, **kwargs)
+        with torch.no_grad():
+            base.raw_period_length.fill_(0.5)
+        return out
+
+    monkeypatch.setattr(torch.optim.Adam, "step", hostile_step)
+    with pytest.raises(AssertionError, match="frozen parameter"):
+        fit_map(model, lik, x, y, n_iter=2, lr=0.01, verbose=False)
+
+
+def test_fit_map_rejects_a_premutated_frozen_period_at_entry():
+    """A period mutated BEFORE the fit is frozen-but-wrong: the exit
+    unchanged-guard alone would accept it, so fit_map checks the A10
+    freeze-target stamp at entry (review finding 4)."""
+    x, y = synthetic_monthly()
+    kernels, names = build_mauna_loa_kernels()
+    model, lik = build_model(x, y, kernels, names)
+    with torch.no_grad():
+        model.kernel_components[1].base_kernel.raw_period_length.fill_(0.25)
+    with pytest.raises(AssertionError, match="fit_map entry"):
+        fit_map(model, lik, x, y, n_iter=2, lr=0.01, verbose=False)
+
+
 def test_pyro_sampled_site_inventory_stays_seven(mauna_model):
     """The frozen period must not appear as a pyro latent: 7 sites exactly
     (trend ls+os, seasonal ls+os, medium ls+os, noise), matching the

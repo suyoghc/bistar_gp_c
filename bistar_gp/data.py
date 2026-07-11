@@ -113,7 +113,11 @@ def _verify_mauna_provenance(df):
             "(prereg §6.2 requires re-pinning before any use of deviating data)")
 
     def col_bytes(col):
-        return np.ascontiguousarray(df[col].astype(float).values).tobytes()
+        # Explicit little-endian float64 ("<f8"): the addendum freezes the
+        # byte serialization, and native-endian bytes would hard-fail a
+        # correct artifact on a big-endian host (M2a review round, finding 7).
+        return np.ascontiguousarray(
+            df[col].astype(float).values, dtype="<f8").tobytes()
 
     canonical = hashlib.sha256(
         col_bytes(year_col) + col_bytes(month_col) + col_bytes(co2_col)).hexdigest()

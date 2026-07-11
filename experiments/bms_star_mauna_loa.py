@@ -26,7 +26,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from bistar_gp import load_mauna_loa, build_model
+from bistar_gp import load_mauna_loa_training, build_model
 # Registers pw_kl_vcal in bms_star.METRICS for the MAUNA_METRICS contract.
 import bistar_gp.metrics_v2  # noqa: F401
 from bistar_gp.model import build_mauna_loa_kernels, build_likelihood
@@ -71,18 +71,20 @@ def main():
     print("  Candidates: Linear, Quadratic, Exponential (all + 2Harm)")
     print("=" * 60)
 
-    # ── 1. Load data ──────────────────────────────────────────────
-    x_train, y_train, x_test, y_test, info = load_mauna_loa(
+    # ── 1. Load data (TRAINING-ONLY; §6.6 holdout seal) ───────────
+    # The 60-month holdout is SEALED until the D19 author decision
+    # (docs/plan-d19-mauna.md §6.6): this study-facing script never receives
+    # test values. Split metadata (counts, cutoff rule) is permitted.
+    x_train, y_train, info = load_mauna_loa_training(
         normalize=True, test_years=5.0
     )
     x_np = x_train.numpy()
     y_np = y_train.numpy()
-    print(f"\n  Train: {len(x_train)}, Test: {len(x_test)}")
+    print(f"\n  Train: {info['n_train']}, Test (sealed holdout): {info['n_test']}")
     print(f"  Normalization: y_mean={info['y_mean']:.2f}, y_std={info['y_std']:.2f}")
 
-    # Evaluation grid — covers train + test range
-    x_all = torch.cat([x_train, x_test])
-    x_eval_np = np.linspace(x_all.min().item(), x_all.max().item(), args.n_eval)
+    # Evaluation grid — training span only while the holdout stays sealed
+    x_eval_np = np.linspace(x_train.min().item(), x_train.max().item(), args.n_eval)
     x_eval = torch.tensor(x_eval_np).double()
 
     # ── 2. Fit candidate models ───────────────────────────────────
@@ -118,10 +120,9 @@ def main():
 
     if args.map_only:
         print("\n  --map-only: Skipping HMC. No BMS* scoring.")
-        # Still plot candidates vs data
+        # Still plot candidates vs data (training span only; holdout sealed)
         fig, ax = plt.subplots(figsize=(12, 6))
         ax.scatter(x_np, y_np, c='k', marker='x', s=10, alpha=0.5, label='Train')
-        ax.scatter(x_test.numpy(), y_test.numpy(), c='red', marker='.', s=10, alpha=0.5, label='Test')
         colors = ['#e74c3c', '#3498db', '#2ecc71']
         for cr, color in zip(candidate_results, colors):
             ax.plot(x_eval_np, cr.mean, color=color, linewidth=2, label=cr.name)
@@ -170,7 +171,8 @@ def main():
 
     # ── 6. Run BMS* ───────────────────────────────────────────────
     print("\n── Running BMS* ──")
-    assert_single_universe(candidates)
+    # Guard the EXACT normalization input (A4: universes never merge).
+    assert_single_universe(candidate_results)
     metrics = list(MAUNA_METRICS)
     taus = np.array(MAUNA_TAU_GRID)
     results = run_bms_star(gp_samples, candidate_results, metrics, taus)
@@ -220,11 +222,11 @@ def main():
     fig3.savefig(path3, bbox_inches="tight", dpi=150)
     print(f"  Saved: {path3}")
 
-    # Custom: candidates vs data with test set
+    # Custom: candidates vs training data (holdout sealed; §6.6 — the test
+    # months are scored once, after the D19 decision, as the labeled
+    # extrapolation check, never plotted here before unsealing)
     fig4, ax = plt.subplots(figsize=(14, 6))
     ax.scatter(x_np, y_np, c='k', marker='x', s=10, alpha=0.3, label='Train')
-    ax.scatter(x_test.numpy(), y_test.numpy(), c='red', marker='.', s=15,
-              alpha=0.5, label='Test (held out)')
     colors = ['#e74c3c', '#3498db', '#2ecc71']
     for cr, color in zip(candidate_results, colors):
         ax.plot(x_eval_np, cr.mean, color=color, linewidth=2, label=cr.name)
