@@ -2471,3 +2471,36 @@ flagged above; this entry does not make them.
 **Status:** Scientific work COMPLETE; PR #8 Ready (not merged), awaiting the author's merge + milestone-
 closure/M2c decisions. No M2c / Mauna / VI-repair / informative-strategy addendum started. A7 Della on
 hold (v1.8).
+
+## D38: author decisions — M2bR formally CLOSED; M2c opened; informative accepted WITHDRAWN; G-toy golden revision scoped to M2c — 2026-07-12
+
+**Problem:** With the M2bR closeout (D37) reviewed and PR #8 MERGEABLE/CLEAN, the author recorded the
+explicit disposition decisions and authorized the merge.
+
+**Author decisions (explicit, 2026-07-12):**
+1. **M2bR is formally CLOSED.** The scientific work is complete (D33 toy_elicited superseded/validated;
+   D36 informative withdrawn, twice-tested; VI withdrawn), the outcomes are propagated (D37), and no
+   blocker remains under the frozen rules.
+2. **M2c is opened as the next milestone** (its own branch/PR off the updated `main`; not started this
+   session).
+3. **`informative` is ACCEPTED as WITHDRAWN/UNVALIDATED for this paper.** No informative strategy-change
+   addendum is pursued now; it is retained as a DOCUMENTED future / reviewer-contingent option (reparam /
+   tuned mass matrix / different sampler). The `informative` prior-misspecification case study stands with
+   a withdrawn HMC number and no replacement model-probability estimate; `toy_elicited` supplies the
+   validated toy result.
+4. **G-toy golden revision is scoped to M2c** (per §6.9): remove the withdrawn `0.696` as a VALIDITY
+   target; retain it ONLY where explicitly needed as the S1 HISTORICAL regression characterization
+   (§6.9 L648-650, explicitly not a validity pass); recompute the normalized profile band masses (the D18
+   profile-Laplace triplet 0.763/0.138/0.023 sums to 0.924 — historical-only, non-exhaustive partial-grid
+   integrals, NOT a golden; L657-666); and freeze the corrected estimator-specific tolerances as a v1.x
+   addendum BEFORE any toy or Mauna pilot.
+
+**Action:** recorded here (append-only); SCRATCHPAD aligned; PR #8 (feat/d19-m2br) merged to `main` via the
+repository's established merge-commit method (PRs #1-#7 all merged as merge commits); local `main`
+fast-forwarded from `origin/main`. No scientific result changed; no compute run. The untracked run
+artifacts (`runs/m2br_v116_informative/`) and the deterministic archive
+(`runs/m2br_v116_informative.archive.tar`, 26.04 MiB, sha256 `c0aea0b9…e2a3a7b9`) are preserved,
+UNMOVED/UNCOMMITTED; durable relocation is a separate author choice.
+
+**Status:** M2bR CLOSED. M2c is the next milestone (NOT started this session). VI repair and the
+informative strategy-change remain independent, optional/later items. A7 Della on hold (v1.8).

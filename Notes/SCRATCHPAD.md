@@ -126,10 +126,17 @@ heavy samples + pools stay UNTRACKED.
   freeze tolerances). informative withdrawal is NON-BLOCKING because §6.9 defines G-toy against toy_elicited
   and informative is NOT the reference config (NOT a general coverage-failure waiver — the L305-307 sentence
   only says a coverage-repairing sampler targets the mass-faithful answer, not 0.696). **PR #8 → Ready** (not merged).
-- **NEXT (author decisions, flagged not made):** (1) declare M2bR closed + open M2c; (2) revise the §6.9
-  G-toy golden that referenced the now-withdrawn 0.696; (3) informative strategy-change addendum vs
-  accept-withdrawn (codex recommends accept); (4) merge PR #8; (5) fold banners into final paper prose.
-  Not started: Mauna, M2c, VI repair, informative-strategy. A7 Della on hold (v1.8).
+- **AUTHOR DECISIONS MADE (D38, 2026-07-12):** (1) M2bR formally CLOSED; (2) M2c OPENED as next milestone
+  (own branch/PR off updated main; NOT started this session); (3) `informative` ACCEPTED as
+  WITHDRAWN/UNVALIDATED for the paper — no strategy-change now, retained as a documented future/
+  reviewer-contingent option; (4) G-toy golden revision scoped to M2c (remove withdrawn 0.696 as a
+  validity target; keep only as S1 historical regression; recompute normalized profile masses; freeze
+  corrected tolerances before any pilot). **PR #8 merged to `main`** (merge-commit method); local `main`
+  fast-forwarded.
+- **NEXT session = M2c** (own branch off updated main; handoff prompt provided). Prohibited until then:
+  Mauna hours, VI repair, informative strategy-change. Fold banners into final paper prose is an author
+  writeup action. Untracked run artifacts + archive preserved (unmoved/uncommitted); durable relocation
+  is a separate author choice. A7 Della on hold (v1.8).
 
 
 ## D19 Mauna study — M2a DONE (D20); M2b code complete, ALL 9 decision items ratified (D21-D31); PR #7 Ready; merge + M2bR = author's next call
