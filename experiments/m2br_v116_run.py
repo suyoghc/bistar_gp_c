@@ -380,6 +380,10 @@ def main(argv=None):
 
     frozen = validation.load_frozen_starts()
     plan = load_v116_plan(frozen=frozen)
+    if args.emit_plan:
+        _print_plan(plan, frozen)
+        print("v1.16 pin verified (manifest + plan sha256 OK); no sampler run.")
+        return 0
     if not args.execute and not args.dry_run:
         _print_plan(plan, frozen)
         print("No --execute supplied; exiting without running any sampler.")

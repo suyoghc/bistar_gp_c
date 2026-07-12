@@ -84,9 +84,12 @@ heavy samples + pools stay UNTRACKED.
   (sha `db177b8b`); driver `experiments/m2br_v116_run.py` (imports, does NOT modify, the frozen
   `m2br_validation_run.py`; sole change warmup 3000 + draws 8000; dual-gated --execute+authorized=True;
   --emit-plan verifies the 4 start shas; --dry-run mock-only). Tests `tests/test_m2br_v116.py` (10
-  hermetic, incl. plan-hash tamper, isolated-timeout stop, acceptance-fail branch). Full suite **272
-  passed + 1 skipped**. Independent review (Claude subagent; codex was rate-limited) = **APPROVE**
-  (no P0/P1; 3 P2 coverage gaps closed). NO chain launched.
+  hermetic → **12** after cross-model findings). Two independent reviews, both **APPROVE, no P0/P1**:
+  (i) Claude subagent (codex was rate-limited); (ii) **GLM-5.2 via OpenRouter** cross-model pass —
+  its 5 P2 findings cross-verified against source: #1 --execute routing test + #2 no-overwrite test
+  ADDED, #4 --emit-plan made explicit, #3 already covered, **#5 (pickle-identity gate bypass) was a
+  FALSE ALARM** (parent gates before spawn at run_v116:292; fit_hmc_e1 pickles by-reference so child
+  identity holds). Full suite **274 passed + 1 skipped**. NO chain launched.
 - **NEXT (author):** give the SEPARATE explicit LAUNCH authorization for v1.16
   (`caffeinate -i python experiments/m2br_v116_run.py --execute`, ~42 min, 90-min ceiling) if/when
   desired; on FAIL the next step is a strategy change (new addendum), not another budget bump. Optionally

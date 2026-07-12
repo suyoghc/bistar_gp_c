@@ -305,6 +305,37 @@ def test_v116_isolated_timeout_stops_and_reports(tmp_path):
     assert not list(output.glob("chain*_samples.npz"))
 
 
+def test_v116_execute_cli_routes_to_real_sampler_and_authorized(monkeypatch):
+    """The --execute CLI path must wire fit_hmc_e1 + authorized=True (no HMC run)."""
+    calls = []
+
+    def fake_run_v116(**kwargs):
+        calls.append(kwargs)
+        return {"status": "completed", "completed_cells": ["V1e"]}
+
+    monkeypatch.setattr(v116, "run_v116", fake_run_v116)
+    assert v116.main(["--execute"]) == 0
+    assert len(calls) == 1
+    assert calls[0]["sampler_fn"] is v116.fit_hmc_e1
+    assert calls[0]["authorized"] is True
+    assert calls[0]["output_dir"] == v116.DEFAULT_OUTPUT_DIR
+
+
+def test_v116_no_overwrite_of_existing_chain_artifact(tmp_path):
+    """require_absent must refuse to clobber a prior chain artifact, before sampling."""
+    output = tmp_path / "v116"
+    output.mkdir(parents=True)
+    (output / "chain0_samples.npz").write_text("prior-run-artifact")
+    frozen = v116.validation.load_frozen_starts()
+
+    def forbidden_sampler(*args, **kwargs):
+        pytest.fail("sampler must not run when a prior artifact exists")
+
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        v116.run_v116_chain(
+            0, frozen, sampler_fn=forbidden_sampler, output_dir=output)
+
+
 def test_v116_acceptance_fail_marks_withdrawn_and_no_replacement(
         tmp_path, monkeypatch):
     def sampler(model, likelihood, x, y, **kwargs):
