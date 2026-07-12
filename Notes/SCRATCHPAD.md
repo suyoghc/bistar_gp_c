@@ -2,6 +2,35 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
+## M2bR corrective milestone — START FREEZE GATE PASSED (D32, branch feat/d19-m2br, 2026-07-11)
+
+Branch `feat/d19-m2br` off `origin/main` (bd0b399 = merged M2b PR #7). The two-stage
+validation start freeze is DONE and independently verified; the hard ordering gate is
+satisfied. NO chain has run.
+
+- **Commit A `10edc2d`** — prereg v1.14 + `experiments/m2br_start_freeze.py` (deterministic,
+  no sampler) + `docs/m2br_freeze/start_freeze_v1.14.json` (manifest sha `b1abfa3c…`). Pins
+  the 8 realized starts (2 configs x 4 chains, shared across td7/td10): `informative` B=3
+  (median lo/mid/hi), `toy_elicited` B=2 (median lo/mid + q75(lo) filler; hi 0.046<5%). All
+  fallback=0; both MAP starts preflight-OK. R-A/R-B + details 1-5 recorded verbatim.
+- **Commit B `72949c0`** — D32 pre-run gate entry. Three independent implementations (codex
+  freeze script, Fable from-scratch recompute, barred clean-room codex) agree byte-for-byte on
+  all 8 starts (realized (seed,row), fallback, semantic sha256, chain 0 incl.); atol=1e-12 pool
+  verify + 4-site topology + MAP determinism confirmed.
+- Reconciliations in v1.14: validation-proposal doc-hash drift (`bdbabb86`->`1045c11c`); D31
+  supersedes the audit protocol's stale "PENDING" header without editing the frozen file
+  (`45999e2f`); the proposal's "7-site" is a Mauna carryover (toy model has 4 sites).
+
+**NEXT (author's call — up to ~8 h local HMC, not yet started):** implement + run the AUDIT
+layer (`docs/m2br-corrected-impact-protocol.md`: 6 single-chain seed-42 runs, 2 h ceiling,
+"corrected single-chain comparison", cannot close W2/W3) and the VALIDATION layer
+(`docs/m2br-validation-protocol-PROPOSAL.md`: cells V1,V3,V2,V4, 4 chains from the frozen
+starts via `fit_hmc_e1(init_values=...)`, 6 h ceiling), each stop-and-report. Then a separate
+outcomes D-entry (which withdrawn numbers are superseded vs still withdrawn) + a proposed
+(pending author) W2/W3 writeup update. Do NOT begin M2c; A7 Della on hold (v1.8). Codex-review
+the diff, open the M2bR PR as Draft pending author sign-off.
+
+
 ## D19 Mauna study — M2a DONE (D20); M2b code complete, ALL 9 decision items ratified (D21-D31); PR #7 Ready; merge + M2bR = author's next call
 
 - `docs/plan-d19-mauna.md` = the frozen record (a077c6e, immutable; merged to main
