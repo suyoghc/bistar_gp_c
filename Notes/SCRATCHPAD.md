@@ -32,11 +32,21 @@ code params 30000/5000/0.1), other 3 configs NOT_APPLICABLE (RW-MH referee is to
 `experiments/m2br_validation_run.py` (V1/V3/V2/V4, frozen-start injection w/ manifest-hash anchor
 `b1abfa3c` + per-start sha verify, arviz criteria, authority coverage, R-B pooled-800 primary).
 `tests/test_m2br_drivers.py` 21 hermetic tests (incl. R-B pooled≠averaged proof). Real HMC gated
-behind `--execute` AND `authorized=True`. Full suite **251 passed + 1 skipped**. codex-reviewed;
+behind `--execute` AND `authorized=True`. codex-reviewed (two rounds);
 all confirmed findings fixed (accidental-run guard, manifest-hash anchor+TOCTOU, §3 re-verify,
 cardinality/draw contracts, samples-last persistence, absolute cutoff+clock-first).
 Committed run plan `docs/m2br_freeze/run_plan.json` + report `docs/m2br-run-plan.md` (exact launch
 commands + schedule). Heavy samples & pools stay untracked.
+
+**PREFLIGHT-HARDENING fix pass (2026-07-12, before launch):** `--verify-arms` writes a separate
+`runs/m2br_preflight/` namespace (idempotent; no collision with `--execute`'s no-overwrite
+artifacts); unchanged-arm verification is STRICT (missing required pool/SIR/toy-RWMH artifact =
+FAIL not SKIP; `--verify-arms` exits 0 only on PASS; `run_audit` samples only on PASS); RW-MH pins
+the FULL (lo,mid,hi) occupancy triplet per seed @1e-12 + crossings + integer-exactness + caller
+frozen-defaults provenance; process isolation uses `spawn` (not fork) + bounded
+`queue.get(timeout)` (not `empty()`) + terminate→kill + start() cleanup; thread/BLAS env pinned
+INSIDE each spawned sampler child (`M2BR_TORCH_THREADS`, default 10) — directly tested under spawn.
+Full suite **262 passed + 1 skipped**.
 
 **NEXT (author authorizes both compute layers together in a FRESH session — up to ~8 h local
 HMC):** `python experiments/m2br_audit_run.py --execute` (2 h), then

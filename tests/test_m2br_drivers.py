@@ -9,8 +9,8 @@ from __future__ import annotations
 import copy
 import json
 import math
-import signal
 import time
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -26,6 +26,11 @@ from experiments.m2br_run_common import (
     NOISE_SITE,
     SITE_NAMES,
     Deadline,
+    _selftest_ignore_sigterm,
+    _selftest_pin_and_report_threads,
+    _selftest_raise,
+    _selftest_return,
+    _selftest_sleep,
     atomic_write_json,
     canonical_start_sha256,
     require_absent,
@@ -248,37 +253,67 @@ class _Clock:
         return self.now
 
 
-def _slow_task():
-    time.sleep(0.2)
-    return "too late"
-
-
-def _ignore_terminate_task():
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    time.sleep(5)
-
-
 def test_deadline_projection_gate_driver_stop_and_isolated_timeout(tmp_path):
     clock = _Clock()
     deadline = Deadline(100, reserve_seconds=10, clock=clock)
     deadline.start()
     clock.now = 11
     assert not deadline.may_start("first", 80)
+    # A PASS verification lets the run reach the projection gate, which stops it.
     report = run_audit(output_dir=tmp_path / "audit", deadline=deadline,
                        isolate=False,
                        sampler_fn=lambda *a, **k: pytest.fail("sampler reached"),
-                       verify_arms_fn=lambda **kwargs: {"status": "SKIP"})
+                       verify_arms_fn=lambda **kwargs: {"status": "PASS"})
     assert report["first_unexecuted_run"] == "d12_informative_td7"
     stop = json.loads((tmp_path / "audit" / "stop.json").read_text())
     assert stop["first_unexecuted_run"] == "d12_informative_td7"
 
+    # Absolute-cutoff timeout under 'spawn': the SIGTERM-ignoring child is
+    # escalated to kill and recorded as timed_out (target lives in the
+    # importable common module so the spawn child can re-import it).
     timeout = run_isolated(
-        _ignore_terminate_task, projection=1,
-        hard_cutoff=time.monotonic() + 0.03,
-        termination_grace=0.02, run_id="timeout-fixture",
+        partial(_selftest_ignore_sigterm, 5), projection=1,
+        hard_cutoff=time.monotonic() + 0.05,
+        termination_grace=0.05, run_id="timeout-fixture",
         failure_path=tmp_path / "timeout.json")
     assert timeout["status"] == "timed_out"
     assert json.loads((tmp_path / "timeout.json").read_text())["status"] == "timed_out"
+
+
+def test_run_isolated_spawn_success_and_exception():
+    ok = run_isolated(partial(_selftest_return, {"value": 7}), projection=1,
+                      hard_cutoff=time.monotonic() + 30, run_id="ok")
+    assert ok["status"] == "completed"
+    assert ok["value"] == {"value": 7}
+
+    failed = run_isolated(partial(_selftest_raise, "boom"), projection=1,
+                          hard_cutoff=time.monotonic() + 30, run_id="boom")
+    assert failed["status"] == "failed"
+    assert "boom" in failed["error"]["message"]
+
+
+def test_run_isolated_uses_spawn_and_bounded_get(tmp_path):
+    # A child that finishes before the cutoff returns via queue.get(timeout=...),
+    # not queue.empty(); confirm a normal completion path under spawn.
+    done = run_isolated(partial(_selftest_sleep, 0.05), projection=1,
+                        hard_cutoff=time.monotonic() + 30, run_id="sleeper")
+    assert done["status"] == "completed"
+    assert done["value"] == {"slept": 0.05}
+
+
+def test_real_audit_run_closure_is_picklable_for_spawn():
+    # The real --execute isolated target must be picklable so the spawn child can
+    # reconstruct it (verified WITHOUT running any sampler).
+    import pickle
+    from functools import partial as _partial
+    from experiments.m2br_audit_run import AUDIT_RUNS, run_audit_one
+    from experiments.m2br_run_common import score_samples as _score
+    from bistar_gp.e1_potential import fit_hmc_e1
+    from bistar_gp.fit import fit_map
+    closure = _partial(run_audit_one, AUDIT_RUNS[0], sampler_fn=fit_hmc_e1,
+                       output_dir=Path("runs/m2br_corrected_impact"),
+                       map_fn=fit_map, scoring_fn=_score)
+    assert pickle.loads(pickle.dumps(closure)).func is run_audit_one
 
 
 def test_bare_real_driver_calls_require_explicit_authorization(tmp_path):
@@ -395,7 +430,7 @@ def test_rw_mh_broadened_verification_pass_and_detects_drift(tmp_path):
     rw = passing["configs"][config]["rw_mh"]
     assert rw["status"] == "PASS", rw
     assert rw["checks"]["retained_30000_integral"] is True
-    assert rw["checks"]["P_lo_unchanged"] is True
+    assert rw["checks"]["occupancy_triplet_unchanged"] is True
     assert rw["checks"]["lo_hi_crossings_unchanged"] is True
     assert rw["checks"]["code_params_30000_5000_0p1"] is True
     assert passing["status"] == "PASS"
@@ -410,15 +445,20 @@ def test_rw_mh_broadened_verification_pass_and_detects_drift(tmp_path):
     assert "lo_hi_crossings_unchanged" in rwf["failed_checks"]
     assert failing["status"] == "FAIL"
 
-    # Perturb an occupancy off the 30000 grid -> integrality check fails.
+    # S2 regression guard: a compensating mid<->high drift that PRESERVES P_lo,
+    # the sum-to-one, and the 30000-grid integrality must still be caught by the
+    # full-triplet pin (a lo-only pin would have missed it).
     rows[0]["lo_hi_crossings"] = 44
-    rows[0]["P_noise_lo"] = 0.7958666666666666 + 1e-4
+    rows[0]["P_noise_mid"] = 0.16753333333333334 - 1e-4
+    rows[0]["P_noise_hi"] = 0.0366 + 1e-4
     rw_path.write_text(json.dumps({"rw_mh": rows}))
     drifted = verify_unchanged_arms(
         source_dir=tmp_path, configs=(config,), run_sir=False)
     rwd = drifted["configs"][config]["rw_mh"]
     assert rwd["status"] == "FAIL"
-    assert "P_lo_unchanged" in rwd["failed_checks"]
+    assert "occupancy_triplet_unchanged" in rwd["failed_checks"]
+    # P_lo itself was untouched, so a lo-only check would have passed here.
+    assert abs(rows[0]["P_noise_lo"] - 0.7958666666666666) <= 1e-12
 
 
 def test_rw_mh_not_applicable_for_non_toy_elicited(tmp_path):
@@ -431,6 +471,78 @@ def test_rw_mh_not_applicable_for_non_toy_elicited(tmp_path):
     assert "toy_elicited-only" in rw["reason"]
     # NOT_APPLICABLE must not drag the overall verdict away from PASS.
     assert report["status"] == "PASS"
+
+
+def test_missing_required_sir_artifact_is_fail_not_skip(tmp_path):
+    # prior-IS present + passing, but results_is_* absent while run_sir=True:
+    # a missing REQUIRED reference must FAIL, never SKIP-into-PASS.
+    config = "informative"
+    _write_prior_is_fixture(tmp_path, config)
+    report = verify_unchanged_arms(
+        source_dir=tmp_path, configs=(config,), run_sir=True)
+    assert report["configs"][config]["prior_is"]["status"] == "PASS"
+    assert report["configs"][config]["sir"]["status"] == "FAIL"
+    assert report["status"] == "FAIL"
+
+
+def test_missing_required_toy_rw_mh_artifact_is_fail(tmp_path):
+    config = "toy_elicited"
+    _write_prior_is_fixture(tmp_path, config)  # no results_noise_marginal_*
+    report = verify_unchanged_arms(
+        source_dir=tmp_path, configs=(config,), run_sir=False)
+    assert report["configs"][config]["rw_mh"]["status"] == "FAIL"
+    assert report["status"] == "FAIL"
+
+
+def test_run_audit_samples_only_on_pass_verification(tmp_path):
+    # A non-PASS unchanged-arm verdict must block sampling entirely.
+    for verdict in ("SKIP", "FAIL"):
+        report = run_audit(
+            output_dir=tmp_path / verdict, isolate=False,
+            sampler_fn=lambda *a, **k: pytest.fail("sampler must not run"),
+            verify_arms_fn=lambda **kwargs: {"status": verdict})
+        assert report["status"] == "verification_failed"
+        assert report["completed"] == []
+
+
+def test_rw_mh_non_integer_crossing_is_rejected(tmp_path):
+    # A non-integer crossing/seed must not be silently int()-truncated.
+    config = "toy_elicited"
+    _write_prior_is_fixture(tmp_path, config)
+    rows = copy.deepcopy(_RW_MH_STORED_ROWS)
+    rows[0]["lo_hi_crossings"] = 44.9  # would truncate to 44 without the guard
+    (tmp_path / f"results_noise_marginal_{config}.json").write_text(
+        json.dumps({"rw_mh": rows}))
+    report = verify_unchanged_arms(
+        source_dir=tmp_path, configs=(config,), run_sir=False)
+    rw = report["configs"][config]["rw_mh"]
+    assert rw["status"] == "FAIL"
+    assert "seed_and_crossing_counts_integral" in rw["failed_checks"]
+
+
+def test_child_pin_governs_spawned_process(monkeypatch):
+    # The in-child pin must set threads in the actual (spawned) sampler process,
+    # not just the orchestrator; the spawn child inherits M2BR_TORCH_THREADS.
+    monkeypatch.setenv("M2BR_TORCH_THREADS", "3")
+    result = run_isolated(_selftest_pin_and_report_threads, projection=1,
+                          hard_cutoff=time.monotonic() + 60, run_id="pin-child")
+    assert result["status"] == "completed"
+    assert result["value"] == 3
+
+
+def test_pin_execution_environment_honors_override(monkeypatch):
+    import torch as _torch
+    from experiments.m2br_run_common import pin_execution_environment
+    before = _torch.get_num_threads()
+    try:
+        monkeypatch.setenv("M2BR_TORCH_THREADS", "2")
+        record = pin_execution_environment()
+        assert record["requested_torch_threads"] == 2
+        assert record["torch_num_threads"] == 2
+        assert _torch.get_num_threads() == 2
+        assert set(record["blas_env"]) >= {"OMP_NUM_THREADS", "MKL_NUM_THREADS"}
+    finally:
+        _torch.set_num_threads(before)
 
 
 def test_transaction_commits_samples_last_and_failure_leaves_no_cache(

@@ -18,6 +18,7 @@ import struct
 import subprocess
 import time
 from dataclasses import dataclass
+from queue import Empty
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -275,6 +276,39 @@ def env_provenance() -> dict:
     }
 
 
+def pin_execution_environment(threads=None):
+    """Pin and record the compute environment before a real --execute run.
+
+    The frozen leapfrog projections (865 s td7 / 1362 s td10) were calibrated on
+    this 14-core Mac at 10 PyTorch intra-op threads; pinning keeps them valid and
+    makes the run reproducible. ``threads`` defaults to 10 (or the
+    ``M2BR_TORCH_THREADS`` env override). intra-op threads are pinned; inter-op is
+    best effort (settable only before parallel work starts). Returns a record for
+    the run report; also captures the BLAS thread-count environment variables."""
+    requested = int(os.environ.get(
+        "M2BR_TORCH_THREADS", threads if threads is not None else 10))
+    try:
+        torch.set_num_threads(requested)
+    except Exception:
+        pass
+    interop_pinned = True
+    try:
+        torch.set_num_interop_threads(requested)
+    except Exception:
+        interop_pinned = False
+    blas_keys = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                 "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS")
+    return {
+        "requested_torch_threads": requested,
+        "torch_num_threads": int(torch.get_num_threads()),
+        "torch_num_interop_threads": int(torch.get_num_interop_threads()),
+        "interop_pinned": interop_pinned,
+        "blas_env": {key: os.environ.get(key) for key in blas_keys},
+        "cpu_count": os.cpu_count(),
+        "benchmark_reference": {"torch_threads": 10, "cpu_count": 14},
+    }
+
+
 def require_absent(path) -> Path:
     path = Path(path)
     if path.exists():
@@ -476,24 +510,77 @@ def _isolated_target(fn, queue):
         }))
 
 
+def _close_queue(queue):
+    try:
+        queue.close()
+        queue.join_thread()
+    except Exception:
+        pass
+
+
+def _terminate(process, termination_grace):
+    process.terminate()
+    process.join(max(0.0, float(termination_grace)))
+    if process.is_alive():
+        process.kill()
+        process.join(max(0.0, float(termination_grace)))
+
+
+# Module-level self-test targets (picklable under 'spawn') used only by the
+# hermetic isolation tests -- never by any run path.
+def _selftest_return(payload):
+    return payload
+
+
+def _selftest_raise(message):
+    raise RuntimeError(message)
+
+
+def _selftest_sleep(seconds):
+    time.sleep(seconds)
+    return {"slept": seconds}
+
+
+def _selftest_ignore_sigterm(seconds):
+    import signal
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    time.sleep(seconds)
+    return {"slept": seconds}
+
+
+def _selftest_pin_and_report_threads():
+    # Confirms the in-child pin governs a spawned process (fix 5).
+    pin_execution_environment()
+    return torch.get_num_threads()
+
+
 def run_isolated(fn, projection, hard_cutoff, *, clock=time.monotonic,
                  failure_path=None, run_id=None, termination_grace=1.0):
-    """Execute ``fn`` in a child and enforce the common absolute cutoff."""
+    """Execute ``fn`` in a child process and enforce the common absolute cutoff.
+
+    Uses the 'spawn' start method -- forking a multi-threaded PyTorch parent is
+    unsafe on macOS -- and waits for the child's result with a bounded
+    ``queue.get(timeout=...)`` whose timeout IS the remaining time to the
+    absolute cutoff. ``Queue.empty()`` is documented unreliable and is not used.
+    ``fn`` and its arguments must be picklable (module-level callables); the
+    audit run closure and the mock sampler both are."""
     del projection  # projection gates starts; the absolute cutoff gates runtime
-    context = mp.get_context("fork") if "fork" in mp.get_all_start_methods() else mp
+    context = mp.get_context("spawn")
     queue = context.Queue()
     process = context.Process(target=_isolated_target, args=(fn, queue))
-    process.start()
-    # Recompute against the strict absolute cutoff after process startup.
+    try:
+        # spawn pickles the target here; an unpicklable target raises now.
+        process.start()
+    except BaseException:
+        _close_queue(queue)
+        raise
     remaining = max(0.0, float(hard_cutoff) - float(clock()))
-    process.join(remaining)
-    if process.is_alive():
-        process.terminate()
-        process.join(max(0.0, float(termination_grace)))
-        if process.is_alive():
-            process.kill()
-        process.join(max(0.0, float(termination_grace)))
-        result = {"status": "timed_out", "run_id": run_id}
+    try:
+        status, value = queue.get(timeout=remaining)
+    except Empty:
+        # Absolute cutoff reached with no result: terminate, then kill.
+        _terminate(process, termination_grace)
+        _close_queue(queue)
         if failure_path is not None:
             atomic_write_json(failure_path, {
                 "status": "timed_out",
@@ -505,16 +592,12 @@ def run_isolated(fn, projection, hard_cutoff, *, clock=time.monotonic,
                 },
                 "timestamp": _timestamp_or_none(),
             })
-        return result
-    if queue.empty():
-        result = {"status": "failed", "run_id": run_id,
-                  "error": {"type": "ChildProcessError",
-                            "message": f"child exited with code {process.exitcode}"}}
-        if failure_path is not None:
-            persist_failure(failure_path, run_id,
-                            ChildProcessError(result["error"]["message"]))
-        return result
-    status, value = queue.get()
+        return {"status": "timed_out", "run_id": run_id}
+    # Result received; let the child exit cleanly, then release queue resources.
+    process.join(max(0.0, float(termination_grace)))
+    if process.is_alive():
+        _terminate(process, termination_grace)
+    _close_queue(queue)
     if status == "completed":
         return {"status": status, "run_id": run_id, "value": value}
     result = {"status": "failed", "run_id": run_id, "error": value}

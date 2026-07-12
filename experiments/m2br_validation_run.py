@@ -40,6 +40,7 @@ from m2br_run_common import (
     emit_run_plan,
     env_provenance,
     json_sha256,
+    pin_execution_environment,
     persist_failure,
     require_absent,
     sample_array_hashes,
@@ -435,6 +436,10 @@ def run_validation_chain(cell, chain, frozen, *, sampler_fn=fit_hmc_e1,
     for path in paths.values():
         require_absent(path)
 
+    # Pin threads INSIDE this (possibly spawned) chain process so it governs the
+    # real sampler; skipped for the mock sampler.
+    child_env = pin_execution_environment() if sampler_fn is fit_hmc_e1 else None
+
     x, y, _info, x_eval_torch, candidate_results = toy_scoring_context()
     model, likelihood, _, _ = build_cell_model(config, x, y)
     stamp_model_config(model, config)
@@ -498,6 +503,7 @@ def run_validation_chain(cell, chain, frozen, *, sampler_fn=fit_hmc_e1,
             "diagnostics_payload_sha256": diag_hash,
         },
         "provenance": provenance,
+        "execution_environment": child_env,
     }
     diag_record.update({
         "cell": cell_id, "chain": chain,
@@ -586,6 +592,8 @@ def run_validation(*, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
     report = {"status": "running", "completed_cells": [],
               "failed_cells": [], "failed_chains": [],
               "first_unexecuted_run": None}
+    report["execution_environment"] = (
+        pin_execution_environment() if sampler_fn is fit_hmc_e1 else None)
 
     for cell in VALIDATION_CELLS:
         cell_failed = False

@@ -41,6 +41,7 @@ from m2br_run_common import (
     diagnostics_payload,
     emit_run_plan,
     env_provenance,
+    pin_execution_environment,
     json_sha256,
     persist_failure,
     require_absent,
@@ -63,6 +64,10 @@ AUDIT_RUNS = (
 )
 
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "runs" / "m2br_corrected_impact"
+# Standalone --verify-arms writes here, a namespace DISJOINT from the audit
+# execution namespace, so the preflight never creates a no-overwrite path that
+# --execute (whose first step re-runs the same verification) later needs.
+PREFLIGHT_OUTPUT_DIR = REPO_ROOT / "runs" / "m2br_preflight"
 LABEL = "corrected single-chain comparison"
 UNCHANGED_CONFIGS = ("informative", "toy_elicited", "vague", "gamma_relaxed")
 UNCHANGED_SEEDS = (0, 1, 2)
@@ -189,7 +194,16 @@ def _recompute_sir(config, per_seed_pools, pooled_ths, pooled_lml):
 # reference values (prior_sensitivity_study.py FIGURE dict rwmh_* and the
 # stored results_noise_marginal_toy_elicited.json rw_mh rows):
 RWMH_CONFIGS = ("toy_elicited",)
-RWMH_LO_BY_SEED = (0.7958666666666666, 0.8082333333333334, 0.8428333333333333)
+# Full D18 reference occupancy triplets (P_noise_lo, P_noise_mid, P_noise_hi)
+# per seed 42/1/2, from the stored results_noise_marginal_toy_elicited.json
+# rw_mh rows. Pinning all three (not just lo) blocks a compensating mid/high
+# drift that preserves lo, the sum, and the 30000-grid integrality.
+RWMH_OCCUPANCY_BY_SEED = (
+    (0.7958666666666666, 0.16753333333333334, 0.0366),      # seed 42
+    (0.8082333333333334, 0.1755, 0.016266666666666665),     # seed 1
+    (0.8428333333333333, 0.1402, 0.016966666666666668),     # seed 2
+)
+RWMH_LO_BY_SEED = tuple(triplet[0] for triplet in RWMH_OCCUPANCY_BY_SEED)
 RWMH_LO_HI_CROSSINGS = (44, 40, 38)
 RWMH_N_SAMPLES, RWMH_N_BURNIN, RWMH_PROPOSAL_SCALE = 30000, 5000, 0.1
 
@@ -197,17 +211,21 @@ RWMH_N_SAMPLES, RWMH_N_BURNIN, RWMH_PROPOSAL_SCALE = 30000, 5000, 0.1
 def _rw_mh_code_params_ok():
     """Code-level provenance for the params that are NOT stored per row
     (retained draws, burn-in, proposal scale): inspect the referee's defaults
-    and the proposal_scale literal in prior_sensitivity_study.mh_noise_occupancy."""
+    and the proposal_scale literal in prior_sensitivity_study.mh_noise_occupancy,
+    AND confirm the frozen caller stage_noise_marginal_one invokes it with no
+    override of those defaults."""
     import inspect
     try:
         sig = inspect.signature(study.mh_noise_occupancy)
         src = inspect.getsource(study.mh_noise_occupancy)
+        caller = "".join(inspect.getsource(study.stage_noise_marginal_one).split())
     except (TypeError, OSError, AttributeError):
         return False
     return (tuple(sig.parameters["seeds"].default) == (42, 1, 2)
             and sig.parameters["n_samples"].default == RWMH_N_SAMPLES
             and sig.parameters["n_burnin"].default == RWMH_N_BURNIN
-            and f"proposal_scale={RWMH_PROPOSAL_SCALE}" in src)
+            and f"proposal_scale={RWMH_PROPOSAL_SCALE}" in src
+            and "mh_noise_occupancy(pc,x,y)" in caller)
 
 
 def _verify_rw_mh(config, source_dir):
@@ -230,8 +248,10 @@ def _verify_rw_mh(config, source_dir):
                             "unchanged reference to verify")}, False)
     rw_path = source_dir / f"results_noise_marginal_{config}.json"
     if not rw_path.is_file():
-        return ({"status": "SKIP",
-                 "reason": f"missing local artifact: {rw_path}"}, False)
+        # Required for toy_elicited (the only RW-MH config); absence is a
+        # verification FAILURE, never a silent skip that could permit sampling.
+        return ({"status": "FAIL",
+                 "reason": f"missing required local artifact: {rw_path}"}, False)
     try:
         rows = json.loads(rw_path.read_bytes())["rw_mh"]
         seeds = [int(row["seed"]) for row in rows]
@@ -245,14 +265,26 @@ def _verify_rw_mh(config, source_dir):
                 scaled = float(row[band]) * RWMH_N_SAMPLES
                 if abs(scaled - round(scaled)) > 1e-6:
                     integral_ok = False
+        # Reject non-integer counts before int() coercion could hide drift
+        # (e.g. a stored crossing 44.9 must not pass as 44).
+        counts_integral = all(
+            float(row["seed"]) == int(row["seed"])
+            and float(row["lo_hi_crossings"]) == int(row["lo_hi_crossings"])
+            for row in rows)
         checks = {
             "exactly_three_rows": len(rows) == 3,
+            "seed_and_crossing_counts_integral": counts_integral,
             "seeds_42_1_2": seeds == [42, 1, 2],
             "occupancies_sum_to_one": occ_sum_ok,
             "retained_30000_integral": integral_ok,
-            "P_lo_unchanged": len(rows) == len(RWMH_LO_BY_SEED) and all(
-                abs(float(row["P_noise_lo"]) - ref) <= VERIFY_ATOL
-                for row, ref in zip(rows, RWMH_LO_BY_SEED)),
+            # Pin the FULL (lo, mid, hi) occupancy triplet per seed at 1e-12 --
+            # a lo-only pin would miss a compensating mid/high drift.
+            "occupancy_triplet_unchanged": (
+                len(rows) == len(RWMH_OCCUPANCY_BY_SEED) and all(
+                    abs(float(row["P_noise_lo"]) - ref[0]) <= VERIFY_ATOL
+                    and abs(float(row["P_noise_mid"]) - ref[1]) <= VERIFY_ATOL
+                    and abs(float(row["P_noise_hi"]) - ref[2]) <= VERIFY_ATOL
+                    for row, ref in zip(rows, RWMH_OCCUPANCY_BY_SEED))),
             "lo_hi_crossings_unchanged": (
                 [int(row["lo_hi_crossings"]) for row in rows]
                 == list(RWMH_LO_HI_CROSSINGS)),
@@ -269,8 +301,9 @@ def _verify_rw_mh(config, source_dir):
              "verified_params": {"n_samples": RWMH_N_SAMPLES,
                                  "n_burnin": RWMH_N_BURNIN,
                                  "proposal_scale": RWMH_PROPOSAL_SCALE},
-             "reference": {"P_lo_by_seed": list(RWMH_LO_BY_SEED),
-                           "lo_hi_crossings": list(RWMH_LO_HI_CROSSINGS)}},
+             "reference": {
+                 "occupancy_by_seed": [list(t) for t in RWMH_OCCUPANCY_BY_SEED],
+                 "lo_hi_crossings": list(RWMH_LO_HI_CROSSINGS)}},
             True)
 
 
@@ -279,7 +312,6 @@ def verify_unchanged_arms(*, source_dir=None, output_path=None,
     """Re-verify unaffected prior-IS, deterministic SIR, and stored RW-MH."""
     source_dir = Path(source_dir or REPO_ROOT / "runs" / "prior_sensitivity")
     report = {"status": "PASS", "atol": VERIFY_ATOL, "configs": {}}
-    any_performed = False
     for config in configs:
         entry = {"prior_is": {}, "sir": None, "rw_mh": None}
         report["configs"][config] = entry
@@ -289,10 +321,15 @@ def verify_unchanged_arms(*, source_dir=None, output_path=None,
         missing = [str(path) for path in [stage_path, *pool_paths]
                    if not path.is_file()]
         if missing:
-            reason = f"missing local artifact(s): {', '.join(missing)}"
-            entry["prior_is"] = {"status": "SKIP", "reason": reason}
-            entry["sir"] = {"status": "SKIP", "reason": reason}
-            entry["rw_mh"] = {"status": "SKIP", "reason": reason}
+            # Required unchanged-arm evidence is missing: this is a verification
+            # FAILURE, not a skip. A skip must never silently permit sampling.
+            reason = f"missing required local artifact(s): {', '.join(missing)}"
+            entry["prior_is"] = {"status": "FAIL", "reason": reason}
+            entry["sir"] = ({"status": "FAIL", "reason": reason} if run_sir
+                            else {"status": "SKIP",
+                                  "reason": "deterministic SIR disabled by caller"})
+            entry["rw_mh"] = _verify_rw_mh(config, source_dir)[0]
+            report["status"] = "FAIL"
             continue
         try:
             authority = json.loads(stage_path.read_bytes())["prior_is"]
@@ -318,11 +355,16 @@ def verify_unchanged_arms(*, source_dir=None, output_path=None,
             prior_failed = any(check["status"] == "FAIL"
                                for check in entry["prior_is"].values())
             entry["prior_is"]["status"] = "FAIL" if prior_failed else "PASS"
-            any_performed = True
         except (OSError, ValueError, KeyError, TypeError) as exc:
             entry["prior_is"] = {"status": "FAIL", "reason": str(exc)}
-            entry["sir"] = {"status": "SKIP",
-                            "reason": "prior-IS verification could not complete"}
+            # SIR only SKIPs on the explicit run_sir=False opt-out; a prior-IS
+            # failure that prevents SIR is itself a FAIL when SIR was required.
+            entry["sir"] = ({"status": "FAIL",
+                             "reason": "prior-IS verification could not complete"}
+                            if run_sir else
+                            {"status": "SKIP",
+                             "reason": "deterministic SIR disabled by caller"})
+            entry["rw_mh"] = _verify_rw_mh(config, source_dir)[0]
             report["status"] = "FAIL"
             continue
 
@@ -331,8 +373,9 @@ def verify_unchanged_arms(*, source_dir=None, output_path=None,
             entry["sir"] = {"status": "SKIP",
                             "reason": "deterministic SIR disabled by caller"}
         elif not sir_path.is_file():
-            entry["sir"] = {"status": "SKIP",
-                            "reason": f"missing local artifact: {sir_path}"}
+            entry["sir"] = {"status": "FAIL",
+                            "reason": f"missing required local artifact: {sir_path}"}
+            report["status"] = "FAIL"
         else:
             try:
                 stored_sir = json.loads(sir_path.read_bytes())
@@ -347,20 +390,20 @@ def verify_unchanged_arms(*, source_dir=None, output_path=None,
                     "atol": VERIFY_ATOL,
                     "mismatches": mismatches,
                 }
-                any_performed = True
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 entry["sir"] = {"status": "FAIL", "reason": str(exc)}
+                report["status"] = "FAIL"
 
-        entry["rw_mh"], rw_performed = _verify_rw_mh(config, source_dir)
-        if rw_performed:
-            any_performed = True
+        entry["rw_mh"], _ = _verify_rw_mh(config, source_dir)
 
         statuses = [entry["prior_is"].get("status"),
                     entry["sir"].get("status"), entry["rw_mh"].get("status")]
         if "FAIL" in statuses:
             report["status"] = "FAIL"
-    if not any_performed and report["status"] == "PASS":
-        report["status"] = "SKIP"
+    # Strict: PASS requires every required check to PASS (prior-IS + SIR for all
+    # configs, toy_elicited RW-MH PASS, other configs RW-MH NOT_APPLICABLE). A
+    # SKIP only ever comes from run_sir=False (an explicit caller opt-out) and
+    # never upgrades or downgrades the overall verdict away from PASS/FAIL.
     if output_path is not None:
         atomic_write_json(output_path, report)
     return report
@@ -373,6 +416,11 @@ def run_audit_one(run, *, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
     paths = audit_paths(output_dir, run_id)
     for key in ("samples", "diagnostics", "results", "failure"):
         require_absent(paths[key])
+
+    # Pin threads INSIDE this (possibly spawned) process so it governs the real
+    # sampler, not just the orchestrator. Skipped for the mock sampler so tests
+    # never perturb the interpreter's thread count.
+    child_env = pin_execution_environment() if sampler_fn is fit_hmc_e1 else None
 
     x, y, _info, x_eval_torch, candidate_results = toy_scoring_context()
     model, likelihood, _, _ = build_cell_model(config, x, y)
@@ -429,6 +477,7 @@ def run_audit_one(run, *, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
             "diagnostics_payload_sha256": diag_hash,
         },
         "provenance": provenance,
+        "execution_environment": child_env,
         "interpretation_limit": (
             "Single-chain historical-impact audit only; not a convergence "
             "validation and not paper-grade replacement evidence."
@@ -479,11 +528,16 @@ def run_audit(*, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
     output_dir.mkdir(parents=True, exist_ok=True)
     report = {"status": "running", "completed": [], "failed": [],
               "first_unexecuted_run": None}
+    # Pin + record the compute environment before real sampling so the frozen
+    # leapfrog projections stay valid (skipped for the mock sampler).
+    report["execution_environment"] = (
+        pin_execution_environment() if sampler_fn is fit_hmc_e1 else None)
 
     verification = verify_arms_fn(
         output_path=output_dir / "unchanged_arms_verification.json")
     report["unchanged_arms_verification"] = verification
-    if verification["status"] == "FAIL":
+    # Sample ONLY when the unchanged-arm evidence is present and strictly PASS.
+    if verification["status"] != "PASS":
         report["status"] = "verification_failed"
         return report
 
@@ -541,12 +595,17 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.verify_arms:
-        deadline = Deadline(7200, reserve_seconds=600)
-        deadline.start()
-        report = verify_unchanged_arms(
-            output_path=DEFAULT_OUTPUT_DIR / "unchanged_arms_verification.json")
+        # Preflight namespace, disjoint from the execution namespace, and
+        # idempotent (a preflight check may be re-run; it is not a scientific
+        # artifact protected by the no-overwrite rule).
+        PREFLIGHT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        preflight_path = PREFLIGHT_OUTPUT_DIR / "unchanged_arms_verification.json"
+        if preflight_path.exists():
+            preflight_path.unlink()
+        report = verify_unchanged_arms(output_path=preflight_path)
         print(json.dumps(report, indent=2))
-        return 0 if report["status"] in {"PASS", "SKIP"} else 2
+        # Strict: exit success ONLY for PASS (never SKIP).
+        return 0 if report["status"] == "PASS" else 2
     if not args.execute and not args.dry_run:
         plan = emit_run_plan()
         _print_plan(plan)
