@@ -89,16 +89,18 @@ heavy samples + pools stay UNTRACKED.
   its 5 P2 findings cross-verified against source: #1 --execute routing test + #2 no-overwrite test
   ADDED, #4 --emit-plan made explicit, #3 already covered, **#5 (pickle-identity gate bypass) was a
   FALSE ALARM**. NO chain launched.
-- **D35 fail-closed sampler gate adopted across ALL THREE drivers (2026-07-12):** a 4th review
-  (GPT-5.6-sol xhigh via OpenRouter) flagged the historical `sampler_fn is fit_hmc_e1` gate as
-  fail-OPEN (a `partial(fit_hmc_e1)` ran ungated). Author said "adopt it." Inverted to fail-CLOSED via
-  a shared `m2br_run_common` primitive (`register_mock_sampler`/`is_ungated_sampler`/
-  `require_sampler_authorization`; marker is a per-object attribute, dual-import-safe). All 3 orchestrators
-  + all 3 workers gate; real runs must be isolated. GATE-ONLY, behaviour-preserving — **D33 results
-  unaffected** (drivers not re-run). GPT re-review CONFIRMED the bypass fixed + scientific path unchanged;
-  its residual findings cross-verified (worker self-isolation = architecturally unavailable + deliberate-
-  misuse-only, NOT accidental; spawn-attr footgun = non-reachable, locked by a regression test). Full
-  suite **278 passed + 1 skipped**. NO chain launched.
+- **D35 fail-closed sampler gate — v1.16 ONLY; frozen drivers kept as-executed (2026-07-12):** a 4th
+  review (GPT-5.6-sol xhigh via OpenRouter) flagged the historical `sampler_fn is fit_hmc_e1` gate as
+  fail-OPEN (a `partial(fit_hmc_e1)` ran ungated). Author ratified adopting the fail-closed pattern, THEN
+  (provenance call) chose to apply it to **v1.16 ONLY** and REVERT `m2br_audit_run.py` +
+  `m2br_validation_run.py` + `tests/test_m2br_drivers.py` to their exact as-executed bytes (`b56a5a2`).
+  Rationale: only v1.16 ever launches again, so the gate has full value there + zero on the done drivers;
+  keeping the frozen files byte-identical to what produced D33 preserves the freeze discipline
+  (footnote-free). Fail-closed primitive lives in `m2br_run_common` (ADDITIVE: `register_mock_sampler`/
+  `is_ungated_sampler`/`require_sampler_authorization`; per-object-attribute marker, dual-import-safe,
+  import-registered mock survives spawn). v1.16 gates at orchestrator+worker and rejects real+isolate=False.
+  D33 results provably unaffected (frozen drivers == as-executed). Full suite **277 passed + 1 skipped**.
+  NO chain launched.
 - **NEXT (author):** give the SEPARATE explicit LAUNCH authorization for v1.16
   (`caffeinate -i python experiments/m2br_v116_run.py --execute`, ~42 min, 90-min ceiling) if/when
   desired; on FAIL the next step is a strategy change (new addendum), not another budget bump. Optionally

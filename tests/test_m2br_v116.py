@@ -413,3 +413,13 @@ def test_v116_gated_sampler_rejected_when_not_isolated(tmp_path):
         v116.run_v116(sampler_fn=v116.fit_hmc_e1, authorized=True,
                       isolate=False, output_dir=tmp_path / "out")
     assert not (tmp_path / "out").exists()
+
+
+def test_deterministic_mock_marker_survives_spawn_pickle():
+    """D35: the import-registered dry-run mock keeps its ungated marker across the
+    pickle/re-import boundary that 'spawn' uses. Runtime attributes on functions
+    do not survive spawn, but import-time registration does -- so the only
+    spawn-traversing mock stays ungated in the child."""
+    import pickle
+    round_tripped = pickle.loads(pickle.dumps(common.deterministic_mock_sampler))
+    assert common.is_ungated_sampler(round_tripped) is True
