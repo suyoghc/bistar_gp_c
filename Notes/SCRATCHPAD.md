@@ -73,13 +73,25 @@ heavy samples + pools stay UNTRACKED.
   independent check = NUTS vs IS/SIR family; ALL VI claims WITHDRAWN pending corrected-VI rerun (VI hit by
   same D22 defect); mass-faithful language qualified as conditional on the fixed data-elicited prior,
   N=20 toy-only. See `docs/m2br-w2w3-writeup-PROPOSAL.md`.
-- **v1.16 informative-only escalation PREPARED (not run):** `docs/m2br-v1.16-informative-escalation-PROPOSAL.md`
-  — informative td7 only, same 4 frozen starts/seeds, warmup 1000→3000 + draws 2000→8000 (only change),
-  unchanged thresholds + authority ref, 90-min ceiling, one stop-and-report. Grounded in the measured
-  ~46 ms/iter and the chain-2 under-adaptation failure signature (step 0.33, 6/8 divergences).
-- **NEXT (author's explicit vote):** ratify the revised W2 + interim-withdrawn W3; vote yes/no on the
-  v1.16 escalation (then a v1.16 manifest addendum is pinned + drivers built/tested BEFORE any launch).
-  No sampler runs meanwhile. Do NOT begin M2c; A7 Della on hold (v1.8); no vague/gamma_relaxed cells.
+- **RATIFIED (D34, 2026-07-12):** author explicitly ratified revised W2 + interim-withdrawn W3 + the
+  v1.16 numerical protocol. A codex round-2 caught a FAILURE-DIAGNOSIS error (now corrected): the `382`
+  noise ESS is POOLED, not per-chain — the "~6-SE gap" is WITHDRAWN (Fable recomputed: per-chain hi-band
+  indicator ESS ≈96/66 → chain0 vs chain2 ≈ **2.0 combined MCSE**); mechanisms are distinct (chain 2 =
+  divergences 6/8; chain 0 = max occupancy deviation +0.104); "all four marginal" → occupancy missed
+  MATERIALLY (0.104>0.05) + 3 near-threshold; rationale reframed HYPOTHESIS-testing; cross-chain SDs are
+  DIAGNOSTICS not SEs; informative audit = nearly uniform, nominal argmax. W2/W3 doc → RATIFIED (rev-3).
+- **v1.16 PINNED + DRIVER BUILT/TESTED/REVIEWED (not run):** pin `docs/m2br_freeze/v116_run_plan.json`
+  (sha `db177b8b`); driver `experiments/m2br_v116_run.py` (imports, does NOT modify, the frozen
+  `m2br_validation_run.py`; sole change warmup 3000 + draws 8000; dual-gated --execute+authorized=True;
+  --emit-plan verifies the 4 start shas; --dry-run mock-only). Tests `tests/test_m2br_v116.py` (10
+  hermetic, incl. plan-hash tamper, isolated-timeout stop, acceptance-fail branch). Full suite **272
+  passed + 1 skipped**. Independent review (Claude subagent; codex was rate-limited) = **APPROVE**
+  (no P0/P1; 3 P2 coverage gaps closed). NO chain launched.
+- **NEXT (author):** give the SEPARATE explicit LAUNCH authorization for v1.16
+  (`caffeinate -i python experiments/m2br_v116_run.py --execute`, ~42 min, 90-min ceiling) if/when
+  desired; on FAIL the next step is a strategy change (new addendum), not another budget bump. Optionally
+  re-run the codex independent review after its usage limit resets (2:29 PM). Do NOT begin M2c; A7 Della
+  on hold (v1.8); no vague/gamma_relaxed cells; PR #8 stays Draft.
 
 
 ## D19 Mauna study — M2a DONE (D20); M2b code complete, ALL 9 decision items ratified (D21-D31); PR #7 Ready; merge + M2bR = author's next call

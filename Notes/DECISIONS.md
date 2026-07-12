@@ -2176,3 +2176,70 @@ informative stays WITHDRAWN/UNVALIDATED. No frozen artifact was modified; no in-
 **Status:** COMPLETE (pending author ratification of the W2/W3 writeup update). M2c stays blocked; the
 A7 Della vehicle stays on hold (v1.8). Draft PR #8 updated with this outcome and kept in Draft pending
 author sign-off.
+
+## D34: author ratifies revised W2 + interim-withdrawn W3 + the v1.16 numerical protocol; failure-diagnosis correction — 2026-07-12
+
+**Problem:** The D33 W2/W3 writeup proposal was reviewed twice (codex + author). Round 1 flagged that
+the rev-1 draft over-merged distinct estimators and over-claimed on VI (fixed in rev-2). Round 2
+ratified the estimator-separation and VI-withdrawal but caught a FACTUAL ERROR in the v1.16
+escalation's failure diagnosis that had to be corrected before recording. This entry records the
+author's three explicit ratifications and the corrections applied (no protocol number changed).
+
+**Author ratifications (explicit, 2026-07-12):**
+1. **Revised W2** — corrected NUTS and SIR reported SEPARATELY (not a merged 0.42–0.44 estimator):
+   corrected NUTS = primary package-method result Sin+Linear 0.4205 td7 / 0.4220 td10 (cross-chain
+   SDs 0.0063/0.0077 as DIAGNOSTICS, not standard errors); SIR = corroboration 0.441 ± 0.005
+   conditional bootstrap SE with independent-pool 0.419/0.438/0.431; they agree on ranking/region/
+   broad magnitude but are not identical; prior-IS + SIR = ONE IS-family reference (shared pools),
+   the independent comparison being corrected NUTS vs the IS/SIR family; all "mass-faithful" language
+   qualified posterior-mass-faithful conditional on the fixed data-elicited N=20 prior (validates
+   corrected HMC for this toy configuration only, not globally). Package default `method="hmc"` stays.
+2. **Interim-withdrawn W3** — all historical VI values, the VI/HMC gaps (0.45–0.48), and the causal
+   variational-family interpretation remain WITHDRAWN/UNVALIDATED (fit_vi used the same D22 defective
+   target, not rerun). The unaffected prior-IS basin masses stay factual but do not diagnose VI; "a
+   corrected VI may still prefer the wide region" is a HYPOTHESIS requiring an E1-based VI repair +
+   rerun, not a surviving conclusion.
+3. **v1.16 numerical protocol** — informative td7 only, the same four frozen v1.14 starts and seeds,
+   warmup 1000→3000 + draws 2000→8000 (the ONLY change), unchanged target/thresholds/authority/R-B
+   rule, 90-min ceiling, one-shot stop-and-report.
+
+**Failure-diagnosis correction (verified independently by Fable before recording):** the rev-2
+v1.16 rationale mis-stated the informative occupancy miss.
+- The `382` noise bulk-ESS is POOLED across the four chains, NOT ~380 per chain. The "~6-SE gap"
+  claim is WITHDRAWN. Recomputed per-chain hi-band INDICATOR ESS ≈ 95.6 (chain 0) / 65.8 (chain 2);
+  the 0.721 vs 0.567 difference is ≈ **2.0 combined MCSE**, not 6. (Fable recomputed via arviz on the
+  persisted V1 chains: chain ESS [95.6, 62.6, 65.8, 70.4]; combined MCSE 0.0764; 0.154/0.0764 = 2.02.)
+- The two failure MECHANISMS are distinct: **chain 2** concentrates the divergences (6 of 8; chain 1
+  the other 2; chain-2 step 0.332 ≈ 2× the others), while **chain 0** drives the maximum occupancy
+  deviation (0.721 vs pooled 0.617 = +0.104). Chain 2 is NOT the sole culprit.
+- "All four criteria were marginal" is replaced by: THREE numerical criteria near threshold (R-hat
+  1.0114; bulk-ESS 378/382; divergence 0.001), while **occupancy reproducibility missed MATERIALLY**
+  (0.104 > 0.05).
+- The escalation rationale is reframed as HYPOTHESIS-testing (longer warmup TESTS whether adaptation
+  reduces the chain-2 divergences; more draws SHOULD raise ESS if autocorrelation stays stable and
+  give more mixing opportunity; R-hat/occupancy improve only if chains actually mix; no pass promised).
+- W2: the informative audit is described as NEARLY UNIFORM with a merely NOMINAL Sinusoidal argmax
+  (0.2546, ~0.001 lead); occupancy is CONSISTENT WITH incomplete mixing, not proof finite-chain
+  variation is excluded. Cross-chain SDs relabeled DIAGNOSTICS.
+
+**Decision:** Record the three ratifications with the corrections above. Update the two proposal docs
+to RATIFIED status (`docs/m2br-w2w3-writeup-PROPOSAL.md` rev-3; `docs/m2br-v1.16-informative-escalation-PROPOSAL.md`
+numerical-protocol-RATIFIED). Pin v1.16 (`docs/m2br_freeze/v116_run_plan.json`), then build + hermetically
+test + independently review the new driver `experiments/m2br_v116_run.py` (imports, does not modify, the
+frozen `m2br_validation_run.py` machinery), and STOP before launching any chain.
+
+**Alternatives considered.** (a) Recording the ratifications with the uncorrected "~6-SE / chain-2 sole
+culprit / all-marginal" wording — REJECTED: it is factually wrong (the 382 ESS is pooled) and would
+overstate the evidence for genuine non-mixing. (b) Changing the v1.16 numbers in light of the ~2-SE
+finding — REJECTED by the author: the numerical protocol is ratified as-is; only the rationale becomes
+hypothesis-testing. (c) Launching v1.16 now — REJECTED: build/test/review first, then stop; launch needs
+a separate explicit authorization.
+
+**Result:** W2 (revised) and W3 (interim-withdrawn) ratified; v1.16 numerical protocol ratified with a
+corrected, hypothesis-testing rationale. Applying the updates into the historical docs
+(`prior-sensitivity-study.md`, `fit-method-metric-comparison.md`, `Notes/WRITEUP_DECISIONS.md`) remains a
+further author action under D28 supersession terminology.
+
+**Status:** RATIFIED. Next: pin v1.16 + build/test/review the driver, then STOP (no chain launches
+without a separate explicit authorization). PR #8 stays Draft; M2c stays blocked; A7 Della on hold (v1.8);
+no vague/gamma_relaxed cells.

@@ -1,0 +1,92 @@
+{
+  "addendum": "v1.16",
+  "title": "informative-only validation escalation (D34)",
+  "ratified": "2026-07-12 (D34); numerical protocol only; NOT executed",
+  "parent_freeze_manifest": "docs/m2br_freeze/start_freeze_v1.14.json",
+  "parent_freeze_manifest_sha256": "b1abfa3c244a03f3ce3b5a69782157aad087e01de8b15a9a332de6ab2643d891",
+  "config": "informative",
+  "cells": [
+    {
+      "cell": "V1e",
+      "config": "informative",
+      "max_tree_depth": 7
+    }
+  ],
+  "note_td10_dropped": "informative td7 == td10 in D33 (depth cap never binds); td10 omitted",
+  "chains": 4,
+  "seeds": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "frozen_starts_reused_from_v1.14": [
+    {
+      "chain": 0,
+      "seed": 0,
+      "role": "MAP",
+      "realized_seed_row": null,
+      "semantic_sha256": "72a7e8916501b8e344383ab547f0889022136e95856ef89f29a22df34a8b215a"
+    },
+    {
+      "chain": 1,
+      "seed": 1,
+      "role": "band_median",
+      "realized_seed_row": null,
+      "semantic_sha256": "c9f3758458671a26f0c351f6a597d74cead392796f4ff9fe6259331d0d7fd4ad"
+    },
+    {
+      "chain": 2,
+      "seed": 2,
+      "role": "band_median",
+      "realized_seed_row": null,
+      "semantic_sha256": "2db18020dfc123d8ed0e6b0c2dffc27fc8ae01c58e1e0c0f9eee10b2da309cda"
+    },
+    {
+      "chain": 3,
+      "seed": 3,
+      "role": "band_median",
+      "realized_seed_row": null,
+      "semantic_sha256": "5cf298a7ad0ac3317442e4e5cb998976dbfd5808025728c2cbb82f5f1de45649"
+    }
+  ],
+  "changed_parameters_only": {
+    "n_warmup": 3000,
+    "n_draws": 8000
+  },
+  "prior_values_D33": {
+    "n_warmup": 1000,
+    "n_draws": 2000
+  },
+  "unchanged": {
+    "target_accept": 0.8,
+    "sampler": "fit_hmc_e1",
+    "n_sites": 4,
+    "n_predictives_per_chain": 200,
+    "primary_estimator": "R-B pooled 4x200=800, one normalization",
+    "acceptance_thresholds": {
+      "rhat_max": "< 1.01 every site",
+      "ess_bulk": "> 400 pooled",
+      "ess_tail": "> 400 pooled",
+      "occupancy_per_chain_dev": "<= 0.05 per band",
+      "divergence_rate": "< 0.001",
+      "depth_saturation_rate": "< 0.10",
+      "notpsd": "0 in first 50 post-warmup of each chain; post-warmup rate < 1e-3; warmup reported separately"
+    },
+    "authority_reference_informative_pooled_lo_mid_hi": [
+      0.2768,
+      0.131,
+      0.5922
+    ]
+  },
+  "budget": {
+    "ceiling_min": 90,
+    "reserve_s": 600,
+    "mechanics": "audit-\u00a74 stop-and-report; per-chain projection gate; absolute cutoff; samples-last atomic persist"
+  },
+  "output_namespace": "runs/m2br_v116_informative/ (untracked)",
+  "driver": "experiments/m2br_v116_run.py (imports, does not modify, m2br_validation_run.py + m2br_run_common)",
+  "gating": "--execute AND authorized=True; built + hermetically tested + independently reviewed BEFORE any launch; launch needs a separate explicit authorization",
+  "decision_rule": "PASS all criteria -> informative eligible to supersede 0.673; FAIL any -> stays WITHDRAWN, next step is a strategy change via a further addendum, not another budget bump",
+  "rationale": "hypothesis-testing; no pass projected or promised"
+}
