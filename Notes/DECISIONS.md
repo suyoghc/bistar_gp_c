@@ -2422,17 +2422,25 @@ document asserts a withdrawn number without the correction beside it:
   repository's pyro/gpytorch replication, not the thesis's original gpflow/ADVI implementation. No
   uncorrected "high-noise-basin" wording remains.
 
-**G-toy gate analysis (records ONLY what the frozen rules support).**
-- The validated `toy_elicited` result does NOT by itself CLOSE G-toy: G-toy is the estimator-specific
-  toy-golden derivation of plan §6.9, scheduled for M2c "after this layer's outcome is known"
-  (`docs/m2br-validation-protocol-PROPOSAL.md`; plan decision table "G-toy per-estimator numeric
-  tolerances | M2c"). The M2bR validation validated the HMC sampler's characterization; it is an INPUT to
-  M2c's G-toy derivation, not that derivation.
-- `informative`'s withdrawal is NON-BLOCKING for the G-toy / toy-smoke gate SPECIFICALLY under the frozen
-  rule "Toy smoke-validation (G-toy) … a coverage-repairing sampler is NOT required" (`docs/plan-d19-mauna.md`
-  L305-307): because the G-toy gate does not require a coverage-repairing sampler, informative's coverage/
-  convergence-validation failure does not block it. (This is scoped to the G-toy gate under that rule, not
-  a general claim about any sampler failure anywhere.)
+**G-toy gate analysis (records ONLY what the frozen rules support; rationale corrected 2026-07-12
+after a codex re-read of §6.9).**
+- The validated `toy_elicited` result does NOT by itself CLOSE G-toy: §6.9 defines G-toy as the
+  estimator-specific toy-golden derivation, referenced to the **D18 `toy_elicited` cached artifacts**
+  (plan §6.9 L641), and the plan decision table schedules "G-toy per-estimator numeric tolerances | M2c".
+  The validated corrected `toy_elicited` result is an **INPUT to M2c**, not the completion of G-toy: M2c
+  must still revise the now-withdrawn `0.696` references (§6.9's S1 golden reproduces the confined
+  0.696-family only as a regression characterization, explicitly NOT a validity pass — L648-650),
+  recompute the normalized profile band masses (the D18 profile-Laplace triplet 0.763/0.138/0.023 sums to
+  0.924, HISTORICAL-only, NOT a golden — L657-666), and freeze estimator-specific tolerances as a v1.x
+  addendum before any toy or Mauna pilot.
+- `informative`'s withdrawal is NON-BLOCKING for G-toy **because §6.9 defines G-toy against the D18
+  `toy_elicited` artifacts + estimator-specific goldens, and `informative` is NOT the G-toy reference
+  configuration** (L641). CORRECTION: an earlier draft of this entry mis-cited L305-307 ("a
+  coverage-repairing sampler is NOT required to reproduce the confined 0.696") as a general waiver of
+  convergence/coverage — it is NOT. That sentence means a coverage-repairing sampler must target the
+  **mass-faithful** answer, not the confined 0.696 (L655-656); it is not a statement that sampler
+  convergence/coverage failures are generally non-blocking. informative is non-blocking here solely
+  because it is not the G-toy reference config.
 
 **Author decisions FLAGGED (not made here):**
 1. Declare M2bR formally closed and open M2c? The frozen rules make informative's withdrawal non-blocking

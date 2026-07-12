@@ -121,8 +121,11 @@ heavy samples + pools stay UNTRACKED.
 - **M2bR CLOSED (D37, 2026-07-12).** Outcomes propagated (banners): tracked
   `docs/{prior-sensitivity-study,fit-method-metric-comparison,appendix-tree-depth-cap}.md`; local
   `WRITEUP_DRAFT/DECISIONS` + 2 kb/Wiki articles (SIR 0.696-0.707 hard-win left UNAFFECTED). G-toy gate:
-  validated toy_elicited does NOT close G-toy (an M2c §6.9 derivation); informative withdrawal is
-  NON-BLOCKING (plan L305-307: coverage-repairing sampler NOT required). **PR #8 → Ready** (not merged).
+  validated toy_elicited is an INPUT to M2c, does NOT close G-toy (an M2c §6.9 derivation referenced to the
+  D18 toy_elicited artifacts; M2c must still revise the withdrawn 0.696, recompute normalized profile masses,
+  freeze tolerances). informative withdrawal is NON-BLOCKING because §6.9 defines G-toy against toy_elicited
+  and informative is NOT the reference config (NOT a general coverage-failure waiver — the L305-307 sentence
+  only says a coverage-repairing sampler targets the mass-faithful answer, not 0.696). **PR #8 → Ready** (not merged).
 - **NEXT (author decisions, flagged not made):** (1) declare M2bR closed + open M2c; (2) revise the §6.9
   G-toy golden that referenced the now-withdrawn 0.696; (3) informative strategy-change addendum vs
   accept-withdrawn (codex recommends accept); (4) merge PR #8; (5) fold banners into final paper prose.
