@@ -21,14 +21,26 @@ satisfied. NO chain has run.
   supersedes the audit protocol's stale "PENDING" header without editing the frozen file
   (`45999e2f`); the proposal's "7-site" is a Mauna carryover (toy model has 4 sites).
 
-**NEXT (author's call — up to ~8 h local HMC, not yet started):** implement + run the AUDIT
-layer (`docs/m2br-corrected-impact-protocol.md`: 6 single-chain seed-42 runs, 2 h ceiling,
-"corrected single-chain comparison", cannot close W2/W3) and the VALIDATION layer
-(`docs/m2br-validation-protocol-PROPOSAL.md`: cells V1,V3,V2,V4, 4 chains from the frozen
-starts via `fit_hmc_e1(init_values=...)`, 6 h ceiling), each stop-and-report. Then a separate
-outcomes D-entry (which withdrawn numbers are superseded vs still withdrawn) + a proposed
-(pending author) W2/W3 writeup update. Do NOT begin M2c; A7 Della on hold (v1.8). Codex-review
-the diff, open the M2bR PR as Draft pending author sign-off.
+**Implementation-only checkpoint DONE (author's call, 2026-07-12): drivers built + verified,
+NO chain launched.** prereg **v1.15** provenance erratum (R-A/R-B ratified in the author's later
+message + recorded in D32, not by the D31 rows-8/9 vote). Drivers:
+`experiments/m2br_run_common.py` (Deadline w/ absolute cutoff, transactional_persist samples-last,
+failure records, schema-v3), `experiments/m2br_audit_run.py` (6 runs + §3 unchanged-arm
+re-verification: prior-IS + SIR PASS @1e-12 on real data, RW-MH partial SKIP), and
+`experiments/m2br_validation_run.py` (V1/V3/V2/V4, frozen-start injection w/ manifest-hash anchor
+`b1abfa3c` + per-start sha verify, arviz criteria, authority coverage, R-B pooled-800 primary).
+`tests/test_m2br_drivers.py` 21 hermetic tests (incl. R-B pooled≠averaged proof). Real HMC gated
+behind `--execute` AND `authorized=True`. Full suite **251 passed + 1 skipped**. codex-reviewed;
+all confirmed findings fixed (accidental-run guard, manifest-hash anchor+TOCTOU, §3 re-verify,
+cardinality/draw contracts, samples-last persistence, absolute cutoff+clock-first).
+Committed run plan `docs/m2br_freeze/run_plan.json` + report `docs/m2br-run-plan.md` (exact launch
+commands + schedule). Heavy samples & pools stay untracked.
+
+**NEXT (author authorizes both compute layers together in a FRESH session — up to ~8 h local
+HMC):** `python experiments/m2br_audit_run.py --execute` (2 h), then
+`python experiments/m2br_validation_run.py --execute` (6 h), each stop-and-report. Then a separate
+outcomes D-entry (which withdrawn numbers are superseded vs still withdrawn) + a proposed (pending
+author) W2/W3 writeup update. Do NOT begin M2c; A7 Della on hold (v1.8).
 
 
 ## D19 Mauna study — M2a DONE (D20); M2b code complete, ALL 9 decision items ratified (D21-D31); PR #7 Ready; merge + M2bR = author's next call

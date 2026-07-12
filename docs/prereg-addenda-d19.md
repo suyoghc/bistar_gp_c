@@ -1204,3 +1204,45 @@ Commit B both exist and the clean-room recomputation matches.
 budget, no acceptance criterion, no audit run list, no cell design; no gate of
 §6.7; no §6.5/§6.6 relaxation. It authorizes no HMC run, no VI, no
 `hmc_laplace`, and no Mauna access. It pins realized start states only.
+
+---
+
+## v1.15 — provenance erratum: R-A/R-B ratification is D32 (a later explicit author message), not D31 — 2026-07-12
+
+**Prereg anchor:** v1.14 (this file), Notes/DECISIONS.md D31/D32, §6.16. This is
+a PROVENANCE-ONLY erratum. It changes NO value, start state, hash, criterion,
+budget, run list, or cell design; it corrects an attribution in v1.14.
+
+**Correction.** v1.14 labelled the filler-selection rule R-A and the
+replacement-number aggregation rule R-B as "author-ratified, D31 own-words
+vote". That attribution is wrong. D31 (v1.13) ratified decision-table rows 8
+and 9 — the multi-chain validation layer's overdispersed-start design and the
+NotPSD policy. It did NOT contain R-A or R-B, which specify (a) the exact
+slotting of the `3-B` filler slots to the largest-mass band's weighted-q75
+(B=2) or weighted-q25+q75 (B=1) draws, and (b) the 800-row pooled-with-one-
+final-normalization primary estimator. R-A and R-B were stated and explicitly
+ratified in the author's SUBSEQUENT message (the M2bR execution instruction)
+and are formally recorded in **D32**, the pre-run gate entry.
+
+**Layering, stated correctly.**
+- v1.11-v1.13 froze the BASE RULE: chain-0 MAP plus overdispersed
+  authority starts, one weighted-median draw per reportable noise band
+  (mass >= 5%), q25/q75 fill "when fewer than three bands", the D30 preflight,
+  and the deterministic next-eligible fallback (D29/D30; rows 8-9 ratified at
+  D31).
+- v1.14 froze the EXPLICITLY-RATIFIED REFINEMENTS on top of that base: R-A's
+  exact filler slotting, R-B's pooled aggregation, and deterministic details
+  1-5 — all ratified in the author's later message and recorded in D32. The
+  realized pool indices, fallback-advance counts, and per-state hashes in
+  v1.14 are unchanged and remain the governing freeze.
+
+**Effect.** Read every "D31 own-words vote" attached to R-A/R-B in v1.14 (and
+any similar phrasing) as "explicitly ratified in the author's later M2bR
+message; formally recorded in D32". Nothing else in v1.14 is amended; the
+manifest `docs/m2br_freeze/start_freeze_v1.14.json`
+(sha256 `b1abfa3c244a03f3ce3b5a69782157aad087e01de8b15a9a332de6ab2643d891`)
+and all eight pinned starts stand.
+
+**What this addendum does NOT change or authorize.** No value, start, hash,
+criterion, or budget. No run of any layer. Toy-only; §6.5/§6.6 continue to
+govern.
