@@ -1,0 +1,288 @@
+{
+  "layer": "validation",
+  "protocol": "docs/m2br-validation-protocol-PROPOSAL.md",
+  "primary_estimator": "R-B: concatenated 800 equal-chain predictives, one BMS* normalization",
+  "freeze_manifest_sha256": "b1abfa3c244a03f3ce3b5a69782157aad087e01de8b15a9a332de6ab2643d891",
+  "provenance": {
+    "cpu_count": 14,
+    "git_sha": "b56a5a278970b019b1d853c68c1ed7ccc7641163",
+    "hostname": "PSY-KGK4G03W1F",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "torch_thread_count": 10,
+    "versions": {
+      "arviz": "0.23.4",
+      "gpytorch": "1.15.1",
+      "numpy": "1.26.4",
+      "pyro": "1.9.1",
+      "torch": "2.10.0"
+    }
+  },
+  "arviz_version": "0.23.4",
+  "status": "completed_with_failures",
+  "passed_cells": [
+    "V3",
+    "V4"
+  ],
+  "failed_cells": [
+    "V1",
+    "V2"
+  ],
+  "cells": {
+    "V1": {
+      "config": "informative",
+      "max_tree_depth": 7,
+      "chains": 4,
+      "seeds": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "verdict": "FAIL",
+      "failed_criteria": [
+        "rhat",
+        "ess_bulk",
+        "occupancy",
+        "divergence_rate"
+      ],
+      "historical_counterparts": "WITHDRAWN/UNVALIDATED",
+      "criteria_summary": {
+        "rhat_max": 1.0113582321868395,
+        "rhat_pass": false,
+        "ess_bulk_min": 378.5435060809502,
+        "ess_bulk_pass": false,
+        "divergence_rate": 0.001,
+        "divergence_pass": false,
+        "occupancy_max_dev": {
+          "hi": 0.10387499999999994,
+          "lo": 0.0675,
+          "mid": 0.03637499999999999
+        },
+        "occupancy_pass": false,
+        "authority_coverage_pass": true,
+        "depth_saturation_rate": 0.0,
+        "notpsd_rate": 0.0
+      },
+      "chain_start_semantic_sha256": [
+        "72a7e8916501b8e344383ab547f0889022136e95856ef89f29a22df34a8b215a",
+        "c9f3758458671a26f0c351f6a597d74cead392796f4ff9fe6259331d0d7fd4ad",
+        "2db18020dfc123d8ed0e6b0c2dffc27fc8ae01c58e1e0c0f9eee10b2da309cda",
+        "5cf298a7ad0ac3317442e4e5cb998976dbfd5808025728c2cbb82f5f1de45649"
+      ],
+      "chain_samples_semantic_sha256": [
+        "cc63545d4425d12f1a1ffd90c62e4dd8c7623a321ccb39e1ccde5c5511a01045",
+        "0a789dc5a228583f535562b9825d1ad8f001666285ff573b67aff862650b396e",
+        "f80f5c0de71aabf0dbed344070b2d155b237dc087a7b4bb99b3f2df4ce7836bc",
+        "80ebf13731517d8bea995c515fd9311da956eb159ab01722a88fb8c68adad290"
+      ],
+      "chain_samples_file_sha256": [
+        "714a1bbbd0af6bae1e23e7b86b19824bc63348e6d8a1dab7172135b9d42dd374",
+        "09b65b18d4249699be2d81b280eb8debccc035f6d1a17d3de902b1a5a3676e5c",
+        "4df791aa4671b2bbed3d7772a8bf712ce7346d08fedd2f2cab8ec766f3348bd6",
+        "e1e89b9aa4b3e7fa9dd97f0b0de2a8b3f4aa5d2521005e8f9cd6e6970ce5c09f"
+      ],
+      "pooled_occupancy_lo_mid_hi_n": [
+        0.2555,
+        0.127375,
+        0.617125,
+        8000
+      ]
+    },
+    "V3": {
+      "config": "toy_elicited",
+      "max_tree_depth": 7,
+      "chains": 4,
+      "seeds": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "verdict": "PASS",
+      "failed_criteria": [],
+      "historical_counterparts": "eligible for supersession",
+      "criteria_summary": {
+        "rhat_max": 1.0017144613067017,
+        "rhat_pass": true,
+        "ess_bulk_min": 2812.186162647567,
+        "ess_bulk_pass": true,
+        "divergence_rate": 0.0,
+        "divergence_pass": true,
+        "occupancy_max_dev": {
+          "hi": 0.012125000000000004,
+          "lo": 0.012500000000000067,
+          "mid": 0.016375
+        },
+        "occupancy_pass": true,
+        "authority_coverage_pass": true,
+        "depth_saturation_rate": 0.0,
+        "notpsd_rate": 0.0
+      },
+      "chain_start_semantic_sha256": [
+        "e666fbca520969ff8c0a66c33b4cada458d173c46917188f21e75d9ad8bf747b",
+        "502090658b4ab1ab5832872cc90a36e51c246b1a8effeadb37723a26812f4978",
+        "a806fa8a18d78f8e595994cdc550facf1abcbfd0310e7cf21bb6fa53e5fcd752",
+        "c965203c21997abdd593735bd4cfec75884574c65320be2de2247a4085776c48"
+      ],
+      "chain_samples_semantic_sha256": [
+        "99e1a5e367a74acfa31dd1f0b244c191a286dc04eec7a3b60d8ce0b1902591a0",
+        "02dcc366f0629203788c37758596962fe6a10d0808c76a1e7cc346106770d857",
+        "b4f88b11b621b51014e877e78f600eeaf857e5a1979a6839d921915b7c48d4d8",
+        "351dc3f8dcc0a5b430ebed2d1b3ef96b76afc2583bdda38a00ef77d6c2e45088"
+      ],
+      "chain_samples_file_sha256": [
+        "24a0ea14e98ad7446e7abbdc751c1ca92d62408056e35b37b5bc121e9a6f6653",
+        "66b017750d0a4b68c41061cf291bb57d440dc744cc3deb4cee3131cbd481b156",
+        "0f4a0bc2f9d6ff1186170b053ebe0508aa6528dc756aa165e3a503eac652cac1",
+        "d6e6230e8e417ece162a4671d8d7d780147c13fa187ab62a8cc89ad8d7feacdf"
+      ],
+      "pooled_occupancy_lo_mid_hi_n": [
+        0.7605,
+        0.185625,
+        0.053875,
+        8000
+      ],
+      "replacement_pw_kl_vcal_tau1": {
+        "Linear": 0.19022705242745927,
+        "Sinusoidal": 0.1988873634304084,
+        "Sin+Linear": 0.42051187322926364,
+        "Quadratic": 0.19037371091286862
+      },
+      "replacement_hard_win": {
+        "Linear": 0.01125,
+        "Sinusoidal": 0.02125,
+        "Sin+Linear": 0.9675,
+        "Quadratic": 0.0
+      },
+      "n_pooled_predictives": 800
+    },
+    "V2": {
+      "config": "informative",
+      "max_tree_depth": 10,
+      "chains": 4,
+      "seeds": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "verdict": "FAIL",
+      "failed_criteria": [
+        "rhat",
+        "ess_bulk",
+        "occupancy",
+        "divergence_rate"
+      ],
+      "historical_counterparts": "WITHDRAWN/UNVALIDATED",
+      "criteria_summary": {
+        "rhat_max": 1.0113582321868395,
+        "rhat_pass": false,
+        "ess_bulk_min": 378.5435060809502,
+        "ess_bulk_pass": false,
+        "divergence_rate": 0.001,
+        "divergence_pass": false,
+        "occupancy_max_dev": {
+          "hi": 0.10387499999999994,
+          "lo": 0.0675,
+          "mid": 0.03637499999999999
+        },
+        "occupancy_pass": false,
+        "authority_coverage_pass": true,
+        "depth_saturation_rate": 0.0,
+        "notpsd_rate": 0.0
+      },
+      "chain_start_semantic_sha256": [
+        "72a7e8916501b8e344383ab547f0889022136e95856ef89f29a22df34a8b215a",
+        "c9f3758458671a26f0c351f6a597d74cead392796f4ff9fe6259331d0d7fd4ad",
+        "2db18020dfc123d8ed0e6b0c2dffc27fc8ae01c58e1e0c0f9eee10b2da309cda",
+        "5cf298a7ad0ac3317442e4e5cb998976dbfd5808025728c2cbb82f5f1de45649"
+      ],
+      "chain_samples_semantic_sha256": [
+        "cc63545d4425d12f1a1ffd90c62e4dd8c7623a321ccb39e1ccde5c5511a01045",
+        "0a789dc5a228583f535562b9825d1ad8f001666285ff573b67aff862650b396e",
+        "f80f5c0de71aabf0dbed344070b2d155b237dc087a7b4bb99b3f2df4ce7836bc",
+        "80ebf13731517d8bea995c515fd9311da956eb159ab01722a88fb8c68adad290"
+      ],
+      "chain_samples_file_sha256": [
+        "714a1bbbd0af6bae1e23e7b86b19824bc63348e6d8a1dab7172135b9d42dd374",
+        "09b65b18d4249699be2d81b280eb8debccc035f6d1a17d3de902b1a5a3676e5c",
+        "4df791aa4671b2bbed3d7772a8bf712ce7346d08fedd2f2cab8ec766f3348bd6",
+        "e1e89b9aa4b3e7fa9dd97f0b0de2a8b3f4aa5d2521005e8f9cd6e6970ce5c09f"
+      ],
+      "pooled_occupancy_lo_mid_hi_n": [
+        0.2555,
+        0.127375,
+        0.617125,
+        8000
+      ]
+    },
+    "V4": {
+      "config": "toy_elicited",
+      "max_tree_depth": 10,
+      "chains": 4,
+      "seeds": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "verdict": "PASS",
+      "failed_criteria": [],
+      "historical_counterparts": "eligible for supersession",
+      "criteria_summary": {
+        "rhat_max": 1.0015320785288369,
+        "rhat_pass": true,
+        "ess_bulk_min": 3005.2588356687497,
+        "ess_bulk_pass": true,
+        "divergence_rate": 0.0,
+        "divergence_pass": true,
+        "occupancy_max_dev": {
+          "hi": 0.015625,
+          "lo": 0.011750000000000038,
+          "mid": 0.012625000000000025
+        },
+        "occupancy_pass": true,
+        "authority_coverage_pass": true,
+        "depth_saturation_rate": 0.0,
+        "notpsd_rate": 0.0
+      },
+      "chain_start_semantic_sha256": [
+        "e666fbca520969ff8c0a66c33b4cada458d173c46917188f21e75d9ad8bf747b",
+        "502090658b4ab1ab5832872cc90a36e51c246b1a8effeadb37723a26812f4978",
+        "a806fa8a18d78f8e595994cdc550facf1abcbfd0310e7cf21bb6fa53e5fcd752",
+        "c965203c21997abdd593735bd4cfec75884574c65320be2de2247a4085776c48"
+      ],
+      "chain_samples_semantic_sha256": [
+        "99e1a5e367a74acfa31dd1f0b244c191a286dc04eec7a3b60d8ce0b1902591a0",
+        "02dcc366f0629203788c37758596962fe6a10d0808c76a1e7cc346106770d857",
+        "18f7d0d6f6954d3258d2d6b66b553c027bc15d1b07b20b47297a39ce0e843c5a",
+        "351dc3f8dcc0a5b430ebed2d1b3ef96b76afc2583bdda38a00ef77d6c2e45088"
+      ],
+      "chain_samples_file_sha256": [
+        "24a0ea14e98ad7446e7abbdc751c1ca92d62408056e35b37b5bc121e9a6f6653",
+        "66b017750d0a4b68c41061cf291bb57d440dc744cc3deb4cee3131cbd481b156",
+        "eaf138b4483cecc581824da6202b8b4ee5f7ffb8db2cd3a956f43187071332f2",
+        "d6e6230e8e417ece162a4671d8d7d780147c13fa187ab62a8cc89ad8d7feacdf"
+      ],
+      "pooled_occupancy_lo_mid_hi_n": [
+        0.76025,
+        0.189375,
+        0.050375,
+        8000
+      ],
+      "replacement_pw_kl_vcal_tau1": {
+        "Linear": 0.18973784376195665,
+        "Sinusoidal": 0.19834453119539516,
+        "Sin+Linear": 0.4220337324078783,
+        "Quadratic": 0.18988389263477
+      },
+      "replacement_hard_win": {
+        "Linear": 0.01,
+        "Sinusoidal": 0.02,
+        "Sin+Linear": 0.97,
+        "Quadratic": 0.0
+      },
+      "n_pooled_predictives": 800
+    }
+  }
+}

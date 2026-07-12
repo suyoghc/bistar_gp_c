@@ -2077,3 +2077,102 @@ W2/W3) and the validation layer (`docs/m2br-validation-protocol-PROPOSAL.md`: ce
 from the frozen starts, 4 chains, 6 h ceiling) MAY now execute per their frozen protocols with
 stop-and-report. Outcomes (which withdrawn numbers are superseded vs still withdrawn) will be a
 SEPARATE later D-entry. M2c stays blocked; the A7 Della vehicle stays on hold (v1.8).
+
+## D33: M2bR compute-layer OUTCOMES — audit + validation executed; toy_elicited SUPERSEDED, informative stays WITHDRAWN — 2026-07-12
+
+**Problem:** With the D32 start-freeze gate PASSED, both frozen M2bR compute layers were authorized
+to run together in a fresh session (branch `feat/d19-m2br`, HEAD `b56a5a2`), each stop-and-report.
+This entry records the OUTCOMES: which withdrawn D12/D18 numbers are now SUPERSEDED (validation cells
+passing ALL acceptance criteria) versus still WITHDRAWN/UNVALIDATED. Nothing about the frozen drivers,
+manifest, or protocols was modified; the heavy samples and local pools stay untracked.
+
+**Pre-launch gates (both layers; a failure here is a STOP, not a fix) — ALL PASSED.**
+(1) tracked tree clean; (2) freeze manifest `docs/m2br_freeze/start_freeze_v1.14.json` sha256
+`b1abfa3c…2643d891` byte-exact (also pinned internally as `EXPECTED_MANIFEST_SHA256`);
+(3) `m2br_audit_run.py --verify-arms` exit 0, overall PASS — prior-IS + SIR PASS @1e-12 for all four
+configs, `toy_elicited` RW-MH PASS (occupancy triplets, crossings [44,40,38], params 30000/5000/0.1),
+informative/vague/gamma_relaxed RW-MH NOT_APPLICABLE; (4) `pytest -q` = 262 passed + 1 skipped;
+(+) `--dry-run` plumbing check of both drivers, `_dryrun/` cleaned. Stack: torch 2.10.0 / gpytorch
+1.15.1 / pyro 1.9.1 / numpy 1.26.4 / arviz 0.23.4; host PSY-KGK4G03W1F; 14 cores; threads pinned to 10
+inside each spawned sampler child; launched under `caffeinate -i`.
+
+**AUDIT layer — completed, clean, CANNOT close W2/W3 (label enforced).** All six frozen single-chain
+seed-42 runs completed (≈14 min wall, 2 h ceiling; no failure/stop records) → `runs/m2br_corrected_impact/`
+(untracked, atomic-rename, samples-last). The in-`--execute` §3 unchanged-arm re-verification passed
+BEFORE any sampling. Every run: `nuts_e1`, 0 divergences, acceptance ≥0.99, depth-saturation 0.0,
+NotPSD 0 (warmup + post-warmup). Label "corrected single-chain comparison".
+- **td7 ≡ td10 bit-identical** for both configs that ran both depths (identical `samples_semantic_sha256`:
+  informative `e07cf525…`, toy_elicited `11e4a8ff…`), because depth-saturation is 0.0 → the td7 cap
+  never binds under the corrected E1 target. The historical truncation worry is not operative here.
+- **The D22 correction fixes a real pathology.** Historical HMC (defective p(θ)L(θ)^N) put basin
+  occupancy at 1.00/0.00/0.00 (all low-noise) for EVERY config; the corrected E1 sampler explores
+  broadly and now roughly MATCHES the unaffected prior-IS authority — e.g. corrected toy_elicited
+  occupancy 0.77/0.171/0.059 vs prior-IS authority 0.763/0.191/0.046. BMS* posteriors de-concentrate:
+  historical Sin+Linear ~0.673–0.696 → corrected ~0.24–0.43 (informative collapses to ≈uniform, argmax
+  flipping to Sinusoidal 0.255). This is single-chain evidence of impact only.
+
+**VALIDATION layer — completed; 2 cells PASS, 2 cells FAIL.** Cells V1,V3,V2,V4 (priority order),
+4 chains each from the FROZEN manifest starts via `fit_hmc_e1(init_values=…, init_to_map=False)`;
+all 16 chains ran and persisted (`failed_chains` empty) → `runs/m2br_validation/<cell>/` (untracked).
+**Integrity: all 16 chains' `frozen_start_semantic_sha256` match the v1.14 manifest byte-exact**
+(informative 72a7e891/c9f37584/2db18020/5cf298a7; toy_elicited e666fbca/50209065/a806fa8a/c965203c).
+R-B primary estimator = concatenated 800 equal-chain predictives, one BMS* normalization.
+
+| cell | config | td | verdict | R-hat max | bulk-ESS min | div rate | occ max-dev | authority cov |
+|---|---|---|---|---|---|---|---|---|
+| V3 | toy_elicited | 7  | **PASS** | 1.0017 | 2812 | 0.000 | 0.016 | PASS |
+| V4 | toy_elicited | 10 | **PASS** | 1.0015 | 3005 | 0.000 | 0.016 | PASS |
+| V1 | informative | 7  | **FAIL** | 1.0114 | 378.5 | 0.001 | 0.104 | PASS |
+| V2 | informative | 10 | **FAIL** | 1.0114 | 378.5 | 0.001 | 0.104 | PASS |
+
+- V1 ≡ V2 (informative td7≡td10, cap never binds): identical failure signature, failing FOUR criteria,
+  all MARGINAL — R-hat 1.01136 (>1.01), bulk-ESS 378.5/382.2 on the lengthscale+noise sites (<400 floor),
+  per-chain occupancy hi-band spread 0.104 (>0.05), divergence rate 0.001 (=8/8000, not <0.001). Crucially
+  `authority_coverage` PASSES (pooled occ 0.256/0.127/0.617 within 2 SE of authority 0.277/0.131/0.592):
+  the four chains agree with the authority in aggregate but do NOT meet the cross-chain REPRODUCIBILITY
+  bar — i.e. the corrected informative posterior was NOT VALIDATED under this preregistered 4×2000
+  design. (The 0.104 per-chain occupancy spread shows the overdispersed chains landing in different
+  regions — evidence of incomplete mixing across a multi-basin structure — but intrinsic difficulty is
+  an inference the design cannot settle; escalation, not a verdict of un-samplable, is the next step.)
+- V3/V4 (toy_elicited) pass every criterion cleanly. Validated R-B replacement (pw_kl_vcal, τ=1):
+  Sin+Linear **0.4205** (td7) / **0.4220** (td10) [Linear ≈0.190, Sinusoidal ≈0.199, Quadratic ≈0.190],
+  hard-win Sin+Linear 0.968/0.970, pooled occupancy V3 0.7605/0.1856/0.0539, V4 0.7602/0.1894/0.0504.
+  These agree with the unaffected
+  is_sir authority (Sin+Linear 0.441, occ 0.80/0.16/0.04) — independent cross-method confirmation.
+
+**Supersession determination (D28 terminology).**
+- **toy_elicited (V3 td7, V4 td10): SUPERSEDED.** The corrected, multi-chain-validated characterization
+  replaces the withdrawn historical HMC numbers (Sin+Linear 0.696, occ 1.00/0.00/0.00, and the toy td10
+  row): validated Sin+Linear ≈0.42 (soft) / ≈0.97 (hard), occupancy ≈0.76/0.19/0.05. Driver-emitted
+  `historical_counterparts = "eligible for supersession"`.
+- **informative (V1 td7, V2 td10): stays WITHDRAWN/UNVALIDATED.** The withdrawn HMC headline
+  (Sin+Linear 0.673, occ 1.00/0.00/0.00) is NOT restored and NOT replaced; the correction exposes a
+  hard posterior the preregistered 4-chain design cannot validate. Driver-emitted
+  `historical_counterparts = "WITHDRAWN/UNVALIDATED"`. Escalation (more/longer chains, or a strategy
+  change) is a NEW preregistered addendum (v1.16+), NEVER an in-run extension.
+- vague and gamma_relaxed had audit-layer (single-chain) runs only; no validation cell exists for them,
+  so their withdrawn numbers remain withdrawn (validation is an author option at +2 cells per config).
+
+**Provenance (small tracked manifests; heavy samples stay untracked; never `git add runs/`).**
+This change adds `docs/m2br_freeze/audit_result_manifest.json` and
+`docs/m2br_freeze/validation_result_manifest.json` (per-run/per-cell verdicts, criteria values,
+semantic + file sha256, start-sha↔manifest match, provenance/versions/threads, per-cell pooled
+occupancy). Proposed W2/W3 writeup update (pending author ratification):
+`docs/m2br-w2w3-writeup-PROPOSAL.md`.
+
+**Alternatives considered.** (a) Re-sampling informative with longer/more chains after seeing the
+marginal misses — REJECTED by the stop-and-report rule (§4): any continuation is a new addendum, never
+an in-run extension; the four criteria are preregistered and the misses, though small, are real.
+(b) Treating `authority_coverage` PASS as sufficient for informative — REJECTED: the proposal requires
+ALL criteria, and reproducibility (R-hat/ESS/per-chain occupancy) is exactly what a single-authority
+agreement cannot establish. (c) Editing the historical docs in place to insert corrected numbers —
+DEFERRED to author ratification via the PROPOSAL doc; supersession terminology (D28) governs.
+
+**Result:** Audit + validation executed and empirically verified from persisted diagnostics/hashes.
+toy_elicited corrected numbers are validated and eligible to SUPERSEDE their withdrawn counterparts;
+informative stays WITHDRAWN/UNVALIDATED. No frozen artifact was modified; no in-run extension; no VI,
+`hmc_laplace`, Mauna, or pool regeneration occurred; original invalid caches untouched.
+
+**Status:** COMPLETE (pending author ratification of the W2/W3 writeup update). M2c stays blocked; the
+A7 Della vehicle stays on hold (v1.8). Draft PR #8 updated with this outcome and kept in Draft pending
+author sign-off.

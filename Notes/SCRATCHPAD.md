@@ -2,11 +2,12 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## M2bR corrective milestone — START FREEZE GATE PASSED (D32, branch feat/d19-m2br, 2026-07-11)
+## M2bR corrective milestone — COMPUTE LAYERS EXECUTED (D33, branch feat/d19-m2br, 2026-07-12); start-freeze gate PASSED (D32)
 
 Branch `feat/d19-m2br` off `origin/main` (bd0b399 = merged M2b PR #7). The two-stage
-validation start freeze is DONE and independently verified; the hard ordering gate is
-satisfied. NO chain has run.
+validation start freeze is DONE and independently verified; the hard ordering gate was
+satisfied. As of D32 no chain had run; **both compute layers have SINCE been executed
+(D33, 2026-07-12) — 6 audit + 16 validation chains completed** (see the D33 block below).
 
 - **Commit A `10edc2d`** — prereg v1.14 + `experiments/m2br_start_freeze.py` (deterministic,
   no sampler) + `docs/m2br_freeze/start_freeze_v1.14.json` (manifest sha `b1abfa3c…`). Pins
@@ -48,11 +49,27 @@ frozen-defaults provenance; process isolation uses `spawn` (not fork) + bounded
 INSIDE each spawned sampler child (`M2BR_TORCH_THREADS`, default 10) — directly tested under spawn.
 Full suite **262 passed + 1 skipped**.
 
-**NEXT (author authorizes both compute layers together in a FRESH session — up to ~8 h local
-HMC):** `python experiments/m2br_audit_run.py --execute` (2 h), then
-`python experiments/m2br_validation_run.py --execute` (6 h), each stop-and-report. Then a separate
-outcomes D-entry (which withdrawn numbers are superseded vs still withdrawn) + a proposed (pending
-author) W2/W3 writeup update. Do NOT begin M2c; A7 Della on hold (v1.8).
+**COMPUTE EXECUTED (D33, 2026-07-12, this session).** Both layers ran under `caffeinate -i`, threads
+pinned to 10, stop-and-report. Pre-launch gates ALL PASSED (freeze sha `b1abfa3c` byte-exact; §3
+`--verify-arms` overall PASS; `pytest` 262+1; both `--dry-run` plumbing OK). Nothing frozen edited;
+heavy samples + pools stay UNTRACKED.
+- **AUDIT** (`runs/m2br_corrected_impact/`): all 6 single-chain runs completed (~14 min), clean
+  (`nuts_e1`, 0 div, acc ≥0.99, 0 saturation, 0 NotPSD). td7≡td10 bit-identical (cap never binds).
+  Corrected occupancy now tracks the prior-IS authority; posteriors de-concentrate from Sin+Linear
+  ~0.67–0.70 to ~0.24–0.43. Single-chain → CANNOT close W2/W3.
+- **VALIDATION** (`runs/m2br_validation/`): 16 chains, all start-shas match manifest v1.14 byte-exact.
+  **V3, V4 (toy_elicited td7/td10) PASS all criteria → SUPERSEDE** (validated R-B pooled-800
+  Sin+Linear 0.4205/0.4220, occ ≈0.76/0.19/0.05, agreeing with SIR 0.441 — mode-vs-mass dichotomy
+  collapses). **V1, V2 (informative td7/td10) FAIL** 4 marginal criteria (R-hat 1.0114, bulk-ESS
+  378/382<400, per-chain occ hi-spread 0.104>0.05, div 0.001) → stay **WITHDRAWN/UNVALIDATED**
+  (authority coverage passes; reproducibility does not). Escalation = new addendum v1.16+, never in-run.
+- **Provenance (small tracked manifests):** `docs/m2br_freeze/{audit,validation}_result_manifest.json`
+  (hashes + verdicts + provenance + pooled occupancy); D33 in `Notes/DECISIONS.md`; proposed (pending
+  author ratification) `docs/m2br-w2w3-writeup-PROPOSAL.md`. Draft PR #8 updated, kept DRAFT pending
+  author sign-off.
+- **NEXT (author):** ratify/adjust the W2/W3 proposal; decide whether to open a v1.16+ escalation for
+  the informative cells (V1/V2) and/or +2 validation cells for vague/gamma_relaxed. Do NOT begin M2c;
+  A7 Della on hold (v1.8).
 
 
 ## D19 Mauna study — M2a DONE (D20); M2b code complete, ALL 9 decision items ratified (D21-D31); PR #7 Ready; merge + M2bR = author's next call

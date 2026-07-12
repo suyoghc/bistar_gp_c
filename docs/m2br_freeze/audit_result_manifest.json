@@ -1,0 +1,262 @@
+{
+  "layer": "audit",
+  "label": "corrected single-chain comparison",
+  "interpretation_limit": "Single-chain historical-impact audit only; not a convergence validation and not paper-grade replacement evidence.",
+  "protocol": "docs/m2br-corrected-impact-protocol.md",
+  "freeze_manifest_sha256": "b1abfa3c244a03f3ce3b5a69782157aad087e01de8b15a9a332de6ab2643d891",
+  "provenance": {
+    "git_sha": "b56a5a278970b019b1d853c68c1ed7ccc7641163",
+    "hostname": "PSY-KGK4G03W1F",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "cpu_count": 14,
+    "torch_thread_count": 10,
+    "versions": {
+      "arviz": "0.23.4",
+      "gpytorch": "1.15.1",
+      "numpy": "1.26.4",
+      "pyro": "1.9.1",
+      "torch": "2.10.0"
+    }
+  },
+  "n_predictives": 200,
+  "taus": [
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    10.0
+  ],
+  "status": "completed",
+  "completed_runs": [
+    "d12_informative_td7",
+    "d12_informative_td10",
+    "d18_toy_elicited_td7",
+    "d18_toy_elicited_td10",
+    "d18_vague_td7",
+    "d18_gamma_relaxed_td7"
+  ],
+  "failed_runs": [],
+  "runs": {
+    "d12_informative_td7": {
+      "config": "informative",
+      "max_tree_depth": 7,
+      "seed": 42,
+      "sampler": "nuts_e1",
+      "n_draws": 2000,
+      "n_warmup": 1000,
+      "n_divergences": 0,
+      "divergence_rate": 0.0,
+      "acceptance_rate": 0.9915,
+      "depth_saturation_rate": 0.0,
+      "notpsd_warmup": 0,
+      "notpsd_post_warmup_total": 0,
+      "notpsd_post_warmup_rate": 0.0,
+      "basin_occupancy_lo_mid_hi": [
+        0.1995,
+        0.103,
+        0.6975,
+        2000
+      ],
+      "bms_pw_kl_vcal_tau1": {
+        "Linear": 0.253522425287384,
+        "Sinusoidal": 0.2546415123917909,
+        "Sin+Linear": 0.23829396769269845,
+        "Quadratic": 0.2535420946281267
+      },
+      "hard_win_fractions": {
+        "Linear": 0.375,
+        "Sinusoidal": 0.35,
+        "Sin+Linear": 0.255,
+        "Quadratic": 0.02
+      },
+      "samples_semantic_sha256": "e07cf5257fbe508aa2d68f0b41dcd0d12a3808b12c01e0b3099e74c1b86b05b0",
+      "diagnostics_payload_sha256": "8d4788ae74ca43e4e381b12c94bb74232c1ece497149df11b83b1cf08fcfd75c",
+      "samples_file_sha256": "312093fef6caa73d67c809b4993ded8dd31ea3b11a590ce1828cfd429cacf9e2"
+    },
+    "d12_informative_td10": {
+      "config": "informative",
+      "max_tree_depth": 10,
+      "seed": 42,
+      "sampler": "nuts_e1",
+      "n_draws": 2000,
+      "n_warmup": 1000,
+      "n_divergences": 0,
+      "divergence_rate": 0.0,
+      "acceptance_rate": 0.9915,
+      "depth_saturation_rate": 0.0,
+      "notpsd_warmup": 0,
+      "notpsd_post_warmup_total": 0,
+      "notpsd_post_warmup_rate": 0.0,
+      "basin_occupancy_lo_mid_hi": [
+        0.1995,
+        0.103,
+        0.6975,
+        2000
+      ],
+      "bms_pw_kl_vcal_tau1": {
+        "Linear": 0.253522425287384,
+        "Sinusoidal": 0.2546415123917909,
+        "Sin+Linear": 0.23829396769269845,
+        "Quadratic": 0.2535420946281267
+      },
+      "hard_win_fractions": {
+        "Linear": 0.375,
+        "Sinusoidal": 0.35,
+        "Sin+Linear": 0.255,
+        "Quadratic": 0.02
+      },
+      "samples_semantic_sha256": "e07cf5257fbe508aa2d68f0b41dcd0d12a3808b12c01e0b3099e74c1b86b05b0",
+      "diagnostics_payload_sha256": "4e18f14082b9a37f1d1ed31b76b8f1833b5158475f22a892927685895ef6068f",
+      "samples_file_sha256": "312093fef6caa73d67c809b4993ded8dd31ea3b11a590ce1828cfd429cacf9e2"
+    },
+    "d18_toy_elicited_td7": {
+      "config": "toy_elicited",
+      "max_tree_depth": 7,
+      "seed": 42,
+      "sampler": "nuts_e1",
+      "n_draws": 2000,
+      "n_warmup": 1000,
+      "n_divergences": 0,
+      "divergence_rate": 0.0,
+      "acceptance_rate": 0.9955,
+      "depth_saturation_rate": 0.0,
+      "notpsd_warmup": 0,
+      "notpsd_post_warmup_total": 0,
+      "notpsd_post_warmup_rate": 0.0,
+      "basin_occupancy_lo_mid_hi": [
+        0.77,
+        0.171,
+        0.059,
+        2000
+      ],
+      "bms_pw_kl_vcal_tau1": {
+        "Linear": 0.1881468896765309,
+        "Sinusoidal": 0.1967158236382307,
+        "Sin+Linear": 0.4268458992694169,
+        "Quadratic": 0.18829138741582138
+      },
+      "hard_win_fractions": {
+        "Linear": 0.015,
+        "Sinusoidal": 0.02,
+        "Sin+Linear": 0.955,
+        "Quadratic": 0.01
+      },
+      "samples_semantic_sha256": "11e4a8ff973bbaf89a8df5cc15cea0f0e23c87a42b5b39aeda285c44fe3f304c",
+      "diagnostics_payload_sha256": "ecedef5cbeec6c40a178b9433f48e61afe2f9a2e6a425bd6c8255c3f3084e686",
+      "samples_file_sha256": "57502b22f9c618e172f5cabc7695d241f0c6bab6eddf79fe2ae1ddb68ad99fde"
+    },
+    "d18_toy_elicited_td10": {
+      "config": "toy_elicited",
+      "max_tree_depth": 10,
+      "seed": 42,
+      "sampler": "nuts_e1",
+      "n_draws": 2000,
+      "n_warmup": 1000,
+      "n_divergences": 0,
+      "divergence_rate": 0.0,
+      "acceptance_rate": 0.9955,
+      "depth_saturation_rate": 0.0,
+      "notpsd_warmup": 0,
+      "notpsd_post_warmup_total": 0,
+      "notpsd_post_warmup_rate": 0.0,
+      "basin_occupancy_lo_mid_hi": [
+        0.77,
+        0.171,
+        0.059,
+        2000
+      ],
+      "bms_pw_kl_vcal_tau1": {
+        "Linear": 0.1881468896765309,
+        "Sinusoidal": 0.1967158236382307,
+        "Sin+Linear": 0.4268458992694169,
+        "Quadratic": 0.18829138741582138
+      },
+      "hard_win_fractions": {
+        "Linear": 0.015,
+        "Sinusoidal": 0.02,
+        "Sin+Linear": 0.955,
+        "Quadratic": 0.01
+      },
+      "samples_semantic_sha256": "11e4a8ff973bbaf89a8df5cc15cea0f0e23c87a42b5b39aeda285c44fe3f304c",
+      "diagnostics_payload_sha256": "8555a1b679ef08ba9360343dfa59f2873879979fe10210ad3003f027a3df0997",
+      "samples_file_sha256": "57502b22f9c618e172f5cabc7695d241f0c6bab6eddf79fe2ae1ddb68ad99fde"
+    },
+    "d18_vague_td7": {
+      "config": "vague",
+      "max_tree_depth": 7,
+      "seed": 42,
+      "sampler": "nuts_e1",
+      "n_draws": 2000,
+      "n_warmup": 1000,
+      "n_divergences": 0,
+      "divergence_rate": 0.0,
+      "acceptance_rate": 0.996,
+      "depth_saturation_rate": 0.0,
+      "notpsd_warmup": 0,
+      "notpsd_post_warmup_total": 0,
+      "notpsd_post_warmup_rate": 0.0,
+      "basin_occupancy_lo_mid_hi": [
+        0.834,
+        0.0955,
+        0.0705,
+        2000
+      ],
+      "bms_pw_kl_vcal_tau1": {
+        "Linear": 0.19197252960276495,
+        "Sinusoidal": 0.19698355526782751,
+        "Sin+Linear": 0.4189896635605786,
+        "Quadratic": 0.19205425156882902
+      },
+      "hard_win_fractions": {
+        "Linear": 0.095,
+        "Sinusoidal": 0.0,
+        "Sin+Linear": 0.895,
+        "Quadratic": 0.01
+      },
+      "samples_semantic_sha256": "83593522a8b3f4d2a7fc05e6cbe876eede357ad0a52677c3d68d70b2d9b702ba",
+      "diagnostics_payload_sha256": "bc0f00e5219055458281c5bd3988da5883ea09fbb9d03f4a2a965c80127b2aae",
+      "samples_file_sha256": "86f01eb87ebf00e67c6dc2bcd87e1b87c02122aafa9e638feefedd6217269b75"
+    },
+    "d18_gamma_relaxed_td7": {
+      "config": "gamma_relaxed",
+      "max_tree_depth": 7,
+      "seed": 42,
+      "sampler": "nuts_e1",
+      "n_draws": 2000,
+      "n_warmup": 1000,
+      "n_divergences": 0,
+      "divergence_rate": 0.0,
+      "acceptance_rate": 0.993,
+      "depth_saturation_rate": 0.0,
+      "notpsd_warmup": 0,
+      "notpsd_post_warmup_total": 0,
+      "notpsd_post_warmup_rate": 0.0,
+      "basin_occupancy_lo_mid_hi": [
+        0.596,
+        0.2545,
+        0.1495,
+        2000
+      ],
+      "bms_pw_kl_vcal_tau1": {
+        "Linear": 0.20640318480892422,
+        "Sinusoidal": 0.21279168134277,
+        "Sin+Linear": 0.37428074797425903,
+        "Quadratic": 0.20652438587404673
+      },
+      "hard_win_fractions": {
+        "Linear": 0.04,
+        "Sinusoidal": 0.005,
+        "Sin+Linear": 0.945,
+        "Quadratic": 0.01
+      },
+      "samples_semantic_sha256": "df665bdb807560d8bcc04785c22ef66b31f2fac43112ef5cac0bad3adab821a0",
+      "diagnostics_payload_sha256": "e70f4984a3b5241163db039a6b3de4319eaec1136f64b4b50e4aac087ac72257",
+      "samples_file_sha256": "f6b83b7725a769eee416216e07ab4de06f32796737029e417c6d9d5c1ca380c6"
+    }
+  },
+  "td7_equals_td10_samples_identity": {
+    "d12_informative": true,
+    "d18_toy_elicited": true
+  },
+  "unchanged_arms_verification": "PASS"
+}
