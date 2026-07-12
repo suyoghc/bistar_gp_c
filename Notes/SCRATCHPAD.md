@@ -104,8 +104,12 @@ heavy samples + pools stay UNTRACKED.
 - **v1.16 EXECUTED once (D36, 2026-07-12, author-authorized) → FAIL.** HEAD `d0f4b02`, preflight PASSED,
   exit 0, ~27 min. `failed_criteria: occupancy (0.0604>0.05) + divergence_rate (0.00716>0.001)`. R-hat and
   ESS were FIXED by the longer chains (378→1158 bulk-ESS; 1.0114→1.0081 R-hat); occupancy improved
-  (0.104→0.060) but still fails; divergences got WORSE (0.001→0.00716, geometric — concentrated in the
-  high-noise-basin chains 0/2/3). Authority coverage PASS (pooled 0.253/0.133/0.614 ≈ prior-IS authority).
+  (0.104→0.060) but still fails; divergence rate increased (0.001→0.00716). **CORRECTION (D36-c1):** NOT a
+  high-noise-basin effect — divergences concentrate in the larger-step chains 0/2/3 (steps 0.37/0.33/0.40 vs
+  chain1's 0.16; chain1 has 0 div despite 65.4% high-band) and endpoint-localize to LOW/MID noise (pooled
+  137/53/39 of 229; conditional 1.69%/1.25%/0.20%) — an unresolved target-geometry/adaptation/
+  parameterization interaction; the longer same-strategy run did not resolve it.
+  Authority coverage PASS (pooled 0.253/0.133/0.614 ≈ prior-IS authority).
   → **informative stays WITHDRAWN/UNVALIDATED; no replacement number.** Same-strategy lane exhausted
   (D33 4×2000 + v1.16 4×8000); any further attempt = STRATEGY change via new addendum, never a budget bump.
   No corrected-VI claim. toy_elicited (D33) UNAFFECTED — still superseded. Provenance:

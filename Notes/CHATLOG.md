@@ -526,10 +526,14 @@ preceded by frozen preflight; nothing scientific ran before its gates passed.
 - **v1.16 escalation (D36) — FAIL.** Author-authorized one-shot run at HEAD d0f4b02 (preflight PASSED,
   ~27 min, 90-min ceiling). informative td7, 4 chains, 3000 warmup + 8000 draws. Result: FAIL on
   occupancy (per-chain dev 0.0604 > 0.05) and divergence rate (0.00716 > 0.001). The longer chains FIXED
-  ESS (378→1158) and R-hat (1.0114→1.0081) and improved occupancy (0.104→0.060), but divergences are
-  geometric and got worse — concentrated in the high-noise-basin chains (0/2/3). informative stays
-  WITHDRAWN/UNVALIDATED; the same-strategy lane is exhausted (next step = strategy change via new
-  addendum, not a budget bump). No corrected-VI claim. toy_elicited unaffected.
+  ESS (378→1158) and R-hat (1.0114→1.0081) and improved occupancy (0.104→0.060), but the divergence rate
+  increased (0.001→0.00716). CORRECTION (D36-c1, codex recheck + Fable reproduction): NOT a high-noise-basin
+  effect — divergences concentrate in the larger-step chains 0/2/3 (steps ~0.33–0.40 vs chain1's 0.16;
+  chain1 has 0 div despite 65.4% high-band) and endpoint-localize to LOW/MID noise (pooled 137/53/39 of 229;
+  1.69%/1.25%/0.20%); an unresolved target-geometry/adaptation/parameterization interaction the longer
+  same-strategy run did not resolve. informative stays WITHDRAWN/UNVALIDATED; the same-strategy lane is
+  exhausted (next step = strategy change via new addendum, not a budget bump). No corrected-VI claim.
+  toy_elicited unaffected.
 
 Commits: audit/validation outcomes 6f96c9e; W2/W3 rev ed89517; D34 build 24113a4; GLM hardening 8fc9edc;
 D35 fail-closed 12b7aaf; D35 split d0f4b02; D36 v1.16 outcome (this commit). PR #8 kept Draft throughout;

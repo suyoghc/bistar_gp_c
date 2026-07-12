@@ -102,5 +102,80 @@
       "samples_semantic_sha256": "93f6234048dae1a1a256ab9ab2a54865801e50dd577d857895271720e9a5cbb5",
       "samples_file_sha256": "e0d92d35faf5938b6a8ca234249138de0b9fc5d7b6ff4309b34f139233835e90"
     }
-  ]
+  ],
+  "artifact_sha256": {
+    "chain0_samples.npz": "7bda944da4fb950b64ef51fe26f86588272892b25a257de890476bdfb8e4701c",
+    "chain0_predictives.npz": "4c97e2be6541e529e8fa50e07ed42d700454a70c00b8fd619dba63e65a50203f",
+    "chain0_diagnostics.json": "3cefd3e24620f4199ba53ddd9787be3d1c300be5d057798a478cea7594ff203a",
+    "chain0_results.json": "14c04ca4dbcdd5f8c075938ed6c44b98d0e3b9f1d52a81f49af2fe42b534722c",
+    "chain1_samples.npz": "8a801d939d32b17e8e08b7d7deb07e23d07cd51b38de8f897fba11b7e81401fe",
+    "chain1_predictives.npz": "f13c91d2bed7e35d01cc33ef4b2b09183c1b4b32bb545f727a7dc05746f3f064",
+    "chain1_diagnostics.json": "82b87da9caf8ad963b35406abaa76f03dfdba15710eaa9f22b2faf6ee82d93a0",
+    "chain1_results.json": "bf66cbefde13ee0d0d512eb03c2a3267b49987d4061991d0c30ca848381ee616",
+    "chain2_samples.npz": "9c26e08219ada85c69f13c7fc385a2bf8a055cbe2ccb75c4dba82333663125bc",
+    "chain2_predictives.npz": "5115515129bd45b3d1f19d07d843f3aa16d494d1fb2e08db49d2041f5454a35a",
+    "chain2_diagnostics.json": "af877b599dfeeb1334b81065e6cd9877583baf561df3783df6e2207144b20c09",
+    "chain2_results.json": "b97ad4ecede78b1ff957cd204dd483f1c2cf4bde8f9a808bbca6a1ae82b1b1ee",
+    "chain3_samples.npz": "e0d92d35faf5938b6a8ca234249138de0b9fc5d7b6ff4309b34f139233835e90",
+    "chain3_predictives.npz": "bd5f05ad2a8cb970ab0fae1d50af4a86bfad04f945e5902d2efdd355070f3558",
+    "chain3_diagnostics.json": "5d5d7815cc07ceb3286a443e3c1aba94ba561dfe618abe4b4112fddc2ca91e17",
+    "chain3_results.json": "02007416ff39e39b14551f0464e0b0dcae5f2f90945e1f60460c00decf860693",
+    "cell_results.json": "9cee9d410a5c653570a7cc55171325f71fd0b48fbfbbe9c0d6aa500fe8ed1c78"
+  },
+  "artifact_count": 17,
+  "divergence_localization": {
+    "note": "read-only: band of the noise sample at each divergent draw index (endpoint localization)",
+    "per_chain_lo_mid_hi": {
+      "chain0": [
+        40,
+        15,
+        16
+      ],
+      "chain1": [
+        0,
+        0,
+        0
+      ],
+      "chain2": [
+        19,
+        15,
+        9
+      ],
+      "chain3": [
+        78,
+        23,
+        14
+      ]
+    },
+    "pooled_lo_mid_hi": [
+      137,
+      53,
+      39
+    ],
+    "pooled_total": 229,
+    "conditional_rate_pct": {
+      "lo": 1.69,
+      "mid": 1.25,
+      "hi": 0.2
+    },
+    "chains_with_divergences": [
+      0,
+      2,
+      3
+    ],
+    "clean_chain": 1,
+    "adapted_step_size": {
+      "chain0": 0.3721,
+      "chain1": 0.164,
+      "chain2": 0.3272,
+      "chain3": 0.3951
+    },
+    "chain_hi_occupancy": {
+      "chain0": 0.675,
+      "chain1": 0.654,
+      "chain2": 0.563,
+      "chain3": 0.565
+    },
+    "reading": "divergences concentrate in the larger-step chains 0/2/3; divergent draw-endpoints localize disproportionately to low/mid-noise bands; NOT a high-noise-basin effect (correction to the initial D36 wording)"
+  }
 }

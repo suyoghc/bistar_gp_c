@@ -2353,20 +2353,40 @@ is clean). More draws in this posterior surface more divergent transitions rathe
 the residual cross-chain occupancy spread persists just over the 0.05 bar. This is the ratified one-shot
 outcome: the last "same-strategy, longer-run" attempt does not validate informative.
 
+**CORRECTION (2026-07-12, D36-c1; supersedes the two claims marked in the Interpretation above).** A
+read-only cross-model (codex) recheck + independent Fable reproduction found the divergence-localization
+claim above is WRONG on two points; the FAIL verdict and all frozen numerical criteria are UNCHANGED.
+1. Divergences do NOT concentrate in "high-noise-basin chains," and chain 1 is NOT a "low-noise-basin
+   chain." Post-warmup, chain 1 is 65.4% high-band (occ hi 0.654) yet has ZERO divergences. The chains
+   that diverge (0/2/3) are distinguished by their LARGER adapted step sizes (0.372/0.327/0.395 vs chain
+   1's 0.164), not by basin. Localizing each divergent draw by the noise value at its index (endpoint
+   localization; independently reproduced) gives pooled lo/mid/hi = **137/53/39** of 229 (chain0 40/15/16,
+   chain2 19/15/9, chain3 78/23/14), i.e. conditional divergence rates **1.69% low / 1.25% mid / 0.20%
+   high** — divergences are disproportionately associated with LOW/MID-noise draw endpoints, the opposite
+   of the "high-noise-basin" wording. The correct reading: an unresolved target-geometry / adaptation /
+   parameterization interaction under the current strategy (larger-step chains diverge; the small-step
+   chain does not).
+2. Causal wording is over-stated. The run changed BOTH warmup (1000→3000) and draws (2000→8000), so the
+   correct statement is that the observed divergence rate INCREASED in v1.16 (0.001→0.00716) and the
+   longer same-strategy run DID NOT RESOLVE it — not "more draws made it worse" and not "geometric, not
+   sample-size." The near-uniform pooled BMS* output is DIAGNOSTIC-ONLY and non-reportable because the
+   cell failed validation. Localization detail recorded in `docs/m2br_freeze/v116_result_manifest.json`.
+
 **Consequence.**
 - **informative stays WITHDRAWN/UNVALIDATED** (`replacement_numbers = None`,
   `historical_counterparts = "WITHDRAWN/UNVALIDATED"`). The withdrawn HMC headline (Sin+Linear 0.673, occ
-  1.00/0.00/0.00) is neither restored nor replaced. The corrected characterization is broad/high-noise-
-  dominant and CONSISTENT with the independent prior-IS authority (authority coverage passes) and near-
-  uniform in model posterior (pooled BMS* τ=1 diagnostic: L .2454 / Sin .2478 / S+L .2613 / Q .2455), but
-  it does NOT meet the preregistered convergence criteria, so NO validated informative number is reported.
+  1.00/0.00/0.00) is neither restored nor replaced. The pooled characterization is broad (occ
+  0.253/0.133/0.614) and CONSISTENT with the independent prior-IS authority (authority coverage passes),
+  with a near-uniform pooled model-probability posterior (pooled BMS* τ=1 **DIAGNOSTIC-ONLY, non-reportable
+  because the cell failed validation**: L .2454 / Sin .2478 / S+L .2613 / Q .2455); it does NOT meet the
+  preregistered convergence criteria, so NO validated informative number is reported.
 - Per the ratified decision rule, the next step (if any) is a STRATEGY change — reparameterization, a tuned
   mass matrix, or a different sampler — proposed as a NEW addendum, **NOT** another budget bump. The
   same-strategy escalation lane is now exhausted (two attempts: D33 4×2000, v1.16 4×8000).
 - **W2:** informative remains the "prior-misspecification case study" with a WITHDRAWN HMC number; it is now
   empirically established (across two preregistered attempts) that the corrected sampler cannot validate an
-  informative point estimate under this design. toy_elicited (D33 V3/V4) is UNAFFECTED — still validated/
-  superseded (Sin+Linear ~0.42).
+  informative posterior / model-probability estimate under this design. toy_elicited (D33 V3/V4) is
+  UNAFFECTED — still validated/superseded (Sin+Linear ~0.42).
 - **W3 / VI:** NO corrected-VI evidence is claimed. VI stays interim-withdrawn pending a corrected (E1-based)
   VI rerun (out of scope; unchanged).
 

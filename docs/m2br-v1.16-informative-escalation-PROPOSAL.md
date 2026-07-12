@@ -115,6 +115,16 @@ chain0 71 / chain1 0 / chain2 43 / chain3 115 (pooled 229/32000). The efficiency
 were fixed by the longer chains, but the divergences are geometric (concentrated in the high-noise-basin
 chains) and worsen with more draws, and the cross-chain occupancy spread persists just over the bar.
 
+**CORRECTION (2026-07-12, D36-c1; FAIL verdict + frozen criteria UNCHANGED).** The sentence above is
+corrected: divergences do NOT concentrate in "high-noise-basin chains," and chain 1 is NOT low-noise
+(it is 65.4% high-band with 0 divergences). The chains that diverge (0/2/3) have LARGER adapted step
+sizes (0.372/0.327/0.395 vs chain 1's 0.164). Read-only endpoint localization (independently reproduced)
+places divergences at pooled lo/mid/hi = 137/53/39 of 229, i.e. conditional rates 1.69% low / 1.25% mid /
+0.20% high — disproportionately LOW/MID-noise, not high. Read it as an unresolved target-geometry /
+adaptation / parameterization interaction under the current strategy; the divergence rate increased in
+v1.16 and the longer same-strategy run did not resolve it (both warmup and draws changed, so no causal
+attribution to "more draws"). The near-uniform pooled BMS* output is diagnostic-only, non-reportable.
+
 **Consequence:** informative stays WITHDRAWN/UNVALIDATED; no replacement number. This exhausts the
 "same-strategy, longer-run" lane (D33 4×2000 + this 4×8000). Any further attempt is a STRATEGY change
 (reparameterization / tuned mass matrix / different sampler) proposed as a NEW addendum, never another
