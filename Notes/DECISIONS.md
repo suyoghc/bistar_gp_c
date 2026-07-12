@@ -1844,5 +1844,57 @@ to +infinity potential (reject-and-continue, Stan-style) instead of crashing is 
 definition choice that must be preregistered before pilots — it does not change the
 battery (E1Potential itself keeps raise-parity with the oracle, v1.4 gate h).
 
-**Status:** implemented and committed on feat/d19-m2b-e1; M2b PR opens as DRAFT; M2bR
-next (after merge), M2c blocked on M2bR.
+**Status:** implemented and committed on feat/d19-m2b-e1; M2b PR opened as DRAFT.
+PROVENANCE CORRECTED BY D28: the "ratified" labels in this entry were wrong — forwarded
+codex recommendations are not an author vote; every item is PROPOSED pending the explicit
+ratifications enumerated in D28.
+
+## D28: correction round — ratification provenance, withdrawal terminology, M2bR audit/validation split, NotPSD rejection policy — 2026-07-11
+
+**Problem (author-forwarded codex corrections, all four accepted):** (1) the banners said
+"UNVALIDATED and superseded pending rerun" — "superseded" asserts an existing validated
+replacement, and none exists yet; (2) D27/v1.9/the audit recorded A5, A6, the firewall
+reading, the API routing, and the M2bR rerun as author-RATIFIED, but forwarded codex
+recommendations plus "implement this" are not an explicit author vote; (3) the frozen M2bR
+protocol reproduces the original single-chain design (seed 42), which supports a controlled
+historical-impact audit but cannot validate basin exploration or convergence — it was
+positioned to close W2/W3 on an audit-sized budget; (4) with public fit_hmc routed to E1,
+the known NotPSDError crash path had been deferred to pilots instead of resolved.
+
+**Decision (recorded as prereg addendum v1.10):**
+- Terminology: every affected-results banner and audit classification now reads
+  WITHDRAWN/UNVALIDATED PENDING CORRECTED RERUN; "superseded" is reserved for claims whose
+  validated replacement exists (kept only for the cost anchors that v1.5/v1.6 measured).
+- Provenance: every decision item is re-labeled PROPOSED, PENDING EXPLICIT AUTHOR
+  RATIFICATION (v1.9's "author, 2026-07-11" labels corrected; D27's Status updated to point
+  here; the audit §4, the protocol header, and the PR #7 body corrected). The D28 decision
+  table (delivered to the author with this entry's session) enumerates: (a) E1 public HMC
+  routing + legacy quarantine; (b) N=232 with the corrected trigger; (c) firewall v1.6
+  reading; (d) Della hold; (e) dimensioned A6 ceilings; (f) the audit-layer protocol;
+  (g) the multi-chain validation layer + its budget; (h) the NotPSD thresholds
+  (E1_NOTPSD_WARN_RATE=1e-3; validation criterion 0.1% with zero near-reference).
+- M2bR split: docs/m2br-corrected-impact-protocol.md re-labeled a CONTROLLED
+  HISTORICAL-IMPACT AUDIT (single-chain; outputs are "corrected single-chain comparisons";
+  never paper-grade; cannot close W2/W3), run list unchanged, re-pinned sha256
+  45999e2f...05afa. New docs/m2br-validation-protocol-PROPOSAL.md: multi-chain scientific
+  validation for the pivotal informative + toy_elicited configurations (4 chains x
+  (1000w+2000d), seeds 0/1/2/3, td7+td10), arviz rank-normalized split R-hat < 1.01,
+  bulk/tail ESS > 400, occupancy agreement 0.05, divergences < 0.1%, saturation < 10%,
+  NotPSD < 0.1% with zero near-reference; projected 5.2 h, proposed 6 h ceiling (4 h
+  reduced variant), stop-and-report. Only validation-passing cells can mark historical
+  numbers superseded or reopen W2/W3.
+- NotPSD policy (implemented, codex gpt-5.6-sol xhigh; independently verified): a
+  sampling-layer wrapper catches ONLY linear_operator NotPSDError, counts it, and
+  re-raises the RuntimeError text pyro 1.9.1's registered handler converts to NaN energy
+  (verified in the installed integrator source: ValueError is NOT registered there) — the
+  proposal is rejected and the chain continues. Jitter ladder unchanged and documented.
+  Pass-through bit-identical on success; E1Potential keeps oracle raise-parity so the
+  frozen battery is untouched. SamplerDiagnostics schema v2 adds notpsd_rejections under
+  the honesty contract with v1-payload migration; the legacy path reports it unavailable.
+  Tests: injected mid-chain failures (counted exactly), generic-exception propagation,
+  pass-through integrity, the documented weak-MAP crash scenario as a regression (now
+  completes, one rejection), zero-rejection reference check, schema round-trips. Suite 218
+  passed + 1 skipped.
+
+**Status:** all four corrections implemented on feat/d19-m2b-e1; PR #7 stays DRAFT; no
+M2bR run, no M2c, until the author returns the decision table with explicit votes.

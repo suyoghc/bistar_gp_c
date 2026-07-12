@@ -383,6 +383,7 @@ def fit_hmc_legacy_pyro(model, likelihood, train_x, train_y,
             max_tree_depth=max_tree_depth,
             step_size=getattr(nuts, "step_size", None),
             eval_records=tracker.records,
+            notpsd_rejections=None,
         )
 
     model.eval()

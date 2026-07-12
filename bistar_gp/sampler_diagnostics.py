@@ -12,7 +12,8 @@ Honesty contract: a diagnostic this sampler or path could not observe is
 reported as None AND named in `unavailable` — never fabricated as zero. The
 invariant is enforced at construction, so a consumer reading
 `divergence_rate is None` can trust that divergences were unobservable rather
-than absent.
+than absent. The same rule distinguishes an observed zero terminal-NotPSD
+rejection count from a path that cannot apply or report the D28 policy.
 
 Pyro 1.9.1 specifics this module encodes (verified against the installed
 source and a live probe):
@@ -31,10 +32,13 @@ import json
 import math
 from dataclasses import dataclass, fields
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Observation fields under the None-iff-unavailable honesty contract.
-_OBSERVATION_FIELDS = ("divergence_draws", "acceptance_rate", "leapfrog_counts")
+_OBSERVATION_FIELDS = (
+    "divergence_draws", "acceptance_rate", "leapfrog_counts",
+    "notpsd_rejections",
+)
 
 
 class PotentialEvalTracker:
@@ -81,10 +85,14 @@ class SamplerDiagnostics:
     divergence_draws: tuple = None  # per chain: post-warmup draw indices
     acceptance_rate: tuple = None   # per chain
     leapfrog_counts: tuple = None   # per chain: per-draw potential evals
+    notpsd_rejections: int = None   # total terminal NotPSD rejections
     unavailable: tuple = ()         # observation fields this path cannot see
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self):
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError(
+                f"schema_version must be {SCHEMA_VERSION} for new records")
         for name in _OBSERVATION_FIELDS:
             value, listed = getattr(self, name), name in self.unavailable
             if (value is None) != listed:
@@ -116,6 +124,10 @@ class SamplerDiagnostics:
             if bad:
                 raise ValueError(
                     f"acceptance_rate entries outside finite [0, 1]: {bad}")
+        if (self.notpsd_rejections is not None
+                and (type(self.notpsd_rejections) is not int
+                     or self.notpsd_rejections < 0)):
+            raise ValueError("notpsd_rejections must be a nonnegative int")
 
     # ── derived quantities (None whenever their observation is None) ──
 
@@ -175,18 +187,32 @@ class SamplerDiagnostics:
 
     @classmethod
     def from_dict(cls, payload):
-        """Inverse of to_dict. Rejects unknown keys and foreign schema
-        versions loudly — this schema is what later-milestone predicates are
-        defined against, so silent coercion would be a correctness bug."""
+        """Inverse of to_dict, including migration of schema-version 1.
+
+        Version 1 did not record terminal NotPSD rejections. Loading one
+        therefore marks ``notpsd_rejections`` unavailable rather than
+        fabricating zero. Other versions and unknown keys remain errors.
+        """
+        payload = dict(payload)
         known = {f.name for f in fields(cls)}
         unknown = set(payload) - known
         if unknown:
             raise ValueError(f"unknown SamplerDiagnostics keys: {sorted(unknown)}")
         version = payload.get("schema_version", SCHEMA_VERSION)
-        if version != SCHEMA_VERSION:
+        if version == 1:
+            if "notpsd_rejections" in payload:
+                raise ValueError(
+                    "schema_version 1 cannot contain notpsd_rejections")
+            unavailable = list(payload.get("unavailable", ()))
+            if "notpsd_rejections" not in unavailable:
+                unavailable.append("notpsd_rejections")
+            payload["notpsd_rejections"] = None
+            payload["unavailable"] = unavailable
+            payload["schema_version"] = SCHEMA_VERSION
+        elif version != SCHEMA_VERSION:
             raise ValueError(
                 f"schema_version {version} not readable by this code "
-                f"(expects {SCHEMA_VERSION})")
+                f"(accepts 1 or {SCHEMA_VERSION})")
 
         def tuplify(value):
             if isinstance(value, list):
@@ -226,7 +252,7 @@ def leapfrog_counts_from_records(records):
 
 def diagnostics_from_pyro_mcmc(mcmc_run, *, sampler, n_draws, n_warmup,
                                site_names, max_tree_depth=None, step_size=None,
-                               eval_records=None):
+                               eval_records=None, notpsd_rejections=None):
     """Build SamplerDiagnostics from a finished pyro MCMC run.
 
     Every diagnostic the run does not expose lands in `unavailable` (honesty
@@ -274,6 +300,9 @@ def diagnostics_from_pyro_mcmc(mcmc_run, *, sampler, n_draws, n_warmup,
         leapfrog_counts = None
         unavailable.append("leapfrog_counts")
 
+    if notpsd_rejections is None:
+        unavailable.append("notpsd_rejections")
+
     return SamplerDiagnostics(
         sampler=sampler,
         n_chains=n_chains,
@@ -285,5 +314,6 @@ def diagnostics_from_pyro_mcmc(mcmc_run, *, sampler, n_draws, n_warmup,
         divergence_draws=divergence_draws,
         acceptance_rate=acceptance_rate,
         leapfrog_counts=leapfrog_counts,
+        notpsd_rejections=notpsd_rejections,
         unavailable=tuple(unavailable),
     )

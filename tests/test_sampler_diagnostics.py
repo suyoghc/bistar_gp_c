@@ -114,6 +114,8 @@ def test_legacy_pyro_diagnostics_path_does_not_perturb_the_trajectory():
             f"legacy diagnostics path perturbed site {site}")
     assert diag.sampler == "nuts_pyro"
     assert diag.leapfrog_counts is not None
+    assert diag.notpsd_rejections is None
+    assert "notpsd_rejections" in diag.unavailable
 
 
 def test_default_return_is_the_unchanged_d9_dict():
@@ -145,6 +147,7 @@ def test_structured_return_shapes_and_site_ordering(hmc_run):
 def test_observed_diagnostics_are_plausible(hmc_run):
     _, diag = hmc_run
     assert diag.unavailable == ()
+    assert diag.notpsd_rejections == 0
     # leapfrog counts: one chain, one entry per post-warmup draw, each at
     # least 1 AND bounded by the depth cap (a NUTS tree at cap d takes at
     # most 2**d - 1 leapfrogs; the probe verified the counter delta equals
@@ -173,6 +176,19 @@ def test_json_round_trip_is_lossless(hmc_run):
     assert restored.schema_version == SCHEMA_VERSION
 
 
+def test_version_1_payload_loads_with_notpsd_unavailable(hmc_run):
+    payload = hmc_run[1].to_dict()
+    payload["schema_version"] = 1
+    del payload["notpsd_rejections"]
+
+    restored = SamplerDiagnostics.from_dict(payload)
+
+    assert restored.schema_version == 2
+    assert restored.notpsd_rejections is None
+    assert restored.unavailable[-1] == "notpsd_rejections"
+    assert restored.to_dict()["schema_version"] == 2
+
+
 def test_from_dict_rejects_unknown_keys_and_foreign_versions(hmc_run):
     _, diag = hmc_run
     payload = diag.to_dict()
@@ -181,6 +197,12 @@ def test_from_dict_rejects_unknown_keys_and_foreign_versions(hmc_run):
         SamplerDiagnostics.from_dict(with_extra)
     with pytest.raises(ValueError, match="schema_version"):
         SamplerDiagnostics.from_dict(dict(payload, schema_version=99))
+    with pytest.raises(ValueError, match="schema_version"):
+        SamplerDiagnostics(
+            sampler="x", n_chains=1, n_draws=1, n_warmup=0,
+            site_names=("a",), divergence_draws=((),),
+            acceptance_rate=(1.0,), leapfrog_counts=((1,),),
+            notpsd_rejections=0, schema_version=1)
 
 
 def test_multi_chain_payload_shapes_and_rates():
@@ -192,6 +214,7 @@ def test_multi_chain_payload_shapes_and_rates():
         divergence_draws=((0, 3), (), (9,), ()),
         acceptance_rate=(0.9, 0.8, 0.95, 0.85),
         leapfrog_counts=tuple(tuple([127] * 10) for _ in range(4)),
+        notpsd_rejections=0,
     )
     assert diag.n_divergences == (2, 0, 1, 0)
     assert diag.divergence_rate == 3 / 40
@@ -216,8 +239,10 @@ def test_unavailable_diagnostics_reported_not_fabricated():
         site_names=("a",))
     assert diag.divergence_draws is None and diag.acceptance_rate is None
     assert diag.leapfrog_counts is None
+    assert diag.notpsd_rejections is None
     assert set(diag.unavailable) == {
-        "divergence_draws", "acceptance_rate", "leapfrog_counts"}
+        "divergence_draws", "acceptance_rate", "leapfrog_counts",
+        "notpsd_rejections"}
     assert diag.divergence_rate is None
     assert diag.depth_saturation_rate is None
     assert diag.n_divergences is None and diag.tree_depths is None
@@ -267,13 +292,19 @@ def test_acceptance_rate_validated_and_json_rejects_nonfinite():
                            site_names=("a",),
                            divergence_draws=((),),
                            acceptance_rate=(float("nan"),),
-                           leapfrog_counts=((1, 1),))
+                           leapfrog_counts=((1, 1),), notpsd_rejections=0)
     with pytest.raises(ValueError, match="acceptance_rate"):
         SamplerDiagnostics(sampler="x", n_chains=1, n_draws=2, n_warmup=1,
                            site_names=("a",),
                            divergence_draws=((),),
                            acceptance_rate=(1.5,),
-                           leapfrog_counts=((1, 1),))
+                           leapfrog_counts=((1, 1),), notpsd_rejections=0)
+
+    with pytest.raises(ValueError, match="notpsd_rejections"):
+        SamplerDiagnostics(sampler="x", n_chains=1, n_draws=2, n_warmup=1,
+                           site_names=("a",), divergence_draws=((),),
+                           acceptance_rate=(1.0,), leapfrog_counts=((1, 1),),
+                           notpsd_rejections=-1)
 
 
 def test_shape_validation_is_loud():
@@ -282,10 +313,12 @@ def test_shape_validation_is_loud():
                            site_names=("a",),
                            divergence_draws=((0,),),  # 1 chain given, 2 declared
                            acceptance_rate=(0.5, 0.5),
-                           leapfrog_counts=((1, 1, 1), (1, 1, 1)))
+                           leapfrog_counts=((1, 1, 1), (1, 1, 1)),
+                           notpsd_rejections=0)
     with pytest.raises(ValueError, match="out of range"):
         SamplerDiagnostics(sampler="x", n_chains=1, n_draws=3, n_warmup=0,
                            site_names=("a",),
                            divergence_draws=((7,),),
                            acceptance_rate=(0.5,),
-                           leapfrog_counts=((1, 1, 1),))
+                           leapfrog_counts=((1, 1, 1),),
+                           notpsd_rejections=0)

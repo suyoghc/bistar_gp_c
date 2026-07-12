@@ -62,14 +62,17 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   "~200x deep-copy penalty" was mostly the plate: corrected S1 potential is
   6.0/10.5 ms (sub/full); E1's real advantages = correct gradients (S1
   saturates td7: 127 lf/draw vs S1f 6.7 at sub-150) + no deep copy.
-- **RATIFIED + D27 (2026-07-11, v1.9)**: superseded standing, firewall
+- **PROPOSED + D27/D28 (2026-07-11, v1.9/v1.10 — NOT ratified; D28 corrected the provenance: every item awaits the author's explicit vote via the D28 decision table)**: superseded standing, firewall
   reading, A5 N=232 (trigger corrected: non-legacy sub-150 G-B eligibility;
   no eligible survivor = O4; S1-only branch removed), dimensioned A6
   ceilings, Draft-PR route, scope-of-claim rule. API rerouted (public
   fit_hmc = E1; fit_hmc_legacy_pyro explicit; vi/hmc_laplace behind
   allow_legacy=True). M2bR rerun protocol FROZEN
-  (docs/m2br-corrected-impact-protocol.md, sha pinned in v1.9; runs only in
-  the M2bR PR post-merge). Suite 212+1.
+  (docs/m2br-corrected-impact-protocol.md — D28: AUDIT layer only,
+  single-chain, cannot close W2/W3; re-pinned in v1.10; multi-chain
+  validation layer proposed in docs/m2br-validation-protocol-PROPOSAL.md).
+  D28 NotPSD rejection policy implemented (schema v2 notpsd_rejections).
+  Suite 218+1.
 - **Della (A7) ON HOLD (v1.8)**: no Della run until d19_bench.py is reworked
   to the timing-only firewall (it persists a MAP hyperparameter value under
   the M1-era convention) and key-inventory audited; pre-D22 Della anchors are

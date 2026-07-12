@@ -48,11 +48,41 @@ import logging
 import torch
 import gpytorch
 import numpy as np
+from linear_operator.utils.errors import NotPSDError
 
 from .fit import DEFAULT_JITTER, _hmc_pyro_model, _map_init_values
 
 logger = logging.getLogger(__name__)
 torch.set_default_dtype(torch.float64)
+E1_NOTPSD_WARN_RATE = 1e-3
+
+
+class _NotPSDRejectingPotential:
+    """Convert only terminal ``NotPSDError`` failures into NUTS rejections.
+
+    This policy adds no jitter ladder. By default, E1 evaluates the marginal
+    under ``gpytorch.settings.cholesky_jitter(DEFAULT_JITTER=1e-4)``; internal
+    decompositions also use linear_operator's ``psd_safe_cholesky`` retry
+    defaults. Once those retries fail, Pyro 1.9.1's registered
+    ``torch_singular`` handler recognizes the RuntimeError text below and
+    converts the proposal to zero gradients plus NaN energy. NUTS then rejects
+    that proposal. Successful return values pass through without modification.
+    """
+
+    def __init__(self, potential_fn):
+        self._potential_fn = potential_fn
+        self.n_evaluations = 0
+        self.notpsd_rejections = 0
+
+    def __call__(self, *args, **kwargs):
+        self.n_evaluations += 1
+        try:
+            return self._potential_fn(*args, **kwargs)
+        except NotPSDError:
+            self.notpsd_rejections += 1
+            raise RuntimeError(
+                "input is not positive-definite after terminal NotPSDError "
+                "(D28 rejection policy)") from None
 
 
 class _JointModule(torch.nn.Module):
@@ -273,7 +303,8 @@ def fit_hmc_e1(model, likelihood, train_x, train_y,
     e1 = build_e1_potential(model, likelihood, train_x, train_y, jitter=jitter,
                             init_to_map=init_to_map)
 
-    potential = e1.potential_fn
+    rejecting_potential = _NotPSDRejectingPotential(e1.potential_fn)
+    potential = rejecting_potential
     tracker = None
     if return_diagnostics:
         tracker = PotentialEvalTracker(potential)
@@ -298,6 +329,16 @@ def fit_hmc_e1(model, likelihood, train_x, train_y,
     with gpytorch.settings.cholesky_jitter(jitter):
         mcmc_run.run()
 
+    if rejecting_potential.n_evaluations:
+        notpsd_rate = (rejecting_potential.notpsd_rejections
+                       / rejecting_potential.n_evaluations)
+        if notpsd_rate > E1_NOTPSD_WARN_RATE:
+            logger.warning(
+                "D28 NotPSD rejection rate %.6g (%d/%d potential evaluations) "
+                "exceeds proposed threshold %.6g",
+                notpsd_rate, rejecting_potential.notpsd_rejections,
+                rejecting_potential.n_evaluations, E1_NOTPSD_WARN_RATE)
+
     # Constrained via the oracle's transforms; reshape(-1), NOT squeeze()
     # (fit_hmc's documented (n,) schema, including at n_samples=1).
     u_draws = mcmc_run.get_samples()
@@ -320,6 +361,7 @@ def fit_hmc_e1(model, likelihood, train_x, train_y,
             max_tree_depth=max_tree_depth,
             step_size=getattr(nuts, "step_size", None),
             eval_records=tracker.records,
+            notpsd_rejections=rejecting_potential.notpsd_rejections,
         )
 
     model.eval()

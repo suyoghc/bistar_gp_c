@@ -766,3 +766,88 @@ addendum. Budget authorization: at most 2 hours local wall (author,
 **What this addendum does NOT change:** no gate of §6.7, no arm, no
 candidate set, no battery value of v1.4/v1.6, no microbenchmark number of
 v1.5. The plan's §6.15 M2c obligations are unchanged.
+
+---
+
+## v1.10 — D28 corrections: ratification provenance, withdrawal terminology, M2bR purpose split, NotPSD rejection policy — 2026-07-11
+
+**Prereg anchor:** §6.16, addenda v1.8/v1.9, `docs/d22-d24-impact-audit.md`,
+D26-D28. Adopted from the author-forwarded codex correction round. No pilot,
+posterior, or Mauna BMS* number exists; no M2bR run has occurred.
+
+**1. Ratification provenance corrected.** v1.9 recorded A5 (N=232 +
+corrected trigger), the dimensioned A6 ceilings, the v1.6 firewall reading,
+the API disposition, the Della hold, and the M2bR rerun as author-ratified.
+That provenance was WRONG: the author forwarded codex recommendations with
+an instruction to implement, which is not an explicit author vote. Every
+such item is re-labeled PROPOSED, PENDING EXPLICIT AUTHOR RATIFICATION, and
+the pending set is enumerated in the D28 decision table
+(`Notes/DECISIONS.md` D28; dispositions mirrored in the audit §4). The v1.9
+line "Budget authorization: ... (author, 2026-07-11)" is corrected the same
+way. Implementations already on the branch (API routing, warnings, gates,
+banners) stand as REVERSIBLE proposals awaiting the vote; nothing has run.
+
+**2. Withdrawal terminology.** "Superseded" asserts that a validated
+replacement exists; none does yet. Every affected-results banner and audit
+classification now reads WITHDRAWN/UNVALIDATED PENDING CORRECTED RERUN.
+"Superseded" is reserved for claims whose validated replacement exists
+(correctly retained for the §1.1/§1.2 cost anchors, whose corrected
+measurements are in v1.5/v1.6).
+
+**3. M2bR purpose split.** The six single-chain seed-42 runs of
+`docs/m2br-corrected-impact-protocol.md` are a CONTROLLED HISTORICAL-IMPACT
+AUDIT: they isolate the sampler correction's effect on the historical
+numbers and are labeled "corrected single-chain comparisons"; one chain
+cannot validate basin exploration or convergence, so they are never
+paper-grade replacements and cannot close W2/W3. The protocol file's header
+was corrected accordingly (run list unchanged) and is re-pinned at
+
+```
+sha256 45999e2f232a963b04496a5fa3cff557f2370327b216d8600eddfd23be805afa
+```
+
+Scientific validation is a separate PROPOSED layer
+(`docs/m2br-validation-protocol-PROPOSAL.md`): multi-chain E1 runs for the
+pivotal `informative` and `toy_elicited` configurations (4 chains x
+(1000 warmup + 2000 draws), seeds 0/1/2/3, td7 and td10), with proposed
+acceptance criteria (rank-normalized split R-hat < 1.01 every site;
+bulk and tail ESS > 400 pooled; per-chain basin occupancy within 0.05 of
+pooled per band; divergence rate < 0.1%; depth saturation < 10%; NotPSD
+rejection rate < 0.1% with zero near-reference occurrences), arviz-computed
+with the version pinned in artifacts, and its own budget: projected 5.2 h,
+proposed ceiling 6 h local wall with audit-style stop-and-report (reduced
+4 h td7-weighted variant enumerated). Only validation-passing cells may
+mark historical numbers superseded or support the W2/W3 re-openings; audit
+results alone may not. Both layers remain PENDING ratification and execute
+only after the M2b merge.
+
+**4. NotPSD rejection policy (implemented and tested; threshold values
+proposed).** Corrected gradients explore aggressively enough that E1 chains
+can reach states where the additive-kernel Cholesky exhausts its jitter
+retries; the terminal `NotPSDError` previously crashed the run. Policy, now
+on the branch with regression tests (`tests/test_e1_notpsd_policy.py`):
+- the jitter ladder is UNCHANGED and documented (cholesky_jitter 1e-4 on
+  the marginal; linear_operator psd_safe_cholesky retry defaults
+  internally) — the policy converts only the terminal failure;
+- a sampling-layer wrapper catches `NotPSDError` and NOTHING else, counts
+  the event, and re-raises the RuntimeError text that pyro 1.9.1's
+  registered handler converts to NaN energy and zero gradients — the
+  proposal is REJECTED and the chain continues (mechanism verified in the
+  installed pyro source and empirically: the documented crash scenario now
+  completes with one counted rejection; an injected double failure counts
+  exactly two; a generic RuntimeError still propagates);
+- successful evaluations pass through bit-identically; `E1Potential`
+  itself keeps raise-parity with the oracle, so no v1.4/v1.6 battery gate
+  changes (the battery passed unchanged);
+- `SamplerDiagnostics` schema version 2 adds `notpsd_rejections` under the
+  None-iff-unavailable honesty contract (version-1 payloads load with the
+  field marked unavailable; the legacy pyro path reports it unavailable —
+  that path crashes rather than rejects);
+- PROPOSED, pending ratification: the warning threshold
+  `E1_NOTPSD_WARN_RATE = 1e-3` of potential evaluations (logger warning,
+  never a silent hard-fail), and the validation-layer acceptance criterion
+  above (rate < 0.1%, zero near-reference).
+
+**What this addendum does NOT change:** no battery value of v1.4/v1.6, no
+microbenchmark number of v1.5, no audit-protocol run list, no gate of §6.7.
+Suite at this commit: 218 passed + 1 skipped.

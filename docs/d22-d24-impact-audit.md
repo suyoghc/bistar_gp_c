@@ -1,20 +1,22 @@
 # D22-D24 impact audit — artifact classification and author ratification checklist
 
-Status: RATIFIED with corrections (author, 2026-07-11, via the forwarded
-codex recommendation set and the instruction to implement it; D27 and prereg
-addendum v1.9 record the ratifications, the A5 trigger correction, and the
-API disposition). Date: 2026-07-11.
+Status: PROPOSED, PENDING EXPLICIT AUTHOR RATIFICATION (D28 provenance
+correction, 2026-07-11: forwarded codex recommendations plus an instruction
+to implement are not an author vote; every disposition below awaits the
+author's explicit approval via the D28 decision table). Prereg addendum
+v1.10 records the correction. Date: 2026-07-11.
 
 **Scope-of-claim rule (ratified):** these defects invalidate THIS
 repository's attempted HMC/VI replication — a pyro/gpytorch integration.
 They establish nothing about the thesis's original implementation (VI there
-was gpflow/ADVI, a different stack) or its conclusions. Every superseded
+was gpflow/ADVI, a different stack) or its conclusions. Every withdrawal
 banner and decision entry carries this framing. Scope: every artifact
 produced through the pre-correction inference paths, classified per the codex
 meta-review recommendation: UNAFFECTED (dependency-verified), INVALID PENDING
 RERUN, or NEEDS DEPENDENCY TRACING. Historical text stays for provenance;
-affected conclusions are marked superseded/unvalidated, never silently
-edited.
+affected conclusions are marked WITHDRAWN/UNVALIDATED pending corrected
+rerun, never silently edited; "superseded" is reserved for claims whose
+validated replacement exists (D28 terminology rule).
 
 The three defects (full records: DECISIONS D22-D24; prereg v1.3/v1.6):
 
@@ -48,7 +50,7 @@ The three defects (full records: DECISIONS D22-D24; prereg v1.3/v1.6):
 | M2a infrastructure (A9 provenance, A10 freeze, A4 registry, seal API) | no sampler dependence | D20 record |
 | Planning benchmark TIMING observations (D8 engineering: deep-copy cost, thread scaling) | wall-clock facts about the code that ran; superseded as planning anchors by v1.5/v1.6, not invalidated as observations | v1.6 |
 
-## 2. INVALID PENDING RERUN (conclusions superseded/unvalidated)
+## 2. WITHDRAWN/UNVALIDATED PENDING CORRECTED RERUN
 
 | Artifact | Defect(s) | Standing |
 |---|---|---|
@@ -72,26 +74,28 @@ The three defects (full records: DECISIONS D22-D24; prereg v1.3/v1.6):
 
 ## 4. Author ratification checklist — DISPOSITIONS (2026-07-11)
 
-Item 1 (classifications + superseded-not-caveated rule): RATIFIED; banners
+Item 1 (classifications + withdrawn-not-caveated rule): PROPOSED; banners
 applied to the four affected docs. Item 2 (API): DECIDED as D27 — public
 fit_hmc routes to E1; legacy pyro path explicit (fit_hmc_legacy_pyro,
 warning retained); fit_vi and fit_hmc_laplace unavailable through the
 scientific API pending repair, legacy behind allow_legacy=True opt-in.
-Item 3 (N=232): RATIFIED, with the trigger CORRECTED in v1.9 — the
+Item 3 (N=232): PROPOSED, with the trigger corrected in v1.9 — the
 "S1-only survivor set fires the fallback" branch is removed (the legacy S1
 path is not a valid paper-target vehicle post-D23; no valid survivor means
 O4, not a scale change). Item 4 (A6): NOT ratified as-was — v1.9 adds the
 dimensional clarification (wall-clock, per strategy x arm x scale,
-warmup/retry-inclusive) first. Item 5 (firewall fields): RATIFIED as
-enumerated. Item 6 (M2bR + frozen rerun): AUTHORIZED — toy-only, corrected
-E1 HMC over the D18 prior configurations + affected D12 HMC rows, no
-VI/hmc_laplace until repaired, at most 2 h local wall with stop-and-report;
-protocol frozen in v1.9 before any run. Item 7 (Della hold): RATIFIED.
+warmup/retry-inclusive) first. Item 5 (firewall fields): PROPOSED as
+enumerated. Item 6 (M2bR rerun): SPLIT by the D28 correction — the six one-chain runs
+are a controlled historical-impact AUDIT only (they cannot validate basin
+exploration or convergence and cannot close W2/W3); a separate multi-chain
+validation layer is proposed in docs/m2br-validation-protocol-PROPOSAL.md
+with its own budget; both PENDING explicit ratification. Item 7 (Della
+hold): PROPOSED.
 
 Original checklist (for the record):
 
 1. **This audit's classifications** (tables above), and the standing rule:
-   affected conclusions are marked superseded/unvalidated in place, never
+   affected conclusions are marked withdrawn/unvalidated in place, never
    silently edited.
 2. **Public API disposition (D26 fork, OPEN)** — interim state shipped now:
    `fit_hmc`, `fit_vi`, `fit_hmc_laplace` emit a UserWarning citing
@@ -125,4 +129,6 @@ Original checklist (for the record):
 6. **M2bR corrective milestone** (v1.8): scope and its small preregistered
    corrected-impact rerun, BEFORE any M2c work.
 7. **Della hold** (v1.8): no A7 run until d19_bench.py is reworked to the
-   timing-only firewall and its pre-D22 anchors are marked superseded.
+   timing-only firewall and its pre-D22 anchors are marked withdrawn as
+   planning anchors (their v1.5/v1.6 measured replacements exist, so
+   "superseded" is proper for the E1/S1 cost rows specifically).

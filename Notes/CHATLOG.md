@@ -460,3 +460,14 @@ pilots, no expensive runs, no scientific result read before the commit.
   Implementation: two codex gpt-5.6-sol (xhigh) subagents (API refactor;
   protocol extraction), Fable verification + prereg/decision prose. Suite 212
   passed + 1 skipped, verified directly. Branch ready for a DRAFT PR.
+- **D28 correction round (author-forwarded codex, all four accepted)**:
+  banners re-termed WITHDRAWN/UNVALIDATED (superseded reserved for existing
+  validated replacements); every "ratified" label corrected to
+  proposed-pending-explicit-ratification (v1.10; D27 status amended; PR #7
+  body fixed); M2bR split into the single-chain historical-impact AUDIT
+  (re-pinned) + a multi-chain validation PROPOSAL (informative/toy_elicited,
+  4 chains x td7/td10, arviz R-hat/ESS/occupancy criteria, 6 h ceiling);
+  NotPSD rejection policy implemented via codex (catch NotPSDError only,
+  pyro-handler rejection, schema v2 notpsd_rejections, regression tests incl.
+  the documented crash scenario). Suite 218 passed + 1 skipped. PR stays
+  Draft; no runs; decision table returned to the author.

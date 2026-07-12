@@ -1,12 +1,13 @@
 # Impact Assessment Results — old vs new correctness fixes
 
-> **SUPERSEDED-PENDING-RERUN (D26/D27, 2026-07-11).** Every HMC, VI, and
+> **WITHDRAWN/UNVALIDATED PENDING CORRECTED RERUN (D26/D28, 2026-07-11).** Every HMC, VI, and
 > `hmc_laplace` number in this document was produced by this repository's
 > pre-correction samplers: the D22 wrong-measure defect (target
 > p(theta)L(theta)^N) and the D23 broken kernel-site gradients (VI's ELBO
 > included), plus D24 for `hmc_laplace` (see `docs/d22-d24-impact-audit.md`).
-> Those numbers are UNVALIDATED and superseded pending the M2bR corrected
-> reruns; they remain below strictly as provenance. Unaffected here (audit
+> Those numbers are WITHDRAWN and UNVALIDATED pending the M2bR corrected
+> reruns; they remain below strictly as provenance. They may be marked
+> superseded only after validated replacements exist (D28 terminology rule). Unaffected here (audit
 > table 1): MAP/MLE, prior-IS, SIR, corrected RW-MH, and prior-predictive
 > quantities. This statement concerns THIS repository's pyro/gpytorch
 > implementation only — it establishes nothing about the thesis's original

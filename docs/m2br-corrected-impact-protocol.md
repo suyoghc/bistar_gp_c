@@ -1,10 +1,19 @@
 # M2bR corrected-impact rerun — FROZEN protocol (prereg addendum v1.9)
 
-Status: FROZEN before any run (v1.9; author-authorized 2026-07-11, executed
-only in the M2bR PR after the M2b merge). Drafted by codex gpt-5.6-sol
-(xhigh) from the committed study code with file:line citations; frozen
-verbatim below. The v1.9 addendum pins this file by sha256; any change to
-the protocol is a new addendum, never an edit.
+Status: PROPOSED, PENDING EXPLICIT AUTHOR RATIFICATION (D28 provenance
+correction; the v1.9 "author-authorized" label was wrong — forwarded
+recommendations are not a vote). Purpose, corrected per D28: a CONTROLLED
+HISTORICAL-IMPACT AUDIT — six single-chain runs mirroring the original
+one-chain D12/D18 design so old and new numbers differ only in the sampler
+correction. Single chains cannot validate basin exploration or convergence:
+these results are labeled "corrected single-chain comparisons", are NEVER
+paper-grade replacements, and CANNOT close W2/W3. Scientific validation
+runs separately under docs/m2br-validation-protocol-PROPOSAL.md (multi-chain,
+own budget). Executed only in the M2bR PR after the M2b merge and after
+explicit ratification. Drafted by codex gpt-5.6-sol (xhigh) from the
+committed study code with file:line citations; run list below unchanged
+from the v1.9-pinned draft. The v1.10 addendum re-pins this file by sha256;
+any change to the run list is a new addendum, never an edit.
 
 
 ## 1. Recovered original protocol
