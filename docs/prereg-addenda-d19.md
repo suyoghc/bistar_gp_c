@@ -933,3 +933,53 @@ covered).
 
 **What this addendum does NOT change:** no battery value, no microbenchmark
 number, no audit-protocol run list, no gate of §6.7.
+
+---
+
+## v1.12 — D30 start-state preflight added to the pending item-8 protocol (capability; item 8 still PENDING ratification) — 2026-07-11
+
+**Prereg anchor:** the pending item-8 validation proposal
+(`docs/m2br-validation-protocol-PROPOSAL.md`), addenda v1.9/v1.11, §6.16,
+D30. This addendum records a REFINEMENT of a proposal that is itself not yet
+ratified; it changes no ratified value, no battery gate, no budget, and does
+not run anything. Items 8 and 9 remain PENDING the author's explicit
+own-words vote (the D28 rule bars treating a forwarded codex recommendation
+as a ballot).
+
+**What D30 adds (codex-recommended, implemented, tested):** each frozen
+overdispersed chain start of the item-8 protocol must pass a DETERMINISTIC
+preflight before the two-stage freeze pins it —
+`bistar_gp.e1_potential.preflight_start_state` checks, in protocol order and
+stopping at the first failure: exact site set, constrained/unconstrained
+round-trip within PREFLIGHT_ROUNDTRIP_TOL = 1e-10 relative, finite E1
+potential, finite first gradient, and no terminal NotPSD at initialization
+(a degenerate state that defeats pyro's initialize_model validation is
+classified as a potential failure, not a site-set failure). A selected draw
+that fails is replaced by the NEXT-ELIGIBLE authority draw under the frozen
+rule via `select_start_state`, a deterministic first-pass selector down the
+preregistered priority-ordered candidate list that raises (naming every
+per-candidate failure reason) if a cell exhausts its eligible candidates,
+so a cell is reported un-startable rather than hand-patched after seeing
+failures. The realized number of fallback advances used per cell is pinned
+in the pre-run start-freeze addendum alongside the indices and hashes.
+
+**Verification:** the preflight classifies healthy / site-set-mismatch /
+degenerate states correctly; `select_start_state` skips a leading degenerate
+candidate and returns the first healthy one at a stable index across reruns,
+and raises with reasons when all candidates fail (independently reproduced).
+Full suite 230 passed + 1 skipped; the frozen v1.4/v1.6 battery
+(`tests/test_e1_potential.py`) untouched.
+
+**Protocol-doc pin (un-frozen; the proposal is still a proposal):** the
+revised `docs/m2br-validation-protocol-PROPOSAL.md` now hashes to
+
+```
+sha256 bdbabb867680371922196b25fb55a8ac9509913fc64047b99b8da6470b7a03e8
+```
+
+This supersedes the v1.11 pin of the same file as the current
+proposal-state fingerprint; it is not a freeze and confers no ratification.
+
+**What this addendum does NOT change:** no ratified item, no gate of §6.7,
+no battery value, no budget, no run authorization. Rows 8-9 await the
+author's explicit vote; PR #7 stays Draft; M2c stays blocked.

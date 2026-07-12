@@ -258,3 +258,112 @@ def test_explicit_init_values_reject_mismatched_site_set(stable_map_setup):
     with pytest.raises(ValueError, match="site set mismatch"):
         build_e1_potential(
             model, likelihood, x, y, init_to_map=False, init_values=values)
+
+
+def _constrained_prior_values(model, scale=1.0):
+    return {
+        name: closure(module).detach().clone() * scale
+        for name, module, _prior, closure, _setting in model.named_priors()
+    }
+
+
+def _degenerate_prior_values(model):
+    values = _constrained_prior_values(model)
+    for name, value in values.items():
+        if "outputscale" in name or "variance" in name:
+            values[name] = torch.full_like(value, 1e20)
+        elif "noise" in name:
+            values[name] = torch.full_like(value, 1e-40)
+    return values
+
+
+def test_preflight_start_state_passes_healthy_near_map(stable_map_setup):
+    model, likelihood, x, y = _copy_setup(stable_map_setup)
+    values = _constrained_prior_values(model, scale=1.001)
+
+    ok, reason, report = e1_module.preflight_start_state(
+        model, likelihood, x, y, values)
+
+    assert ok is True
+    assert reason is None
+    assert report == {
+        "site_set": True,
+        "round_trip": True,
+        "potential_finite": True,
+        "gradient_finite": True,
+    }
+
+
+def test_preflight_start_state_rejects_site_set_mismatch(stable_map_setup):
+    model, likelihood, x, y = _copy_setup(stable_map_setup)
+    values = _constrained_prior_values(model)
+    values["ghost.site"] = torch.tensor(1.0)
+
+    ok, reason, report = e1_module.preflight_start_state(
+        model, likelihood, x, y, values)
+
+    assert ok is False
+    assert reason == "site_set"
+    assert report == {"site_set": False}
+
+
+def test_preflight_start_state_rejects_degenerate_state(stable_map_setup):
+    model, likelihood, x, y = _copy_setup(stable_map_setup)
+
+    ok, reason, report = e1_module.preflight_start_state(
+        model, likelihood, x, y, _degenerate_prior_values(model))
+
+    assert ok is False
+    assert reason in {"potential_finite", "gradient_finite", "round_trip"}
+    assert reason != "site_set"
+    assert report["site_set"] is True
+
+
+def test_select_start_state_returns_first_healthy_candidate(stable_map_setup):
+    model, likelihood, x, y = _copy_setup(stable_map_setup)
+    first = _constrained_prior_values(model)
+    second = _degenerate_prior_values(model)
+
+    index, chosen, reports = e1_module.select_start_state(
+        model, likelihood, x, y, [first, second])
+
+    assert index == 0
+    assert chosen is first
+    assert len(reports) == 1
+    assert all(reports[0].values())
+
+
+def test_select_start_state_skips_degenerate_candidate(stable_map_setup):
+    model, likelihood, x, y = _copy_setup(stable_map_setup)
+    first = _degenerate_prior_values(model)
+    second = _constrained_prior_values(model)
+
+    index, chosen, reports = e1_module.select_start_state(
+        model, likelihood, x, y, [first, second])
+
+    assert index == 1
+    assert len(reports) == 2
+    assert not all(reports[0].values())
+    assert all(reports[1].values())
+    assert set(chosen) == set(second)
+    for site in second:
+        assert torch.equal(chosen[site], second[site])
+
+
+def test_select_start_state_raises_when_every_candidate_fails(
+        stable_map_setup):
+    model, likelihood, x, y = _copy_setup(stable_map_setup)
+    mismatched = _constrained_prior_values(model)
+    mismatched["ghost.site"] = torch.tensor(1.0)
+    degenerate = _degenerate_prior_values(model)
+    _, degenerate_reason, _ = e1_module.preflight_start_state(
+        model, likelihood, x, y, degenerate)
+
+    with pytest.raises(RuntimeError) as caught:
+        e1_module.select_start_state(
+            model, likelihood, x, y, [mismatched, degenerate])
+
+    message = str(caught.value)
+    assert "2 candidates" in message
+    assert "candidate 0: site_set" in message
+    assert f"candidate 1: {degenerate_reason}" in message

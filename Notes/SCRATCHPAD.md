@@ -65,9 +65,13 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 - **BALLOT RETURNED (D29, v1.11): items 1-7 RATIFIED** (item 4 restricted:
   leapfrog fields = aggregate engineering cost only); **item 8 pending its
   D29 revision** (overdispersed prior-IS starts, authority-coverage
-  criterion, 6 h full design); **item 9 mechanism ratified**, split
-  diagnostics implemented (schema v3), numeric pair (1e-3 fail rate,
-  50-draw window) pending. Originally proposed as D27/D28 (v1.9/v1.10)**: superseded standing, firewall
+  criterion, 6 h full design) **+ D30 preflight** (preflight_start_state +
+  select_start_state deterministic fallback, v1.12; codex-implemented, suite
+  230+1); **item 9 mechanism ratified**, split diagnostics implemented
+  (schema v3), numeric pair (1e-3 fail rate, 50-draw window) pending.
+  ROWS 8-9 STILL AWAIT THE AUTHOR'S OWN-WORDS VOTE (forwarded codex advice is
+  not a ballot, D28 rule); PR #7 Draft; nothing runs. Originally proposed as
+  D27/D28 (v1.9/v1.10)**: superseded standing, firewall
   reading, A5 N=232 (trigger corrected: non-legacy sub-150 G-B eligibility;
   no eligible survivor = O4; S1-only branch removed), dimensioned A6
   ceilings, Draft-PR route, scope-of-claim rule. API rerouted (public

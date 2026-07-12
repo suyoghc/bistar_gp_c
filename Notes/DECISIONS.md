@@ -1933,3 +1933,39 @@ its thresholds return for a vote.
 **OPEN (awaiting the author):** the revised item-8 protocol; item 9's numeric pair
 (1e-3 post-warmup fail rate; 50-draw early window). PR #7 stays DRAFT; no M2bR layer
 runs; M2c blocked.
+
+## D30: start-state preflight + deterministic next-eligible fallback for the pending item-8 validation protocol — 2026-07-11
+
+**Problem:** the forwarded codex message (a recommendation, NOT an author vote — the D28
+rule holds) proposed a safeguard for the item-8 multi-chain validation protocol: each frozen
+overdispersed chain start should pass a deterministic preflight before pinning, with a
+preregistered next-eligible fallback rather than a manual replacement chosen after seeing
+failures. The safeguard improves the item-8 proposal regardless of whether rows 8-9 are
+eventually ratified, so it was implemented as a capability; item 8 stays PENDING.
+
+**Decision (capability only; no ratification):** implemented via codex gpt-5.6-sol (xhigh),
+independently verified.
+- `bistar_gp.e1_potential.preflight_start_state(model, likelihood, x, y, init_values, jitter)`
+  -> (ok, reason, report): deterministic checks in protocol order, stopping at the first
+  failure — exact site set (build_e1_potential/_guard_init_values), constrained/
+  unconstrained round-trip within PREFLIGHT_ROUNDTRIP_TOL=1e-10 relative, finite E1
+  potential, finite first gradient, no terminal NotPSD at initialization. A degenerate state
+  that defeats pyro's initialize_model validation classifies as potential_finite=False, not a
+  site-set failure (verified). Catches ONLY ValueError and NotPSDError/RuntimeError at the
+  specified points, never bare Exception.
+- `select_start_state(..., candidates)` -> (index, values, reports): the deterministic
+  next-eligible fallback — runs the preflight down the preregistered priority-ordered
+  candidate list, returns the first pass with its index, raises with every per-candidate
+  failure reason if all fail (so a cell is reported un-startable, never hand-patched).
+- Protocol doc updated: the D30 preflight + fallback bullet added to the two-stage freeze;
+  the realized fallback-advance count per cell joins the pre-run start-freeze pins; status
+  line reasserts rows 8-9 PENDING the author's own-words vote. Recorded as prereg addendum
+  v1.12 (a refinement of a still-unratified proposal; the protocol doc re-pins to sha256
+  bdbabb86...03e8, which is a proposal-state fingerprint, not a freeze).
+
+**Verification:** suite 230 passed + 1 skipped; the frozen v1.4/v1.6 battery untouched;
+independently confirmed the fallback skips a leading degenerate candidate to a stable index
+across reruns and raises when all fail.
+
+**Status:** capability on feat/d19-m2b-e1; PR #7 stays DRAFT; rows 8-9 still awaiting the
+author's explicit ratification in their own words; M2c blocked; nothing runs.

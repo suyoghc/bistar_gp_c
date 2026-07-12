@@ -60,6 +60,7 @@ from .fit import (
 logger = logging.getLogger(__name__)
 torch.set_default_dtype(torch.float64)
 E1_NOTPSD_FAIL_RATE = 1e-3
+PREFLIGHT_ROUNDTRIP_TOL = 1e-10
 
 
 class _NotPSDRejectingPotential:
@@ -281,6 +282,93 @@ def build_e1_potential(model, likelihood, train_x, train_y, jitter=DEFAULT_JITTE
     """Build E1, with explicit constrained ``init_values`` taking priority."""
     return E1Potential(model, likelihood, train_x, train_y, jitter=jitter,
                        init_to_map=init_to_map, init_values=init_values)
+
+
+def preflight_start_state(model, likelihood, train_x, train_y, init_values,
+                          jitter=DEFAULT_JITTER):
+    """Run the D30 checks before the two-stage freeze pins a start state.
+
+    ``init_values`` contains constrained prior-IS authority values. Checks run
+    deterministically in protocol order and stop at the first failure.
+    """
+    report = {}
+    try:
+        e1 = build_e1_potential(
+            model, likelihood, train_x, train_y, jitter=jitter,
+            init_values=init_values)
+    except ValueError:
+        report["site_set"] = False
+        return False, "site_set", report
+    except (NotPSDError, RuntimeError):
+        report["site_set"] = True
+        report["potential_finite"] = False
+        return False, "potential_finite", report
+    report["site_set"] = True
+
+    u0 = e1.init_params
+    constrained_back = e1.constrain(u0)
+    round_trip_ok = True
+    for site, value in init_values.items():
+        expected = value.detach().double()
+        actual = constrained_back[site].detach().double()
+        denominator = max(1.0, float(expected.abs().max()))
+        relative_error = float((actual - expected).abs().max()) / denominator
+        if not np.isfinite(relative_error) or relative_error > PREFLIGHT_ROUNDTRIP_TOL:
+            round_trip_ok = False
+            break
+    report["round_trip"] = round_trip_ok
+    if not round_trip_ok:
+        return False, "round_trip", report
+
+    try:
+        potential = e1.potential_fn(u0)
+    except NotPSDError:
+        report["potential_finite"] = False
+        return False, "potential_finite", report
+    potential_finite = bool(torch.isfinite(potential).all())
+    report["potential_finite"] = potential_finite
+    if not potential_finite:
+        return False, "potential_finite", report
+
+    u_req = {
+        site: value.detach().clone().requires_grad_(True)
+        for site, value in u0.items()
+    }
+    try:
+        potential = e1.potential_fn(u_req)
+        gradients = torch.autograd.grad(
+            potential, tuple(u_req[site] for site in e1.sites))
+    except NotPSDError:
+        report["gradient_finite"] = False
+        return False, "gradient_finite", report
+    gradient_finite = all(bool(torch.isfinite(grad).all()) for grad in gradients)
+    report["gradient_finite"] = gradient_finite
+    if not gradient_finite:
+        return False, "gradient_finite", report
+
+    return True, None, report
+
+
+def select_start_state(model, likelihood, train_x, train_y, candidates,
+                       jitter=DEFAULT_JITTER):
+    """Return the first D30-eligible candidate in preregistered order."""
+    reports = []
+    failure_reasons = []
+    for index, values in enumerate(candidates):
+        ok, reason, report = preflight_start_state(
+            model, likelihood, train_x, train_y, values, jitter=jitter)
+        reports.append(report)
+        if ok:
+            return index, values, reports
+        failure_reasons.append(reason)
+
+    reason_text = ", ".join(
+        f"candidate {index}: {reason}"
+        for index, reason in enumerate(failure_reasons)
+    )
+    raise RuntimeError(
+        f"D30 start-state preflight failed after {len(candidates)} candidates; "
+        f"failure reasons: {reason_text}")
 
 
 def fit_hmc_e1(model, likelihood, train_x, train_y,

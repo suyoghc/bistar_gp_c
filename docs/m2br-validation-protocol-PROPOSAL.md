@@ -2,8 +2,11 @@
 
 Status: PROPOSAL, REVISED PER THE AUTHOR'S ITEM-8 VOTE (D29, 2026-07-11:
 same-MAP chain starts rejected — four same-start chains can miss the same
-basin and still pass R-hat/ESS/internal occupancy agreement). Nothing here
-runs until the author ratifies THIS revision and the M2b PR merges. Companion to
+basin and still pass R-hat/ESS/internal occupancy agreement), plus the D30
+start-state preflight + deterministic next-eligible fallback. STILL PENDING
+EXPLICIT AUTHOR RATIFICATION of rows 8-9 in the author's own words (the D28
+rule bars treating forwarded advice as a vote). Nothing here runs until the
+author ratifies this revised protocol and the M2b PR merges. Companion to
 `docs/m2br-corrected-impact-protocol.md`, whose six single-chain runs are a
 controlled HISTORICAL-IMPACT AUDIT only — this layer is what can support
 replacement scientific conclusions and the W2/W3 re-openings, and only if
@@ -55,10 +58,24 @@ Per cell, the four chains start from FROZEN, distinct constrained states:
   three reportable bands, the remaining chains fill with the weighted q25
   and q75 draws of the largest-mass band. Every noise band with material
   authority mass therefore contributes a chain start.
-- TWO-STAGE FREEZE: this selection RULE is frozen now; the realized pool
-  indices and the sha256 of each serialized start state are pinned in a
-  pre-run M2bR addendum BEFORE any chain launches (the pools are local
-  artifacts, so realized pins cannot be committed earlier than that).
+- DETERMINISTIC PREFLIGHT (D30): before a selected state is pinned, it must
+  pass `bistar_gp.e1_potential.preflight_start_state` — exact site set,
+  successful constrained/unconstrained round-trip (within
+  PREFLIGHT_ROUNDTRIP_TOL = 1e-10 relative), finite E1 potential AND first
+  gradient, and no terminal NotPSD at initialization. A selected draw that
+  fails preflight is replaced by the NEXT-ELIGIBLE authority draw under the
+  same deterministic rule (for a band start: the pool draw with the next
+  noise value away from the weighted median, ties to the lowest index),
+  never a manually chosen replacement. `select_start_state` applies the
+  preflight down the preregistered priority-ordered candidate list and
+  returns the first pass; if a cell exhausts its eligible candidates the
+  cell is reported un-startable rather than hand-patched.
+- TWO-STAGE FREEZE: this selection RULE (including the preflight and the
+  next-eligible fallback ordering) is frozen now; the realized pool indices,
+  the number of fallback advances used, and the sha256 of each serialized
+  start state are pinned in a pre-run M2bR addendum BEFORE any chain launches
+  (the pools are local artifacts, so realized pins cannot be committed
+  earlier than that).
 - Mechanics: chains 1-3 pass their frozen constrained states through
   fit_hmc_e1's init_values parameter (D29 capability; validated site set +
   boundary guard, then pyro init_to_value).

@@ -480,3 +480,11 @@ pilots, no expensive runs, no scientific result read before the commit.
   rejection counts, warn-on-any-post-warmup, fail at proposed 1e-3 with
   diagnostics attached, init_values injection). v1.11 records the ballot.
   Suite 224+1. Still pending: revised item-8 protocol + item-9 numeric pair.
+- **D30 (codex-implemented preflight)**: user switched to opus-4-8 and asked to
+  redo using codex for implementations; reverted my partial inline preflight and
+  delegated it to codex gpt-5.6-sol xhigh. preflight_start_state +
+  select_start_state (deterministic next-eligible fallback) added to the pending
+  item-8 protocol; prereg v1.12, protocol re-pinned. Suite 230+1. Governance held:
+  the forwarded codex ratification text is NOT the author's vote (D28 rule), so
+  rows 8-9 stay pending and PR #7 stays Draft. Gave the user a pros/cons of item 8
+  vs item 9 for the vote.
