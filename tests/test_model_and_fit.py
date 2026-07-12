@@ -123,7 +123,9 @@ def test_fit_hmc_map_init_and_tree_cap_smoke(toy_model):
     x, y = x[:12], y[:12]
     kers, names = build_toy_kernels()
     m, l = build_model(x, y, kers, names)
-    s = fit_hmc(m, l, x, y, n_samples=2, n_warmup=2, verbose=False, seed=0,
+    from bistar_gp.fit import fit_map
+    fit_map(m, l, x, y, n_iter=100, lr=0.05, verbose=False)
+    s = fit_hmc(m, l, x, y, n_samples=2, n_warmup=8, verbose=False, seed=0,
                 init_to_map=True, max_tree_depth=4)
     assert len(s) == 4, sorted(s)
     assert all(np.isfinite(v).all() for v in s.values())
@@ -268,3 +270,99 @@ def test_decompose_full_cov_includes_cross_terms(toy_model):
     summed = sum(c.cov for c in res.components.values())
     buggy_std = np.sqrt(np.clip(np.diag(summed), 1e-10, None))
     assert not np.allclose(res.full_std, buggy_std, atol=1e-6)
+
+
+def test_hmc_target_counts_marginal_likelihood_once(toy_model):
+    """The obs site's log-prob must equal the observation marginal log p(y|theta)
+    computed independently — counted ONCE (D22).
+
+    The likelihood marginal is a single MultivariateNormal whose event dimension
+    already covers all N data points. The pre-D22 `pyro.plate("data", N)` around
+    that site expanded it to a batch of N identical MVNs, each scored against
+    the full y, so the NUTS/SVI target silently became
+    N * log p(y|theta) + log p(theta): a likelihood-raised-to-the-N tempered
+    posterior, not the posterior. A paired-state comparison against the
+    independent marginal pins the single count (the plate bug fails this at
+    exactly a factor of N).
+    """
+    pyro = pytest.importorskip("pyro")
+    import copy
+    from functools import partial
+    from bistar_gp.fit import _hmc_pyro_model
+    from bistar_gp.model import apply_hp_value
+
+    model, lik, x, y = toy_model
+    model.train(); lik.train()
+    sites = [t[0] for t in model.named_priors()]
+    theta = {s: torch.tensor(v) for s, v in zip(sorted(sites), (0.9, 1.3, 0.7, 1.1))}
+
+    cond = pyro.poutine.condition(partial(_hmc_pyro_model, model), data=theta)
+    with gpytorch.settings.cholesky_jitter(1e-4):
+        tr = pyro.poutine.trace(cond).get_trace(x, y)
+        tr.compute_log_prob()
+    obs_lp = float(tr.nodes["obs"]["log_prob_sum"])
+
+    m2 = copy.deepcopy(model)
+    l2 = m2.likelihood
+    for s in sites:
+        assert apply_hp_value(m2, l2, s, theta[s]), s
+    m2.train(); l2.train()
+    with gpytorch.settings.cholesky_jitter(1e-4):
+        independent = float(l2(m2(x)).log_prob(y))
+
+    assert obs_lp == pytest.approx(independent, rel=1e-10), (
+        f"obs log-prob {obs_lp} vs independent marginal {independent} "
+        f"(ratio {obs_lp / independent:.2f}; the plate bug gives ratio N={len(y)})")
+
+
+def test_hmc_potential_is_single_count_composition(toy_model):
+    """initialize_model's potential — the exact function NUTS samples — must
+    equal -(log p(y|theta) + sum_site log p(theta_s) + sum_site log|dtheta/du|)
+    with every term assembled independently and counted exactly once (D22).
+
+    Checked at the init state and two seeded perturbations, so a marginal
+    mis-scaling (the plate's factor N) or a dropped/duplicated prior or
+    Jacobian term cannot cancel across states.
+    """
+    pyro = pytest.importorskip("pyro")
+    import copy
+    from functools import partial
+    from pyro.infer.mcmc.util import initialize_model
+    from pyro.infer.autoguide.initialization import init_to_value
+    from bistar_gp.fit import _hmc_pyro_model, _map_init_values
+    from bistar_gp.model import apply_hp_value
+
+    model, lik, x, y = toy_model
+    model.train(); lik.train()
+    pyro.clear_param_store()
+    with gpytorch.settings.cholesky_jitter(1e-4):
+        init_params, potential_fn, transforms, _ = initialize_model(
+            partial(_hmc_pyro_model, model), model_args=(x, y),
+            init_strategy=init_to_value(values=_map_init_values(model)))
+    sites = list(init_params)
+    priors = {t[0]: t[2] for t in model.named_priors()}
+
+    def states():
+        yield {s: init_params[s].clone() for s in sites}
+        for seed in (0, 1):
+            g = torch.Generator().manual_seed(seed)
+            yield {s: init_params[s]
+                   + 0.5 * torch.randn(init_params[s].shape, generator=g,
+                                       dtype=torch.float64)
+                   for s in sites}
+
+    for u in states():
+        theta = {s: transforms[s].inv(u[s]) for s in sites}
+        m2 = copy.deepcopy(model)
+        for s in sites:
+            assert apply_hp_value(m2, m2.likelihood, s, theta[s]), s
+        m2.train(); m2.likelihood.train()
+        with gpytorch.settings.cholesky_jitter(1e-4):
+            marginal = float(m2.likelihood(m2(x)).log_prob(y))
+        log_prior = sum(float(priors[s].log_prob(theta[s]).sum()) for s in sites)
+        log_jac = sum(
+            float(transforms[s].inv.log_abs_det_jacobian(u[s], theta[s]).sum())
+            for s in sites)
+        with gpytorch.settings.cholesky_jitter(1e-4):
+            pot = float(potential_fn(u))
+        assert pot == pytest.approx(-(marginal + log_prior + log_jac), rel=1e-10)

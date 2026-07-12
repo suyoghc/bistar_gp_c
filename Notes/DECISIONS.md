@@ -1471,3 +1471,530 @@ equivalence battery + the real E1 NUTS microbenchmark + Della re-benchmark (A7) 
 budgets + the A5 fallback design/infeasibility predicate. M2c: S2/S3/S4, M1 prior tests,
 G-toy tolerances, the divergence-clustering predicate (defined against the D20 schema),
 corrected normalized profile band masses. M2d: arms + orchestration + G0 sign-off.
+
+## D21: E1 coordinate convention — pyro sample-site coordinates are public, gpytorch raw is internal-only (prereg addendum v1.2, first M2b addendum) — 2026-07-11
+
+**Problem:** the frozen plan's Stage-B definition of E1 ("the unconstrained log joint
+assembled from gpytorch raw parameters, analytic prior log-probs, and constraint Jacobians,
+exposed as a pyro potential_fn") leaves the NUTS coordinate system ambiguous, and its literal
+reading picks the WRONG one: gpytorch raw parameters are softplus coordinates, while the S1
+pyro path (fit_hmc) samples in pyro's biject_to(support) coordinates — log-space for the
+seven Gamma/LogNormal sites. Building E1's sampler on raw coordinates would (a) make S1f a
+covert reparameterization of S1 (different geometry, different step sizes, different
+leapfrog counts), contaminating the S1-vs-S1f "identical target, cheap leapfrogs"
+comparison and pre-judging S3, the strategy whose whole point is a coordinate change under
+test; (b) invite the meaningless direct comparison of a softplus-raw potential against
+pyro's log-coordinate potential, which differ by a genuine change-of-variables term; and
+(c) leave open the D6-class composition error of using ExactMarginalLogLikelihood (which
+already adds registered priors and divides by N) as a pure likelihood under an explicit
+prior sum.
+
+**Decision:** author-directed 7-point clarification, recorded as prereg addendum v1.2 in
+`docs/prereg-addenda-d19.md` (the FIRST M2b addendum, §6.16 append-only, committed before
+any E1 code exists):
+
+1. E1's PUBLIC NUTS coordinates = the exact pyro unconstrained sample-site coordinates
+   returned by `pyro.infer.mcmc.util.initialize_model` on `_hmc_pyro_model` — same site
+   set, order, and support transforms as S1; the same objects fit_hmc_laplace already
+   consumes (bistar_gp/fit.py:485). Per state: theta_s = transforms[s].inv(u_s);
+   autograd-preserving functional substitution of theta into the gpytorch parameters (no
+   .data writes on the gradient path); direct GP evaluation on the same module (no
+   pyro_sample_from_prior deep copy); pyro's own support-transform log-Jacobians added,
+   one per site. S1f = S1 in target AND coordinates; gpytorch raw is at most an internal
+   evaluation representation.
+2. No softplus-raw vs log-coordinate potential comparison except through the explicit
+   coordinate map and its change-of-variables Jacobian (D13 _raw_log_jacobian pattern,
+   internal checks only).
+3. Full observation marginal log_prob(y) computed exactly once per evaluation;
+   ExactMarginalLogLikelihood never used as a pure likelihood + priors (it adds priors
+   and divides by N); every canonical prior exactly once, every pyro support Jacobian
+   exactly once; duplicate-prior/duplicate-site inventory tests in the battery (D6 class).
+4. The A10-frozen period is absent from the seven-site E1 vector; battery tests exclusion
+   and that it stays exactly 1.0; its old Interval boundaries are removed from the E1
+   boundary stress points (no Interval-constrained coordinate remains among the 7 sites).
+5. Posterior-predictive equality is defined on paired identical constrained
+   hyperparameter states, never as pointwise equality of independent NUTS chains; any
+   retained chain-level comparison needs a preregistered distributional/MC-error
+   criterion frozen before the chains are run.
+6. The real-data E1 NUTS microbenchmark (training-only loader) persists ONLY timing,
+   potential-evaluation, and leapfrog-count fields; samples and scientific diagnostics
+   are discarded without printing or serialization (§6.5 blinding).
+7. M2b finalizes measured cost projections only for E1/S1f and directly shared machinery;
+   S3/S4 numbers freeze as author-approved ceilings (the A6 provisional values) until
+   their M2c implementations are benchmarked — never labeled measured projections.
+
+**Alternatives considered:** gpytorch-raw public coordinates (the literal plan reading) —
+rejected as a covert reparameterization, above; sampling raw coordinates with the D13
+raw-Jacobian correction — correct as a density but still a different sampler geometry, so
+it answers an S3-shaped question, not the S1f one; deferring the convention to
+implementation time — rejected, this is exactly the class of silent fork §6.16 exists to
+pin before code makes the choice by accident.
+
+**Status:** addendum v1.2 landed (append-only; v1.1 untouched); E1 implementation follows
+on branch `feat/d19-m2b-e1` under this convention. The E1 numeric tolerances +
+point-generation distributions, final A6 budgets, and the A5 fallback design remain owed
+as their own M2b addenda per §6.15.
+
+## D22: fit_hmc/fit_vi/fit_hmc_laplace sampled p(theta) L(theta)^N — the obs plate multiplied the marginal likelihood by N — 2026-07-11
+
+**Problem:** `_hmc_pyro_model` (bistar_gp/fit.py) emitted the observation site inside
+`pyro.plate("data", y.shape[0])`. The observation marginal `sampled.likelihood(output)` is a
+single MultivariateNormal whose EVENT dimension already covers all N data points; a plate
+declares conditionally independent per-datum factors, so pyro expanded the MVN to a batch of
+N identical copies and scored the full y against each. The traced target — shared by fit_hmc
+(S1), fit_hmc_laplace, and fit_vi's ELBO — was therefore p(theta) p(y|theta)^N: a
+likelihood-raised-to-the-N tempered posterior, not the posterior. Discovered during M2b E1
+implementation: the first equivalence probe of the v1.2 single-count composition rule against
+the S1 oracle disagreed by exactly N x log p(y|theta) (toy N=40: obs log-prob -864.851 =
+40 x -21.621; the initialize_model potential matched the N-fold composition to 1e-12; a
+minimal pyro-only model with no gpytorch reproduced the factor and removing the plate
+restored the single count). The plate predates D4 (came with the original fit_hmc) and
+survived D6, both review panels, and the M2a three-lens workflow — every prior check verified
+site inventories and latent-to-likelihood CONNECTION, never the obs term's multiplicity.
+
+**Decision:** emit the obs site bare (one-line fix in `_hmc_pyro_model`, docstring records
+the defect). Regression tests pin the semantics at paired states with independently computed
+oracles: the traced obs log-prob equals the independent marginal log p(y|theta) (ratio test
+names the N-fold failure explicitly), and the initialize_model potential equals
+-(log p(y|theta) + sum log p(theta_s) + sum log|dtheta_s/du_s|) with every term assembled
+once (tests/test_model_and_fit.py::test_hmc_target_counts_marginal_likelihood_once,
+::test_hmc_potential_is_single_count_composition). Suite 177 passed. Prereg addendum v1.3
+records the correction and redefines "S1" as the corrected target (docs/prereg-addenda-d19.md).
+
+**Alternatives considered:** keeping the plate and making E1 reproduce the N-fold target for
+battery agreement — rejected: it ships a known wrong measure into a paper-grade study and
+violates the author's v1.2 point 3 directly. Rescaling by plate subsampling — no; there is
+nothing to subsample, the factors are not per-datum.
+
+**Result:** all pre-fix pyro-path results carry a standing caveat (enumerated in v1.3): D8
+Mauna impact-assessment HMC, D12 method x metric HMC/VI, D18 HMC headline 0.696/0.683 and
+its VI arm, regenerated HMC figure caches. Unaffected: MAP, fit_mcmc_simple (D13 measure),
+prior-IS/SIR/profile quadrature, M2a infrastructure. Re-labeling ratified records is a
+QUEUED author decision (OPEN); no pilot or Mauna BMS* number existed, so the D19 study is
+unaffected going forward.
+
+## D23: pyro NUTS gradients through the traced gpytorch target are broken for kernel sites — documented S1 property; E1 gradient gate uses finite differences — 2026-07-11
+
+**Problem:** with D22 fixed, E1's potential VALUES matched the S1 oracle to 1.4e-14 over
+MAP-neighborhood and dispersed states, but autograd GRADIENTS disagreed at O(1) on gradient
+scale. Central-finite-difference arbitration on every coordinate showed E1's autograd exact
+and the ORACLE's autograd wrong for all three kernel sites (toy SE lengthscale: autograd
+-0.0499 vs FD -1.0820) while exact for the noise site. Mechanism, instrumented: gpytorch's
+prior-value injection in `_pyro_sample_from_prior` runs `setting_closure(module, value)` ->
+`initialize()` -> `raw_*.data.copy_(...)`, which severs the autograd graph from the
+pyro-conditioned value into the kernel parameters — the NUTS gradient for those coordinates
+omits the likelihood contribution entirely and reflects only prior + Jacobian terms. The
+noise site alone survives because gpytorch's non-strict fallback REPLACES raw_noise with the
+graph-connected tensor (verified: raw_noise becomes a non-leaf Tensor during the traced
+call). So S1's NUTS has been proposing with a partially wrong gradient field; acceptance
+still uses exact potential values, so the invariant target stays the potential's density —
+an efficiency/guidance defect stacked on D22's wrong measure, and a candidate mechanical
+explanation (hypothesis, untested) for the recorded S1 pathologies: step-size collapse,
+tree-depth saturation, ESS ~ 1 on Mauna.
+
+**Decision:** no S1 code change (the defect is upstream gpytorch behavior inside the
+deep-copy trace path; S1 stays "the pyro path" per the plan). Recorded in prereg addendum
+v1.3 with two binding consequences: (a) the E1 battery's gradient reference is CENTRAL
+FINITE DIFFERENCES of the corrected oracle potential, never the oracle's autograd; E1's
+autograd must additionally match its own finite differences; (b) every S1-vs-S1f comparison
+(the microbenchmark included) discloses the asymmetry — identical target, different
+per-leapfrog cost AND different gradient-field correctness. E1 is immune by construction:
+theta enters the SAME module via torch.func.functional_call, no .data writes on the gradient
+path (v1.2 point 1).
+
+**Alternatives considered:** patching gpytorch's initialize/setting closures to preserve
+grad — upstream surgery with unknown blast radius across every gpytorch consumer, and S1's
+role in the study is "the current pyro path", which this would silently rewrite; filing the
+oracle's autograd as the battery gradient reference anyway — rejected, it would gate E1's
+correct gradients against a known-wrong reference.
+
+**Status:** documented; battery consequence implemented at M2b. Upstream gpytorch issue
+report is a possible follow-up (OPEN).
+
+## D24: double-backward through the gpytorch marginal log-prob is silently wrong — battery and S2 must use first-order Hessians — 2026-07-11
+
+**Problem:** the battery's directional-Hessian gate first compared E1's create_graph
+double-backward v^T H v against the oracle potential's second central difference and failed
+at ~16% (toy, MAP state, direction seed 200: 3.3026 vs 3.9444). Three independent
+first-order references agree (oracle second difference, E1 second difference, central FD of
+E1's autograd gradient: 3.94436...), so the double-backward value is the wrong one, and it
+stays wrong under gpytorch.settings.fast_computations(covar_root_decomposition=False,
+log_prob=False, solves=False) — the defect is in the custom linear-operator autograd
+Functions behind MVN.log_prob, not in the fast approximation paths.
+
+**Decision:** the battery computes directional Hessians as central differences OF the
+(proven-correct) E1 autograd gradient, referenced against the oracle's second difference
+(tests/test_e1_potential.py::test_directional_hessians_agree, frozen in prereg v1.4), and a
+sentinel test (::test_double_backward_hessian_defect_is_still_present) asserts the defect
+persists so an environment upgrade forces a v1.4 revisit instead of silently changing what
+the gate measures. Binding consequence recorded in v1.4 for M2c: the S2 fixed-mass-matrix
+strategy must assemble its MAP Hessian from first-order differences of the E1 gradient,
+never via create_graph through the marginal. fit_hmc_laplace's whitening Hessian
+(torch.autograd.functional.hessian on the oracle potential) is affected by both D23 and D24;
+its results were already caveated wholesale in v1.3.
+
+**Alternatives considered:** gating on double-backward anyway (rejected: known-wrong
+reference); torch.autograd.functional.hessian with vectorize/functorch strategies (same
+underlying custom Functions); reporting to gpytorch upstream (queued alongside D23's, OPEN).
+
+**Status:** implemented at M2b; battery green (29 tests).
+
+## D25: E1 NUTS microbenchmark — the plan's "~200x deep-copy penalty" was mostly the D22 plate; final A6 budgets + frozen A5 fallback (prereg v1.5) — 2026-07-11
+
+**Problem:** M2b owed three §6.15 numbers: the real E1 NUTS microbenchmark (replacing the
+§1.2 kernel-cost proxy rows), final A6 pilot budgets, and the A5 subsample-fallback design +
+infeasibility predicate. The microbenchmark also had to respect the v1.2 point-6 firewall
+(timing/potential-eval/leapfrog fields only).
+
+**Decision:** `experiments/d19_e1_bench.py` (firewalled: fits verbose=False, samples deleted
+unread, only leapfrog_counts consumed from diagnostics; an AST-audited persist path) ran
+locally at sub-150 and full-461 (td7, 50w+50d, seed 0, 20-rep per-eval medians); artifact
+`runs/d19_planning/e1_nuts_microbench.json`. Headlines, recorded in prereg v1.5:
+
+- The corrected S1 potential costs 6.0/10.5 ms (value, sub/full) and 7.4/14.4 ms
+  (value+gradient) — the plan's measured 51.8 ms/1.486 s and 84.6 ms/2.793 s rows were
+  measurements of the PLATED (D22) target. The Stage-B "~200x per-leapfrog advantage"
+  motivation for E1 dissolves into: 1.2-3.2x per-evaluation advantage + D23 immunity +
+  no deep copy.
+- The D23 mechanism showed up on cue: S1 saturated td7 (127 leapfrogs/draw) where S1f
+  needed 6.7/draw at sub-150 — ~17x less wall per draw from correct gradients alone.
+- S1f full-461: 23.9 ms/leapfrog wall; a saturated 400-iteration chain projects to ~20 min.
+
+Final A6 budgets frozen on SATURATED bounds (count-independent): S1f sub-150 2 h (measured
+bound 56 min), S1 sub-150-only 6 h (measured anchor ~25 min for 4x400), paper-target
+full-461 E1-path 4 h per strategy x arm (measured bound 81 min, x1.5 overhead, doubled);
+S2 2 h / S3 2 dev-days + 4 h / S4 30 min stay AUTHOR-APPROVED CEILINGS per v1.2 point 7;
+Stage A 1.5 h/arm and toy smoke 30 min unchanged. A5 fallback frozen: whole-span
+season-preserving `linspace` subsample (the existing sub-150 rule), N_fb = 232 (step 1.991
+cycles all 12 phases; (461/232)^3 = 7.8x dense-solve reduction; N=231's exact step 2.0
+would lock six fixed phases), and a timing/leapfrog/budget-only infeasibility predicate
+(90th-percentile pilot leapfrogs capped at 127, x1600 iterations, x1.5 overhead, vs the
+frozen budgets; adequacy and BMS* outputs barred). Della thread-pinning numbers stay OWED
+until the A7 Della re-run of experiments/d19_bench.py (whose pre-D22 anchors are equally
+superseded).
+
+**Alternatives considered:** freezing budgets on observed leapfrog counts (rejected:
+single-seed 50w+50d geometry sensitivity; saturated bounds are count-independent);
+N_fb = 231 or 150 for the fallback (231 locks six phases; 150 wastes the validated
+sub-150-to-232 headroom and triples the projected-cost cushion needlessly).
+
+**Status:** v1.5 landed append-only; microbenchmark artifact committed. OPEN at M2b close:
+the A7 Della re-benchmark (user-executed, thread-pinned) and its addendum.
+
+**Codex M2b review round (gpt-5.6-sol, xhigh, read-only, on ac9f495..479457e): FIX-FIRST,
+14 findings, all resolved in the same PR before Ready.** Dispositions: (1 S4) the A5
+predicate was unevaluable for S4/S1-only survivor sets — completed with strategy-specific
+costing (S4: cubic-scaled pilot wall vs a new 1 h paper-target ceiling; S1: excluded, the
+§1.3 bar fires the fallback for an S1-only survivor set); (2 S4) the gradient gate covered
+a subset of states — widened to every finite frozen regular state (comparable-state floor
+20), which immediately exposed that FD cannot referee the two jitter-engaged tail states:
+near_zero_noise gets a 0.2-of-scale gate (measured 4.2e-2 worst; disconnection errs at
+order 1) and near_singular, where FD carries no signal at all (measured |ag - fd| of order
+the scale with values exact), gets an E1-vs-oracle autograd connectedness gate on the
+D23-spared noise coordinate (measured 1.4e-16; frozen 1e-9); the five clean tail states
+keep the tight gate (measured 5.2e-7 of scale) — three-tier design frozen in v1.4; (3 S4) the artifact's config/environment fields exceed a
+strict reading of the v1.2 point-6 field list — reading recorded in v1.5 for author
+ratification, real-data error path now suppresses exception messages (class name only);
+(4 S2) fit_hmc_e1 gained init_to_map with fit_hmc's exact fallback semantics; (5 S2) new
+eval-mode-entry regression test (D4 class); (6 S2) D23 sentinel now per kernel site over
+three states with the noise site pinned to agreement; (7 S2) site-order test now compares
+against an independent initialize_model call; (8 S2) tolerance convention pinned to
+max(1, |oracle|) in v1.4; (9 S2) leapfrog ratio corrected to 19x (6350/334), wall ratio
+17x, in v1.5; (10 S1) module docstring's stale ~200x motivation replaced with the v1.5
+story; (11 S1) battery overview's Hessian description corrected to first-order machinery;
+(12 S1) D21's fit.py:474 reference updated to :485; (13 S1) prior-draw state generation
+wrapped in torch.random.fork_rng (RNG-bleed hygiene); (14 S1) label-pattern prose
+rewritten in the module docstring and v1.4. Codex verified clean: coordinate map, Jacobian
+direction, prior summation, functional overrides, train enforcement, A10/site guards,
+sample schema, seeding, diagnostics wiring, plate-removal blast radius, addenda
+append-only discipline, no scientific value in the diff or artifact, budget arithmetic
+(56.07 min, 81.02 min, 2.03 h, 7.846x recomputed). Suite after fixes: see the PR record.
+
+**Codex M2b review round 2 (gpt-5.6-sol, xhigh, on the round-1 fix commit be08285):
+FIX-FIRST — 12 of 14 round-1 findings verified FIXED, 2 PARTIAL, 5 new findings; all
+resolved.** The two substantive catches, both verified before acting: (a) APPEND-ONLY
+VIOLATION — be08285 edited the committed v1.4/v1.5 addenda in place, and among the edits
+were gradient tolerances revised after observing test failures (the tune-to-pass pattern
+the battery forbids). Cure: docs/prereg-addenda-d19.md restored to its as-committed v1.5
+state and ALL corrections re-landed as append-only addendum v1.6 (the intermediate
+in-place text survives only in branch history for audit). (b) THE JITTER-STATE GRADIENT
+GATES DID NOT DISCRIMINATE — codex measured that substituting the D23-disconnected oracle
+gradient passes the 0.2-of-scale near_zero_noise gate on every kernel coordinate (2.0e-3
+to 5.4e-2 of shared scale on the Mauna structure), refuting the "disconnection errs at
+order 1 of scale" claim per coordinate; an independent big-step FD probe (h 1e-3/1e-2,
+both structures) then showed even the CORRECT gradient deviates at order 1 per kernel
+coordinate at both jitter-engaged states — no FD reference discriminates there at any
+step. Frozen v1.6 design: tight FD gate at the 26 clean states (worst 2.3e-7/5.2e-7 of
+scale), noise-coordinate autograd-connectedness gate at near_zero_noise AND near_singular
+(measured 1.4e-16, frozen 1e-9), kernel-coordinate gradients at those two states
+EXPLICITLY NOT GATED — a disclosed residual exposure with its bounding structure recorded,
+instead of a non-discriminating tolerance dressed as a gate. Also fixed: the gradient test
+computed FD before the connectedness branch (a non-finite FD would have silently skipped
+the FD-independent gate) — jitter states now run first and an executed-label completeness
+assertion replaces the >=20 floor (all 28 states must run their assigned gate); dead
+tail_labels removed; SCRATCHPAD counts refreshed (31 collected battery / 207+1 suite);
+"potential values exact" reworded to machine-precision agreement (measured 1.5e-16
+relative, repeat-identical). Suite after round 2: battery 30 passed + 1 skip, full 207
+passed + 1 skipped.
+
+**Codex M2b review round 3 (gpt-5.6-sol, xhigh, final confirmation on 44639cf):**
+items (a)-(d) PASS — v1.4/v1.5 verified byte-identical to their as-committed text
+(sha-256 compared against 479457e), v1.6 verified consistent with the code, the silent-skip
+path verified dead, counts and wording verified landed. Remaining: three S1 wording nits
+(the battery overview still implied universal per-coordinate FD coverage; a stale
+skip-and-floor docstring; a self-contradictory "bit-exact to 1.4e-16" phrase in v1.6).
+Fixed same-PR: both test docstrings rewritten to the v1.6 tier language, and the v1.6
+phrase corrected via the wording-only erratum addendum v1.7 (appended, not edited — the
+round-2 discipline holds even for typography). Verification of these three was mechanical
+(grep/diff); no further codex round. Final: battery 30 passed + 1 skip (31 collected),
+full suite 207 passed + 1 skipped.
+
+## D26: codex meta-review adopted — D22-D24 get their own corrective milestone (M2bR); impact audit; API warning layer; Della hold — 2026-07-11
+
+**Problem:** the M2b closeout treated D22-D24 as side notes on a completed enabler PR. The
+author-forwarded codex meta-review argued, correctly, that they changed the scientific
+baseline: historical results need an impact audit with dependency verification (not a blanket
+caveat), the public inference API cannot keep advertising known-defective samplers, D24 binds
+S4/profile-Laplace as well as S2, retired goldens need a preregistration amendment before any
+rerun, the composite microbenchmark ratio invites over-reading, two effectively-author
+decisions (A5 N=232, A6 ceilings, the firewall field list) were made implicitly, and Della
+must wait for a firewall-clean benchmark vehicle.
+
+**Decision (adopted, executed this session):**
+- `docs/d22-d24-impact-audit.md` — artifact classification with per-item dependency
+  verification: UNAFFECTED includes the D18 SIR/prior-IS numbers (verified: they score
+  through `_mh_log_joint`, prior_sensitivity_study.py:233), fit_mcmc_simple, MAP/MLE,
+  scorecards, Z_Mx/laplace_evidence (FD Hessians, candidate space), and the D17 canonical
+  figures (--gp-method map); INVALID PENDING RERUN includes every HMC/VI/hmc_laplace number
+  (D18 0.696/0.683 and the VI arm, D12 hmc/vi/hmc_laplace columns incl. the VI-migration
+  reading — possibly a D23 artifact, not a mass phenomenon — W2/W3 reasoning, D8 posterior
+  claims, all HMC caches); NEEDS TRACING covers the regenerated figure sets and
+  impact-assessment cross-references. Audit §4 carries the explicit author ratification
+  checklist (N=232 derivation, A6 ceilings, exact firewall fields).
+- Prereg addendum v1.8: goldens retirement (§6.9) keeping only direct-likelihood
+  references; corrective milestone M2bR between M2b and M2c (ratifications, API
+  disposition, a small preregistered corrected-impact rerun of the D12/D18 sampler arms,
+  d19_bench.py firewall rework, W-log re-openings); the shared first-order Hessian
+  protocol widened to S4/Laplace/profile-Laplace consumers (M2c); the benchmark
+  decomposition rule (never present the composite ~19x/~17x as an E1 evaluation speedup);
+  the A7 Della hold until the reworked vehicle passes a key-inventory firewall audit.
+- API warning layer (interim, no default changed, nothing removed): fit_hmc, fit_vi, and
+  fit_hmc_laplace now emit UserWarnings naming their defects (D23; D23-ELBO; D23+D24) and
+  pointing to the gated fit_hmc_e1; fit_hmc's "production-grade" docstring corrected.
+- SCRATCHPAD status downgraded from "M2b DONE except Della" to "M2b code complete; closeout
+  gated on M2bR"; the branch stays pre-PR (open as DRAFT when the author is ready).
+
+**OPEN (author forks):** (a) API disposition — route fit_gp("hmc") through E1 at M2bR close
+(recommended) vs keep defaults with warnings until M2c; an E1-based VI is required before
+any VI default exists either way; (b) ratification checklist items in the audit §4;
+(c) the M2bR corrected-impact rerun budget.
+
+**Status:** adopted and committed on feat/d19-m2b-e1; M2c blocked on M2bR.
+
+## D27: author ratifications implemented — API rerouted through E1, A5 trigger corrected, A6 dimensioned, M2bR rerun protocol frozen, Draft PR — 2026-07-11
+
+**Problem:** D26 left seven ratification items open. The author forwarded the codex
+recommendation set resolving all of them and instructed implementation (with codex
+gpt-5.6-sol xhigh subagents doing the heavy lifting). Three recommendations needed
+correction before implementation: (a) the A5 condition "at least one otherwise valid
+strategy passes at N=232" is not evaluable pre-fire (pilots run at sub-150; N=232 runs
+only after firing) — implemented as sub-150 G-B eligibility + post-fire revalidation;
+(b) the plan's S1/S1f identities had to be pinned to IMPLEMENTATIONS before the public
+alias flip, or Stage B becomes self-referential; (c) warnings stay on the legacy paths
+after routing (the explicit name is the opt-in, the warning is the seatbelt).
+
+**Decision (all recorded in prereg addendum v1.9; dispositions in
+docs/d22-d24-impact-audit.md §4):**
+- Ratified: superseded-not-caveated standing for all pre-D22 HMC/VI/hmc_laplace results
+  (banners applied to the four affected docs); the v1.6 firewall reading; A5 N=232; the
+  Della hold; the Draft-PR route; the scope-of-claim language rule (defects concern THIS
+  repository's pyro/gpytorch replication, never the thesis's gpflow/ADVI implementation
+  or its conclusions).
+- A5 trigger corrected: eligibility = non-legacy G-B survivors at sub-150; fallback fires
+  iff at least one eligible strategy exists and every one is full-N infeasible under the
+  frozen budgets; no eligible survivor = outcome O4 (§6.13), never a scale change; the
+  v1.6 "S1-only fires the fallback" branch is removed and the legacy S1 path is excluded
+  from paper-target vehicle eligibility (sub-150 pilot/diagnostic only).
+- A6 ratified only after dimensioning: all budgets are LOCAL WALL-CLOCK, per strategy x
+  scale (x arm at paper target), covering the complete 4-chain pilot, inclusive of
+  MAP-init/warmup/adaptation/jitter retries; core-hours are never the budgeted quantity;
+  S3/S4 remain hard author ceilings.
+- API disposition IMPLEMENTED (codex subagent A, verified independently): public fit_hmc
+  and fit_gp("hmc") now route through the battery-gated E1 path (diagnostics carry
+  sampler="nuts_e1"); the pyro implementation is retained as fit_hmc_legacy_pyro
+  (warning kept, historical reproduction and benchmarks only — the microbenchmark pins
+  S1 to it by name); fit_vi and fit_hmc_laplace raise RuntimeError through the
+  scientific API and run only under keyword-only allow_legacy=True with their warnings;
+  dispatch, docstrings, and tests updated. Suite 212 passed + 1 skipped (verified
+  directly, not just from the subagent report).
+- M2bR corrected-impact rerun protocol FROZEN before any run (codex subagent B extracted
+  every original D12/D18 parameter with file:line citations):
+  docs/m2br-corrected-impact-protocol.md, sha256 2d4a8277...5a83, pinned in v1.9 — six
+  runs (2000+1000, seed 42, td7/td10, four D18 prior configurations via fit_hmc_e1),
+  atol=1e-12 unchanged-arm re-verification, 120-minute budget with a stop-and-report
+  rule, no VI/hmc_laplace until repaired. Executes only in the M2bR PR after the M2b
+  merge.
+
+**OPEN (M2c/pilot design, noted while verifying):** corrected gradients explore far more
+aggressively than the broken legacy guidance, so short or weakly-initialized E1 chains
+can reach states where the additive-kernel Cholesky exhausts jitter and NotPSDError
+aborts the run (observed in a deliberately weak verification probe; the suite's fixtures
+use proper MAP-init and are stable). Whether the SAMPLING wrapper should map NotPSDError
+to +infinity potential (reject-and-continue, Stan-style) instead of crashing is a target-
+definition choice that must be preregistered before pilots — it does not change the
+battery (E1Potential itself keeps raise-parity with the oracle, v1.4 gate h).
+
+**Status:** implemented and committed on feat/d19-m2b-e1; M2b PR opened as DRAFT.
+PROVENANCE CORRECTED BY D28: the "ratified" labels in this entry were wrong — forwarded
+codex recommendations are not an author vote; every item is PROPOSED pending the explicit
+ratifications enumerated in D28.
+
+## D28: correction round — ratification provenance, withdrawal terminology, M2bR audit/validation split, NotPSD rejection policy — 2026-07-11
+
+**Problem (author-forwarded codex corrections, all four accepted):** (1) the banners said
+"UNVALIDATED and superseded pending rerun" — "superseded" asserts an existing validated
+replacement, and none exists yet; (2) D27/v1.9/the audit recorded A5, A6, the firewall
+reading, the API routing, and the M2bR rerun as author-RATIFIED, but forwarded codex
+recommendations plus "implement this" are not an explicit author vote; (3) the frozen M2bR
+protocol reproduces the original single-chain design (seed 42), which supports a controlled
+historical-impact audit but cannot validate basin exploration or convergence — it was
+positioned to close W2/W3 on an audit-sized budget; (4) with public fit_hmc routed to E1,
+the known NotPSDError crash path had been deferred to pilots instead of resolved.
+
+**Decision (recorded as prereg addendum v1.10):**
+- Terminology: every affected-results banner and audit classification now reads
+  WITHDRAWN/UNVALIDATED PENDING CORRECTED RERUN; "superseded" is reserved for claims whose
+  validated replacement exists (kept only for the cost anchors that v1.5/v1.6 measured).
+- Provenance: every decision item is re-labeled PROPOSED, PENDING EXPLICIT AUTHOR
+  RATIFICATION (v1.9's "author, 2026-07-11" labels corrected; D27's Status updated to point
+  here; the audit §4, the protocol header, and the PR #7 body corrected). The D28 decision
+  table (delivered to the author with this entry's session) enumerates: (a) E1 public HMC
+  routing + legacy quarantine; (b) N=232 with the corrected trigger; (c) firewall v1.6
+  reading; (d) Della hold; (e) dimensioned A6 ceilings; (f) the audit-layer protocol;
+  (g) the multi-chain validation layer + its budget; (h) the NotPSD thresholds
+  (E1_NOTPSD_WARN_RATE=1e-3; validation criterion 0.1% with zero near-reference).
+- M2bR split: docs/m2br-corrected-impact-protocol.md re-labeled a CONTROLLED
+  HISTORICAL-IMPACT AUDIT (single-chain; outputs are "corrected single-chain comparisons";
+  never paper-grade; cannot close W2/W3), run list unchanged, re-pinned sha256
+  45999e2f...05afa. New docs/m2br-validation-protocol-PROPOSAL.md: multi-chain scientific
+  validation for the pivotal informative + toy_elicited configurations (4 chains x
+  (1000w+2000d), seeds 0/1/2/3, td7+td10), arviz rank-normalized split R-hat < 1.01,
+  bulk/tail ESS > 400, occupancy agreement 0.05, divergences < 0.1%, saturation < 10%,
+  NotPSD < 0.1% with zero near-reference; projected 5.2 h, proposed 6 h ceiling (4 h
+  reduced variant), stop-and-report. Only validation-passing cells can mark historical
+  numbers superseded or reopen W2/W3.
+- NotPSD policy (implemented, codex gpt-5.6-sol xhigh; independently verified): a
+  sampling-layer wrapper catches ONLY linear_operator NotPSDError, counts it, and
+  re-raises the RuntimeError text pyro 1.9.1's registered handler converts to NaN energy
+  (verified in the installed integrator source: ValueError is NOT registered there) — the
+  proposal is rejected and the chain continues. Jitter ladder unchanged and documented.
+  Pass-through bit-identical on success; E1Potential keeps oracle raise-parity so the
+  frozen battery is untouched. SamplerDiagnostics schema v2 adds notpsd_rejections under
+  the honesty contract with v1-payload migration; the legacy path reports it unavailable.
+  Tests: injected mid-chain failures (counted exactly), generic-exception propagation,
+  pass-through integrity, the documented weak-MAP crash scenario as a regression (now
+  completes, one rejection), zero-rejection reference check, schema round-trips. Suite 218
+  passed + 1 skipped.
+
+**Status:** all four corrections implemented on feat/d19-m2b-e1; PR #7 stays DRAFT; no
+M2bR run, no M2c, until the author returns the decision table with explicit votes.
+
+## D29: first explicit author ballot — items 1-7 ratified; item 8 revised (overdispersed starts + authority coverage); item 9 mechanism ratified with the diagnostic split implemented — 2026-07-11
+
+**Problem:** D28 put nine decision rows to the author. The ballot returned: 1-7 YES (item 4
+with a leapfrog-fields restriction; item 7 confirmed audit-only), 8 MODIFY (same-MAP chain
+starts rejected — four same-start chains can miss the same basin and still pass every
+internal diagnostic), 9 mechanism-YES with the diagnostic/gate design to be extended before
+its thresholds return for a vote.
+
+**Decision (recorded as prereg addendum v1.11):**
+- Items 1-7 recorded as explicitly author-ratified. Item 4's restriction: leapfrog-count
+  fields are aggregate engineering-cost fields only, never inputs to scientific adequacy,
+  prior choice, model ranking, or posterior interpretation (per-draw retention exists
+  solely for aggregate cost statistics such as the A5 p90 — interpretation flagged for
+  objection).
+- Item 8: docs/m2br-validation-protocol-PROPOSAL.md revised — chain-0 MAP start + three
+  overdispersed starts frozen from the UNAFFECTED prior-IS authority references
+  (deterministic weighted-median-per-reportable-band rule, q25/q75 fill; two-stage
+  freeze with realized indices/hashes pinned pre-run), a new authority-coverage
+  acceptance criterion (pooled chain occupancy vs independent prior-IS band masses,
+  2 sqrt(SE_auth^2 + SE_chain^2), the §6.15 convention verbatim), full 6 h V1-V4
+  retained, reduced variant withdrawn. Ratification of the revision pending.
+- Item 9: implemented (codex gpt-5.6-sol xhigh; independently verified). Schema v3:
+  hook snapshots carry cumulative rejections; notpsd_rejections_warmup +
+  notpsd_rejections_per_draw under the honesty contract; v1/v2 migration; identity
+  validation; derived post-warmup rate over post-warmup evaluations. fit_hmc_e1: warmup
+  rejections informational; any post-warmup rejection warns with draw indices; rate >=
+  E1_NOTPSD_FAIL_RATE (proposed 1e-3) raises with diagnostics attached, enforced with or
+  without return_diagnostics. init_values constrained-state injection added for the
+  item-8 starts (site-set validation + boundary guard; round-trips at 9e-16). Suite 224
+  passed + 1 skipped.
+
+**OPEN (awaiting the author):** the revised item-8 protocol; item 9's numeric pair
+(1e-3 post-warmup fail rate; 50-draw early window). PR #7 stays DRAFT; no M2bR layer
+runs; M2c blocked.
+
+## D30: start-state preflight + deterministic next-eligible fallback for the pending item-8 validation protocol — 2026-07-11
+
+**Problem:** the forwarded codex message (a recommendation, NOT an author vote — the D28
+rule holds) proposed a safeguard for the item-8 multi-chain validation protocol: each frozen
+overdispersed chain start should pass a deterministic preflight before pinning, with a
+preregistered next-eligible fallback rather than a manual replacement chosen after seeing
+failures. The safeguard improves the item-8 proposal regardless of whether rows 8-9 are
+eventually ratified, so it was implemented as a capability; item 8 stays PENDING.
+
+**Decision (capability only; no ratification):** implemented via codex gpt-5.6-sol (xhigh),
+independently verified.
+- `bistar_gp.e1_potential.preflight_start_state(model, likelihood, x, y, init_values, jitter)`
+  -> (ok, reason, report): deterministic checks in protocol order, stopping at the first
+  failure — exact site set (build_e1_potential/_guard_init_values), constrained/
+  unconstrained round-trip within PREFLIGHT_ROUNDTRIP_TOL=1e-10 relative, finite E1
+  potential, finite first gradient, no terminal NotPSD at initialization. A degenerate state
+  that defeats pyro's initialize_model validation classifies as potential_finite=False, not a
+  site-set failure (verified). Catches ONLY ValueError and NotPSDError/RuntimeError at the
+  specified points, never bare Exception.
+- `select_start_state(..., candidates)` -> (index, values, reports): the deterministic
+  next-eligible fallback — runs the preflight down the preregistered priority-ordered
+  candidate list, returns the first pass with its index, raises with every per-candidate
+  failure reason if all fail (so a cell is reported un-startable, never hand-patched).
+- Protocol doc updated: the D30 preflight + fallback bullet added to the two-stage freeze;
+  the realized fallback-advance count per cell joins the pre-run start-freeze pins; status
+  line reasserts rows 8-9 PENDING the author's own-words vote. Recorded as prereg addendum
+  v1.12 (a refinement of a still-unratified proposal; the protocol doc re-pins to sha256
+  bdbabb86...03e8, which is a proposal-state fingerprint, not a freeze).
+
+**Verification:** suite 230 passed + 1 skipped; the frozen v1.4/v1.6 battery untouched;
+independently confirmed the fallback skips a leading degenerate candidate to a stable index
+across reruns and raises when all fail.
+
+**Status:** capability on feat/d19-m2b-e1; PR #7 stays DRAFT; rows 8-9 still awaiting the
+author's explicit ratification in their own words; M2c blocked; nothing runs.
+
+## D31: explicit author ratification of decision-table rows 8 and 9 — all nine items ratified; PR #7 to Ready — 2026-07-11
+
+**Problem:** rows 8 (multi-chain validation protocol) and 9 (NotPSD numeric thresholds)
+were the last two decision-table items still pending. The D28 rule bars treating a
+forwarded codex recommendation as an author vote, so they stayed PROPOSED through v1.11/v1.12
+even though the machinery was implemented.
+
+**Decision:** the author ratified both in their own words ("I ratify row 8 and row 9. you
+may proceed"). Recorded as prereg addendum v1.13.
+- Row 8: the revised M2bR scientific-validation layer is ratified as written (overdispersed
+  prior-IS starts, D30 preflight + next-eligible fallback, §6.15 authority-coverage
+  criterion, full 6 h V1-V4). The proposal doc is retitled RATIFIED.
+- Row 9: the NotPSD mechanism AND thresholds are ratified (fail >= 1e-3 post-warmup with
+  diagnostics attached, warn on any post-warmup, warmup separate, zero in first 50
+  post-warmup draws, zero-at-reference). The E1_NOTPSD_FAIL_RATE constant and its raise
+  message are relabeled from "proposed" to ratified (D31).
+- Audit §4 now records every item 1-9 author-ratified.
+
+**Scope of "you may proceed" (deliberately bounded):** the ratification unblocks recording
+the votes and flipping PR #7 Draft -> Ready (the codex code-review rounds + the AST
+firewall key-inventory audit satisfy the ratified Ready preconditions). It does NOT
+authorize the M2b merge or any M2bR run on its own: per the ratified PR structure (D27),
+M2b merges as its own step, then M2bR runs as a SEPARATE corrective-impact PR opening with
+the two-stage start-freeze. Merge and M2bR execution remain the author's next explicit
+calls. No code logic changed (only the "proposed"->ratified relabel); suite green.
+
+**Status:** all nine decision-table items ratified; PR #7 set Ready; M2b merge + M2bR run
+await the author; M2c blocked on M2bR; nothing scientific has run.

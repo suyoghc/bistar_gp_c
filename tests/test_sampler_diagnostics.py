@@ -1,12 +1,12 @@
 """
 Diagnostic-retaining sampler result schema (D20, M2a item 6).
 
-fit_hmc used to discard the pyro MCMC object, losing divergences, tree-depth
+The original fit_hmc discarded the Pyro MCMC object, losing divergences, tree-depth
 saturation, and acceptance — the exact quantities the D19 G-B gate reads
 (plan-d19-mauna.md §6.7) and the base the M2c divergence-clustering predicate
 is defined against (§6.15). These tests pin the contract:
 
-- the DEFAULT fit_hmc return is the untouched D9 dict (site name to (n,)
+- the DEFAULT E1-backed fit_hmc return preserves the D9 dict (site name to (n,)
   constrained array);
 - return_diagnostics=True returns (samples, SamplerDiagnostics), a frozen,
   plain-data, JSON-round-trippable record;
@@ -25,13 +25,14 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("pyro")
 
-from bistar_gp.fit import fit_hmc, fit_map
+from bistar_gp.fit import fit_hmc, fit_hmc_legacy_pyro, fit_map
 from bistar_gp.model import build_model, build_toy_kernels
 from bistar_gp.sampler_diagnostics import (
     SCHEMA_VERSION,
     SamplerDiagnostics,
     diagnostics_from_pyro_mcmc,
     leapfrog_counts_from_records,
+    notpsd_counts_from_records,
 )
 
 torch.set_default_dtype(torch.float64)
@@ -42,18 +43,19 @@ N_DRAWS, N_WARMUP, TREE_DEPTH = 6, 6, 3
 @pytest.fixture(scope="module")
 def hmc_run():
     """One tiny seeded NUTS run shared by the structured-path tests."""
-    x = torch.linspace(0, 6, 15)
-    y = torch.sin(x) + 0.25 * x
+    x = torch.linspace(0, 5, 40)
+    noise = torch.randn(40, generator=torch.Generator().manual_seed(0))
+    y = torch.sin(2 * x) + 0.3 * noise
     kernels, names = build_toy_kernels()
     model, lik = build_model(x, y, kernels, names)
-    fit_map(model, lik, x, y, n_iter=30, lr=0.05, verbose=False)
+    fit_map(model, lik, x, y, n_iter=100, lr=0.05, verbose=False)
     samples, diag = fit_hmc(model, lik, x, y, n_samples=N_DRAWS,
                             n_warmup=N_WARMUP, verbose=False, seed=0,
                             max_tree_depth=TREE_DEPTH, return_diagnostics=True)
     return samples, diag
 
 
-def test_diagnostics_path_does_not_perturb_the_trajectory():
+def test_e1_diagnostics_path_does_not_perturb_the_trajectory():
     """The core promise of return_diagnostics: it OBSERVES the run without
     changing its target or RNG trajectory (D20 review round 3). Two identical
     toy models from the same MAP state and seed — one with diagnostics, one
@@ -85,14 +87,48 @@ def test_diagnostics_path_does_not_perturb_the_trajectory():
     assert diag.leapfrog_counts is not None
 
 
+def test_legacy_pyro_diagnostics_path_does_not_perturb_the_trajectory():
+    """D20 non-perturbation remains pinned for the historical Pyro path."""
+    def fresh():
+        x = torch.linspace(0, 6, 12)
+        y = torch.sin(x) + 0.25 * x
+        kernels, names = build_toy_kernels()
+        model, lik = build_model(x, y, kernels, names)
+        fit_map(model, lik, x, y, n_iter=20, lr=0.05, verbose=False)
+        return model, lik, x, y
+
+    mA, likA, xA, yA = fresh()
+    with pytest.warns(UserWarning, match="LEGACY path"):
+        plain = fit_hmc_legacy_pyro(
+            mA, likA, xA, yA, n_samples=4, n_warmup=4, verbose=False,
+            seed=123, max_tree_depth=3, return_diagnostics=False)
+
+    mB, likB, xB, yB = fresh()
+    with pytest.warns(UserWarning, match="LEGACY path"):
+        observed, diag = fit_hmc_legacy_pyro(
+            mB, likB, xB, yB, n_samples=4, n_warmup=4, verbose=False,
+            seed=123, max_tree_depth=3, return_diagnostics=True)
+
+    assert list(plain) == list(observed)
+    for site in plain:
+        assert np.array_equal(plain[site], observed[site]), (
+            f"legacy diagnostics path perturbed site {site}")
+    assert diag.sampler == "nuts_pyro"
+    assert diag.leapfrog_counts is not None
+    assert diag.notpsd_rejections is None
+    assert {"notpsd_rejections", "notpsd_rejections_warmup",
+            "notpsd_rejections_per_draw"}.issubset(diag.unavailable)
+
+
 def test_default_return_is_the_unchanged_d9_dict():
-    x = torch.linspace(0, 6, 12)
-    y = torch.sin(x)
+    x = torch.linspace(0, 5, 40)
+    noise = torch.randn(40, generator=torch.Generator().manual_seed(0))
+    y = torch.sin(2 * x) + 0.3 * noise
     kernels, names = build_toy_kernels()
     model, lik = build_model(x, y, kernels, names)
-    fit_map(model, lik, x, y, n_iter=20, lr=0.05, verbose=False)
-    out = fit_hmc(model, lik, x, y, n_samples=3, n_warmup=3,
-                  verbose=False, seed=0, max_tree_depth=2)
+    fit_map(model, lik, x, y, n_iter=60, lr=0.05, verbose=False)
+    out = fit_hmc(model, lik, x, y, n_samples=3, n_warmup=5,
+                  verbose=False, seed=0, max_tree_depth=4)
     assert isinstance(out, dict) and not isinstance(out, tuple)
     for name, arr in out.items():
         assert isinstance(arr, np.ndarray) and arr.shape == (3,), name
@@ -101,18 +137,23 @@ def test_default_return_is_the_unchanged_d9_dict():
 def test_structured_return_shapes_and_site_ordering(hmc_run):
     samples, diag = hmc_run
     assert isinstance(diag, SamplerDiagnostics)
-    assert diag.sampler == "nuts_pyro"
+    assert diag.sampler == "nuts_e1"
     assert diag.site_names == tuple(samples.keys())  # order preserved
     assert diag.n_chains == 1
     assert diag.n_draws == N_DRAWS and diag.n_warmup == N_WARMUP
     assert diag.max_tree_depth == TREE_DEPTH
     for name, arr in samples.items():
-        assert arr.shape == (N_DRAWS,), name  # legacy schema intact
+        assert arr.shape == (N_DRAWS,), name  # shared schema intact
 
 
 def test_observed_diagnostics_are_plausible(hmc_run):
     _, diag = hmc_run
     assert diag.unavailable == ()
+    assert diag.notpsd_rejections == 0
+    assert diag.notpsd_rejections_warmup == 0
+    assert diag.notpsd_rejections_per_draw == ((0,) * N_DRAWS,)
+    assert diag.notpsd_post_warmup_total == 0
+    assert diag.notpsd_post_warmup_rate == 0.0
     # leapfrog counts: one chain, one entry per post-warmup draw, each at
     # least 1 AND bounded by the depth cap (a NUTS tree at cap d takes at
     # most 2**d - 1 leapfrogs; the probe verified the counter delta equals
@@ -141,6 +182,41 @@ def test_json_round_trip_is_lossless(hmc_run):
     assert restored.schema_version == SCHEMA_VERSION
 
 
+def test_version_1_payload_loads_with_notpsd_unavailable(hmc_run):
+    payload = hmc_run[1].to_dict()
+    payload["schema_version"] = 1
+    for name in ("notpsd_rejections", "notpsd_rejections_warmup",
+                 "notpsd_rejections_per_draw"):
+        del payload[name]
+
+    restored = SamplerDiagnostics.from_dict(payload)
+
+    assert restored.schema_version == 3
+    assert restored.notpsd_rejections is None
+    assert restored.notpsd_rejections_warmup is None
+    assert restored.notpsd_rejections_per_draw is None
+    assert set(restored.unavailable[-3:]) == {
+        "notpsd_rejections", "notpsd_rejections_warmup",
+        "notpsd_rejections_per_draw"}
+    assert restored.to_dict()["schema_version"] == 3
+
+
+def test_version_2_payload_preserves_total_with_split_unavailable(hmc_run):
+    payload = hmc_run[1].to_dict()
+    payload["schema_version"] = 2
+    del payload["notpsd_rejections_warmup"]
+    del payload["notpsd_rejections_per_draw"]
+
+    restored = SamplerDiagnostics.from_dict(payload)
+
+    assert restored.schema_version == 3
+    assert restored.notpsd_rejections == 0
+    assert restored.notpsd_rejections_warmup is None
+    assert restored.notpsd_rejections_per_draw is None
+    assert {"notpsd_rejections_warmup",
+            "notpsd_rejections_per_draw"}.issubset(restored.unavailable)
+
+
 def test_from_dict_rejects_unknown_keys_and_foreign_versions(hmc_run):
     _, diag = hmc_run
     payload = diag.to_dict()
@@ -149,21 +225,34 @@ def test_from_dict_rejects_unknown_keys_and_foreign_versions(hmc_run):
         SamplerDiagnostics.from_dict(with_extra)
     with pytest.raises(ValueError, match="schema_version"):
         SamplerDiagnostics.from_dict(dict(payload, schema_version=99))
+    with pytest.raises(ValueError, match="schema_version"):
+        SamplerDiagnostics(
+            sampler="x", n_chains=1, n_draws=1, n_warmup=0,
+            site_names=("a",), divergence_draws=((),),
+            acceptance_rate=(1.0,), leapfrog_counts=((1,),),
+            notpsd_rejections=0, schema_version=1)
 
 
 def test_multi_chain_payload_shapes_and_rates():
     """The schema is chain-major; a synthetic 4-chain payload (pyro
     multi-chain runs come later) must round-trip with correct derived rates."""
     diag = SamplerDiagnostics(
-        sampler="nuts_pyro", n_chains=4, n_draws=10, n_warmup=5,
+        sampler="nuts_e1", n_chains=4, n_draws=10, n_warmup=5,
         site_names=("a", "b"), max_tree_depth=7,
         divergence_draws=((0, 3), (), (9,), ()),
         acceptance_rate=(0.9, 0.8, 0.95, 0.85),
         leapfrog_counts=tuple(tuple([127] * 10) for _ in range(4)),
+        notpsd_rejections=7,
+        notpsd_rejections_warmup=2,
+        notpsd_rejections_per_draw=(
+            (1,) + (0,) * 9, (1,) + (0,) * 9,
+            (2,) + (0,) * 9, (1,) + (0,) * 9),
     )
     assert diag.n_divergences == (2, 0, 1, 0)
     assert diag.divergence_rate == 3 / 40
     assert diag.depth_saturation_rate == 1.0  # 127 = 2**7 - 1 every draw
+    assert diag.notpsd_post_warmup_total == 5
+    assert diag.notpsd_post_warmup_rate == 5 / (4 * 10 * 127)
     assert SamplerDiagnostics.from_dict(
         json.loads(json.dumps(diag.to_dict()))) == diag
 
@@ -184,11 +273,18 @@ def test_unavailable_diagnostics_reported_not_fabricated():
         site_names=("a",))
     assert diag.divergence_draws is None and diag.acceptance_rate is None
     assert diag.leapfrog_counts is None
+    assert diag.notpsd_rejections is None
+    assert diag.notpsd_rejections_warmup is None
+    assert diag.notpsd_rejections_per_draw is None
     assert set(diag.unavailable) == {
-        "divergence_draws", "acceptance_rate", "leapfrog_counts"}
+        "divergence_draws", "acceptance_rate", "leapfrog_counts",
+        "notpsd_rejections", "notpsd_rejections_warmup",
+        "notpsd_rejections_per_draw"}
     assert diag.divergence_rate is None
     assert diag.depth_saturation_rate is None
     assert diag.n_divergences is None and diag.tree_depths is None
+    assert diag.notpsd_post_warmup_total is None
+    assert diag.notpsd_post_warmup_rate is None
     # and the honesty invariant is enforced at construction:
     with pytest.raises(ValueError, match="honesty"):
         SamplerDiagnostics(sampler="x", n_chains=1, n_draws=1, n_warmup=0,
@@ -207,6 +303,19 @@ def test_leapfrog_counts_derivation_from_hook_records():
     # initialization overhead and could fake depth saturation, so counts are
     # UNAVAILABLE rather than contaminated (review finding 2).
     assert leapfrog_counts_from_records([("Sample", 0, 12)]) is None
+
+
+def test_notpsd_counts_derivation_from_the_same_hook_records():
+    records = [
+        ("Warmup", 0, 26, 1), ("Warmup", 1, 29, 2),
+        ("Sample", 0, 44, 2), ("Sample", 1, 59, 4),
+        ("Sample", 2, 62, 5),
+    ]
+    assert notpsd_counts_from_records(records) == (2, (0, 2, 1))
+    assert notpsd_counts_from_records([("Warmup", 0, 9, 1)]) == (None, None)
+    assert notpsd_counts_from_records([("Sample", 0, 12, 1)]) == (None, None)
+    assert notpsd_counts_from_records(
+        [("Warmup", 0, 9), ("Sample", 0, 12)]) == (None, None)
 
 
 def test_partial_chain_diagnostics_are_unavailable_not_fabricated():
@@ -235,13 +344,33 @@ def test_acceptance_rate_validated_and_json_rejects_nonfinite():
                            site_names=("a",),
                            divergence_draws=((),),
                            acceptance_rate=(float("nan"),),
-                           leapfrog_counts=((1, 1),))
+                           leapfrog_counts=((1, 1),), notpsd_rejections=0,
+                           notpsd_rejections_warmup=0,
+                           notpsd_rejections_per_draw=((0, 0),))
     with pytest.raises(ValueError, match="acceptance_rate"):
         SamplerDiagnostics(sampler="x", n_chains=1, n_draws=2, n_warmup=1,
                            site_names=("a",),
                            divergence_draws=((),),
                            acceptance_rate=(1.5,),
-                           leapfrog_counts=((1, 1),))
+                           leapfrog_counts=((1, 1),), notpsd_rejections=0,
+                           notpsd_rejections_warmup=0,
+                           notpsd_rejections_per_draw=((0, 0),))
+
+    with pytest.raises(ValueError, match="notpsd_rejections"):
+        SamplerDiagnostics(sampler="x", n_chains=1, n_draws=2, n_warmup=1,
+                           site_names=("a",), divergence_draws=((),),
+                           acceptance_rate=(1.0,), leapfrog_counts=((1, 1),),
+                           notpsd_rejections=-1,
+                           notpsd_rejections_warmup=0,
+                           notpsd_rejections_per_draw=((0, 0),))
+
+    with pytest.raises(ValueError, match="must equal"):
+        SamplerDiagnostics(
+            sampler="x", n_chains=1, n_draws=2, n_warmup=1,
+            site_names=("a",), divergence_draws=((),),
+            acceptance_rate=(1.0,), leapfrog_counts=((1, 1),),
+            notpsd_rejections=2, notpsd_rejections_warmup=1,
+            notpsd_rejections_per_draw=((0, 0),))
 
 
 def test_shape_validation_is_loud():
@@ -250,10 +379,31 @@ def test_shape_validation_is_loud():
                            site_names=("a",),
                            divergence_draws=((0,),),  # 1 chain given, 2 declared
                            acceptance_rate=(0.5, 0.5),
-                           leapfrog_counts=((1, 1, 1), (1, 1, 1)))
+                           leapfrog_counts=((1, 1, 1), (1, 1, 1)),
+                           notpsd_rejections=0,
+                           notpsd_rejections_warmup=0,
+                           notpsd_rejections_per_draw=(
+                               (0, 0, 0), (0, 0, 0)))
     with pytest.raises(ValueError, match="out of range"):
         SamplerDiagnostics(sampler="x", n_chains=1, n_draws=3, n_warmup=0,
                            site_names=("a",),
                            divergence_draws=((7,),),
                            acceptance_rate=(0.5,),
-                           leapfrog_counts=((1, 1, 1),))
+                           leapfrog_counts=((1, 1, 1),),
+                           notpsd_rejections=0,
+                           notpsd_rejections_warmup=0,
+                           notpsd_rejections_per_draw=((0, 0, 0),))
+    with pytest.raises(ValueError, match="notpsd_rejections_per_draw.*draws"):
+        SamplerDiagnostics(
+            sampler="x", n_chains=1, n_draws=3, n_warmup=1,
+            site_names=("a",), divergence_draws=((),),
+            acceptance_rate=(0.5,), leapfrog_counts=((1, 1, 1),),
+            notpsd_rejections=0, notpsd_rejections_warmup=0,
+            notpsd_rejections_per_draw=((0, 0),))
+    with pytest.raises(ValueError, match="nonnegative ints"):
+        SamplerDiagnostics(
+            sampler="x", n_chains=1, n_draws=3, n_warmup=1,
+            site_names=("a",), divergence_draws=((),),
+            acceptance_rate=(0.5,), leapfrog_counts=((1, 1, 1),),
+            notpsd_rejections=0, notpsd_rejections_warmup=0,
+            notpsd_rejections_per_draw=((0, -1, 1),))

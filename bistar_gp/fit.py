@@ -1,5 +1,8 @@
 """
 Fitting routines: MAP via marginal likelihood, simple MCMC for full Bayesian.
+
+D27 routes public HMC through the corrected E1 potential, retains Pyro NUTS
+under an explicit legacy name, and gates defective VI/Laplace paths by opt-in.
 """
 
 import torch
@@ -216,7 +219,7 @@ def _mh_log_joint(mll, model, likelihood, train_x, train_y):
 
 def _hmc_pyro_model(model, x, y):
     """Pyro NUTS target for fit_hmc: sample every prior once, score y through
-    the SAMPLED module.
+    the SAMPLED module, count the marginal likelihood exactly once.
 
     gpytorch's model.pyro_sample_from_prior() deep-copies the model, applies the
     sampled hyperparameters to the COPY, and RETURNS it — the original `model` is
@@ -227,23 +230,62 @@ def _hmc_pyro_model(model, x, y):
     is an ExactGP submodule, so `sampled.likelihood` carries the sampled noise and
     each hyperparameter latent — the kernel sites "covar_module.kernels.{i}.*_prior"
     plus "likelihood.noise_covar.noise_prior" — is emitted exactly once.
+
+    The obs site is emitted BARE — no pyro.plate (D22). The marginal
+    `sampled.likelihood(output)` is a single MultivariateNormal whose EVENT
+    dimension already covers all N data points; wrapping it in
+    `pyro.plate("data", N)` expands it to a batch of N identical MVNs, each
+    scored against the full y, so the potential silently became
+    N * log p(y | theta) + log p(theta) — the marginal likelihood counted N
+    times over, a likelihood-raised-to-the-N tempered target (verified
+    numerically against pyro's initialize_model potential, and reproduced on
+    a minimal pyro-only model; plate 40x on the toy, exact to 1e-12). A plate
+    is for conditionally independent per-datum likelihood factors, which an
+    exact-GP marginal is not.
     """
     import pyro
 
     sampled = model.pyro_sample_from_prior()
     output = sampled(x)
-    with pyro.plate("data", y.shape[0]):
-        pyro.sample("obs", sampled.likelihood(output), obs=y)
+    pyro.sample("obs", sampled.likelihood(output), obs=y)
 
 
-def fit_hmc(model, likelihood, train_x, train_y,
-            n_samples=500, n_warmup=200, verbose=True, seed=None,
-            init_to_map=True, max_tree_depth=10, return_diagnostics=False):
+_D23_HMC_WARNING = (
+    "fit_hmc_legacy_pyro is the LEGACY path retained for historical "
+    "reproduction and benchmarks only. It proposes with partially broken "
+    "gradients: "
+    "pyro autograd through the traced gpytorch target loses the likelihood "
+    "gradient for every kernel hyperparameter site (D23, upstream; the "
+    "D22 wrong-measure defect is fixed). The target density is correct but "
+    "guidance is not — expect tree-depth saturation and poor mixing. This "
+    "path is superseded by the E1-backed fit_hmc on the identical target "
+    "and coordinates. See docs/prereg-addenda-d19.md "
+    "v1.3/v1.6/v1.8 and Notes/DECISIONS.md D22-D26.")
+
+_D23_VI_WARNING = (
+    "fit_vi's ELBO lacks kernel-site likelihood gradients entirely (D23, "
+    "upstream): kernel hyperparameter posteriors are effectively "
+    "prior-guided. Treat results as unvalidated pending an E1-based VI "
+    "(D26/M2bR). See docs/prereg-addenda-d19.md v1.3/v1.8.")
+
+_D24_LAPLACE_WARNING = (
+    "fit_hmc_laplace is affected by D23 (broken kernel-site gradients in "
+    "the z-space potential) and D24 (its create_graph whitening Hessian is "
+    "silently wrong). Retained as a historical diagnostic only (D26). See "
+    "docs/prereg-addenda-d19.md v1.6/v1.8.")
+
+
+def fit_hmc_legacy_pyro(model, likelihood, train_x, train_y,
+                        n_samples=500, n_warmup=200, verbose=True, seed=None,
+                        init_to_map=True, max_tree_depth=10,
+                        return_diagnostics=False):
     """
-    Hamiltonian Monte Carlo via Pyro's NUTS sampler.
+    Legacy Hamiltonian Monte Carlo via Pyro's NUTS sampler (the S1 path).
 
-    This is the production-grade sampler — uses gradients to explore
-    the posterior efficiently, unlike random-walk MH.
+    KNOWN-DEFECTIVE GUIDANCE (D23): see _D23_HMC_WARNING above — the target
+    density is correct post-D22, the proposal gradients are not. The
+    battery-gated replacement on the identical target and coordinates is
+    bistar_gp.e1_potential.fit_hmc_e1.
 
     init_to_map: start each latent at the model's CURRENT constrained hyperparameter
         value instead of a random prior draw. Pass a MAP-fitted model (run fit_map
@@ -264,12 +306,16 @@ def fit_hmc(model, likelihood, train_x, train_y,
     Returns dict of parameter name -> numpy array of posterior samples
     (or the (samples, diagnostics) pair when return_diagnostics=True).
     """
+    import warnings
+
     import pyro
     from pyro.infer.mcmc import NUTS, MCMC
     from pyro.infer.autoguide.initialization import init_to_value, init_to_sample
     from functools import partial
 
     from .sampler_diagnostics import PotentialEvalTracker, diagnostics_from_pyro_mcmc
+
+    warnings.warn(_D23_HMC_WARNING, UserWarning, stacklevel=2)
 
     if seed is not None:
         pyro.set_rng_seed(seed)
@@ -337,6 +383,7 @@ def fit_hmc(model, likelihood, train_x, train_y,
             max_tree_depth=max_tree_depth,
             step_size=getattr(nuts, "step_size", None),
             eval_records=tracker.records,
+            notpsd_rejections=None,
         )
 
     model.eval()
@@ -345,6 +392,26 @@ def fit_hmc(model, likelihood, train_x, train_y,
     if return_diagnostics:
         return samples, diagnostics
     return samples
+
+
+def fit_hmc(model, likelihood, train_x, train_y,
+            n_samples=500, n_warmup=200, verbose=True, seed=None,
+            init_to_map=True, max_tree_depth=10, return_diagnostics=False):
+    """Corrected E1-backed NUTS (D27), with the established dict schema.
+
+    All arguments pass through to :func:`bistar_gp.e1_potential.fit_hmc_e1`.
+    With ``return_diagnostics=True``, diagnostics carry ``sampler="nuts_e1"``.
+    Use :func:`fit_hmc_legacy_pyro` only for historical reproduction and
+    benchmarks of the superseded Pyro path.
+    """
+    # Lazy import: e1_potential imports shared helpers from this module.
+    from .e1_potential import fit_hmc_e1
+
+    return fit_hmc_e1(
+        model, likelihood, train_x, train_y,
+        n_samples=n_samples, n_warmup=n_warmup, verbose=verbose, seed=seed,
+        init_to_map=init_to_map, max_tree_depth=max_tree_depth,
+        return_diagnostics=return_diagnostics)
 
 
 def _map_init_values(model):
@@ -363,24 +430,45 @@ def _map_init_values(model):
     into the interior, and a value that is still invalid after clamping raises
     ValueError (callers may fall back to init_to_sample).
     """
+    init_values = {
+        entry[0]: entry[3](entry[1]).detach()
+        for entry in model.named_priors()
+    }
+    return _guard_init_values(model, init_values)
+
+
+def _guard_init_values(model, init_values):
+    """Validate and boundary-guard constrained values for every prior site."""
     from torch.distributions import biject_to
 
-    init_values = {}
-    for entry in model.named_priors():
-        name, prior, value = entry[0], entry[2], entry[3](entry[1]).detach()
+    prior_by_name = {entry[0]: entry[2] for entry in model.named_priors()}
+    expected, received = set(prior_by_name), set(init_values)
+    if received != expected:
+        raise ValueError(
+            "init_values site set mismatch: "
+            f"missing={sorted(expected - received)}, "
+            f"unexpected={sorted(received - expected)}")
+
+    guarded = {}
+    for name, prior in prior_by_name.items():
+        value = init_values[name].detach()
         if not torch.isfinite(biject_to(prior.support).inv(value)).all():
             value = value.clamp(min=1e-8)
         if not torch.isfinite(biject_to(prior.support).inv(value)).all():
             raise ValueError(
                 f"{name} is outside its prior support even after clamping")
-        init_values[name] = value
-    return init_values
+        guarded[name] = value
+    return guarded
 
 
 def fit_vi(model, likelihood, train_x, train_y,
-           n_samples=500, n_steps=2000, lr=0.01, verbose=True, seed=None):
+           n_samples=500, n_steps=2000, lr=0.01, verbose=True, seed=None,
+           *, allow_legacy=False):
     """Variational inference over the GP hyperparameter posterior (pyro SVI,
     multivariate-normal guide), returning the fit_hmc dict schema.
+
+    D27 disables this defective path by default. Pass ``allow_legacy=True``
+    only for historical reproduction; the call then warns before running.
 
     The thesis chapter's PRIMARY implementation was VI (Appendix II: results
     "were based on variational inference", gpflow/ADVI, cross-checked against
@@ -390,11 +478,24 @@ def fit_vi(model, likelihood, train_x, train_y,
     (D8) — optimization has no step-size collapse — at the price of a Gaussian
     approximation whose adequacy in that funnel must itself be checked.
     """
+    import warnings
+
+    if not allow_legacy:
+        raise RuntimeError(
+            "fit_vi is unavailable through the scientific API (D23): its "
+            "ELBO lacks kernel-site likelihood gradients, so kernel "
+            "posteriors are effectively prior-guided. An E1-differentiable "
+            "VI is required before this path can return (M2bR/M2c). For "
+            "historical reproduction only, use "
+            "fit_vi(..., allow_legacy=True).")
+
     import pyro
     from pyro.infer import SVI, Trace_ELBO
     from pyro.infer.autoguide import AutoMultivariateNormal
     from pyro.infer.autoguide.initialization import init_to_value
     from pyro.optim import Adam
+
+    warnings.warn(_D23_VI_WARNING, UserWarning, stacklevel=2)
 
     if seed is not None:
         pyro.set_rng_seed(seed)
@@ -446,8 +547,11 @@ def fit_map_samples(model, likelihood, train_x, train_y,
 
 def fit_hmc_laplace(model, likelihood, train_x, train_y,
                     n_samples=500, n_warmup=200, verbose=True, seed=None,
-                    max_tree_depth=10):
+                    max_tree_depth=10, *, allow_legacy=False):
     """NUTS on the Laplace-whitened posterior (preconditioned HMC).
+
+    D27 disables this defective path by default. Pass ``allow_legacy=True``
+    only for historical reproduction; the call then warns before running.
 
     Computes the Hessian H of the negative log joint at the MAP in
     UNCONSTRAINED space and runs NUTS on z, where u = u_map + A z with
@@ -458,10 +562,23 @@ def fit_hmc_laplace(model, likelihood, train_x, train_y,
     Falls back to identity whitening (plain unconstrained NUTS) if the
     Hessian is not usable. Returns the fit_hmc dict schema.
     """
+    import warnings
+
+    if not allow_legacy:
+        raise RuntimeError(
+            "fit_hmc_laplace is unavailable through the scientific API "
+            "(D23 and D24): it has broken kernel-site likelihood gradients "
+            "and a wrong double-backward Hessian. Repair is pending a "
+            "validated first-order Hessian implementation. For historical "
+            "reproduction only, use "
+            "fit_hmc_laplace(..., allow_legacy=True).")
+
     import pyro
     from pyro.infer.mcmc import NUTS, MCMC
     from pyro.infer.mcmc.util import initialize_model
     from pyro.infer.autoguide.initialization import init_to_value
+
+    warnings.warn(_D24_LAPLACE_WARNING, UserWarning, stacklevel=2)
 
     if seed is not None:
         pyro.set_rng_seed(seed)
@@ -539,18 +656,18 @@ def fit_gp(model, likelihood, train_x, train_y, method="hmc", **kwargs):
     choice flows through extract_gp_predictives / BMS* / decomposition
     unchanged and results are directly comparable across methods.
 
-      "hmc"          full-Bayes NUTS (default; thesis-equivalent — the chapter
-                     validated HMC against its primary VI implementation).
+      "hmc"          corrected E1-backed full-Bayes NUTS (default; D27).
                      Accepts fit_hmc kwargs (init_to_map, max_tree_depth, ...;
                      return_diagnostics=True makes it return the
                      (samples, SamplerDiagnostics) pair instead — D20).
-      "vi"           ADVI-style SVI, the thesis chapter's PRIMARY
-                     implementation (Appendix II); no NUTS-style step-size
-                     pathology, but a Gaussian posterior approximation.
+                     The historical Pyro path remains available directly as
+                     fit_hmc_legacy_pyro.
+      "vi"           unavailable pending an E1-differentiable repair (D27);
+                     the method name remains for API stability.
       "map"          MAP/MMLE point estimate (thesis Fig. 6 contrast);
                      length-1 arrays, no hyperparameter uncertainty.
-      "hmc_laplace"  NUTS on the Laplace-whitened posterior (== MAP-Hessian
-                     mass-matrix preconditioning == linear reparameterization).
+      "hmc_laplace"  unavailable pending validated gradient and first-order
+                     Hessian repairs (D27); retained for API stability.
 
     Defaults follow the thesis chapter (full-Bayes sampling; see
     docs/inference-and-metric-options.md for the justification writeup).

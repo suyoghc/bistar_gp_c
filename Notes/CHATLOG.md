@@ -370,3 +370,134 @@ pilots, no expensive runs, no scientific result read before the commit.
 - **Next**: M2b (E1 direct potential + frozen equivalence battery + real E1 NUTS
   microbenchmark + Della re-benchmark (A7) + A6 budgets + A5 fallback addendum).
   Holdout stays sealed; §6.5 ordering/blinding governs.
+
+## 2026-07-11 — D19 M2b: E1 coordinate convention, two S1 correctness findings, battery, microbenchmark (branch feat/d19-m2b-e1)
+
+- **Session opened with the author's 7-point revision** of the E1 coordinate
+  convention (recorded verbatim in prereg addendum v1.2 + D21, committed BEFORE
+  any E1 code per §6.16): E1's public NUTS coordinates are the exact pyro
+  initialize_model sample-site coordinates (S1's sites/order/transforms);
+  gpytorch raw parameters demoted to an internal evaluation representation;
+  single-count composition rule; frozen-period exclusion; paired-state
+  posterior-predictive gate; microbenchmark persistence firewall; S3/S4 numbers
+  frozen as ceilings until M2c.
+- **D22 (found by the first E1 equivalence probe)**: the obs plate in
+  _hmc_pyro_model multiplied the marginal likelihood by N — fit_hmc, fit_vi,
+  fit_hmc_laplace all targeted p(theta)L(theta)^N. One-line fix, paired-state
+  regression tests, prereg v1.3, standing caveat on every pre-fix HMC/VI
+  result. Survived D4/D6, two panels, and the M2a three-lens workflow because
+  every prior check tested site inventory/connection, never obs multiplicity.
+- **D23**: FD arbitration showed pyro autograd through the traced gpytorch
+  target loses the likelihood gradient on all kernel sites (gpytorch
+  .data.copy_ in prior injection; noise survives via a non-strict fallback,
+  instrumented). S1 keeps proposing with the broken field (upstream); E1 is
+  immune by construction; battery gradient reference switched to central FD.
+- **D24**: double-backward through the marginal log-prob silently wrong (~16%),
+  persists with fast_computations off; battery Hessian gate rebuilt on
+  first-order machinery; sentinels pin both D23 and D24; S2 mass-matrix
+  consequence recorded for M2c.
+- **E1 + battery**: bistar_gp/e1_potential.py (functional_call substitution, no
+  deep copy, no .data writes; fit_hmc_e1 = S1f vehicle) and the 29-test battery
+  with v1.4-frozen tolerances (worst measured: potential 6e-16, gradient
+  2.3e-7, curvature 7.5e-6; margins 2-6 orders). Suite 205 passed + 1 skip.
+- **Microbenchmark (firewalled, v1.2 point 6)**: the plan's "~200x deep-copy
+  penalty" was mostly the plate — corrected S1 potential 6.0/10.5 ms vs plated
+  51.8 ms/1.486 s; E1 per-eval advantage 1.2-3.2x; S1 saturated td7 (127
+  lf/draw) where S1f needed 6.7. Final A6 budgets frozen on saturated bounds;
+  A5 fallback frozen (N=232, linspace rule, engineering-only predicate) in
+  v1.5 + D25.
+- **Process**: author halted the Claude multi-agent review mid-flight (token
+  budget); review re-run via codex gpt-5.6-sol (xhigh) per author instruction;
+  codex findings and dispositions recorded below in this entry once resolved.
+- **Della re-benchmark (A7) remains user-executed and owed** before any Della
+  assignment.
+- **Codex round 1 dispositions (all 14 fixed same-PR)**: A5 predicate completed
+  for S4/S1-only survivor sets (S4 cubic costing vs a new 1 h ceiling; S1-only
+  fires the fallback via the §1.3 bar); gradient gate widened to every finite
+  frozen state, which surfaced that FD cannot referee the jitter-engaged tail
+  states — three-tier gate frozen (0.2-of-scale at near_zero_noise;
+  autograd-connectedness on the noise coordinate at near_singular, where FD
+  carries zero signal; tight gate elsewhere); bench firewall reading recorded
+  for author ratification + sanitized real-path errors (exception class only);
+  fit_hmc_e1 gained init_to_map parity; eval-mode-entry regression added;
+  per-site D23 sentinel; independent site-order oracle; max(1,|oracle|)
+  convention pinned; 19x/17x leapfrog-wall ratio pair corrected; docstring/
+  prose/stale-line fixes; fork_rng hygiene. Battery 30 passed + 1 skip; suite
+  207 passed + 1 skipped.
+- **Codex round 2 (on the fix commit)**: 12/14 FIXED verified, 2 PARTIAL, 5 new
+  findings — the big ones: the round-1 fixes had edited committed addenda in
+  place (restored; everything re-landed as append-only v1.6) and the
+  jitter-state gradient gates did not actually discriminate disconnection
+  (codex mutation-tested it; an independent big-step FD probe confirmed no FD
+  reference works there at any step). v1.6 freezes the honest design:
+  connectedness gates on the D23-spared noise coordinate at both jitter
+  states, kernel coordinates there explicitly not gated with the residual
+  exposure disclosed, execution-completeness assertion over all 28 states.
+- **Codex round 3**: (a)-(d) PASS (byte-identical restore verified by hash;
+  v1.6-code consistency; silent-skip dead; counts/wording landed); three S1
+  wording nits remained, fixed same-PR (test docstrings; v1.7 wording-only
+  erratum for one self-contradictory v1.6 phrase). M2b review record closed:
+  three codex gpt-5.6-sol (xhigh) rounds, 14 + 5 + 3 findings, all resolved.
+- **Suite at close**: battery 30 passed + 1 skip; full 207 passed + 1 skipped.
+  PR opening awaits the author (branch feat/d19-m2b-e1, 7 commits).
+- **Codex meta-review (author-forwarded) adopted (D26)**: M2b downgraded from
+  "done except Della" to "code complete, closeout gated on M2bR". New:
+  docs/d22-d24-impact-audit.md (dependency-verified classification — D18
+  SIR/prior-IS confirmed unaffected via _mh_log_joint; all HMC/VI/hmc_laplace
+  numbers unvalidated pending rerun), prereg v1.8 (goldens retirement, M2bR
+  milestone, shared Hessian protocol for S2/S4/profile-Laplace, benchmark
+  decomposition rule, Della hold), UserWarning layer on the three affected
+  samplers (defaults untouched; disposition fork OPEN). Suite 207+1 with the
+  new warnings firing.
+- **Ratifications + D27 (author-forwarded codex decision set, implemented)**:
+  v1.9 records all seven dispositions + three orchestrator corrections (A5
+  pre-fire evaluability, S1/S1f implementation pinning, warnings kept on
+  legacy paths). API rerouted: fit_hmc/fit_gp("hmc") = E1-backed;
+  fit_hmc_legacy_pyro explicit; vi/hmc_laplace gated behind allow_legacy=True.
+  M2bR rerun protocol frozen (docs/m2br-corrected-impact-protocol.md, hash in
+  v1.9; six runs, 120-min budget, stop-and-report). Superseded banners on the
+  four affected docs; scope-of-claim rule (repo replication, not the thesis).
+  Implementation: two codex gpt-5.6-sol (xhigh) subagents (API refactor;
+  protocol extraction), Fable verification + prereg/decision prose. Suite 212
+  passed + 1 skipped, verified directly. Branch ready for a DRAFT PR.
+- **D28 correction round (author-forwarded codex, all four accepted)**:
+  banners re-termed WITHDRAWN/UNVALIDATED (superseded reserved for existing
+  validated replacements); every "ratified" label corrected to
+  proposed-pending-explicit-ratification (v1.10; D27 status amended; PR #7
+  body fixed); M2bR split into the single-chain historical-impact AUDIT
+  (re-pinned) + a multi-chain validation PROPOSAL (informative/toy_elicited,
+  4 chains x td7/td10, arviz R-hat/ESS/occupancy criteria, 6 h ceiling);
+  NotPSD rejection policy implemented via codex (catch NotPSDError only,
+  pyro-handler rejection, schema v2 notpsd_rejections, regression tests incl.
+  the documented crash scenario). Suite 218 passed + 1 skipped. PR stays
+  Draft; no runs; decision table returned to the author.
+- **D29 (explicit author ballot)**: items 1-7 RATIFIED (item 4 with the
+  aggregate-engineering-fields restriction on leapfrog counts; item 7
+  audit-only confirmed); item 8 revised per vote — overdispersed frozen
+  starts from prior-IS authority references + authority-coverage criterion
+  (§6.15 convention), full 6 h design, two-stage freeze; item 9 mechanism
+  ratified, diagnostic split implemented (schema v3: warmup/per-draw
+  rejection counts, warn-on-any-post-warmup, fail at proposed 1e-3 with
+  diagnostics attached, init_values injection). v1.11 records the ballot.
+  Suite 224+1. Still pending: revised item-8 protocol + item-9 numeric pair.
+- **D30 (codex-implemented preflight)**: user switched to opus-4-8 and asked to
+  redo using codex for implementations; reverted my partial inline preflight and
+  delegated it to codex gpt-5.6-sol xhigh. preflight_start_state +
+  select_start_state (deterministic next-eligible fallback) added to the pending
+  item-8 protocol; prereg v1.12, protocol re-pinned. Suite 230+1. Governance held:
+  the forwarded codex ratification text is NOT the author's vote (D28 rule), so
+  rows 8-9 stay pending and PR #7 stays Draft. Gave the user a pros/cons of item 8
+  vs item 9 for the vote.
+- **D31 (explicit author ratification of rows 8+9)**: author voted in their
+  own words ("I ratify row 8 and row 9. you may proceed") — the valid-vote
+  form the D28 rule requires. All 9 decision-table items now ratified;
+  prereg v1.13; audit §4 updated; validation-protocol doc retitled RATIFIED;
+  E1_NOTPSD_FAIL_RATE relabeled proposed->ratified. PR #7 flipped Draft->Ready
+  (codex review rounds + AST firewall audit satisfy the preconditions).
+  Bounded "proceed": did NOT merge or run M2bR autonomously — per the ratified
+  D27 structure those are the author's next explicit calls (merge, then M2bR
+  as a separate PR opening with the two-stage start-freeze). Also gave the
+  user a Mauna-critical-path vs paper-cleanup analysis (E1/fixes/NotPSD are on
+  the Mauna path; the audit layer + W2/W3 rewrite are independent cleanup; the
+  item-8 validation doubles as the plan's G-toy gate that de-risks Mauna).
+  Suite 230+1.

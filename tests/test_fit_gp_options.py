@@ -2,17 +2,18 @@
 GP hyperparameter-inference options (fit_gp, DECISIONS D9) and the G-metric
 identity (D10).
 
-Every inference method must return the SAME dict schema as fit_hmc
+Available inference methods return the SAME dict schema as fit_hmc
 (site name -> (n,) array of constrained values), so any option flows through
-extract_gp_predictives / BMS* / decomposition unchanged. Defaults follow the
-thesis chapter (full-Bayes sampling; VI was its primary implementation, HMC
-the cross-check, MAP the explicit contrast).
+extract_gp_predictives / BMS* / decomposition unchanged. Under D27, public
+HMC uses E1 while VI and HMC-Laplace require historical-reproduction opt-ins.
 
 The D10 identity: the viz scripts' "pointwise variance-weighted MSE" G is
 numerically IDENTICAL to the package's default metric pw_kl_vcal — the
 "single-G decision" was a naming difference, not a mathematical one.
 """
 
+
+from contextlib import nullcontext
 
 import numpy as np
 import pytest
@@ -22,7 +23,14 @@ gpytorch = pytest.importorskip("gpytorch")
 pytest.importorskip("pyro")
 
 from bistar_gp.model import build_toy_kernels, build_model
-from bistar_gp.fit import fit_gp, fit_map, GP_INFERENCE_METHODS
+from bistar_gp.fit import (
+    GP_INFERENCE_METHODS,
+    fit_gp,
+    fit_hmc_laplace,
+    fit_hmc_legacy_pyro,
+    fit_map,
+    fit_vi,
+)
 
 torch.set_default_dtype(torch.float64)
 
@@ -59,9 +67,9 @@ def toy(toy_data):
     return model, lik, x, y
 
 
-@pytest.mark.parametrize("method", GP_INFERENCE_METHODS)
+@pytest.mark.parametrize("method", ("hmc", "map"))
 def test_fit_gp_returns_shared_schema(toy, method):
-    """Every option: same site names, (n,) float arrays, finite, positive."""
+    """Every available option returns finite constrained arrays."""
     model, lik, x, y = toy
     s = fit_gp(model, lik, x, y, method=method, **FAST_KWARGS[method])
     assert set(s) == EXPECTED_SITES, (method, sorted(s))
@@ -69,6 +77,53 @@ def test_fit_gp_returns_shared_schema(toy, method):
         assert isinstance(v, np.ndarray) and v.ndim == 1, (method, k, v)
         assert np.isfinite(v).all(), (method, k)
         assert (v > 0).all(), (method, k)   # constrained space, positive supports
+
+
+def test_method_names_remain_stable_under_d27():
+    assert GP_INFERENCE_METHODS == ("hmc", "vi", "map", "hmc_laplace")
+
+
+@pytest.mark.parametrize("method,match", [
+    ("vi", r"D23"),
+    ("hmc_laplace", r"D23.*D24"),
+])
+def test_unavailable_fit_gp_methods_raise_by_default(toy, method, match):
+    model, lik, x, y = toy
+    with pytest.raises(RuntimeError, match=match):
+        fit_gp(model, lik, x, y, method=method)
+
+
+def test_fit_gp_hmc_uses_e1_and_returns_diagnostics(toy):
+    model, lik, x, y = toy
+    samples, diagnostics = fit_gp(
+        model, lik, x, y, method="hmc", n_samples=2, n_warmup=2,
+        verbose=False, seed=0, max_tree_depth=4, return_diagnostics=True)
+    assert set(samples) == EXPECTED_SITES
+    assert diagnostics.sampler == "nuts_e1"
+
+
+def test_legacy_pyro_hmc_warns_and_runs(toy):
+    model, lik, x, y = toy
+    with pytest.warns(UserWarning, match="LEGACY path"):
+        samples = fit_hmc_legacy_pyro(
+            model, lik, x, y, n_samples=1, n_warmup=1, verbose=False,
+            seed=0, max_tree_depth=3)
+    assert set(samples) == EXPECTED_SITES
+
+
+def test_legacy_vi_and_laplace_opt_ins_warn_and_run(toy):
+    model, lik, x, y = toy
+    with pytest.warns(UserWarning, match="D23"):
+        vi_samples = fit_vi(
+            model, lik, x, y, n_samples=2, n_steps=1, verbose=False,
+            seed=0, allow_legacy=True)
+    assert set(vi_samples) == EXPECTED_SITES
+
+    with pytest.warns(UserWarning, match="D23"):
+        laplace_samples = fit_hmc_laplace(
+            model, lik, x, y, n_samples=1, n_warmup=1, verbose=False,
+            seed=0, max_tree_depth=3, allow_legacy=True)
+    assert set(laplace_samples) == EXPECTED_SITES
 
 
 def test_fit_gp_map_is_point_estimate(toy):
@@ -98,14 +153,16 @@ def test_vi_learns_from_likelihood_not_just_init(toy_data):
 
     kers, names = build_toy_kernels()
     m0, l0 = build_model(x, y, kers, names)
-    s0 = fit_gp(m0, l0, x, y, method="vi", n_samples=100, n_steps=0,
-                verbose=False, seed=0)
+    with pytest.warns(UserWarning, match="D23"):
+        s0 = fit_vi(m0, l0, x, y, n_samples=100, n_steps=0,
+                    verbose=False, seed=0, allow_legacy=True)
     assert s0[NOISE].mean() > 0.4, s0[NOISE].mean()   # init, unlearned
 
     kers, names = build_toy_kernels()
     m1, l1 = build_model(x, y, kers, names)
-    s1 = fit_gp(m1, l1, x, y, method="vi", n_samples=100, n_steps=400,
-                verbose=False, seed=0)
+    with pytest.warns(UserWarning, match="D23"):
+        s1 = fit_vi(m1, l1, x, y, n_samples=100, n_steps=400,
+                    verbose=False, seed=0, allow_legacy=True)
     assert s1[NOISE].mean() < 0.2, s1[NOISE].mean()   # learned from data
 
 
@@ -124,7 +181,8 @@ def test_boundary_underflow_survives_all_init_paths(toy_data, method, kw):
     m, l = build_model(x, y, kers, names)
     l.noise_covar.raw_noise.data.fill_(-1000.0)   # softplus underflows to 0.0
     assert float(l.noise.detach()) == 0.0
-    s = fit_gp(m, l, x, y, method=method, **kw)
+    with pytest.warns(UserWarning, match="D23"):
+        s = fit_gp(m, l, x, y, method=method, allow_legacy=True, **kw)
     assert all(np.isfinite(v).all() for v in s.values()), method
 
 
@@ -151,7 +209,13 @@ def test_fit_gp_samples_flow_through_predictive_pipeline(toy):
     model, lik, x, y = toy
     x_eval = torch.linspace(0, 6, 8)
     for method in ("map", "vi"):
-        s = fit_gp(model, lik, x, y, method=method, **FAST_KWARGS[method])
+        kw = dict(FAST_KWARGS[method])
+        if method == "vi":
+            kw["allow_legacy"] = True
+        warning_context = (pytest.warns(UserWarning, match="D23")
+                           if method == "vi" else nullcontext())
+        with warning_context:
+            s = fit_gp(model, lik, x, y, method=method, **kw)
         draws = extract_gp_predictives(model, lik, x, y, x_eval, s,
                                        kernel_builder=build_toy_kernels,
                                        n_posterior_samples=5)

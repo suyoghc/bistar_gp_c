@@ -12,7 +12,8 @@ Honesty contract: a diagnostic this sampler or path could not observe is
 reported as None AND named in `unavailable` — never fabricated as zero. The
 invariant is enforced at construction, so a consumer reading
 `divergence_rate is None` can trust that divergences were unobservable rather
-than absent.
+than absent. The same rule distinguishes an observed zero terminal-NotPSD
+rejection count from a path that cannot apply or report the D28 policy.
 
 Pyro 1.9.1 specifics this module encodes (verified against the installed
 source and a live probe):
@@ -31,10 +32,14 @@ import json
 import math
 from dataclasses import dataclass, fields
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 
 # Observation fields under the None-iff-unavailable honesty contract.
-_OBSERVATION_FIELDS = ("divergence_draws", "acceptance_rate", "leapfrog_counts")
+_OBSERVATION_FIELDS = (
+    "divergence_draws", "acceptance_rate", "leapfrog_counts",
+    "notpsd_rejections", "notpsd_rejections_warmup",
+    "notpsd_rejections_per_draw",
+)
 
 
 class PotentialEvalTracker:
@@ -46,19 +51,26 @@ class PotentialEvalTracker:
     first warmup delta additionally contains initialization overhead, which is
     why leapfrog counts are only derived for the sampling stage (the first
     sampling delta is measured against the last warmup snapshot and is clean).
+    When the wrapped callable exposes ``notpsd_rejections``, the same hook
+    records its cumulative count. The last warmup snapshot includes any
+    initialization rejections before the first warmup hook; sampling deltas
+    remain clean against that snapshot.
     """
 
     def __init__(self, model_fn):
         self._model_fn = model_fn
         self.n_evals = 0
-        self.records = []  # (stage, iteration, cumulative eval count)
+        self.records = []  # (stage, iteration, cumulative evals, NotPSD count)
 
     def __call__(self, *args, **kwargs):
         self.n_evals += 1
         return self._model_fn(*args, **kwargs)
 
     def hook(self, kernel, params, stage, i):
-        self.records.append((str(stage), int(i), int(self.n_evals)))
+        notpsd = getattr(self._model_fn, "notpsd_rejections", None)
+        self.records.append(
+            (str(stage), int(i), int(self.n_evals),
+             int(notpsd) if notpsd is not None else None))
 
 
 @dataclass(frozen=True)
@@ -81,10 +93,16 @@ class SamplerDiagnostics:
     divergence_draws: tuple = None  # per chain: post-warmup draw indices
     acceptance_rate: tuple = None   # per chain
     leapfrog_counts: tuple = None   # per chain: per-draw potential evals
+    notpsd_rejections: int = None   # total terminal NotPSD rejections
+    notpsd_rejections_warmup: int = None  # through last warmup snapshot
+    notpsd_rejections_per_draw: tuple = None  # per chain: post-warmup
     unavailable: tuple = ()         # observation fields this path cannot see
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self):
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError(
+                f"schema_version must be {SCHEMA_VERSION} for new records")
         for name in _OBSERVATION_FIELDS:
             value, listed = getattr(self, name), name in self.unavailable
             if (value is None) != listed:
@@ -93,7 +111,8 @@ class SamplerDiagnostics:
                     "None exactly when it appears in `unavailable` "
                     f"(value={'None' if value is None else 'present'}, "
                     f"listed={listed})")
-        for name in ("divergence_draws", "acceptance_rate", "leapfrog_counts"):
+        for name in ("divergence_draws", "acceptance_rate", "leapfrog_counts",
+                     "notpsd_rejections_per_draw"):
             value = getattr(self, name)
             if value is not None and len(value) != self.n_chains:
                 raise ValueError(
@@ -104,6 +123,16 @@ class SamplerDiagnostics:
                     raise ValueError(
                         f"leapfrog_counts chain {c} has {len(counts)} draws; "
                         f"expected {self.n_draws}")
+        if self.notpsd_rejections_per_draw is not None:
+            for c, counts in enumerate(self.notpsd_rejections_per_draw):
+                if len(counts) != self.n_draws:
+                    raise ValueError(
+                        f"notpsd_rejections_per_draw chain {c} has "
+                        f"{len(counts)} draws; expected {self.n_draws}")
+                if any(type(count) is not int or count < 0 for count in counts):
+                    raise ValueError(
+                        "notpsd_rejections_per_draw entries must be "
+                        "nonnegative ints")
         if self.divergence_draws is not None:
             for c, idxs in enumerate(self.divergence_draws):
                 bad = [t for t in idxs if not (0 <= t < self.n_draws)]
@@ -116,6 +145,25 @@ class SamplerDiagnostics:
             if bad:
                 raise ValueError(
                     f"acceptance_rate entries outside finite [0, 1]: {bad}")
+        if (self.notpsd_rejections is not None
+                and (type(self.notpsd_rejections) is not int
+                     or self.notpsd_rejections < 0)):
+            raise ValueError("notpsd_rejections must be a nonnegative int")
+        if (self.notpsd_rejections_warmup is not None
+                and (type(self.notpsd_rejections_warmup) is not int
+                     or self.notpsd_rejections_warmup < 0)):
+            raise ValueError(
+                "notpsd_rejections_warmup must be a nonnegative int")
+        if (self.notpsd_rejections is not None
+                and self.notpsd_rejections_warmup is not None
+                and self.notpsd_rejections_per_draw is not None
+                and self.notpsd_rejections != (
+                    self.notpsd_rejections_warmup
+                    + sum(sum(chain)
+                          for chain in self.notpsd_rejections_per_draw))):
+            raise ValueError(
+                "notpsd_rejections must equal notpsd_rejections_warmup plus "
+                "the per-draw total")
 
     # ── derived quantities (None whenever their observation is None) ──
 
@@ -155,6 +203,23 @@ class SamplerDiagnostics:
         flat = [s for chain in self.leapfrog_counts for s in chain]
         return sum(s >= cap for s in flat) / float(len(flat))
 
+    @property
+    def notpsd_post_warmup_total(self):
+        if self.notpsd_rejections_per_draw is None:
+            return None
+        return sum(sum(chain) for chain in self.notpsd_rejections_per_draw)
+
+    @property
+    def notpsd_post_warmup_rate(self):
+        """Post-warmup rejections per post-warmup potential evaluation."""
+        if (self.notpsd_rejections_per_draw is None
+                or self.leapfrog_counts is None):
+            return None
+        evaluations = sum(sum(chain) for chain in self.leapfrog_counts)
+        if evaluations == 0:
+            return None
+        return self.notpsd_post_warmup_total / float(evaluations)
+
     # ── serialization ──
 
     def to_dict(self):
@@ -175,18 +240,47 @@ class SamplerDiagnostics:
 
     @classmethod
     def from_dict(cls, payload):
-        """Inverse of to_dict. Rejects unknown keys and foreign schema
-        versions loudly — this schema is what later-milestone predicates are
-        defined against, so silent coercion would be a correctness bug."""
+        """Inverse of to_dict, including migration of versions 1 and 2.
+
+        Version 1 did not record terminal NotPSD rejections. Version 2 kept
+        only the run total. Loading either marks unrecorded fields unavailable
+        rather than fabricating zero. Other versions and unknown keys remain
+        errors.
+        """
+        payload = dict(payload)
         known = {f.name for f in fields(cls)}
         unknown = set(payload) - known
         if unknown:
             raise ValueError(f"unknown SamplerDiagnostics keys: {sorted(unknown)}")
         version = payload.get("schema_version", SCHEMA_VERSION)
-        if version != SCHEMA_VERSION:
+        if version == 1:
+            if "notpsd_rejections" in payload:
+                raise ValueError(
+                    "schema_version 1 cannot contain notpsd_rejections")
+            unavailable = list(payload.get("unavailable", ()))
+            if "notpsd_rejections" not in unavailable:
+                unavailable.append("notpsd_rejections")
+            payload["notpsd_rejections"] = None
+        elif version == 2:
+            unavailable = list(payload.get("unavailable", ()))
+        elif version == SCHEMA_VERSION:
+            unavailable = None
+        else:
             raise ValueError(
                 f"schema_version {version} not readable by this code "
-                f"(expects {SCHEMA_VERSION})")
+                f"(accepts 1, 2, or {SCHEMA_VERSION})")
+
+        if version in (1, 2):
+            for name in ("notpsd_rejections_warmup",
+                         "notpsd_rejections_per_draw"):
+                if name in payload:
+                    raise ValueError(
+                        f"schema_version {version} cannot contain {name}")
+                payload[name] = None
+                if name not in unavailable:
+                    unavailable.append(name)
+            payload["unavailable"] = unavailable
+            payload["schema_version"] = SCHEMA_VERSION
 
         def tuplify(value):
             if isinstance(value, list):
@@ -200,6 +294,14 @@ class SamplerDiagnostics:
         return cls.from_dict(json.loads(text))
 
 
+def _record_parts(record):
+    """Normalize current four-column and historical three-column records."""
+    if len(record) == 3:
+        stage, iteration, evaluations = record
+        return stage, iteration, evaluations, None
+    return record
+
+
 def leapfrog_counts_from_records(records):
     """Per-draw leapfrog counts from PotentialEvalTracker records.
 
@@ -211,9 +313,10 @@ def leapfrog_counts_from_records(records):
     contaminated count (M2a review round, finding 2). Returns a tuple of
     counts, or None when counts cannot be derived honestly.
     """
-    warmup_cums = [c for stage, _i, c in records
+    records = [_record_parts(record) for record in records]
+    warmup_cums = [c for stage, _i, c, _r in records
                    if not stage.lower().startswith("sample")]
-    sample_cums = [c for stage, _i, c in records
+    sample_cums = [c for stage, _i, c, _r in records
                    if stage.lower().startswith("sample")]
     if not sample_cums or not warmup_cums:
         return None
@@ -224,9 +327,36 @@ def leapfrog_counts_from_records(records):
     return tuple(counts)
 
 
+def notpsd_counts_from_records(records):
+    """Warmup total and post-warmup per-draw counts from hook snapshots.
+
+    Warmup totals use the cumulative count at the last warmup hook and thus
+    include initialization attempts observed before the first warmup hook.
+    The last warmup count gives the clean baseline for sampling deltas. If a
+    warmup snapshot, sampling snapshot, or NotPSD counter is absent, both
+    results are unavailable.
+    """
+    records = [_record_parts(record) for record in records]
+    warmup_cums = [r for stage, _i, _e, r in records
+                   if not stage.lower().startswith("sample")]
+    sample_cums = [r for stage, _i, _e, r in records
+                   if stage.lower().startswith("sample")]
+    if (not warmup_cums or not sample_cums
+            or any(r is None for r in warmup_cums + sample_cums)):
+        return None, None
+    warmup = warmup_cums[-1]
+    counts, previous = [], warmup
+    for cumulative in sample_cums:
+        counts.append(cumulative - previous)
+        previous = cumulative
+    if any(count < 0 for count in counts):
+        return None, None
+    return warmup, tuple(counts)
+
+
 def diagnostics_from_pyro_mcmc(mcmc_run, *, sampler, n_draws, n_warmup,
                                site_names, max_tree_depth=None, step_size=None,
-                               eval_records=None):
+                               eval_records=None, notpsd_rejections=None):
     """Build SamplerDiagnostics from a finished pyro MCMC run.
 
     Every diagnostic the run does not expose lands in `unavailable` (honesty
@@ -274,6 +404,21 @@ def diagnostics_from_pyro_mcmc(mcmc_run, *, sampler, n_draws, n_warmup,
         leapfrog_counts = None
         unavailable.append("leapfrog_counts")
 
+    if notpsd_rejections is None:
+        unavailable.append("notpsd_rejections")
+
+    notpsd_warmup, notpsd_per_draw = notpsd_counts_from_records(
+        eval_records) if eval_records else (None, None)
+    if (notpsd_warmup is not None and notpsd_per_draw is not None
+            and n_chains == 1 and len(notpsd_per_draw) == n_draws):
+        notpsd_rejections_warmup = notpsd_warmup
+        notpsd_rejections_per_draw = (notpsd_per_draw,)
+    else:
+        notpsd_rejections_warmup = None
+        notpsd_rejections_per_draw = None
+        unavailable.extend(("notpsd_rejections_warmup",
+                            "notpsd_rejections_per_draw"))
+
     return SamplerDiagnostics(
         sampler=sampler,
         n_chains=n_chains,
@@ -285,5 +430,8 @@ def diagnostics_from_pyro_mcmc(mcmc_run, *, sampler, n_draws, n_warmup,
         divergence_draws=divergence_draws,
         acceptance_rate=acceptance_rate,
         leapfrog_counts=leapfrog_counts,
+        notpsd_rejections=notpsd_rejections,
+        notpsd_rejections_warmup=notpsd_rejections_warmup,
+        notpsd_rejections_per_draw=notpsd_rejections_per_draw,
         unavailable=tuple(unavailable),
     )
