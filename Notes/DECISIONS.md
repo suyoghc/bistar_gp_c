@@ -1969,3 +1969,32 @@ across reruns and raises when all fail.
 
 **Status:** capability on feat/d19-m2b-e1; PR #7 stays DRAFT; rows 8-9 still awaiting the
 author's explicit ratification in their own words; M2c blocked; nothing runs.
+
+## D31: explicit author ratification of decision-table rows 8 and 9 — all nine items ratified; PR #7 to Ready — 2026-07-11
+
+**Problem:** rows 8 (multi-chain validation protocol) and 9 (NotPSD numeric thresholds)
+were the last two decision-table items still pending. The D28 rule bars treating a
+forwarded codex recommendation as an author vote, so they stayed PROPOSED through v1.11/v1.12
+even though the machinery was implemented.
+
+**Decision:** the author ratified both in their own words ("I ratify row 8 and row 9. you
+may proceed"). Recorded as prereg addendum v1.13.
+- Row 8: the revised M2bR scientific-validation layer is ratified as written (overdispersed
+  prior-IS starts, D30 preflight + next-eligible fallback, §6.15 authority-coverage
+  criterion, full 6 h V1-V4). The proposal doc is retitled RATIFIED.
+- Row 9: the NotPSD mechanism AND thresholds are ratified (fail >= 1e-3 post-warmup with
+  diagnostics attached, warn on any post-warmup, warmup separate, zero in first 50
+  post-warmup draws, zero-at-reference). The E1_NOTPSD_FAIL_RATE constant and its raise
+  message are relabeled from "proposed" to ratified (D31).
+- Audit §4 now records every item 1-9 author-ratified.
+
+**Scope of "you may proceed" (deliberately bounded):** the ratification unblocks recording
+the votes and flipping PR #7 Draft -> Ready (the codex code-review rounds + the AST
+firewall key-inventory audit satisfy the ratified Ready preconditions). It does NOT
+authorize the M2b merge or any M2bR run on its own: per the ratified PR structure (D27),
+M2b merges as its own step, then M2bR runs as a SEPARATE corrective-impact PR opening with
+the two-stage start-freeze. Merge and M2bR execution remain the author's next explicit
+calls. No code logic changed (only the "proposed"->ratified relabel); suite green.
+
+**Status:** all nine decision-table items ratified; PR #7 set Ready; M2b merge + M2bR run
+await the author; M2c blocked on M2bR; nothing scientific has run.

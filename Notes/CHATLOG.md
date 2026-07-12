@@ -488,3 +488,16 @@ pilots, no expensive runs, no scientific result read before the commit.
   the forwarded codex ratification text is NOT the author's vote (D28 rule), so
   rows 8-9 stay pending and PR #7 stays Draft. Gave the user a pros/cons of item 8
   vs item 9 for the vote.
+- **D31 (explicit author ratification of rows 8+9)**: author voted in their
+  own words ("I ratify row 8 and row 9. you may proceed") — the valid-vote
+  form the D28 rule requires. All 9 decision-table items now ratified;
+  prereg v1.13; audit §4 updated; validation-protocol doc retitled RATIFIED;
+  E1_NOTPSD_FAIL_RATE relabeled proposed->ratified. PR #7 flipped Draft->Ready
+  (codex review rounds + AST firewall audit satisfy the preconditions).
+  Bounded "proceed": did NOT merge or run M2bR autonomously — per the ratified
+  D27 structure those are the author's next explicit calls (merge, then M2bR
+  as a separate PR opening with the two-stage start-freeze). Also gave the
+  user a Mauna-critical-path vs paper-cleanup analysis (E1/fixes/NotPSD are on
+  the Mauna path; the audit layer + W2/W3 rewrite are independent cleanup; the
+  item-8 validation doubles as the plan's G-toy gate that de-risks Mauna).
+  Suite 230+1.

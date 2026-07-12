@@ -2,7 +2,7 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## D19 Mauna study — M2a DONE (D20); M2b code complete, gated on M2bR (D21-D26)
+## D19 Mauna study — M2a DONE (D20); M2b code complete, ALL 9 decision items ratified (D21-D31); PR #7 Ready; merge + M2bR = author's next call
 
 - `docs/plan-d19-mauna.md` = the frozen record (a077c6e, immutable; merged to main
   as e86e90a): staged plan, gates, cost table (E1 rows are kernel-cost proxies
@@ -69,9 +69,11 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   select_start_state deterministic fallback, v1.12; codex-implemented, suite
   230+1); **item 9 mechanism ratified**, split diagnostics implemented
   (schema v3), numeric pair (1e-3 fail rate, 50-draw window) pending.
-  ROWS 8-9 STILL AWAIT THE AUTHOR'S OWN-WORDS VOTE (forwarded codex advice is
-  not a ballot, D28 rule); PR #7 Draft; nothing runs. Originally proposed as
-  D27/D28 (v1.9/v1.10)**: superseded standing, firewall
+  ROWS 8-9 RATIFIED by the author in their own words (D31, v1.13) — ALL 9
+  items now ratified; PR #7 set READY. NEXT (author's explicit calls, not
+  done autonomously): merge M2b, then run M2bR as a separate PR opening with
+  the two-stage start-freeze. Originally proposed as D27/D28 (v1.9/v1.10)**:
+  superseded standing, firewall
   reading, A5 N=232 (trigger corrected: non-legacy sub-150 G-B eligibility;
   no eligible survivor = O4; S1-only branch removed), dimensioned A6
   ceilings, Draft-PR route, scope-of-claim rule. API rerouted (public

@@ -59,7 +59,7 @@ from .fit import (
 
 logger = logging.getLogger(__name__)
 torch.set_default_dtype(torch.float64)
-E1_NOTPSD_FAIL_RATE = 1e-3
+E1_NOTPSD_FAIL_RATE = 1e-3   # author-ratified D31 (post-warmup fail ceiling)
 PREFLIGHT_ROUNDTRIP_TOL = 1e-10
 
 
@@ -453,8 +453,8 @@ def fit_hmc_e1(model, likelihood, train_x, train_y,
     if notpsd_rate is not None and notpsd_rate >= E1_NOTPSD_FAIL_RATE:
         error = RuntimeError(
             "D29 post-warmup NotPSD rejection rate "
-            f"{notpsd_rate:.12g} reaches proposed failure threshold "
-            f"{E1_NOTPSD_FAIL_RATE:.12g}")
+            f"{notpsd_rate:.12g} reaches the ratified failure threshold "
+            f"{E1_NOTPSD_FAIL_RATE:.12g} (D31)")
         error.diagnostics = diagnostics
         model.eval()
         likelihood.eval()

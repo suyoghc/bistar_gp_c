@@ -1,12 +1,14 @@
-# M2bR scientific-validation layer — PROPOSAL (multi-chain; pending author ratification)
+# M2bR scientific-validation layer — RATIFIED (multi-chain)
 
-Status: PROPOSAL, REVISED PER THE AUTHOR'S ITEM-8 VOTE (D29, 2026-07-11:
-same-MAP chain starts rejected — four same-start chains can miss the same
-basin and still pass R-hat/ESS/internal occupancy agreement), plus the D30
-start-state preflight + deterministic next-eligible fallback. STILL PENDING
-EXPLICIT AUTHOR RATIFICATION of rows 8-9 in the author's own words (the D28
-rule bars treating forwarded advice as a vote). Nothing here runs until the
-author ratifies this revised protocol and the M2b PR merges. Companion to
+Status: AUTHOR-RATIFIED (D31, 2026-07-11: the author explicitly ratified
+row 8 in their own words). Design as revised: overdispersed frozen starts
+(D29, after rejecting same-MAP starts that could miss a basin collectively
+and still pass R-hat/ESS/internal occupancy), the authority-coverage
+criterion, the D30 start-state preflight + deterministic next-eligible
+fallback, and the full 6 h V1-V4 budget. It runs only AFTER the M2b PR
+merges, as a separate M2bR corrective-impact PR, and each cell begins only
+after the two-stage start-freeze pins its start states in a pre-run
+addendum. Companion to
 `docs/m2br-corrected-impact-protocol.md`, whose six single-chain runs are a
 controlled HISTORICAL-IMPACT AUDIT only — this layer is what can support
 replacement scientific conclusions and the W2/W3 re-openings, and only if

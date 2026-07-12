@@ -983,3 +983,51 @@ proposal-state fingerprint; it is not a freeze and confers no ratification.
 **What this addendum does NOT change:** no ratified item, no gate of §6.7,
 no battery value, no budget, no run authorization. Rows 8-9 await the
 author's explicit vote; PR #7 stays Draft; M2c stays blocked.
+
+---
+
+## v1.13 — explicit author ratification of decision-table rows 8 and 9 (D31) — 2026-07-11
+
+**Prereg anchor:** the D28 decision table, addenda v1.9/v1.11/v1.12,
+`docs/d22-d24-impact-audit.md` §4, D31. The author ratified rows 8 and 9 in
+their own words in the chat interface ("I ratify row 8 and row 9. you may
+proceed"), which the D28 rule accepts as a valid author vote (unlike a
+forwarded codex recommendation). With this, ALL nine decision-table items
+are author-ratified.
+
+**Row 8 — RATIFIED.** The M2bR multi-chain scientific-validation layer
+(`docs/m2br-validation-protocol-PROPOSAL.md`, now titled RATIFIED) as
+revised: two pivotal configurations (`informative`, `toy_elicited`) x
+td7/td10, four chains each (seeds 0/1/2/3, 1000 warmup + 2000 draws);
+chain 0 at MAP, chains 1-3 from overdispersed frozen starts drawn
+deterministically from the unaffected prior-IS authority references; the
+D30 preflight + next-eligible fallback; the §6.15-verbatim authority-
+coverage acceptance criterion alongside rank-normalized R-hat < 1.01,
+bulk/tail ESS > 400, occupancy agreement 0.05, divergence < 0.1%,
+saturation < 10%; the full 6 h V1-V4 budget with stop-and-report. Only
+cells passing ALL criteria yield validated replacement numbers, may mark
+withdrawn historical numbers superseded, or feed the W2/W3 re-decisions.
+
+**Row 9 — RATIFIED (mechanism and thresholds).** The NotPSD policy as
+implemented: warmup rejections reported separately (informational, no
+gate); any post-warmup rejection warns with draw indices; a post-warmup
+rate at or above E1_NOTPSD_FAIL_RATE = 1e-3 raises with the completed
+diagnostics attached (a failing run's draws are never silently consumable),
+enforced with or without return_diagnostics; the validation layer
+additionally requires zero rejections in each chain's first 50 post-warmup
+draws; zero-at-reference stays enforced by regression test. The code
+constant and message are updated from "proposed" to ratified (D31).
+
+**What this ratification unblocks and what it does NOT.** It unblocks
+recording the ratifications and moving PR #7 from Draft to Ready (code
+review via the codex rounds and the benchmark-firewall key-inventory audit
+are complete). It does NOT by itself authorize the M2b merge or any M2bR
+run: per the ratified PR structure (D27), M2b merges as its own step, then
+M2bR executes as a SEPARATE corrective-impact PR that opens with the
+two-stage start-freeze (pinning realized start indices, fallback-advance
+counts, and per-state hashes in a pre-run addendum) before any chain
+launches. No pilot, posterior, or Mauna BMS* number exists; §6.5/§6.6
+ordering and blinding continue to govern.
+
+**What this addendum does NOT change:** no battery value, no budget number,
+no gate of §6.7, no plan §6.15 M2c obligation. Suite unchanged (green).
