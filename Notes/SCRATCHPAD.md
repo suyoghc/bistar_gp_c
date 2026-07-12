@@ -2,6 +2,143 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
+## M2bR corrective milestone — COMPUTE LAYERS EXECUTED (D33, branch feat/d19-m2br, 2026-07-12); start-freeze gate PASSED (D32)
+
+Branch `feat/d19-m2br` off `origin/main` (bd0b399 = merged M2b PR #7). The two-stage
+validation start freeze is DONE and independently verified; the hard ordering gate was
+satisfied. As of D32 no chain had run; **both compute layers have SINCE been executed
+(D33, 2026-07-12) — 6 audit + 16 validation chains completed** (see the D33 block below).
+
+- **Commit A `10edc2d`** — prereg v1.14 + `experiments/m2br_start_freeze.py` (deterministic,
+  no sampler) + `docs/m2br_freeze/start_freeze_v1.14.json` (manifest sha `b1abfa3c…`). Pins
+  the 8 realized starts (2 configs x 4 chains, shared across td7/td10): `informative` B=3
+  (median lo/mid/hi), `toy_elicited` B=2 (median lo/mid + q75(lo) filler; hi 0.046<5%). All
+  fallback=0; both MAP starts preflight-OK. R-A/R-B + details 1-5 recorded verbatim.
+- **Commit B `72949c0`** — D32 pre-run gate entry. Three independent implementations (codex
+  freeze script, Fable from-scratch recompute, barred clean-room codex) agree byte-for-byte on
+  all 8 starts (realized (seed,row), fallback, semantic sha256, chain 0 incl.); atol=1e-12 pool
+  verify + 4-site topology + MAP determinism confirmed.
+- Reconciliations in v1.14: validation-proposal doc-hash drift (`bdbabb86`->`1045c11c`); D31
+  supersedes the audit protocol's stale "PENDING" header without editing the frozen file
+  (`45999e2f`); the proposal's "7-site" is a Mauna carryover (toy model has 4 sites).
+
+**Implementation-only checkpoint DONE (author's call, 2026-07-12): drivers built + verified,
+NO chain launched.** prereg **v1.15** provenance erratum (R-A/R-B ratified in the author's later
+message + recorded in D32, not by the D31 rows-8/9 vote). Drivers:
+`experiments/m2br_run_common.py` (Deadline w/ absolute cutoff, transactional_persist samples-last,
+failure records, schema-v3), `experiments/m2br_audit_run.py` (6 runs + §3 unchanged-arm
+re-verification: prior-IS + SIR PASS @1e-12 on real data; RW-MH broadened — toy_elicited
+thorough PASS (occupancy sum, 30000-integral, P_lo + crossings [44,40,38] unchanged @1e-12,
+code params 30000/5000/0.1), other 3 configs NOT_APPLICABLE (RW-MH referee is toy_elicited-only)), and
+`experiments/m2br_validation_run.py` (V1/V3/V2/V4, frozen-start injection w/ manifest-hash anchor
+`b1abfa3c` + per-start sha verify, arviz criteria, authority coverage, R-B pooled-800 primary).
+`tests/test_m2br_drivers.py` 21 hermetic tests (incl. R-B pooled≠averaged proof). Real HMC gated
+behind `--execute` AND `authorized=True`. codex-reviewed (two rounds);
+all confirmed findings fixed (accidental-run guard, manifest-hash anchor+TOCTOU, §3 re-verify,
+cardinality/draw contracts, samples-last persistence, absolute cutoff+clock-first).
+Committed run plan `docs/m2br_freeze/run_plan.json` + report `docs/m2br-run-plan.md` (exact launch
+commands + schedule). Heavy samples & pools stay untracked.
+
+**PREFLIGHT-HARDENING fix pass (2026-07-12, before launch):** `--verify-arms` writes a separate
+`runs/m2br_preflight/` namespace (idempotent; no collision with `--execute`'s no-overwrite
+artifacts); unchanged-arm verification is STRICT (missing required pool/SIR/toy-RWMH artifact =
+FAIL not SKIP; `--verify-arms` exits 0 only on PASS; `run_audit` samples only on PASS); RW-MH pins
+the FULL (lo,mid,hi) occupancy triplet per seed @1e-12 + crossings + integer-exactness + caller
+frozen-defaults provenance; process isolation uses `spawn` (not fork) + bounded
+`queue.get(timeout)` (not `empty()`) + terminate→kill + start() cleanup; thread/BLAS env pinned
+INSIDE each spawned sampler child (`M2BR_TORCH_THREADS`, default 10) — directly tested under spawn.
+Full suite **262 passed + 1 skipped**.
+
+**COMPUTE EXECUTED (D33, 2026-07-12, this session).** Both layers ran under `caffeinate -i`, threads
+pinned to 10, stop-and-report. Pre-launch gates ALL PASSED (freeze sha `b1abfa3c` byte-exact; §3
+`--verify-arms` overall PASS; `pytest` 262+1; both `--dry-run` plumbing OK). Nothing frozen edited;
+heavy samples + pools stay UNTRACKED.
+- **AUDIT** (`runs/m2br_corrected_impact/`): all 6 single-chain runs completed (~14 min), clean
+  (`nuts_e1`, 0 div, acc ≥0.99, 0 saturation, 0 NotPSD). td7≡td10 bit-identical (cap never binds).
+  Corrected occupancy now tracks the prior-IS authority; posteriors de-concentrate from Sin+Linear
+  ~0.67–0.70 to ~0.24–0.43. Single-chain → CANNOT close W2/W3.
+- **VALIDATION** (`runs/m2br_validation/`): 16 chains, all start-shas match manifest v1.14 byte-exact.
+  **V3, V4 (toy_elicited td7/td10) PASS all criteria → SUPERSEDE** (validated R-B pooled-800
+  Sin+Linear 0.4205/0.4220, occ ≈0.76/0.19/0.05, agreeing with SIR 0.441 — mode-vs-mass dichotomy
+  collapses). **V1, V2 (informative td7/td10) FAIL** 4 marginal criteria (R-hat 1.0114, bulk-ESS
+  378/382<400, per-chain occ hi-spread 0.104>0.05, div 0.001) → stay **WITHDRAWN/UNVALIDATED**
+  (authority coverage passes; reproducibility does not). Escalation = new addendum v1.16+, never in-run.
+- **Provenance (small tracked manifests):** `docs/m2br_freeze/{audit,validation}_result_manifest.json`
+  (hashes + verdicts + provenance + pooled occupancy); D33 in `Notes/DECISIONS.md`; proposed (pending
+  author ratification) `docs/m2br-w2w3-writeup-PROPOSAL.md`. Draft PR #8 updated, kept DRAFT pending
+  author sign-off.
+- **W2/W3 proposal REVISED (rev-2, 2026-07-12)** after codex review + author direction: corrected NUTS
+  (Sin+Linear 0.4205 td7 SD 0.0063 / 0.4220 td10 SD 0.0077) and SIR (0.441±0.005; pools 0.419/0.438/0.431)
+  reported SEPARATELY (not merged into 0.42–0.44); prior-IS/SIR = ONE IS-family reference (shared pools),
+  independent check = NUTS vs IS/SIR family; ALL VI claims WITHDRAWN pending corrected-VI rerun (VI hit by
+  same D22 defect); mass-faithful language qualified as conditional on the fixed data-elicited prior,
+  N=20 toy-only. See `docs/m2br-w2w3-writeup-PROPOSAL.md`.
+- **RATIFIED (D34, 2026-07-12):** author explicitly ratified revised W2 + interim-withdrawn W3 + the
+  v1.16 numerical protocol. A codex round-2 caught a FAILURE-DIAGNOSIS error (now corrected): the `382`
+  noise ESS is POOLED, not per-chain — the "~6-SE gap" is WITHDRAWN (Fable recomputed: per-chain hi-band
+  indicator ESS ≈96/66 → chain0 vs chain2 ≈ **2.0 combined MCSE**); mechanisms are distinct (chain 2 =
+  divergences 6/8; chain 0 = max occupancy deviation +0.104); "all four marginal" → occupancy missed
+  MATERIALLY (0.104>0.05) + 3 near-threshold; rationale reframed HYPOTHESIS-testing; cross-chain SDs are
+  DIAGNOSTICS not SEs; informative audit = nearly uniform, nominal argmax. W2/W3 doc → RATIFIED (rev-3).
+- **v1.16 PINNED + DRIVER BUILT/TESTED/REVIEWED (not run):** pin `docs/m2br_freeze/v116_run_plan.json`
+  (sha `db177b8b`); driver `experiments/m2br_v116_run.py` (imports, does NOT modify, the frozen
+  `m2br_validation_run.py`; sole change warmup 3000 + draws 8000; dual-gated --execute+authorized=True;
+  --emit-plan verifies the 4 start shas; --dry-run mock-only). Tests `tests/test_m2br_v116.py` (10
+  hermetic → **12** after cross-model findings). Two independent reviews, both **APPROVE, no P0/P1**:
+  (i) Claude subagent (codex was rate-limited); (ii) **GLM-5.2 via OpenRouter** cross-model pass —
+  its 5 P2 findings cross-verified against source: #1 --execute routing test + #2 no-overwrite test
+  ADDED, #4 --emit-plan made explicit, #3 already covered, **#5 (pickle-identity gate bypass) was a
+  FALSE ALARM**. NO chain launched.
+- **D35 fail-closed sampler gate — v1.16 ONLY; frozen drivers kept as-executed (2026-07-12):** a 4th
+  review (GPT-5.6-sol xhigh via OpenRouter) flagged the historical `sampler_fn is fit_hmc_e1` gate as
+  fail-OPEN (a `partial(fit_hmc_e1)` ran ungated). Author ratified adopting the fail-closed pattern, THEN
+  (provenance call) chose to apply it to **v1.16 ONLY** and REVERT `m2br_audit_run.py` +
+  `m2br_validation_run.py` + `tests/test_m2br_drivers.py` to their exact as-executed bytes (`b56a5a2`).
+  Rationale: only v1.16 ever launches again, so the gate has full value there + zero on the done drivers;
+  keeping the frozen files byte-identical to what produced D33 preserves the freeze discipline
+  (footnote-free). Fail-closed primitive lives in `m2br_run_common` (ADDITIVE: `register_mock_sampler`/
+  `is_ungated_sampler`/`require_sampler_authorization`; per-object-attribute marker, dual-import-safe,
+  import-registered mock survives spawn). v1.16 gates at orchestrator+worker and rejects real+isolate=False.
+  D33 results provably unaffected (frozen drivers == as-executed). Full suite **277 passed + 1 skipped**.
+  NO chain launched.
+- **v1.16 EXECUTED once (D36, 2026-07-12, author-authorized) → FAIL.** HEAD `d0f4b02`, preflight PASSED,
+  exit 0, ~27 min. `failed_criteria: occupancy (0.0604>0.05) + divergence_rate (0.00716>0.001)`. R-hat and
+  ESS were FIXED by the longer chains (378→1158 bulk-ESS; 1.0114→1.0081 R-hat); occupancy improved
+  (0.104→0.060) but still fails; divergence rate increased (0.001→0.00716). **CORRECTION (D36-c1):** NOT a
+  high-noise-basin effect — divergences concentrate in the larger-step chains 0/2/3 (steps 0.37/0.33/0.40 vs
+  chain1's 0.16; chain1 has 0 div despite 65.4% high-band) and endpoint-localize to LOW/MID noise (pooled
+  137/53/39 of 229; conditional 1.69%/1.25%/0.20%) — an unresolved target-geometry/adaptation/
+  parameterization interaction; the longer same-strategy run did not resolve it.
+  Authority coverage PASS (pooled 0.253/0.133/0.614 ≈ prior-IS authority).
+  → **informative stays WITHDRAWN/UNVALIDATED; no replacement number.** Same-strategy lane exhausted
+  (D33 4×2000 + v1.16 4×8000); any further attempt = STRATEGY change via new addendum, never a budget bump.
+  No corrected-VI claim. toy_elicited (D33) UNAFFECTED — still superseded. Provenance:
+  `docs/m2br_freeze/v116_result_manifest.json`; heavy samples `runs/m2br_v116_informative/` UNTRACKED.
+- **D36-c1 (correction):** divergences are NOT a high-noise-basin effect — they concentrate in the
+  larger-adapted-step chains 0/2/3 and endpoint-localize to LOW/MID noise (pooled 137/53/39 of 229;
+  1.69/1.25/0.20%); chain1 is 65.4% high-band with 0 div. All docs corrected; result manifest carries
+  SHA256 for all 17 artifacts. Deterministic archive: 26.04 MiB, sha256 c0aea0b9…e2a3a7b9 (untracked).
+- **M2bR CLOSED (D37, 2026-07-12).** Outcomes propagated (banners): tracked
+  `docs/{prior-sensitivity-study,fit-method-metric-comparison,appendix-tree-depth-cap}.md`; local
+  `WRITEUP_DRAFT/DECISIONS` + 2 kb/Wiki articles (SIR 0.696-0.707 hard-win left UNAFFECTED). G-toy gate:
+  validated toy_elicited is an INPUT to M2c, does NOT close G-toy (an M2c §6.9 derivation referenced to the
+  D18 toy_elicited artifacts; M2c must still revise the withdrawn 0.696, recompute normalized profile masses,
+  freeze tolerances). informative withdrawal is NON-BLOCKING because §6.9 defines G-toy against toy_elicited
+  and informative is NOT the reference config (NOT a general coverage-failure waiver — the L305-307 sentence
+  only says a coverage-repairing sampler targets the mass-faithful answer, not 0.696). **PR #8 → Ready** (not merged).
+- **AUTHOR DECISIONS MADE (D38, 2026-07-12):** (1) M2bR formally CLOSED; (2) M2c OPENED as next milestone
+  (own branch/PR off updated main; NOT started this session); (3) `informative` ACCEPTED as
+  WITHDRAWN/UNVALIDATED for the paper — no strategy-change now, retained as a documented future/
+  reviewer-contingent option; (4) G-toy golden revision scoped to M2c (remove withdrawn 0.696 as a
+  validity target; keep only as S1 historical regression; recompute normalized profile masses; freeze
+  corrected tolerances before any pilot). **PR #8 merged to `main`** (merge-commit method); local `main`
+  fast-forwarded.
+- **NEXT session = M2c** (own branch off updated main; handoff prompt provided). Prohibited until then:
+  Mauna hours, VI repair, informative strategy-change. Fold banners into final paper prose is an author
+  writeup action. Untracked run artifacts + archive preserved (unmoved/uncommitted); durable relocation
+  is a separate author choice. A7 Della on hold (v1.8).
+
+
 ## D19 Mauna study — M2a DONE (D20); M2b code complete, ALL 9 decision items ratified (D21-D31); PR #7 Ready; merge + M2bR = author's next call
 
 - `docs/plan-d19-mauna.md` = the frozen record (a077c6e, immutable; merged to main

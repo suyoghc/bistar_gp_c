@@ -1,0 +1,181 @@
+{
+  "layer": "v1.16 informative-only escalation (D34 ratified; D36 outcome)",
+  "protocol": "docs/m2br-v1.16-informative-escalation-PROPOSAL.md",
+  "freeze_manifest_sha256": "b1abfa3c244a03f3ce3b5a69782157aad087e01de8b15a9a332de6ab2643d891",
+  "v116_plan_sha256": "db177b8b265082312fc8e48bc44cdd5c02bb9f238cac362d641db6e84f0290fd",
+  "provenance": {
+    "cpu_count": 14,
+    "git_sha": "d0f4b02ba5ae4906cea39f3965ec2f8312678432",
+    "hostname": "PSY-KGK4G03W1F",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "torch_thread_count": 10,
+    "versions": {
+      "arviz": "0.23.4",
+      "gpytorch": "1.15.1",
+      "numpy": "1.26.4",
+      "pyro": "1.9.1",
+      "torch": "2.10.0"
+    }
+  },
+  "cell": "V1e",
+  "config": "informative",
+  "max_tree_depth": 7,
+  "n_warmup_per_chain": 3000,
+  "n_samples_per_chain": 8000,
+  "verdict": "FAIL",
+  "status": "failed_validation",
+  "acceptance_passed": false,
+  "failed_criteria": [
+    "occupancy",
+    "divergence_rate"
+  ],
+  "historical_counterparts": "WITHDRAWN/UNVALIDATED",
+  "replacement_numbers": null,
+  "all_start_shas_match_manifest": true,
+  "criteria_summary": {
+    "rhat_max": 1.0081163152575923,
+    "rhat_pass": true,
+    "ess_bulk_min": 1158.194117321634,
+    "ess_bulk_pass": true,
+    "ess_tail_min": 5581.354705419691,
+    "ess_tail_pass": true,
+    "divergence_rate": 0.00715625,
+    "divergence_pass": false,
+    "occupancy_max_dev": {
+      "hi": 0.060406249999999995,
+      "lo": 0.049374999999999974,
+      "mid": 0.016656249999999984
+    },
+    "occupancy_pass": false,
+    "depth_saturation_rate": 0.0,
+    "notpsd_rate": 0.0,
+    "authority_coverage_pass": true
+  },
+  "pooled_occupancy_lo_mid_hi_n": [
+    0.25325,
+    0.13253125,
+    0.61421875,
+    32000
+  ],
+  "per_chain": [
+    {
+      "chain": 0,
+      "seed": 0,
+      "n_divergences": 71,
+      "acceptance_rate": 0.88575,
+      "step_size": 0.3720838249671619,
+      "occ_hi": 0.674625,
+      "frozen_start_semantic_sha256": "72a7e8916501b8e344383ab547f0889022136e95856ef89f29a22df34a8b215a",
+      "samples_semantic_sha256": "d8c800bf839522c3ee5cfb713e7af8e1ff1a623655edee373b46146fe3255958",
+      "samples_file_sha256": "7bda944da4fb950b64ef51fe26f86588272892b25a257de890476bdfb8e4701c"
+    },
+    {
+      "chain": 1,
+      "seed": 1,
+      "n_divergences": 0,
+      "acceptance_rate": 0.997375,
+      "step_size": 0.16401704437094575,
+      "occ_hi": 0.654,
+      "frozen_start_semantic_sha256": "c9f3758458671a26f0c351f6a597d74cead392796f4ff9fe6259331d0d7fd4ad",
+      "samples_semantic_sha256": "bee1adf7289b85323dbc0b6a397d3b56b0ffad44587d8e455eb533864304cd19",
+      "samples_file_sha256": "8a801d939d32b17e8e08b7d7deb07e23d07cd51b38de8f897fba11b7e81401fe"
+    },
+    {
+      "chain": 2,
+      "seed": 2,
+      "n_divergences": 43,
+      "acceptance_rate": 0.891375,
+      "step_size": 0.3271517462986908,
+      "occ_hi": 0.56325,
+      "frozen_start_semantic_sha256": "2db18020dfc123d8ed0e6b0c2dffc27fc8ae01c58e1e0c0f9eee10b2da309cda",
+      "samples_semantic_sha256": "a50f789f7e1cf37ed0cf1126e1e4b24bd513cef8eb26afbf51309df5eb5fe40e",
+      "samples_file_sha256": "9c26e08219ada85c69f13c7fc385a2bf8a055cbe2ccb75c4dba82333663125bc"
+    },
+    {
+      "chain": 3,
+      "seed": 3,
+      "n_divergences": 115,
+      "acceptance_rate": 0.818,
+      "step_size": 0.3950844915218628,
+      "occ_hi": 0.565,
+      "frozen_start_semantic_sha256": "5cf298a7ad0ac3317442e4e5cb998976dbfd5808025728c2cbb82f5f1de45649",
+      "samples_semantic_sha256": "93f6234048dae1a1a256ab9ab2a54865801e50dd577d857895271720e9a5cbb5",
+      "samples_file_sha256": "e0d92d35faf5938b6a8ca234249138de0b9fc5d7b6ff4309b34f139233835e90"
+    }
+  ],
+  "artifact_sha256": {
+    "chain0_samples.npz": "7bda944da4fb950b64ef51fe26f86588272892b25a257de890476bdfb8e4701c",
+    "chain0_predictives.npz": "4c97e2be6541e529e8fa50e07ed42d700454a70c00b8fd619dba63e65a50203f",
+    "chain0_diagnostics.json": "3cefd3e24620f4199ba53ddd9787be3d1c300be5d057798a478cea7594ff203a",
+    "chain0_results.json": "14c04ca4dbcdd5f8c075938ed6c44b98d0e3b9f1d52a81f49af2fe42b534722c",
+    "chain1_samples.npz": "8a801d939d32b17e8e08b7d7deb07e23d07cd51b38de8f897fba11b7e81401fe",
+    "chain1_predictives.npz": "f13c91d2bed7e35d01cc33ef4b2b09183c1b4b32bb545f727a7dc05746f3f064",
+    "chain1_diagnostics.json": "82b87da9caf8ad963b35406abaa76f03dfdba15710eaa9f22b2faf6ee82d93a0",
+    "chain1_results.json": "bf66cbefde13ee0d0d512eb03c2a3267b49987d4061991d0c30ca848381ee616",
+    "chain2_samples.npz": "9c26e08219ada85c69f13c7fc385a2bf8a055cbe2ccb75c4dba82333663125bc",
+    "chain2_predictives.npz": "5115515129bd45b3d1f19d07d843f3aa16d494d1fb2e08db49d2041f5454a35a",
+    "chain2_diagnostics.json": "af877b599dfeeb1334b81065e6cd9877583baf561df3783df6e2207144b20c09",
+    "chain2_results.json": "b97ad4ecede78b1ff957cd204dd483f1c2cf4bde8f9a808bbca6a1ae82b1b1ee",
+    "chain3_samples.npz": "e0d92d35faf5938b6a8ca234249138de0b9fc5d7b6ff4309b34f139233835e90",
+    "chain3_predictives.npz": "bd5f05ad2a8cb970ab0fae1d50af4a86bfad04f945e5902d2efdd355070f3558",
+    "chain3_diagnostics.json": "5d5d7815cc07ceb3286a443e3c1aba94ba561dfe618abe4b4112fddc2ca91e17",
+    "chain3_results.json": "02007416ff39e39b14551f0464e0b0dcae5f2f90945e1f60460c00decf860693",
+    "cell_results.json": "9cee9d410a5c653570a7cc55171325f71fd0b48fbfbbe9c0d6aa500fe8ed1c78"
+  },
+  "artifact_count": 17,
+  "divergence_localization": {
+    "note": "read-only: band of the noise sample at each divergent draw index (endpoint localization)",
+    "per_chain_lo_mid_hi": {
+      "chain0": [
+        40,
+        15,
+        16
+      ],
+      "chain1": [
+        0,
+        0,
+        0
+      ],
+      "chain2": [
+        19,
+        15,
+        9
+      ],
+      "chain3": [
+        78,
+        23,
+        14
+      ]
+    },
+    "pooled_lo_mid_hi": [
+      137,
+      53,
+      39
+    ],
+    "pooled_total": 229,
+    "conditional_rate_pct": {
+      "lo": 1.69,
+      "mid": 1.25,
+      "hi": 0.2
+    },
+    "chains_with_divergences": [
+      0,
+      2,
+      3
+    ],
+    "clean_chain": 1,
+    "adapted_step_size": {
+      "chain0": 0.3721,
+      "chain1": 0.164,
+      "chain2": 0.3272,
+      "chain3": 0.3951
+    },
+    "chain_hi_occupancy": {
+      "chain0": 0.675,
+      "chain1": 0.654,
+      "chain2": 0.563,
+      "chain3": 0.565
+    },
+    "reading": "divergences concentrate in the larger-step chains 0/2/3; divergent draw-endpoints localize disproportionately to low/mid-noise bands; NOT a high-noise-basin effect (correction to the initial D36 wording)"
+  }
+}

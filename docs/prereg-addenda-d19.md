@@ -1031,3 +1031,218 @@ ordering and blinding continue to govern.
 
 **What this addendum does NOT change:** no battery value, no budget number,
 no gate of §6.7, no plan §6.15 M2c obligation. Suite unchanged (green).
+
+---
+
+## v1.14 — M2bR two-stage start freeze: realized validation-layer start states pinned (pre-run) — 2026-07-11
+
+**Prereg anchor:** the ratified validation proposal
+(`docs/m2br-validation-protocol-PROPOSAL.md`, "Overdispersed initialization"
++ "Authority-coverage criterion"), addenda v1.11/v1.12/v1.13, §6.8 (band
+conventions), §6.15 (threshold inventory, coverage convention), §6.16
+(append-only), D31. This is the pre-run start-freeze addendum the two-stage
+freeze requires: the SELECTION RULE was frozen at v1.11-v1.13; this addendum
+pins the REALIZED pool indices, fallback-advance counts, and per-state
+sha256 (chain 0 included), which could not be committed earlier because the
+authority pools are local artifacts. It authorizes NO chain launch by
+itself: per the gate, chains launch only after this addendum is committed
+(Commit A) AND an independent clean-room recomputation reproduces it
+byte-identically (recorded in the pre-run D-entry, Commit B).
+
+**Governing document fingerprints (current sha256, this checkout).**
+
+```
+docs/m2br-corrected-impact-protocol.md   45999e2f232a963b04496a5fa3cff557f2370327b216d8600eddfd23be805afa
+docs/m2br-validation-protocol-PROPOSAL.md 1045c11cf14ca83e56d7cc450fbeae9bb3bcf81bc678a413b792e0a004e6302c
+```
+
+**Doc-drift reconciliation.** v1.12 pinned the validation proposal at
+`bdbabb86…7a03e8` as its then-current proposal-state fingerprint. The
+proposal was subsequently retitled "RATIFIED (multi-chain)" when the author
+ratified row 8 (D31/v1.13), so its bytes — and therefore its hash — changed.
+The CURRENT GOVERNING fingerprint of that document is
+`1045c11cf14ca83e56d7cc450fbeae9bb3bcf81bc678a413b792e0a004e6302c` (above);
+it supersedes the v1.11 (`3ee7967d…`) and v1.12 (`bdbabb86…`) proposal-state
+pins. This is a fingerprint update only; no ratified value, criterion,
+budget, or run/cell design changes.
+
+**Stale-header note (no edit to the frozen protocol).** The header of
+`docs/m2br-corrected-impact-protocol.md` still reads "PROPOSED, PENDING
+EXPLICIT AUTHOR RATIFICATION". D31 (v1.13, item-6 split / decision-table row
+7) ratified that six-run single-chain layer as a historical-impact audit
+whose outputs can never close W2/W3. This addendum records that D31
+SUPERSEDES the stale header WITHOUT altering the protocol's frozen run list
+or any other byte of that file (its fingerprint stays `45999e2f…`); the
+append-only discipline forbids editing a frozen artifact, including its
+header.
+
+**Topology clarification (empirically verified, changes no criterion).** The
+toy E1 model built for BOTH pivotal configs (`informative`,
+`toy_elicited` = `PRIOR_CONFIGS["toy_elicited_n20"]`, via
+`STUDY_CONFIGS[...]`) has EXACTLY FOUR pyro sample sites:
+
+```
+likelihood.noise_covar.noise_prior                     shape (1,)
+covar_module.kernels.0.outputscale_prior               shape ()
+covar_module.kernels.0.base_kernel.lengthscale_prior   shape (1,1)
+covar_module.kernels.1.variance_prior                  shape (1,1)
+```
+
+The validation proposal's phrase "the 7-site constrained draws" is a
+carryover from the 7-site Mauna model and does not describe the toy. The
+governing acceptance criteria are stated over "every site", which for these
+cells is exactly these four sites; the R-hat/ESS/occupancy/coverage gates are
+unchanged. The prior-IS pools carry the four constrained hyperparameters
+`ths[:, ORDER]` with `ORDER = ['ls','os','lv','noise']`
+(`prior_sensitivity_study.SHORT`/`ORDER`), which map one-to-one to these four
+sites; a pool draw seeds a chain by reshaping each scalar into its site's
+constrained shape and passing it through `fit_hmc_e1(init_values=...)`.
+
+**Ratified refinements baked into this freeze (R-A, R-B; author-ratified,
+D31 own-words vote; recorded verbatim).**
+
+- **R-A (filler selection).** Three authority slots (chains 1-3). B = the
+  number of reportable noise bands (pooled prior-IS mass >= 5%; bands
+  low `noise<0.15`, mid `0.15<=noise<=0.30`, high `noise>0.30`). Band-medians
+  fill B slots; the remaining `3-B` slots are fillers from the LARGEST-MASS
+  reportable band: B=3 -> no filler; B=2 (one filler slot) -> the largest-mass
+  band's weighted-q75 draw; B=1 (two filler slots) -> the largest-mass band's
+  weighted-q25 AND weighted-q75 draws.
+- **R-B (replacement-number aggregation, applies at the validation run, not
+  the freeze).** 200 predictives per chain via the frozen D12/D18 extraction
+  rule. The PRIMARY per-cell validated BMS posterior is computed from the
+  concatenated 800 predictive-level G rows with equal per-chain contribution
+  and ONE final normalization. Each chain's separately-normalized posterior
+  and the cross-chain SD are reported as DIAGNOSTICS, never as the primary
+  estimator.
+
+**Deterministic details baked in (author-ratified; applied throughout).**
+
+1. All pool operations use lexicographic `(seed, row)` ordering (pooled pool
+   = seed 0 rows, then seed 1, then seed 2; `row` is the 0-based index within
+   that seed's own pool file).
+2. Weighted quantiles (q25/q50-median/q75): within the band, softmax weights
+   `w = exp(lml - max(lml))` normalized over that band's draws; sort the
+   band's draws by noise ascending (ties by `(seed,row)` ascending); the
+   weighted q-quantile draw is the FIRST whose cumulative normalized weight is
+   `>= q`.
+3. Fallback: if an authority start fails preflight, order the fallback
+   candidates WITHIN THE SAME BAND by absolute noise distance from that
+   start's target-quantile draw, then by `(seed,row)`; take the first that
+   passes preflight (`select_start_state` returns its position = the
+   fallback-advance count).
+4. Chain 0 = the MAP constrained state (fresh model, `torch.manual_seed(42)`,
+   `fit_map(n_iter=300, lr=0.05)`, then `_map_init_values`), frozen /
+   preflighted / serialized / hashed like the others and launched via
+   `fit_hmc_e1(init_values=...)` (NOT `init_to_map`). If the MAP start fails
+   preflight the CELL is unstartable; an authority draw is NEVER substituted
+   for chain 0.
+5. Each pool's recomputed band masses AND SEs (`_is_summary`) were verified
+   against the D18 record (`runs/prior_sensitivity/stage_a_{config}.json`,
+   `prior_is.per_seed.{0,1,2}` and `prior_is.pooled`) at `atol=1e-12`; a
+   mismatch or a missing pool is a STOP condition requiring a new addendum,
+   never a source switch or auto-regeneration.
+
+**Start-state hashing.** Canonical SEMANTIC serialization (not `.npz`/pickle
+file bytes): for the constrained start dict, in sorted-site order, emit
+`utf8(site) + 0x00 + uint32_LE(ndim) + int64_LE(dim...)  + float64_LE(values,
+C-order)`; `sha256` over the concatenation.
+
+**Authority pools (per config; verified at `atol=1e-12`).** Pinned per pool:
+file sha256, semantic array sha256 (`sha256(ths<f8 C || lml<f8 C ||
+int64_LE(seed))`), array shapes. Pooled prior-IS band masses ± delta-method
+SE (the coverage authority):
+
+| Config | pool shapes | pooled lo | pooled mid | pooled hi | reportable | B |
+|---|---|---|---|---|---|---|
+| `informative` | `ths (200000,4)` x3 seeds | 0.276812 ± 0.017734 | 0.131009 ± 0.007024 | 0.592178 ± 0.015063 | lo, mid, hi | 3 |
+| `toy_elicited` | `ths (60000,4)` x3 seeds | 0.762660 ± 0.004283 | 0.191078 ± 0.003838 | 0.046262 ± 0.000866 | lo, mid | 2 |
+
+`toy_elicited` high band (0.0463 < 0.05) is NOT reportable, so B=2 and the
+one filler slot is the largest-mass band's (lo) weighted-q75 draw (R-A). Pool
+file/array hashes are pinned in the committed manifest below.
+
+**Realized freeze — per config x chain (shared across td7/td10 of a config).**
+Full-precision constrained values, per-site shapes, per-site float64 hex, the
+per-pool provenance hashes, and these same hashes are pinned in the committed
+artifact `docs/m2br_freeze/start_freeze_v1.14.json`
+(sha256 `b1abfa3c244a03f3ce3b5a69782157aad087e01de8b15a9a332de6ab2643d891`),
+produced by the deterministic `experiments/m2br_start_freeze.py` (no sampler,
+no network).
+
+| Cell(s) | Chain (seed) | Role | Band | q | Realized `(seed,row)` | Fallback | Semantic sha256 |
+|---|---|---|---|---|---|---|---|
+| V1,V2 `informative` | 0 (0) | MAP | — | — | — | — | `72a7e8916501b8e344383ab547f0889022136e95856ef89f29a22df34a8b215a` |
+| V1,V2 `informative` | 1 (1) | band-median | lo | 0.50 | `(2, 39347)` | 0 | `c9f3758458671a26f0c351f6a597d74cead392796f4ff9fe6259331d0d7fd4ad` |
+| V1,V2 `informative` | 2 (2) | band-median | mid | 0.50 | `(2, 152981)` | 0 | `2db18020dfc123d8ed0e6b0c2dffc27fc8ae01c58e1e0c0f9eee10b2da309cda` |
+| V1,V2 `informative` | 3 (3) | band-median | hi | 0.50 | `(0, 166451)` | 0 | `5cf298a7ad0ac3317442e4e5cb998976dbfd5808025728c2cbb82f5f1de45649` |
+| V3,V4 `toy_elicited` | 0 (0) | MAP | — | — | — | — | `e666fbca520969ff8c0a66c33b4cada458d173c46917188f21e75d9ad8bf747b` |
+| V3,V4 `toy_elicited` | 1 (1) | band-median | lo | 0.50 | `(0, 43612)` | 0 | `502090658b4ab1ab5832872cc90a36e51c246b1a8effeadb37723a26812f4978` |
+| V3,V4 `toy_elicited` | 2 (2) | band-median | mid | 0.50 | `(1, 1491)` | 0 | `a806fa8a18d78f8e595994cdc550facf1abcbfd0310e7cf21bb6fa53e5fcd752` |
+| V3,V4 `toy_elicited` | 3 (3) | filler | lo | 0.75 | `(0, 53543)` | 0 | `c965203c21997abdd593735bd4cfec75884574c65320be2de2247a4085776c48` |
+
+Start states depend only on config (not tree depth), so V1 and V2 share the
+`informative` set and V3 and V4 share the `toy_elicited` set; the identical
+per-chain sha256 across the shared cells is the invariant. Every authority
+start's target-quantile draw passed the D30 preflight (finite E1 potential and
+first gradient, round-trip `<= 1e-10`, no terminal NotPSD), so every
+fallback-advance count is 0 and every realized index equals its target index.
+Both MAP starts passed preflight; no cell is unstartable.
+
+**Verification standing at this addendum (Commit A).** The freeze was built by
+codex gpt-5.6-sol (xhigh) and independently recomputed from scratch by Fable
+(a separate implementation of R-A + details 1-4 and the hashing convention,
+not importing the freeze script): both reproduce every realized `(seed,row)`
+index, every fallback-advance count, and every semantic sha256 byte-for-byte,
+including chain 0, and both confirm the `atol=1e-12` pool verification and the
+four-site topology. The THIRD, formally independent clean-room codex
+recomputation is the gate; its byte-identical result is recorded in the
+pre-run D-entry (Commit B). No chain of any layer launches until Commit A and
+Commit B both exist and the clean-room recomputation matches.
+
+**What this addendum does NOT change or authorize.** No battery value, no
+budget, no acceptance criterion, no audit run list, no cell design; no gate of
+§6.7; no §6.5/§6.6 relaxation. It authorizes no HMC run, no VI, no
+`hmc_laplace`, and no Mauna access. It pins realized start states only.
+
+---
+
+## v1.15 — provenance erratum: R-A/R-B ratification is D32 (a later explicit author message), not D31 — 2026-07-12
+
+**Prereg anchor:** v1.14 (this file), Notes/DECISIONS.md D31/D32, §6.16. This is
+a PROVENANCE-ONLY erratum. It changes NO value, start state, hash, criterion,
+budget, run list, or cell design; it corrects an attribution in v1.14.
+
+**Correction.** v1.14 labelled the filler-selection rule R-A and the
+replacement-number aggregation rule R-B as "author-ratified, D31 own-words
+vote". That attribution is wrong. D31 (v1.13) ratified decision-table rows 8
+and 9 — the multi-chain validation layer's overdispersed-start design and the
+NotPSD policy. It did NOT contain R-A or R-B, which specify (a) the exact
+slotting of the `3-B` filler slots to the largest-mass band's weighted-q75
+(B=2) or weighted-q25+q75 (B=1) draws, and (b) the 800-row pooled-with-one-
+final-normalization primary estimator. R-A and R-B were stated and explicitly
+ratified in the author's SUBSEQUENT message (the M2bR execution instruction)
+and are formally recorded in **D32**, the pre-run gate entry.
+
+**Layering, stated correctly.**
+- v1.11-v1.13 froze the BASE RULE: chain-0 MAP plus overdispersed
+  authority starts, one weighted-median draw per reportable noise band
+  (mass >= 5%), q25/q75 fill "when fewer than three bands", the D30 preflight,
+  and the deterministic next-eligible fallback (D29/D30; rows 8-9 ratified at
+  D31).
+- v1.14 froze the EXPLICITLY-RATIFIED REFINEMENTS on top of that base: R-A's
+  exact filler slotting, R-B's pooled aggregation, and deterministic details
+  1-5 — all ratified in the author's later message and recorded in D32. The
+  realized pool indices, fallback-advance counts, and per-state hashes in
+  v1.14 are unchanged and remain the governing freeze.
+
+**Effect.** Read every "D31 own-words vote" attached to R-A/R-B in v1.14 (and
+any similar phrasing) as "explicitly ratified in the author's later M2bR
+message; formally recorded in D32". Nothing else in v1.14 is amended; the
+manifest `docs/m2br_freeze/start_freeze_v1.14.json`
+(sha256 `b1abfa3c244a03f3ce3b5a69782157aad087e01de8b15a9a332de6ab2643d891`)
+and all eight pinned starts stand.
+
+**What this addendum does NOT change or authorize.** No value, start, hash,
+criterion, or budget. No run of any layer. Toy-only; §6.5/§6.6 continue to
+govern.

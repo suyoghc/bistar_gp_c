@@ -1,0 +1,686 @@
+{
+  "protocol": "M2bR two-stage start freeze (validation layer)",
+  "prereg_addendum": "v1.14",
+  "generated_by": "experiments/m2br_start_freeze.py",
+  "band_defs": {
+    "lo": "noise<0.15",
+    "mid": "0.15<=noise<=0.30",
+    "hi": "noise>0.30"
+  },
+  "reportable_threshold": 0.05,
+  "map_procedure": {
+    "seed": 42,
+    "n_iter": 300,
+    "lr": 0.05,
+    "source": "fit_map"
+  },
+  "configs": {
+    "informative": {
+      "pools": [
+        {
+          "seed": 0,
+          "path": "runs/prior_sensitivity/is_draws_informative_s0.npz",
+          "file_sha256": "d384530a2a430618cae4ad9e66bdffc6e90ab4d3397dc5939a170c7784d45279",
+          "array_sha256": "910ebd44d89ea94e2ad9210ecdcfb3e5e2b586486baf538635e6611f13247585",
+          "ths_shape": [
+            200000,
+            4
+          ],
+          "lml_shape": [
+            200000
+          ],
+          "verify_atol": 1e-12,
+          "verified_against": "stage_a_informative.json:prior_is.per_seed.0",
+          "P_noise_lo": 0.23340941895568015,
+          "P_noise_lo_se": 0.02760257137331746,
+          "P_noise_lo_ess": 42.47633787630229,
+          "P_noise_mid": 0.1377451959933097,
+          "P_noise_mid_se": 0.011130553690867255,
+          "P_noise_mid_ess": 142.14591983248062,
+          "P_noise_hi": 0.6288453850510098,
+          "P_noise_hi_se": 0.02371189959620652,
+          "P_noise_hi_ess": 23978.78509284417,
+          "ess": 698.0473083112647
+        },
+        {
+          "seed": 1,
+          "path": "runs/prior_sensitivity/is_draws_informative_s1.npz",
+          "file_sha256": "cd9909eb5c2a6961041d5b494ed35d16c67b926d59cdd84f4d3121f275ff16b0",
+          "array_sha256": "daf89cf19ea5daaf05f2425d9a90966a5a6497de3328088399433acbe58065f6",
+          "ths_shape": [
+            200000,
+            4
+          ],
+          "lml_shape": [
+            200000
+          ],
+          "verify_atol": 1e-12,
+          "verified_against": "stage_a_informative.json:prior_is.per_seed.1",
+          "P_noise_lo": 0.3014791927711306,
+          "P_noise_lo_se": 0.03394276941504417,
+          "P_noise_lo_ess": 39.17426277177901,
+          "P_noise_mid": 0.1285906296321491,
+          "P_noise_mid_se": 0.014014472032878533,
+          "P_noise_mid_ess": 79.55558014126346,
+          "P_noise_hi": 0.56993017759672,
+          "P_noise_hi_se": 0.028696454410510667,
+          "P_noise_hi_ess": 25623.746975709724,
+          "ess": 393.5979296318541
+        },
+        {
+          "seed": 2,
+          "path": "runs/prior_sensitivity/is_draws_informative_s2.npz",
+          "file_sha256": "c9453572392f9cb172a87477a8f74720a4a2635187d7627d5eabfed29295aacd",
+          "array_sha256": "4c6cf84198defdfce3ac79b4ac72491ac77e53e23ae0874ab6cd8c5f21c92d25",
+          "ths_shape": [
+            200000,
+            4
+          ],
+          "lml_shape": [
+            200000
+          ],
+          "verify_atol": 1e-12,
+          "verified_against": "stage_a_informative.json:prior_is.per_seed.2",
+          "P_noise_lo": 0.2922666263258978,
+          "P_noise_lo_se": 0.028908338736439266,
+          "P_noise_lo_ess": 51.903144762896694,
+          "P_noise_mid": 0.1271763911417919,
+          "P_noise_mid_se": 0.010844416413956063,
+          "P_noise_mid_ess": 135.76013493788966,
+          "P_noise_hi": 0.5805569825323104,
+          "P_noise_hi_se": 0.024439299594032213,
+          "P_noise_hi_ess": 24403.085224821098,
+          "ess": 562.208202603827
+        }
+      ],
+      "pooled": {
+        "P_noise_lo": 0.27681233655255916,
+        "P_noise_lo_se": 0.017734119055865614,
+        "P_noise_lo_ess": 129.20286782779883,
+        "P_noise_mid": 0.13100921848624894,
+        "P_noise_mid_se": 0.007023808133515267,
+        "P_noise_mid_ess": 331.70455427728854,
+        "P_noise_hi": 0.5921784449611923,
+        "P_noise_hi_se": 0.015063383185777887,
+        "P_noise_hi_ess": 73926.10887294283,
+        "ess": 1539.5349427672209,
+        "verified_against": "stage_a_informative.json:prior_is.pooled",
+        "atol": 1e-12
+      },
+      "reportable_bands": [
+        "lo",
+        "mid",
+        "hi"
+      ],
+      "B": 3,
+      "largest_mass_band": "hi",
+      "chains": [
+        {
+          "chain": 0,
+          "seed": 0,
+          "role": "MAP",
+          "band": null,
+          "target_quantile": null,
+          "pool_index": null,
+          "fallback_advance_count": null,
+          "sites": [
+            "covar_module.kernels.0.base_kernel.lengthscale_prior",
+            "covar_module.kernels.0.outputscale_prior",
+            "covar_module.kernels.1.variance_prior",
+            "likelihood.noise_covar.noise_prior"
+          ],
+          "shapes": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1,
+              1
+            ],
+            "covar_module.kernels.0.outputscale_prior": [],
+            "covar_module.kernels.1.variance_prior": [
+              1,
+              1
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              1
+            ]
+          },
+          "values": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              2.1793715718329687
+            ],
+            "covar_module.kernels.0.outputscale_prior": [
+              3.759337504789732
+            ],
+            "covar_module.kernels.1.variance_prior": [
+              5.071855995963848
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              0.07359770255695969
+            ]
+          },
+          "values_hex": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": "75d6d65c5a6f0140",
+            "covar_module.kernels.0.outputscale_prior": "cc95ad8a1f130e40",
+            "covar_module.kernels.1.variance_prior": "b4be429e94491440",
+            "likelihood.noise_covar.noise_prior": "04fa8a8d4cd7b23f"
+          },
+          "semantic_sha256": "72a7e8916501b8e344383ab547f0889022136e95856ef89f29a22df34a8b215a"
+        },
+        {
+          "chain": 1,
+          "seed": 1,
+          "role": "band_median",
+          "band": "lo",
+          "target_quantile": 0.5,
+          "pool_index": {
+            "seed": 2,
+            "row": 39347
+          },
+          "target_pool_index": {
+            "seed": 2,
+            "row": 39347
+          },
+          "fallback_advance_count": 0,
+          "sites": [
+            "covar_module.kernels.0.base_kernel.lengthscale_prior",
+            "covar_module.kernels.0.outputscale_prior",
+            "covar_module.kernels.1.variance_prior",
+            "likelihood.noise_covar.noise_prior"
+          ],
+          "shapes": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1,
+              1
+            ],
+            "covar_module.kernels.0.outputscale_prior": [],
+            "covar_module.kernels.1.variance_prior": [
+              1,
+              1
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              1
+            ]
+          },
+          "values": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              2.7521596001683886
+            ],
+            "covar_module.kernels.0.outputscale_prior": [
+              4.394500945759541
+            ],
+            "covar_module.kernels.1.variance_prior": [
+              6.317942772560869
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              0.09856655496663673
+            ]
+          },
+          "values_hex": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": "ecc3a0406c040640",
+            "covar_module.kernels.0.outputscale_prior": "fa1c510ef8931140",
+            "covar_module.kernels.1.variance_prior": "109848ca92451940",
+            "likelihood.noise_covar.noise_prior": "aba30f62a83bb93f"
+          },
+          "semantic_sha256": "c9f3758458671a26f0c351f6a597d74cead392796f4ff9fe6259331d0d7fd4ad"
+        },
+        {
+          "chain": 2,
+          "seed": 2,
+          "role": "band_median",
+          "band": "mid",
+          "target_quantile": 0.5,
+          "pool_index": {
+            "seed": 2,
+            "row": 152981
+          },
+          "target_pool_index": {
+            "seed": 2,
+            "row": 152981
+          },
+          "fallback_advance_count": 0,
+          "sites": [
+            "covar_module.kernels.0.base_kernel.lengthscale_prior",
+            "covar_module.kernels.0.outputscale_prior",
+            "covar_module.kernels.1.variance_prior",
+            "likelihood.noise_covar.noise_prior"
+          ],
+          "shapes": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1,
+              1
+            ],
+            "covar_module.kernels.0.outputscale_prior": [],
+            "covar_module.kernels.1.variance_prior": [
+              1,
+              1
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              1
+            ]
+          },
+          "values": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              2.5263724335753883
+            ],
+            "covar_module.kernels.0.outputscale_prior": [
+              4.826259668505296
+            ],
+            "covar_module.kernels.1.variance_prior": [
+              7.034387005832908
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              0.2044507392173112
+            ]
+          },
+          "values_hex": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": "1ec71dc002360440",
+            "covar_module.kernels.0.outputscale_prior": "aaefb803174e1340",
+            "covar_module.kernels.1.variance_prior": "bcd6e55836231c40",
+            "likelihood.noise_covar.noise_prior": "896a4a1b712bca3f"
+          },
+          "semantic_sha256": "2db18020dfc123d8ed0e6b0c2dffc27fc8ae01c58e1e0c0f9eee10b2da309cda"
+        },
+        {
+          "chain": 3,
+          "seed": 3,
+          "role": "band_median",
+          "band": "hi",
+          "target_quantile": 0.5,
+          "pool_index": {
+            "seed": 0,
+            "row": 166451
+          },
+          "target_pool_index": {
+            "seed": 0,
+            "row": 166451
+          },
+          "fallback_advance_count": 0,
+          "sites": [
+            "covar_module.kernels.0.base_kernel.lengthscale_prior",
+            "covar_module.kernels.0.outputscale_prior",
+            "covar_module.kernels.1.variance_prior",
+            "likelihood.noise_covar.noise_prior"
+          ],
+          "shapes": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1,
+              1
+            ],
+            "covar_module.kernels.0.outputscale_prior": [],
+            "covar_module.kernels.1.variance_prior": [
+              1,
+              1
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              1
+            ]
+          },
+          "values": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              8.970004647033567
+            ],
+            "covar_module.kernels.0.outputscale_prior": [
+              5.00637629584957
+            ],
+            "covar_module.kernels.1.variance_prior": [
+              6.934434578511798
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              0.6641469818920159
+            ]
+          },
+          "values_hex": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": "53f4f772a4f02140",
+            "covar_module.kernels.0.outputscale_prior": "f892f88187061440",
+            "covar_module.kernels.1.variance_prior": "c0d60b6bdcbc1b40",
+            "likelihood.noise_covar.noise_prior": "75d3de2bb140e53f"
+          },
+          "semantic_sha256": "5cf298a7ad0ac3317442e4e5cb998976dbfd5808025728c2cbb82f5f1de45649"
+        }
+      ]
+    },
+    "toy_elicited": {
+      "pools": [
+        {
+          "seed": 0,
+          "path": "runs/prior_sensitivity/is_draws_toy_elicited_s0.npz",
+          "file_sha256": "a07c4c8e2dc95e37d00334d4555c569fa36d47dae2bb083bbc94e2d32220a552",
+          "array_sha256": "0ac934684500199e6dced0a2f55a09ebed006f9ed7784dd65555f988fe21fe0b",
+          "ths_shape": [
+            60000,
+            4
+          ],
+          "lml_shape": [
+            60000
+          ],
+          "verify_atol": 1e-12,
+          "verified_against": "stage_a_toy_elicited.json:prior_is.per_seed.0",
+          "P_noise_lo": 0.7568157768116455,
+          "P_noise_lo_se": 0.007511269539633683,
+          "P_noise_lo_ess": 898.3408737176512,
+          "P_noise_mid": 0.19400612215486066,
+          "P_noise_mid_se": 0.0066779902899955085,
+          "P_noise_mid_ess": 1189.2848739188926,
+          "P_noise_hi": 0.04917810103349395,
+          "P_noise_hi_se": 0.0015949458413547699,
+          "P_noise_hi_ess": 2362.9295537948583,
+          "ess": 1491.9627168619536
+        },
+        {
+          "seed": 1,
+          "path": "runs/prior_sensitivity/is_draws_toy_elicited_s1.npz",
+          "file_sha256": "60d2bdf48235f8baca5f1f2cf15121ea6a518c227927b6cfab890fd8cc37350b",
+          "array_sha256": "40d942fd17e315d583bbf259b9f16ec9dfdfbe3935da88e5db1f7ee893f238e5",
+          "ths_shape": [
+            60000,
+            4
+          ],
+          "lml_shape": [
+            60000
+          ],
+          "verify_atol": 1e-12,
+          "verified_against": "stage_a_toy_elicited.json:prior_is.per_seed.1",
+          "P_noise_lo": 0.7708908472267889,
+          "P_noise_lo_se": 0.007185131129999742,
+          "P_noise_lo_ess": 939.0352697084921,
+          "P_noise_mid": 0.18598295096831213,
+          "P_noise_mid_se": 0.006473849421442451,
+          "P_noise_mid_ess": 1146.410724008571,
+          "P_noise_hi": 0.0431262018048989,
+          "P_noise_hi_se": 0.0014025843288235124,
+          "P_noise_hi_ess": 2319.7253420727,
+          "ess": 1506.4134063323204
+        },
+        {
+          "seed": 2,
+          "path": "runs/prior_sensitivity/is_draws_toy_elicited_s2.npz",
+          "file_sha256": "5efb94beec2040cf3eecdb862d4d657d05e6fad385f8a275e79961ceaf3d0a8f",
+          "array_sha256": "f320d28140aedc0599c9cd1f1e7cfb64c1c87cdf6d5b9c58b5406e41e9008644",
+          "ths_shape": [
+            60000,
+            4
+          ],
+          "lml_shape": [
+            60000
+          ],
+          "verify_atol": 1e-12,
+          "verified_against": "stage_a_toy_elicited.json:prior_is.per_seed.2",
+          "P_noise_lo": 0.7596108942700097,
+          "P_noise_lo_se": 0.00756862899462509,
+          "P_noise_lo_ess": 893.8319916812935,
+          "P_noise_mid": 0.19366651562883536,
+          "P_noise_mid_se": 0.006796795231233068,
+          "P_noise_mid_ess": 1110.8859421964626,
+          "P_noise_hi": 0.04672259010115472,
+          "P_noise_hi_se": 0.0015060525582358437,
+          "P_noise_hi_ess": 2526.249006030023,
+          "ess": 1470.2164719043976
+        }
+      ],
+      "pooled": {
+        "P_noise_lo": 0.7626600010969103,
+        "P_noise_lo_se": 0.0042828766004713355,
+        "P_noise_lo_ess": 2729.623987931815,
+        "P_noise_mid": 0.19107789655272284,
+        "P_noise_mid_se": 0.0038377294106689635,
+        "P_noise_mid_ess": 3443.8540381203006,
+        "P_noise_hi": 0.04626210235036697,
+        "P_noise_hi_se": 0.0008658211496931529,
+        "P_noise_hi_ess": 7185.958809385912,
+        "ess": 4464.532791988796,
+        "verified_against": "stage_a_toy_elicited.json:prior_is.pooled",
+        "atol": 1e-12
+      },
+      "reportable_bands": [
+        "lo",
+        "mid"
+      ],
+      "B": 2,
+      "largest_mass_band": "lo",
+      "chains": [
+        {
+          "chain": 0,
+          "seed": 0,
+          "role": "MAP",
+          "band": null,
+          "target_quantile": null,
+          "pool_index": null,
+          "fallback_advance_count": null,
+          "sites": [
+            "covar_module.kernels.0.base_kernel.lengthscale_prior",
+            "covar_module.kernels.0.outputscale_prior",
+            "covar_module.kernels.1.variance_prior",
+            "likelihood.noise_covar.noise_prior"
+          ],
+          "shapes": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1,
+              1
+            ],
+            "covar_module.kernels.0.outputscale_prior": [],
+            "covar_module.kernels.1.variance_prior": [
+              1,
+              1
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              1
+            ]
+          },
+          "values": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1.4629302363105965
+            ],
+            "covar_module.kernels.0.outputscale_prior": [
+              0.7138685139649682
+            ],
+            "covar_module.kernels.1.variance_prior": [
+              0.018307998116370273
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              0.061867347763041584
+            ]
+          },
+          "values_hex": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": "7a8914892968f73f",
+            "covar_module.kernels.0.outputscale_prior": "01f523c802d8e63f",
+            "covar_module.kernels.1.variance_prior": "3a00a9f454bf923f",
+            "likelihood.noise_covar.noise_prior": "5f40aab613adaf3f"
+          },
+          "semantic_sha256": "e666fbca520969ff8c0a66c33b4cada458d173c46917188f21e75d9ad8bf747b"
+        },
+        {
+          "chain": 1,
+          "seed": 1,
+          "role": "band_median",
+          "band": "lo",
+          "target_quantile": 0.5,
+          "pool_index": {
+            "seed": 0,
+            "row": 43612
+          },
+          "target_pool_index": {
+            "seed": 0,
+            "row": 43612
+          },
+          "fallback_advance_count": 0,
+          "sites": [
+            "covar_module.kernels.0.base_kernel.lengthscale_prior",
+            "covar_module.kernels.0.outputscale_prior",
+            "covar_module.kernels.1.variance_prior",
+            "likelihood.noise_covar.noise_prior"
+          ],
+          "shapes": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1,
+              1
+            ],
+            "covar_module.kernels.0.outputscale_prior": [],
+            "covar_module.kernels.1.variance_prior": [
+              1,
+              1
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              1
+            ]
+          },
+          "values": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1.1309259107278198
+            ],
+            "covar_module.kernels.0.outputscale_prior": [
+              0.5299318420546594
+            ],
+            "covar_module.kernels.1.variance_prior": [
+              0.031864785626262465
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              0.0795171137616847
+            ]
+          },
+          "values_hex": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": "68668cc44518f23f",
+            "covar_module.kernels.0.outputscale_prior": "497b579f33f5e03f",
+            "covar_module.kernels.1.variance_prior": "8c5451c89450a03f",
+            "likelihood.noise_covar.noise_prior": "c92814cb3b5bb43f"
+          },
+          "semantic_sha256": "502090658b4ab1ab5832872cc90a36e51c246b1a8effeadb37723a26812f4978"
+        },
+        {
+          "chain": 2,
+          "seed": 2,
+          "role": "band_median",
+          "band": "mid",
+          "target_quantile": 0.5,
+          "pool_index": {
+            "seed": 1,
+            "row": 1491
+          },
+          "target_pool_index": {
+            "seed": 1,
+            "row": 1491
+          },
+          "fallback_advance_count": 0,
+          "sites": [
+            "covar_module.kernels.0.base_kernel.lengthscale_prior",
+            "covar_module.kernels.0.outputscale_prior",
+            "covar_module.kernels.1.variance_prior",
+            "likelihood.noise_covar.noise_prior"
+          ],
+          "shapes": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1,
+              1
+            ],
+            "covar_module.kernels.0.outputscale_prior": [],
+            "covar_module.kernels.1.variance_prior": [
+              1,
+              1
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              1
+            ]
+          },
+          "values": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1.459449383774055
+            ],
+            "covar_module.kernels.0.outputscale_prior": [
+              0.43144377617591706
+            ],
+            "covar_module.kernels.1.variance_prior": [
+              0.04513791441201378
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              0.1893400414020523
+            ]
+          },
+          "values_hex": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": "76a1d798e759f73f",
+            "covar_module.kernels.0.outputscale_prior": "6f402f5bc69cdb3f",
+            "covar_module.kernels.1.variance_prior": "53226b14511ca73f",
+            "likelihood.noise_covar.noise_prior": "a892d2624b3cc83f"
+          },
+          "semantic_sha256": "a806fa8a18d78f8e595994cdc550facf1abcbfd0310e7cf21bb6fa53e5fcd752"
+        },
+        {
+          "chain": 3,
+          "seed": 3,
+          "role": "largest_mass_filler",
+          "band": "lo",
+          "target_quantile": 0.75,
+          "pool_index": {
+            "seed": 0,
+            "row": 53543
+          },
+          "target_pool_index": {
+            "seed": 0,
+            "row": 53543
+          },
+          "fallback_advance_count": 0,
+          "sites": [
+            "covar_module.kernels.0.base_kernel.lengthscale_prior",
+            "covar_module.kernels.0.outputscale_prior",
+            "covar_module.kernels.1.variance_prior",
+            "likelihood.noise_covar.noise_prior"
+          ],
+          "shapes": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1,
+              1
+            ],
+            "covar_module.kernels.0.outputscale_prior": [],
+            "covar_module.kernels.1.variance_prior": [
+              1,
+              1
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              1
+            ]
+          },
+          "values": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": [
+              1.4504828955452185
+            ],
+            "covar_module.kernels.0.outputscale_prior": [
+              0.6564223999666162
+            ],
+            "covar_module.kernels.1.variance_prior": [
+              0.02117730411452386
+            ],
+            "likelihood.noise_covar.noise_prior": [
+              0.10585096236391642
+            ]
+          },
+          "values_hex": {
+            "covar_module.kernels.0.base_kernel.lengthscale_prior": "b4627c8d2d35f73f",
+            "covar_module.kernels.0.outputscale_prior": "87fd868c6901e53f",
+            "covar_module.kernels.1.variance_prior": "55785bd280af953f",
+            "likelihood.noise_covar.noise_prior": "e6679a750c19bb3f"
+          },
+          "semantic_sha256": "c965203c21997abdd593735bd4cfec75884574c65320be2de2247a4085776c48"
+        }
+      ]
+    }
+  },
+  "cells": {
+    "V1": {
+      "config": "informative",
+      "td": 7,
+      "start_config": "informative"
+    },
+    "V2": {
+      "config": "informative",
+      "td": 10,
+      "start_config": "informative"
+    },
+    "V3": {
+      "config": "toy_elicited",
+      "td": 7,
+      "start_config": "toy_elicited"
+    },
+    "V4": {
+      "config": "toy_elicited",
+      "td": 10,
+      "start_config": "toy_elicited"
+    }
+  }
+}

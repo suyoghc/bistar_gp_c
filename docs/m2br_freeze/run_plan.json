@@ -1,0 +1,201 @@
+{
+  "audit": {
+    "ceiling_seconds": 7200,
+    "reserve_seconds": 600,
+    "runs": [
+      {
+        "config": "informative",
+        "n_samples": 2000,
+        "n_warmup": 1000,
+        "output_paths": {
+          "diagnostics": "runs/m2br_corrected_impact/diagnostics_d12_informative_td7.json",
+          "results": "runs/m2br_corrected_impact/results_d12_informative_td7.json",
+          "samples": "runs/m2br_corrected_impact/samples_d12_informative_td7_e1.npz"
+        },
+        "projection_seconds": 865.0,
+        "run_id": "d12_informative_td7",
+        "seed": 42,
+        "td": 7
+      },
+      {
+        "config": "informative",
+        "n_samples": 2000,
+        "n_warmup": 1000,
+        "output_paths": {
+          "diagnostics": "runs/m2br_corrected_impact/diagnostics_d12_informative_td10.json",
+          "results": "runs/m2br_corrected_impact/results_d12_informative_td10.json",
+          "samples": "runs/m2br_corrected_impact/samples_d12_informative_td10_e1.npz"
+        },
+        "projection_seconds": 1362.0,
+        "run_id": "d12_informative_td10",
+        "seed": 42,
+        "td": 10
+      },
+      {
+        "config": "toy_elicited",
+        "n_samples": 2000,
+        "n_warmup": 1000,
+        "output_paths": {
+          "diagnostics": "runs/m2br_corrected_impact/diagnostics_d18_toy_elicited_td7.json",
+          "results": "runs/m2br_corrected_impact/results_d18_toy_elicited_td7.json",
+          "samples": "runs/m2br_corrected_impact/samples_d18_toy_elicited_td7_e1.npz"
+        },
+        "projection_seconds": 865.0,
+        "run_id": "d18_toy_elicited_td7",
+        "seed": 42,
+        "td": 7
+      },
+      {
+        "config": "toy_elicited",
+        "n_samples": 2000,
+        "n_warmup": 1000,
+        "output_paths": {
+          "diagnostics": "runs/m2br_corrected_impact/diagnostics_d18_toy_elicited_td10.json",
+          "results": "runs/m2br_corrected_impact/results_d18_toy_elicited_td10.json",
+          "samples": "runs/m2br_corrected_impact/samples_d18_toy_elicited_td10_e1.npz"
+        },
+        "projection_seconds": 1362.0,
+        "run_id": "d18_toy_elicited_td10",
+        "seed": 42,
+        "td": 10
+      },
+      {
+        "config": "vague",
+        "n_samples": 2000,
+        "n_warmup": 1000,
+        "output_paths": {
+          "diagnostics": "runs/m2br_corrected_impact/diagnostics_d18_vague_td7.json",
+          "results": "runs/m2br_corrected_impact/results_d18_vague_td7.json",
+          "samples": "runs/m2br_corrected_impact/samples_d18_vague_td7_e1.npz"
+        },
+        "projection_seconds": 865.0,
+        "run_id": "d18_vague_td7",
+        "seed": 42,
+        "td": 7
+      },
+      {
+        "config": "gamma_relaxed",
+        "n_samples": 2000,
+        "n_warmup": 1000,
+        "output_paths": {
+          "diagnostics": "runs/m2br_corrected_impact/diagnostics_d18_gamma_relaxed_td7.json",
+          "results": "runs/m2br_corrected_impact/results_d18_gamma_relaxed_td7.json",
+          "samples": "runs/m2br_corrected_impact/samples_d18_gamma_relaxed_td7_e1.npz"
+        },
+        "projection_seconds": 865.0,
+        "run_id": "d18_gamma_relaxed_td7",
+        "seed": 42,
+        "td": 7
+      }
+    ]
+  },
+  "manifest": {
+    "path": "docs/m2br_freeze/start_freeze_v1.14.json",
+    "sha256": "b1abfa3c244a03f3ce3b5a69782157aad087e01de8b15a9a332de6ab2643d891"
+  },
+  "protocol": "M2bR AUDIT and VALIDATION run plan",
+  "provenance": {
+    "cpu_count": 14,
+    "git_sha": "c562ff83269af937563c89ddd6e381ef4738cc98",
+    "hostname": "PSY-KGK4G03W1F",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "torch_thread_count": 10,
+    "versions": {
+      "arviz": "0.23.4",
+      "gpytorch": "1.15.1",
+      "numpy": "1.26.4",
+      "pyro": "1.9.1",
+      "torch": "2.10.0"
+    }
+  },
+  "validation": {
+    "ceiling_seconds": 21600,
+    "cells": [
+      {
+        "cell": "V1",
+        "config": "informative",
+        "n_samples": 2000,
+        "n_warmup": 1000,
+        "output_path": "runs/m2br_validation/V1",
+        "projection_seconds_per_chain": 865.0,
+        "seeds": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "start_semantic_sha256": [
+          "72a7e8916501b8e344383ab547f0889022136e95856ef89f29a22df34a8b215a",
+          "c9f3758458671a26f0c351f6a597d74cead392796f4ff9fe6259331d0d7fd4ad",
+          "2db18020dfc123d8ed0e6b0c2dffc27fc8ae01c58e1e0c0f9eee10b2da309cda",
+          "5cf298a7ad0ac3317442e4e5cb998976dbfd5808025728c2cbb82f5f1de45649"
+        ],
+        "td": 7
+      },
+      {
+        "cell": "V3",
+        "config": "toy_elicited",
+        "n_samples": 2000,
+        "n_warmup": 1000,
+        "output_path": "runs/m2br_validation/V3",
+        "projection_seconds_per_chain": 865.0,
+        "seeds": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "start_semantic_sha256": [
+          "e666fbca520969ff8c0a66c33b4cada458d173c46917188f21e75d9ad8bf747b",
+          "502090658b4ab1ab5832872cc90a36e51c246b1a8effeadb37723a26812f4978",
+          "a806fa8a18d78f8e595994cdc550facf1abcbfd0310e7cf21bb6fa53e5fcd752",
+          "c965203c21997abdd593735bd4cfec75884574c65320be2de2247a4085776c48"
+        ],
+        "td": 7
+      },
+      {
+        "cell": "V2",
+        "config": "informative",
+        "n_samples": 2000,
+        "n_warmup": 1000,
+        "output_path": "runs/m2br_validation/V2",
+        "projection_seconds_per_chain": 1362.0,
+        "seeds": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "start_semantic_sha256": [
+          "72a7e8916501b8e344383ab547f0889022136e95856ef89f29a22df34a8b215a",
+          "c9f3758458671a26f0c351f6a597d74cead392796f4ff9fe6259331d0d7fd4ad",
+          "2db18020dfc123d8ed0e6b0c2dffc27fc8ae01c58e1e0c0f9eee10b2da309cda",
+          "5cf298a7ad0ac3317442e4e5cb998976dbfd5808025728c2cbb82f5f1de45649"
+        ],
+        "td": 10
+      },
+      {
+        "cell": "V4",
+        "config": "toy_elicited",
+        "n_samples": 2000,
+        "n_warmup": 1000,
+        "output_path": "runs/m2br_validation/V4",
+        "projection_seconds_per_chain": 1362.0,
+        "seeds": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "start_semantic_sha256": [
+          "e666fbca520969ff8c0a66c33b4cada458d173c46917188f21e75d9ad8bf747b",
+          "502090658b4ab1ab5832872cc90a36e51c246b1a8effeadb37723a26812f4978",
+          "a806fa8a18d78f8e595994cdc550facf1abcbfd0310e7cf21bb6fa53e5fcd752",
+          "c965203c21997abdd593735bd4cfec75884574c65320be2de2247a4085776c48"
+        ],
+        "td": 10
+      }
+    ],
+    "reserve_seconds": 600
+  }
+}

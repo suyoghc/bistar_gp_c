@@ -1998,3 +1998,509 @@ calls. No code logic changed (only the "proposed"->ratified relabel); suite gree
 
 **Status:** all nine decision-table items ratified; PR #7 set Ready; M2b merge + M2bR run
 await the author; M2c blocked on M2bR; nothing scientific has run.
+
+## D32: M2bR two-stage start freeze — realized validation starts pinned + independently verified (the pre-run gate) — 2026-07-11
+
+**Problem:** The M2bR corrective milestone opens on branch `feat/d19-m2br` (off `origin/main`
+bd0b399, the merged M2b PR #7). Its hard ordering gate: the two-stage validation start freeze
+is the FIRST substantive action, and NO chain of ANY layer (audit or validation) may launch
+until the realized freeze is committed AND independently reproduced byte-for-byte. The
+selection RULE was frozen at prereg v1.11-v1.13; the realized pool indices, fallback-advance
+counts, and per-state hashes could not be pinned earlier because the prior-IS pools are local
+artifacts. This entry records the author-ratified filler/aggregation refinements, the realized
+freeze, and its independent verification — the gate itself.
+
+**Decision (author-ratified refinements baked into the freeze):**
+- **R-A (filler selection).** 3 authority slots (chains 1-3). B = number of reportable noise
+  bands (pooled prior-IS mass >= 5%; bands lo `noise<0.15`, mid `0.15<=noise<=0.30`, hi
+  `noise>0.30`). Band-medians fill B slots; the remaining `3-B` slots are fillers from the
+  LARGEST-MASS reportable band: B=3 no filler; B=2 the largest-mass band's weighted-q75 draw;
+  B=1 the largest-mass band's weighted-q25 AND q75 draws.
+- **R-B (replacement-number aggregation; applies at the validation RUN, not the freeze).** 200
+  predictives/chain via the frozen D12/D18 extraction rule; the PRIMARY per-cell validated BMS
+  posterior = the concatenated 800 predictive-level G rows, equal per-chain contribution, ONE
+  final normalization. Per-chain separately-normalized posteriors and the cross-chain SD are
+  DIAGNOSTICS only, never the primary estimator.
+- Deterministic details 1-5 (lexicographic `(seed,row)` pooling; softmax-weighted band
+  quantiles, first cumulative weight `>= q`, noise-ascending with `(seed,row)` tie-break;
+  same-band `|Δnoise|` fallback ordering; chain 0 = frozen MAP via `init_values` not
+  `init_to_map`, cell-unstartable-if-MAP-fails; `atol=1e-12` pool verification as a STOP
+  condition) are applied throughout. Full text in prereg v1.14.
+
+**Realized freeze (prereg v1.14; `experiments/m2br_start_freeze.py`; manifest
+`docs/m2br_freeze/start_freeze_v1.14.json`, sha256 `b1abfa3c…2643d891`).** Start states depend
+only on config, so V1/V2 share the `informative` set and V3/V4 share `toy_elicited` (2 sets x 4
+chains = 8 starts). Reportability from pooled masses: `informative` lo/mid/hi = 0.2768/0.1310/
+0.5922 -> B=3, no filler; `toy_elicited` lo/mid/hi = 0.7627/0.1911/0.0463 -> hi<5%, B=2, one
+filler = q75(lo). All targets passed D30 preflight (fallback=0 everywhere); both MAP starts
+passed; no cell unstartable.
+
+| Cell(s) | Chain(seed) | Role | Realized `(seed,row)` | Semantic sha256 |
+|---|---|---|---|---|
+| V1,V2 informative | 0(0) | MAP | — | `72a7e891…4a8b215a` |
+| V1,V2 informative | 1(1) | median(lo) | (2,39347) | `c9f37584…d0d7fd4ad` |
+| V1,V2 informative | 2(2) | median(mid) | (2,152981) | `2db18020…da309cda` |
+| V1,V2 informative | 3(3) | median(hi) | (0,166451) | `5cf298a7…1de45649` |
+| V3,V4 toy_elicited | 0(0) | MAP | — | `e666fbca…d8bf747b` |
+| V3,V4 toy_elicited | 1(1) | median(lo) | (0,43612) | `50209065…812f4978` |
+| V3,V4 toy_elicited | 2(2) | median(mid) | (1,1491) | `a806fa8a…e5fcd752` |
+| V3,V4 toy_elicited | 3(3) | q75(lo) filler | (0,53543) | `c965203c…085776c48` |
+
+**Independent verification (the gate — PASSED).** Three independent implementations of the
+frozen rule agree byte-for-byte on all 8 starts (realized `(seed,row)`, fallback counts, and
+semantic sha256, chain 0 included):
+1. codex gpt-5.6-sol (xhigh) — the committed freeze script; two runs -> identical manifest hash.
+2. Fable — an independent from-scratch recomputation (separate implementation of R-A + details
+   1-4 and the hashing convention, not importing the freeze script); also confirmed the
+   `atol=1e-12` pool verification (per-seed + pooled vs `stage_a_{config}.json`), the four-site
+   topology, and MAP determinism.
+3. codex gpt-5.6-sol (xhigh) — a CLEAN-ROOM recomputation, verifiably barred from reading the
+   freeze script / manifest / prereg (its script references none of them), writing its own
+   result; byte-compared to the committed manifest = all 8 starts identical.
+
+**Alternatives considered / reconciliations recorded in v1.14:** (a) the validation-proposal
+doc-hash drifted (v1.12 pinned `bdbabb86…`; retitled RATIFIED at D31 -> current governing
+`1045c11c…`) — recorded as a fingerprint update, no criterion change; (b) the audit protocol's
+stale "PROPOSED, PENDING" header is SUPERSEDED by D31 without editing the frozen file (its run
+list and sha `45999e2f…` stay frozen); (c) the proposal's "7-site constrained draws" is a
+Mauna-model carryover — the toy E1 model has EXACTLY 4 sites, and the criteria ("every site")
+are unchanged. No ratified value, criterion, budget, run list, or cell design was altered.
+
+**Result:** Commit A `10edc2d` (v1.14 + `experiments/m2br_start_freeze.py` + manifest) and this
+Commit B (D32) both exist; the clean-room recomputation matches byte-for-byte. The hard
+ordering gate is satisfied. Nothing scientific has run: no HMC/VI/`hmc_laplace`, no Mauna
+access, no pool regeneration; the local pools and original invalid caches are untouched.
+
+**Status:** GATE PASSED. The audit layer (`docs/m2br-corrected-impact-protocol.md`: 6
+single-chain seed-42 runs, 2 h ceiling, "corrected single-chain comparison" label, cannot close
+W2/W3) and the validation layer (`docs/m2br-validation-protocol-PROPOSAL.md`: cells V1,V3,V2,V4
+from the frozen starts, 4 chains, 6 h ceiling) MAY now execute per their frozen protocols with
+stop-and-report. Outcomes (which withdrawn numbers are superseded vs still withdrawn) will be a
+SEPARATE later D-entry. M2c stays blocked; the A7 Della vehicle stays on hold (v1.8).
+
+## D33: M2bR compute-layer OUTCOMES — audit + validation executed; toy_elicited SUPERSEDED, informative stays WITHDRAWN — 2026-07-12
+
+**Problem:** With the D32 start-freeze gate PASSED, both frozen M2bR compute layers were authorized
+to run together in a fresh session (branch `feat/d19-m2br`, HEAD `b56a5a2`), each stop-and-report.
+This entry records the OUTCOMES: which withdrawn D12/D18 numbers are now SUPERSEDED (validation cells
+passing ALL acceptance criteria) versus still WITHDRAWN/UNVALIDATED. Nothing about the frozen drivers,
+manifest, or protocols was modified; the heavy samples and local pools stay untracked.
+
+**Pre-launch gates (both layers; a failure here is a STOP, not a fix) — ALL PASSED.**
+(1) tracked tree clean; (2) freeze manifest `docs/m2br_freeze/start_freeze_v1.14.json` sha256
+`b1abfa3c…2643d891` byte-exact (also pinned internally as `EXPECTED_MANIFEST_SHA256`);
+(3) `m2br_audit_run.py --verify-arms` exit 0, overall PASS — prior-IS + SIR PASS @1e-12 for all four
+configs, `toy_elicited` RW-MH PASS (occupancy triplets, crossings [44,40,38], params 30000/5000/0.1),
+informative/vague/gamma_relaxed RW-MH NOT_APPLICABLE; (4) `pytest -q` = 262 passed + 1 skipped;
+(+) `--dry-run` plumbing check of both drivers, `_dryrun/` cleaned. Stack: torch 2.10.0 / gpytorch
+1.15.1 / pyro 1.9.1 / numpy 1.26.4 / arviz 0.23.4; host PSY-KGK4G03W1F; 14 cores; threads pinned to 10
+inside each spawned sampler child; launched under `caffeinate -i`.
+
+**AUDIT layer — completed, clean, CANNOT close W2/W3 (label enforced).** All six frozen single-chain
+seed-42 runs completed (≈14 min wall, 2 h ceiling; no failure/stop records) → `runs/m2br_corrected_impact/`
+(untracked, atomic-rename, samples-last). The in-`--execute` §3 unchanged-arm re-verification passed
+BEFORE any sampling. Every run: `nuts_e1`, 0 divergences, acceptance ≥0.99, depth-saturation 0.0,
+NotPSD 0 (warmup + post-warmup). Label "corrected single-chain comparison".
+- **td7 ≡ td10 bit-identical** for both configs that ran both depths (identical `samples_semantic_sha256`:
+  informative `e07cf525…`, toy_elicited `11e4a8ff…`), because depth-saturation is 0.0 → the td7 cap
+  never binds under the corrected E1 target. The historical truncation worry is not operative here.
+- **The D22 correction fixes a real pathology.** Historical HMC (defective p(θ)L(θ)^N) put basin
+  occupancy at 1.00/0.00/0.00 (all low-noise) for EVERY config; the corrected E1 sampler explores
+  broadly and now roughly MATCHES the unaffected prior-IS authority — e.g. corrected toy_elicited
+  occupancy 0.77/0.171/0.059 vs prior-IS authority 0.763/0.191/0.046. BMS* posteriors de-concentrate:
+  historical Sin+Linear ~0.673–0.696 → corrected ~0.24–0.43 (informative collapses to ≈uniform, argmax
+  flipping to Sinusoidal 0.255). This is single-chain evidence of impact only.
+
+**VALIDATION layer — completed; 2 cells PASS, 2 cells FAIL.** Cells V1,V3,V2,V4 (priority order),
+4 chains each from the FROZEN manifest starts via `fit_hmc_e1(init_values=…, init_to_map=False)`;
+all 16 chains ran and persisted (`failed_chains` empty) → `runs/m2br_validation/<cell>/` (untracked).
+**Integrity: all 16 chains' `frozen_start_semantic_sha256` match the v1.14 manifest byte-exact**
+(informative 72a7e891/c9f37584/2db18020/5cf298a7; toy_elicited e666fbca/50209065/a806fa8a/c965203c).
+R-B primary estimator = concatenated 800 equal-chain predictives, one BMS* normalization.
+
+| cell | config | td | verdict | R-hat max | bulk-ESS min | div rate | occ max-dev | authority cov |
+|---|---|---|---|---|---|---|---|---|
+| V3 | toy_elicited | 7  | **PASS** | 1.0017 | 2812 | 0.000 | 0.016 | PASS |
+| V4 | toy_elicited | 10 | **PASS** | 1.0015 | 3005 | 0.000 | 0.016 | PASS |
+| V1 | informative | 7  | **FAIL** | 1.0114 | 378.5 | 0.001 | 0.104 | PASS |
+| V2 | informative | 10 | **FAIL** | 1.0114 | 378.5 | 0.001 | 0.104 | PASS |
+
+- V1 ≡ V2 (informative td7≡td10, cap never binds): identical failure signature, failing FOUR criteria,
+  all MARGINAL — R-hat 1.01136 (>1.01), bulk-ESS 378.5/382.2 on the lengthscale+noise sites (<400 floor),
+  per-chain occupancy hi-band spread 0.104 (>0.05), divergence rate 0.001 (=8/8000, not <0.001). Crucially
+  `authority_coverage` PASSES (pooled occ 0.256/0.127/0.617 within 2 SE of authority 0.277/0.131/0.592):
+  the four chains agree with the authority in aggregate but do NOT meet the cross-chain REPRODUCIBILITY
+  bar — i.e. the corrected informative posterior was NOT VALIDATED under this preregistered 4×2000
+  design. (The 0.104 per-chain occupancy spread shows the overdispersed chains landing in different
+  regions — evidence of incomplete mixing across a multi-basin structure — but intrinsic difficulty is
+  an inference the design cannot settle; escalation, not a verdict of un-samplable, is the next step.)
+- V3/V4 (toy_elicited) pass every criterion cleanly. Validated R-B replacement (pw_kl_vcal, τ=1):
+  Sin+Linear **0.4205** (td7) / **0.4220** (td10) [Linear ≈0.190, Sinusoidal ≈0.199, Quadratic ≈0.190],
+  hard-win Sin+Linear 0.968/0.970, pooled occupancy V3 0.7605/0.1856/0.0539, V4 0.7602/0.1894/0.0504.
+  These agree with the unaffected
+  is_sir authority (Sin+Linear 0.441, occ 0.80/0.16/0.04) — independent cross-method confirmation.
+
+**Supersession determination (D28 terminology).**
+- **toy_elicited (V3 td7, V4 td10): SUPERSEDED.** The corrected, multi-chain-validated characterization
+  replaces the withdrawn historical HMC numbers (Sin+Linear 0.696, occ 1.00/0.00/0.00, and the toy td10
+  row): validated Sin+Linear ≈0.42 (soft) / ≈0.97 (hard), occupancy ≈0.76/0.19/0.05. Driver-emitted
+  `historical_counterparts = "eligible for supersession"`.
+- **informative (V1 td7, V2 td10): stays WITHDRAWN/UNVALIDATED.** The withdrawn HMC headline
+  (Sin+Linear 0.673, occ 1.00/0.00/0.00) is NOT restored and NOT replaced; the correction exposes a
+  hard posterior the preregistered 4-chain design cannot validate. Driver-emitted
+  `historical_counterparts = "WITHDRAWN/UNVALIDATED"`. Escalation (more/longer chains, or a strategy
+  change) is a NEW preregistered addendum (v1.16+), NEVER an in-run extension.
+- vague and gamma_relaxed had audit-layer (single-chain) runs only; no validation cell exists for them,
+  so their withdrawn numbers remain withdrawn (validation is an author option at +2 cells per config).
+
+**Provenance (small tracked manifests; heavy samples stay untracked; never `git add runs/`).**
+This change adds `docs/m2br_freeze/audit_result_manifest.json` and
+`docs/m2br_freeze/validation_result_manifest.json` (per-run/per-cell verdicts, criteria values,
+semantic + file sha256, start-sha↔manifest match, provenance/versions/threads, per-cell pooled
+occupancy). Proposed W2/W3 writeup update (pending author ratification):
+`docs/m2br-w2w3-writeup-PROPOSAL.md`.
+
+**Alternatives considered.** (a) Re-sampling informative with longer/more chains after seeing the
+marginal misses — REJECTED by the stop-and-report rule (§4): any continuation is a new addendum, never
+an in-run extension; the four criteria are preregistered and the misses, though small, are real.
+(b) Treating `authority_coverage` PASS as sufficient for informative — REJECTED: the proposal requires
+ALL criteria, and reproducibility (R-hat/ESS/per-chain occupancy) is exactly what a single-authority
+agreement cannot establish. (c) Editing the historical docs in place to insert corrected numbers —
+DEFERRED to author ratification via the PROPOSAL doc; supersession terminology (D28) governs.
+
+**Result:** Audit + validation executed and empirically verified from persisted diagnostics/hashes.
+toy_elicited corrected numbers are validated and eligible to SUPERSEDE their withdrawn counterparts;
+informative stays WITHDRAWN/UNVALIDATED. No frozen artifact was modified; no in-run extension; no VI,
+`hmc_laplace`, Mauna, or pool regeneration occurred; original invalid caches untouched.
+
+**Status:** COMPLETE (pending author ratification of the W2/W3 writeup update). M2c stays blocked; the
+A7 Della vehicle stays on hold (v1.8). Draft PR #8 updated with this outcome and kept in Draft pending
+author sign-off.
+
+## D34: author ratifies revised W2 + interim-withdrawn W3 + the v1.16 numerical protocol; failure-diagnosis correction — 2026-07-12
+
+**Problem:** The D33 W2/W3 writeup proposal was reviewed twice (codex + author). Round 1 flagged that
+the rev-1 draft over-merged distinct estimators and over-claimed on VI (fixed in rev-2). Round 2
+ratified the estimator-separation and VI-withdrawal but caught a FACTUAL ERROR in the v1.16
+escalation's failure diagnosis that had to be corrected before recording. This entry records the
+author's three explicit ratifications and the corrections applied (no protocol number changed).
+
+**Author ratifications (explicit, 2026-07-12):**
+1. **Revised W2** — corrected NUTS and SIR reported SEPARATELY (not a merged 0.42–0.44 estimator):
+   corrected NUTS = primary package-method result Sin+Linear 0.4205 td7 / 0.4220 td10 (cross-chain
+   SDs 0.0063/0.0077 as DIAGNOSTICS, not standard errors); SIR = corroboration 0.441 ± 0.005
+   conditional bootstrap SE with independent-pool 0.419/0.438/0.431; they agree on ranking/region/
+   broad magnitude but are not identical; prior-IS + SIR = ONE IS-family reference (shared pools),
+   the independent comparison being corrected NUTS vs the IS/SIR family; all "mass-faithful" language
+   qualified posterior-mass-faithful conditional on the fixed data-elicited N=20 prior (validates
+   corrected HMC for this toy configuration only, not globally). Package default `method="hmc"` stays.
+2. **Interim-withdrawn W3** — all historical VI values, the VI/HMC gaps (0.45–0.48), and the causal
+   variational-family interpretation remain WITHDRAWN/UNVALIDATED (fit_vi used the same D22 defective
+   target, not rerun). The unaffected prior-IS basin masses stay factual but do not diagnose VI; "a
+   corrected VI may still prefer the wide region" is a HYPOTHESIS requiring an E1-based VI repair +
+   rerun, not a surviving conclusion.
+3. **v1.16 numerical protocol** — informative td7 only, the same four frozen v1.14 starts and seeds,
+   warmup 1000→3000 + draws 2000→8000 (the ONLY change), unchanged target/thresholds/authority/R-B
+   rule, 90-min ceiling, one-shot stop-and-report.
+
+**Failure-diagnosis correction (verified independently by Fable before recording):** the rev-2
+v1.16 rationale mis-stated the informative occupancy miss.
+- The `382` noise bulk-ESS is POOLED across the four chains, NOT ~380 per chain. The "~6-SE gap"
+  claim is WITHDRAWN. Recomputed per-chain hi-band INDICATOR ESS ≈ 95.6 (chain 0) / 65.8 (chain 2);
+  the 0.721 vs 0.567 difference is ≈ **2.0 combined MCSE**, not 6. (Fable recomputed via arviz on the
+  persisted V1 chains: chain ESS [95.6, 62.6, 65.8, 70.4]; combined MCSE 0.0764; 0.154/0.0764 = 2.02.)
+- The two failure MECHANISMS are distinct: **chain 2** concentrates the divergences (6 of 8; chain 1
+  the other 2; chain-2 step 0.332 ≈ 2× the others), while **chain 0** drives the maximum occupancy
+  deviation (0.721 vs pooled 0.617 = +0.104). Chain 2 is NOT the sole culprit.
+- "All four criteria were marginal" is replaced by: THREE numerical criteria near threshold (R-hat
+  1.0114; bulk-ESS 378/382; divergence 0.001), while **occupancy reproducibility missed MATERIALLY**
+  (0.104 > 0.05).
+- The escalation rationale is reframed as HYPOTHESIS-testing (longer warmup TESTS whether adaptation
+  reduces the chain-2 divergences; more draws SHOULD raise ESS if autocorrelation stays stable and
+  give more mixing opportunity; R-hat/occupancy improve only if chains actually mix; no pass promised).
+- W2: the informative audit is described as NEARLY UNIFORM with a merely NOMINAL Sinusoidal argmax
+  (0.2546, ~0.001 lead); occupancy is CONSISTENT WITH incomplete mixing, not proof finite-chain
+  variation is excluded. Cross-chain SDs relabeled DIAGNOSTICS.
+
+**Decision:** Record the three ratifications with the corrections above. Update the two proposal docs
+to RATIFIED status (`docs/m2br-w2w3-writeup-PROPOSAL.md` rev-3; `docs/m2br-v1.16-informative-escalation-PROPOSAL.md`
+numerical-protocol-RATIFIED). Pin v1.16 (`docs/m2br_freeze/v116_run_plan.json`), then build + hermetically
+test + independently review the new driver `experiments/m2br_v116_run.py` (imports, does not modify, the
+frozen `m2br_validation_run.py` machinery), and STOP before launching any chain.
+
+**Alternatives considered.** (a) Recording the ratifications with the uncorrected "~6-SE / chain-2 sole
+culprit / all-marginal" wording — REJECTED: it is factually wrong (the 382 ESS is pooled) and would
+overstate the evidence for genuine non-mixing. (b) Changing the v1.16 numbers in light of the ~2-SE
+finding — REJECTED by the author: the numerical protocol is ratified as-is; only the rationale becomes
+hypothesis-testing. (c) Launching v1.16 now — REJECTED: build/test/review first, then stop; launch needs
+a separate explicit authorization.
+
+**Result:** W2 (revised) and W3 (interim-withdrawn) ratified; v1.16 numerical protocol ratified with a
+corrected, hypothesis-testing rationale. Applying the updates into the historical docs
+(`prior-sensitivity-study.md`, `fit-method-metric-comparison.md`, `Notes/WRITEUP_DECISIONS.md`) remains a
+further author action under D28 supersession terminology.
+
+**Status:** RATIFIED. Next: pin v1.16 + build/test/review the driver, then STOP (no chain launches
+without a separate explicit authorization). PR #8 stays Draft; M2c stays blocked; A7 Della on hold (v1.8);
+no vague/gamma_relaxed cells.
+
+## D35: fail-closed sampler capability gate on the v1.16 driver ONLY; frozen audit/validation drivers kept byte-identical to as-executed — 2026-07-12
+
+**Problem:** A fourth independent review of the v1.16 driver (GPT-5.6-sol xhigh via OpenRouter)
+returned CHANGES-REQUIRED where two prior reviews (Claude subagent, GLM-5.2) returned APPROVE. On
+cross-verification its "P0" findings were NOT accidental-run risks and 2 of 5 were unreachable/false
+alarms, BUT its underlying principle was sound: the historical gate
+`if sampler_fn is fit_hmc_e1 and authorized is not True: raise` is **fail-OPEN** — any callable that is
+not that exact object (e.g. `partial(fit_hmc_e1)`) ran WITHOUT authorization.
+
+**Decision (author-ratified, two-step):** (1) adopt the fail-closed pattern; (2) after weighing the
+provenance tradeoff, apply it to the **live v1.16 driver ONLY** and REVERT the two frozen,
+already-executed drivers (`m2br_audit_run.py`, `m2br_validation_run.py`) to their exact as-executed
+bytes (`b56a5a2`, the D33-producing commit). Rationale for the split: the gate exists to prevent an
+accidental/unauthorized real-HMC launch, and **only v1.16 will ever launch again** — audit and
+validation are done. So the fail-closed hardening has full operational value on v1.16 and **zero** on
+the two frozen drivers (they never sample again). Keeping the frozen driver files byte-identical to
+what produced D33 preserves the milestone's freeze discipline (`git checkout b56a5a2 -- <driver>` ==
+what ran) with no reproducibility-appendix footnote. The cost — two gate styles in the tree — is inert
+because the identity-gate files never execute a sampler again.
+
+**Implemented (v1.16 + shared infra):**
+- **`experiments/m2br_run_common.py` (ADDITIVE only — no existing path changed):** a shared
+  fail-closed primitive. `register_mock_sampler(fn)` marks a sampler ungated via a marker ATTRIBUTE on
+  the function object (NOT a module-level set — the drivers import `m2br_run_common` bare while tests
+  import `experiments.m2br_run_common`, so a set would be duplicated and never agree; an attribute
+  travels with the callable). `require_sampler_authorization(sampler_fn, authorized)` raises unless the
+  sampler is a registered mock OR `authorized is True` — real HMC AND any unrecognized callable (incl.
+  `partial(fit_hmc_e1)`) are gated. `is_ungated_sampler(fn)` replaces the identity check for env-pinning.
+  `deterministic_mock_sampler` is registered at IMPORT (survives `spawn`; runtime-registered mocks are
+  local test fns that never spawn — documented + a regression test).
+- **`experiments/m2br_v116_run.py`:** uses the primitive at the orchestrator (`run_v116`) AND the worker
+  (`run_v116_chain`); rejects a gated sampler when `isolate=False` (a real run must be isolated so the
+  absolute cutoff applies); env-pinning keys on `is_ungated_sampler`.
+- **Reverted to as-executed (`b56a5a2`):** `m2br_audit_run.py`, `m2br_validation_run.py`, and
+  `tests/test_m2br_drivers.py` — they retain the original `sampler_fn is fit_hmc_e1` gate exactly as
+  D33 ran them. They keep working against the additive `m2br_run_common` (the new symbols are simply
+  unused by them).
+
+**Behaviour / provenance.** GATE-ONLY where applied (v1.16): sampling/scoring/persistence unchanged.
+The two frozen drivers are byte-identical to their D33-executing bytes, so **the D33 audit + validation
+results are provably unaffected** and their source at HEAD == what ran. `fit_hmc_e1` remains the only
+real sampler.
+
+**Verification.** Full suite **277 passed + 1 skipped**. v1.16 fail-closed tests:
+`partial(fit_hmc_e1)` now raises, real+`isolate=False` is rejected, and the import-registered mock's
+marker survives a pickle/re-import (spawn) round-trip. The two frozen drivers' original test suite
+passes unchanged. GPT-5.6-sol re-reviewed the (then all-three) diff and CONFIRMED the fail-open bypass
+was fixed and the scientific path unchanged; its residual asks (worker self-isolation; a capability
+token) were cross-verified as architecturally unavailable / deliberate-misuse-only / non-reachable and
+NOT adopted — a single-chain worker cannot self-isolate and there is no `spawn`-safe unforgeable proof
+of "I am the isolated child".
+
+**Alternatives considered.** (a) Keep the fail-closed gate on ALL THREE drivers (the initial D35
+implementation) — REJECTED after the provenance review: it left the two executed driver files differing
+from what produced D33 for zero operational benefit (they never re-run), needing a reproducibility
+footnote. (b) A module-level registry set — REJECTED (dual-import duplicates it; a per-object attribute
+is dual-import-safe). (c) Worker SELF-ISOLATION / capability tokens — NOT adopted (see Verification).
+
+**Result:** the `partial(fit_hmc_e1)` bypass and the un-isolated-real-run path are closed on the ONLY
+driver that will launch (v1.16); the two frozen drivers remain exactly as they executed D33; the shared
+primitive is additive.
+
+**Status:** COMPLETE. No chain launched; launching v1.16 still needs a separate explicit authorization.
+PR #8 stays Draft; M2c stays blocked; A7 Della on hold (v1.8).
+
+## D36: v1.16 informative escalation OUTCOME — FAIL (divergence rate + cross-chain occupancy); informative stays WITHDRAWN — 2026-07-12
+
+**Problem:** Per the D34-ratified v1.16 numerical protocol, execute the informative-only escalation ONCE
+(td7, same four frozen v1.14 starts/seeds, warmup 1000→3000 + draws 2000→8000, unchanged thresholds/
+authority/R-B rule, 90-min ceiling, one-shot stop-and-report) to test whether a longer same-strategy run
+validates the corrected informative posterior that FAILED at D33 (4×2000).
+
+**Execution (author-authorized one-shot, HEAD `d0f4b02`).** Frozen preflight PASSED (branch/HEAD, clean
+tracked tree, plan sha `db177b8b…`, freeze sha `b1abfa3c…`, pristine target dir, 15 launch-gate tests,
+driver-verified start shas). `caffeinate -i python experiments/m2br_v116_run.py --execute` → exit 0, ~27
+min wall (90-min ceiling), no failure/stop records. All 17 artifacts present + atomically persisted; all
+four chain `frozen_start_semantic_sha256` match the manifest byte-exact; provenance git `d0f4b02`, host
+PSY-KGK4G03W1F, threads 10, arviz 0.23.4 / torch 2.10.0 / gpytorch 1.15.1 / pyro 1.9.1 / numpy 1.26.4.
+No code, protocol, starts, thresholds, budgets, or output paths altered. Outputs →
+`runs/m2br_v116_informative/` (UNTRACKED).
+
+**Result: FAIL** (`failed_criteria: ['occupancy', 'divergence_rate']`), evaluated at the UNRELAXED frozen
+thresholds by the driver:
+
+| criterion | threshold | D33 (4×2000) | v1.16 (4×8000) | verdict |
+|---|---|---|---|---|
+| rank R-hat, every site | < 1.01 | 1.0114 | **1.0081** | PASS (improved) |
+| bulk-ESS, pooled | > 400 | 378 | **1158** | PASS (improved) |
+| tail-ESS, pooled | > 400 | — | 5581 | PASS |
+| per-chain occupancy dev | ≤ 0.05 | 0.104 | **0.0604** (hi) | **FAIL** (improved, still over) |
+| divergence rate, pooled | < 0.001 | 0.001 | **0.00716** | **FAIL** (worse) |
+| depth saturation | < 0.10 | 0.0 | 0.0 | PASS |
+| NotPSD (early / rate) | 0 / <1e-3 | 0 / 0 | 0 / 0 | PASS |
+| authority coverage | 2-SE | PASS | **PASS** | PASS |
+
+Per-chain divergences (of 8000): chain0/MAP **71** (acc 0.886, step 0.372), chain1/median-lo **0** (acc
+0.997, step 0.164), chain2/median-mid **43** (acc 0.891, step 0.327), chain3/median-hi **115** (acc 0.818,
+step 0.395); pooled 229/32000 = 0.716%. Pooled occupancy lo/mid/hi = 0.2532/0.1325/0.6142, within 2 SE of
+the prior-IS authority 0.2768/0.1310/0.5922 (authority coverage PASS).
+
+**Interpretation (hypothesis test, D34 framing).** The EFFICIENCY hypotheses held: 4× draws lifted
+bulk-ESS 378→1158 and dropped R-hat 1.0114→1.0081 (both now clear), and occupancy reproducibility improved
+(0.104→0.060). But the failure is GEOMETRIC, not sample-size: longer warmup did NOT reduce divergences — it
+made the pooled rate WORSE (0.001→0.00716), concentrated in the three chains that explore the high-noise
+basin (0/2/3 adapt to large steps 0.33–0.40 with acc 0.82–0.89 and diverge; chain1 in the low-noise basin
+is clean). More draws in this posterior surface more divergent transitions rather than eliminate them, and
+the residual cross-chain occupancy spread persists just over the 0.05 bar. This is the ratified one-shot
+outcome: the last "same-strategy, longer-run" attempt does not validate informative.
+
+**CORRECTION (2026-07-12, D36-c1; supersedes the two claims marked in the Interpretation above).** A
+read-only cross-model (codex) recheck + independent Fable reproduction found the divergence-localization
+claim above is WRONG on two points; the FAIL verdict and all frozen numerical criteria are UNCHANGED.
+1. Divergences do NOT concentrate in "high-noise-basin chains," and chain 1 is NOT a "low-noise-basin
+   chain." Post-warmup, chain 1 is 65.4% high-band (occ hi 0.654) yet has ZERO divergences. The chains
+   that diverge (0/2/3) are distinguished by their LARGER adapted step sizes (0.372/0.327/0.395 vs chain
+   1's 0.164), not by basin. Localizing each divergent draw by the noise value at its index (endpoint
+   localization; independently reproduced) gives pooled lo/mid/hi = **137/53/39** of 229 (chain0 40/15/16,
+   chain2 19/15/9, chain3 78/23/14), i.e. conditional divergence rates **1.69% low / 1.25% mid / 0.20%
+   high** — divergences are disproportionately associated with LOW/MID-noise draw endpoints, the opposite
+   of the "high-noise-basin" wording. The correct reading: an unresolved target-geometry / adaptation /
+   parameterization interaction under the current strategy (larger-step chains diverge; the small-step
+   chain does not).
+2. Causal wording is over-stated. The run changed BOTH warmup (1000→3000) and draws (2000→8000), so the
+   correct statement is that the observed divergence rate INCREASED in v1.16 (0.001→0.00716) and the
+   longer same-strategy run DID NOT RESOLVE it — not "more draws made it worse" and not "geometric, not
+   sample-size." The near-uniform pooled BMS* output is DIAGNOSTIC-ONLY and non-reportable because the
+   cell failed validation. Localization detail recorded in `docs/m2br_freeze/v116_result_manifest.json`.
+
+**Consequence.**
+- **informative stays WITHDRAWN/UNVALIDATED** (`replacement_numbers = None`,
+  `historical_counterparts = "WITHDRAWN/UNVALIDATED"`). The withdrawn HMC headline (Sin+Linear 0.673, occ
+  1.00/0.00/0.00) is neither restored nor replaced. The pooled characterization is broad (occ
+  0.253/0.133/0.614) and CONSISTENT with the independent prior-IS authority (authority coverage passes),
+  with a near-uniform pooled model-probability posterior (pooled BMS* τ=1 **DIAGNOSTIC-ONLY, non-reportable
+  because the cell failed validation**: L .2454 / Sin .2478 / S+L .2613 / Q .2455); it does NOT meet the
+  preregistered convergence criteria, so NO validated informative number is reported.
+- Per the ratified decision rule, the next step (if any) is a STRATEGY change — reparameterization, a tuned
+  mass matrix, or a different sampler — proposed as a NEW addendum, **NOT** another budget bump. The
+  same-strategy escalation lane is now exhausted (two attempts: D33 4×2000, v1.16 4×8000).
+- **W2:** informative remains the "prior-misspecification case study" with a WITHDRAWN HMC number; it is now
+  empirically established (across two preregistered attempts) that the corrected sampler cannot validate an
+  informative posterior / model-probability estimate under this design. toy_elicited (D33 V3/V4) is
+  UNAFFECTED — still validated/superseded (Sin+Linear ~0.42).
+- **W3 / VI:** NO corrected-VI evidence is claimed. VI stays interim-withdrawn pending a corrected (E1-based)
+  VI rerun (out of scope; unchanged).
+
+**Provenance committed:** `docs/m2br_freeze/v116_result_manifest.json` (verdict, per-criterion values,
+per-chain diagnostics, start-sha↔manifest match, sample hashes, provenance). Heavy samples stay UNTRACKED.
+
+**Status:** COMPLETE (one-shot, per authorization). Stopping here — no patch, retry, budget extension, or
+additional chain. No Mauna, M2c, or VI-repair work begun. PR #8 stays Draft; A7 Della on hold (v1.8).
+
+## D37: M2bR CLOSEOUT — supersession/withdrawal propagated to affected docs; G-toy gate analysis; PR #8 → Ready — 2026-07-12
+
+**Problem:** With D33 (toy_elicited superseded, informative withdrawn), D34 (W2/W3 ratified), D35 (gate
+scoped to v1.16), D36 (v1.16 FAIL), and D36-c1 (divergence-localization correction) all settled, close
+M2bR: propagate the outcomes into affected historical documents, verify the frozen gate language, and
+ready PR #8. No further sampling / strategy development (author instruction).
+
+**Propagation (banners; historical text preserved).** Dated M2bR-outcome banners added/updated so no
+document asserts a withdrawn number without the correction beside it:
+- Tracked (in this commit): `docs/prior-sensitivity-study.md` (D18) and `docs/appendix-tree-depth-cap.md`
+  — existing D26/D28 "pending rerun" banners UPDATED to the outcome (toy_elicited SUPERSEDED by validated
+  Sin+Linear ≈0.42 conditional on the fixed data-elicited N=20 prior; informative WITHDRAWN, no
+  replacement; VI withdrawn; td7≡td10 under the corrected target); `docs/fit-method-metric-comparison.md`
+  (D12, informative-only) — banner UPDATED to WITHDRAWN/no-replacement.
+- Local-only (untracked/gitignored; updated for the author's records, NOT in this commit):
+  `Notes/WRITEUP_DRAFT.md`, `Notes/WRITEUP_DECISIONS.md` (W2/W3 log), `kb/Wiki/HMC vs MAP for GP
+  Posteriors.md` (its MAP-init mode-confinement claim is superseded for toy_elicited), `kb/Wiki/Metric
+  Choice Justification.md`. Care taken to NOT banner the UNAFFECTED SIR/prior-IS numbers — e.g. the
+  "0.696-0.707" hard-best-match rate at n_pred=1000 is a SIR quantity (verified unchanged @1e-12 at D33),
+  NOT the withdrawn HMC 0.696 model posterior.
+- Cross-document consistency verified: toy_elicited = validated/superseding (conditional on the fixed
+  data-elicited N=20 prior); informative = withdrawn/unvalidated, no replacement model-probability
+  number; VI = still withdrawn (no corrected-VI evidence); thesis-scope = these corrections concern THIS
+  repository's pyro/gpytorch replication, not the thesis's original gpflow/ADVI implementation. No
+  uncorrected "high-noise-basin" wording remains.
+
+**G-toy gate analysis (records ONLY what the frozen rules support; rationale corrected 2026-07-12
+after a codex re-read of §6.9).**
+- The validated `toy_elicited` result does NOT by itself CLOSE G-toy: §6.9 defines G-toy as the
+  estimator-specific toy-golden derivation, referenced to the **D18 `toy_elicited` cached artifacts**
+  (plan §6.9 L641), and the plan decision table schedules "G-toy per-estimator numeric tolerances | M2c".
+  The validated corrected `toy_elicited` result is an **INPUT to M2c**, not the completion of G-toy: M2c
+  must still revise the now-withdrawn `0.696` references (§6.9's S1 golden reproduces the confined
+  0.696-family only as a regression characterization, explicitly NOT a validity pass — L648-650),
+  recompute the normalized profile band masses (the D18 profile-Laplace triplet 0.763/0.138/0.023 sums to
+  0.924, HISTORICAL-only, NOT a golden — L657-666), and freeze estimator-specific tolerances as a v1.x
+  addendum before any toy or Mauna pilot.
+- `informative`'s withdrawal is NON-BLOCKING for G-toy **because §6.9 defines G-toy against the D18
+  `toy_elicited` artifacts + estimator-specific goldens, and `informative` is NOT the G-toy reference
+  configuration** (L641). CORRECTION: an earlier draft of this entry mis-cited L305-307 ("a
+  coverage-repairing sampler is NOT required to reproduce the confined 0.696") as a general waiver of
+  convergence/coverage — it is NOT. That sentence means a coverage-repairing sampler must target the
+  **mass-faithful** answer, not the confined 0.696 (L655-656); it is not a statement that sampler
+  convergence/coverage failures are generally non-blocking. informative is non-blocking here solely
+  because it is not the G-toy reference config.
+
+**Author decisions FLAGGED (not made here):**
+1. Declare M2bR formally closed and open M2c? The frozen rules make informative's withdrawal non-blocking
+   for the G-toy gate, and the scientific work is done, but formally declaring the milestone closed and
+   opening M2c is the author's call.
+2. The §6.9 G-toy golden was written to "reproduce the confined 0.696" — a number withdrawn as a D22
+   artifact (D22/D33; refined by D36). The author must decide WHETHER/HOW to revise the M2c G-toy
+   derivation to account for the supersession; not resolved here (M2c scope).
+3. Whether to pursue an informative STRATEGY-change addendum (reparam / mass matrix / different sampler)
+   or accept informative-as-withdrawn. Cross-review (codex) recommends ACCEPT-withdrawn (the failure is
+   scientifically useful and toy_elicited already supplies the validated toy result); not started.
+4. Converting the superseded/withdrawn banners into final paper prose is an author writeup action (the
+   ratified W2/W3 in `docs/m2br-w2w3-writeup-PROPOSAL.md` is the source).
+
+**Provenance / archive.** `docs/m2br_freeze/v116_result_manifest.json` carries SHA256 for all 17
+persisted artifacts. A deterministic archive of `runs/m2br_v116_informative/` (sorted names, normalized
+metadata) is **26.04 MiB (27,310,080 bytes), SHA256
+`c0aea0b958a5d52877a5fde98dcff267b4b6bcd2ad4a634d99bca510e2a3a7b9`** — kept UNTRACKED
+(`runs/m2br_v116_informative.archive.tar`); durable archiving/relocation is a separate author choice (no
+artifact moved/uploaded/deleted).
+
+**Result:** The M2bR SCIENTIFIC work is done — toy_elicited superseded (validated), informative withdrawn
+(twice-tested), VI withdrawn; outcomes propagated; no blocker remains under the frozen rules. Per the
+author's instruction ("if no blocker remains, flip PR #8 to Ready, do not merge"), PR #8 is set to
+**Ready** (NOT merged). Formally declaring the milestone closed and opening M2c remain the author decisions
+flagged above; this entry does not make them.
+
+**Status:** Scientific work COMPLETE; PR #8 Ready (not merged), awaiting the author's merge + milestone-
+closure/M2c decisions. No M2c / Mauna / VI-repair / informative-strategy addendum started. A7 Della on
+hold (v1.8).
+
+## D38: author decisions — M2bR formally CLOSED; M2c opened; informative accepted WITHDRAWN; G-toy golden revision scoped to M2c — 2026-07-12
+
+**Problem:** With the M2bR closeout (D37) reviewed and PR #8 MERGEABLE/CLEAN, the author recorded the
+explicit disposition decisions and authorized the merge.
+
+**Author decisions (explicit, 2026-07-12):**
+1. **M2bR is formally CLOSED.** The scientific work is complete (D33 toy_elicited superseded/validated;
+   D36 informative withdrawn, twice-tested; VI withdrawn), the outcomes are propagated (D37), and no
+   blocker remains under the frozen rules.
+2. **M2c is opened as the next milestone** (its own branch/PR off the updated `main`; not started this
+   session).
+3. **`informative` is ACCEPTED as WITHDRAWN/UNVALIDATED for this paper.** No informative strategy-change
+   addendum is pursued now; it is retained as a DOCUMENTED future / reviewer-contingent option (reparam /
+   tuned mass matrix / different sampler). The `informative` prior-misspecification case study stands with
+   a withdrawn HMC number and no replacement model-probability estimate; `toy_elicited` supplies the
+   validated toy result.
+4. **G-toy golden revision is scoped to M2c** (per §6.9): remove the withdrawn `0.696` as a VALIDITY
+   target; retain it ONLY where explicitly needed as the S1 HISTORICAL regression characterization
+   (§6.9 L648-650, explicitly not a validity pass); recompute the normalized profile band masses (the D18
+   profile-Laplace triplet 0.763/0.138/0.023 sums to 0.924 — historical-only, non-exhaustive partial-grid
+   integrals, NOT a golden; L657-666); and freeze the corrected estimator-specific tolerances as a v1.x
+   addendum BEFORE any toy or Mauna pilot.
+
+**Action:** recorded here (append-only); SCRATCHPAD aligned; PR #8 (feat/d19-m2br) merged to `main` via the
+repository's established merge-commit method (PRs #1-#7 all merged as merge commits); local `main`
+fast-forwarded from `origin/main`. No scientific result changed; no compute run. The untracked run
+artifacts (`runs/m2br_v116_informative/`) and the deterministic archive
+(`runs/m2br_v116_informative.archive.tar`, 26.04 MiB, sha256 `c0aea0b9…e2a3a7b9`) are preserved,
+UNMOVED/UNCOMMITTED; durable relocation is a separate author choice.
+
+**Status:** M2bR CLOSED. M2c is the next milestone (NOT started this session). VI repair and the
+informative strategy-change remain independent, optional/later items. A7 Della on hold (v1.8).
