@@ -471,3 +471,12 @@ pilots, no expensive runs, no scientific result read before the commit.
   pyro-handler rejection, schema v2 notpsd_rejections, regression tests incl.
   the documented crash scenario). Suite 218 passed + 1 skipped. PR stays
   Draft; no runs; decision table returned to the author.
+- **D29 (explicit author ballot)**: items 1-7 RATIFIED (item 4 with the
+  aggregate-engineering-fields restriction on leapfrog counts; item 7
+  audit-only confirmed); item 8 revised per vote — overdispersed frozen
+  starts from prior-IS authority references + authority-coverage criterion
+  (§6.15 convention), full 6 h design, two-stage freeze; item 9 mechanism
+  ratified, diagnostic split implemented (schema v3: warmup/per-draw
+  rejection counts, warn-on-any-post-warmup, fail at proposed 1e-3 with
+  diagnostics attached, init_values injection). v1.11 records the ballot.
+  Suite 224+1. Still pending: revised item-8 protocol + item-9 numeric pair.

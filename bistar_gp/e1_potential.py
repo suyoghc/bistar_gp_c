@@ -50,11 +50,16 @@ import gpytorch
 import numpy as np
 from linear_operator.utils.errors import NotPSDError
 
-from .fit import DEFAULT_JITTER, _hmc_pyro_model, _map_init_values
+from .fit import (
+    DEFAULT_JITTER,
+    _guard_init_values,
+    _hmc_pyro_model,
+    _map_init_values,
+)
 
 logger = logging.getLogger(__name__)
 torch.set_default_dtype(torch.float64)
-E1_NOTPSD_WARN_RATE = 1e-3
+E1_NOTPSD_FAIL_RATE = 1e-3
 
 
 class _NotPSDRejectingPotential:
@@ -172,7 +177,7 @@ class E1Potential:
     """
 
     def __init__(self, model, likelihood, train_x, train_y, jitter=DEFAULT_JITTER,
-                 init_to_map=True):
+                 init_to_map=True, init_values=None):
         import pyro
         from functools import partial
         from pyro.infer.mcmc.util import initialize_model
@@ -183,10 +188,12 @@ class E1Potential:
         self._x, self._y = train_x, train_y
         self._jitter = jitter
 
-        # Mirror fit_hmc's initialization surface exactly (S1f parity):
-        # MAP-init with the same boundary-guarded value dict and the same
-        # fallback to init_to_sample.
-        if init_to_map:
+        # Explicit constrained values take precedence over init_to_map. Both
+        # paths use the same finite-unconstrained boundary guard.
+        if init_values is not None:
+            init_strategy = init_to_value(
+                values=_guard_init_values(model, init_values))
+        elif init_to_map:
             try:
                 init_strategy = init_to_value(values=_map_init_values(model))
             except ValueError as e:
@@ -270,16 +277,16 @@ class E1Potential:
 
 
 def build_e1_potential(model, likelihood, train_x, train_y, jitter=DEFAULT_JITTER,
-                       init_to_map=True):
-    """Build the E1 potential for a MAP-fitted model. Returns E1Potential."""
+                       init_to_map=True, init_values=None):
+    """Build E1, with explicit constrained ``init_values`` taking priority."""
     return E1Potential(model, likelihood, train_x, train_y, jitter=jitter,
-                       init_to_map=init_to_map)
+                       init_to_map=init_to_map, init_values=init_values)
 
 
 def fit_hmc_e1(model, likelihood, train_x, train_y,
                n_samples=500, n_warmup=200, verbose=True, seed=None,
                init_to_map=True, max_tree_depth=10, return_diagnostics=False,
-               jitter=DEFAULT_JITTER):
+               jitter=DEFAULT_JITTER, init_values=None):
     """S1f: NUTS on the E1 potential — fit_hmc's sampler settings, statistically
     identical target and coordinates, no per-leapfrog deep copy.
 
@@ -290,7 +297,8 @@ def fit_hmc_e1(model, likelihood, train_x, train_y,
     numpy array), and return_diagnostics -> (samples, SamplerDiagnostics)
     with sampler="nuts_e1" (leapfrog counts derived from potential
     evaluations, one per leapfrog step, as the D20 tracker does for the
-    traced path).
+    traced path). A constrained ``init_values`` dict takes precedence over
+    ``init_to_map`` when supplied.
     """
     import pyro
     from pyro.infer.mcmc import NUTS, MCMC
@@ -301,14 +309,11 @@ def fit_hmc_e1(model, likelihood, train_x, train_y,
         pyro.set_rng_seed(seed)
 
     e1 = build_e1_potential(model, likelihood, train_x, train_y, jitter=jitter,
-                            init_to_map=init_to_map)
+                            init_to_map=init_to_map, init_values=init_values)
 
     rejecting_potential = _NotPSDRejectingPotential(e1.potential_fn)
-    potential = rejecting_potential
-    tracker = None
-    if return_diagnostics:
-        tracker = PotentialEvalTracker(potential)
-        potential = tracker
+    tracker = PotentialEvalTracker(rejecting_potential)
+    potential = tracker
 
     nuts = NUTS(
         potential_fn=potential,
@@ -324,20 +329,48 @@ def fit_hmc_e1(model, likelihood, train_x, train_y,
         warmup_steps=n_warmup,
         initial_params={s: v.clone() for s, v in e1.init_params.items()},
         disable_progbar=(not verbose),
-        hook_fn=(tracker.hook if tracker is not None else None),
+        hook_fn=tracker.hook,
     )
     with gpytorch.settings.cholesky_jitter(jitter):
         mcmc_run.run()
 
-    if rejecting_potential.n_evaluations:
-        notpsd_rate = (rejecting_potential.notpsd_rejections
-                       / rejecting_potential.n_evaluations)
-        if notpsd_rate > E1_NOTPSD_WARN_RATE:
-            logger.warning(
-                "D28 NotPSD rejection rate %.6g (%d/%d potential evaluations) "
-                "exceeds proposed threshold %.6g",
-                notpsd_rate, rejecting_potential.notpsd_rejections,
-                rejecting_potential.n_evaluations, E1_NOTPSD_WARN_RATE)
+    diagnostics = diagnostics_from_pyro_mcmc(
+        mcmc_run,
+        sampler="nuts_e1",
+        n_draws=n_samples,
+        n_warmup=n_warmup,
+        site_names=tuple(e1.sites),
+        max_tree_depth=max_tree_depth,
+        step_size=getattr(nuts, "step_size", None),
+        eval_records=tracker.records,
+        notpsd_rejections=rejecting_potential.notpsd_rejections,
+    )
+
+    if diagnostics.notpsd_rejections_warmup:
+        logger.info(
+            "D29 observed %d NotPSD rejections during warmup "
+            "(including initialization before the first warmup hook)",
+            diagnostics.notpsd_rejections_warmup)
+
+    post_warmup = diagnostics.notpsd_post_warmup_total
+    if post_warmup:
+        draw_indices = [
+            i for i, count in enumerate(
+                diagnostics.notpsd_rejections_per_draw[0]) if count]
+        logger.warning(
+            "D29 observed %d post-warmup NotPSD rejections at draw indices %s",
+            post_warmup, draw_indices)
+
+    notpsd_rate = diagnostics.notpsd_post_warmup_rate
+    if notpsd_rate is not None and notpsd_rate >= E1_NOTPSD_FAIL_RATE:
+        error = RuntimeError(
+            "D29 post-warmup NotPSD rejection rate "
+            f"{notpsd_rate:.12g} reaches proposed failure threshold "
+            f"{E1_NOTPSD_FAIL_RATE:.12g}")
+        error.diagnostics = diagnostics
+        model.eval()
+        likelihood.eval()
+        raise error
 
     # Constrained via the oracle's transforms; reshape(-1), NOT squeeze()
     # (fit_hmc's documented (n,) schema, including at n_samples=1).
@@ -349,20 +382,6 @@ def fit_hmc_e1(model, likelihood, train_x, train_y,
 
     if verbose:
         mcmc_run.summary()
-
-    diagnostics = None
-    if return_diagnostics:
-        diagnostics = diagnostics_from_pyro_mcmc(
-            mcmc_run,
-            sampler="nuts_e1",
-            n_draws=n_samples,
-            n_warmup=n_warmup,
-            site_names=tuple(e1.sites),
-            max_tree_depth=max_tree_depth,
-            step_size=getattr(nuts, "step_size", None),
-            eval_records=tracker.records,
-            notpsd_rejections=rejecting_potential.notpsd_rejections,
-        )
 
     model.eval()
     likelihood.eval()

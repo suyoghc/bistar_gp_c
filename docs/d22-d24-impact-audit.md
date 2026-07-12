@@ -1,10 +1,19 @@
 # D22-D24 impact audit — artifact classification and author ratification checklist
 
-Status: PROPOSED, PENDING EXPLICIT AUTHOR RATIFICATION (D28 provenance
-correction, 2026-07-11: forwarded codex recommendations plus an instruction
-to implement are not an author vote; every disposition below awaits the
-author's explicit approval via the D28 decision table). Prereg addendum
-v1.10 records the correction. Date: 2026-07-11.
+Status: AUTHOR VOTES RECORDED (D29, 2026-07-11, explicit ballot on the D28
+decision table): items 1-7 RATIFIED — item 4 with the restriction that
+leapfrog-count fields serve aggregate engineering-cost purposes only and
+can never influence scientific adequacy, prior choice, model ranking, or
+posterior interpretation; item 7 confirmed a historical-impact audit only,
+unable to close W2/W3. Item 8 PENDING: ratification awaits the REVISED
+initialization/authority-coverage protocol (overdispersed frozen starts
+from the unaffected prior-IS references + the §6.15 authority-coverage
+criterion; full 6 h V1-V4 design retained). Item 9: the NotPSD rejection
+MECHANISM is RATIFIED; the numeric thresholds stay pending behind the D29
+diagnostic split (warmup vs post-warmup, per-draw locations, zero at
+reference points, warn on any post-warmup rejection, fail at >= 0.1%
+post-warmup). Prereg addenda v1.10 (provenance correction) and v1.11
+(ballot record) govern. Date: 2026-07-11.
 
 **Scope-of-claim rule (ratified):** these defects invalidate THIS
 repository's attempted HMC/VI replication — a pyro/gpytorch integration.

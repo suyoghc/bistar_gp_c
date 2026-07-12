@@ -11,7 +11,9 @@ pytest.importorskip("pyro")
 
 from linear_operator.utils.errors import NotPSDError
 
+import bistar_gp.e1_potential as e1_module
 from bistar_gp.e1_potential import (
+    E1_NOTPSD_FAIL_RATE,
     E1Potential,
     _NotPSDRejectingPotential,
     build_e1_potential,
@@ -19,6 +21,7 @@ from bistar_gp.e1_potential import (
 )
 from bistar_gp.fit import fit_map
 from bistar_gp.model import build_model, build_toy_kernels
+from bistar_gp.sampler_diagnostics import PotentialEvalTracker
 
 torch.set_default_dtype(torch.float64)
 
@@ -40,34 +43,126 @@ def _copy_setup(setup):
     return copied, copied.likelihood, x, y
 
 
-def test_mid_chain_notpsd_attempts_are_rejected_and_counted(
+def test_known_warmup_and_sampling_injections_are_split_and_fail(
         stable_map_setup, monkeypatch, caplog):
     model, likelihood, x, y = _copy_setup(stable_map_setup)
-    original = E1Potential.potential_fn
-    selected_calls = {15, 20}
-    calls = 0
-    injections = 0
+    original_potential = E1Potential.potential_fn
+    original_hook = PotentialEvalTracker.hook
+    inject_next = False
+    injection_stages = []
 
     def injected(self, state):
-        nonlocal calls, injections
-        calls += 1
-        if calls in selected_calls:
-            injections += 1
+        nonlocal inject_next
+        if inject_next:
+            inject_next = False
             raise NotPSDError("planted D28 test failure")
-        return original(self, state)
+        return original_potential(self, state)
+
+    def scheduled_hook(self, kernel, params, stage, i):
+        nonlocal inject_next
+        original_hook(self, kernel, params, stage, i)
+        key = (str(stage), int(i))
+        if key in {("Warmup", 1), ("Sample", 0)}:
+            injection_stages.append(key)
+            inject_next = True
 
     monkeypatch.setattr(E1Potential, "potential_fn", injected)
+    monkeypatch.setattr(PotentialEvalTracker, "hook", scheduled_hook)
+    with caplog.at_level(logging.WARNING, logger="bistar_gp.e1_potential"):
+        with pytest.raises(RuntimeError, match="D29.*rate") as caught:
+            fit_hmc_e1(
+                model, likelihood, x, y, n_samples=6, n_warmup=6,
+                verbose=False, seed=0, max_tree_depth=3,
+                return_diagnostics=False)
+
+    assert injection_stages == [("Warmup", 1), ("Sample", 0)]
+    diagnostics = caught.value.diagnostics
+    assert diagnostics.notpsd_rejections == 2
+    assert diagnostics.notpsd_rejections_warmup == 1
+    assert diagnostics.notpsd_rejections_per_draw == ((0, 1, 0, 0, 0, 0),)
+    assert diagnostics.notpsd_post_warmup_total == 1
+    assert diagnostics.notpsd_post_warmup_rate >= E1_NOTPSD_FAIL_RATE
+    assert f"{diagnostics.notpsd_post_warmup_rate:.12g}" in str(caught.value)
+    assert any(
+        record.levelno == logging.WARNING
+        and "D29" in record.message
+        and "[1]" in record.message
+        for record in caplog.records)
+
+
+def test_warmup_only_rejection_reports_info_without_gate(
+        stable_map_setup, monkeypatch, caplog):
+    model, likelihood, x, y = _copy_setup(stable_map_setup)
+    original_potential = E1Potential.potential_fn
+    original_hook = PotentialEvalTracker.hook
+    inject_next = False
+
+    def injected(self, state):
+        nonlocal inject_next
+        if inject_next:
+            inject_next = False
+            raise NotPSDError("planted warmup-only failure")
+        return original_potential(self, state)
+
+    def scheduled_hook(self, kernel, params, stage, i):
+        nonlocal inject_next
+        original_hook(self, kernel, params, stage, i)
+        if (str(stage), int(i)) == ("Warmup", 1):
+            inject_next = True
+
+    monkeypatch.setattr(E1Potential, "potential_fn", injected)
+    monkeypatch.setattr(PotentialEvalTracker, "hook", scheduled_hook)
+    with caplog.at_level(logging.INFO, logger="bistar_gp.e1_potential"):
+        samples, diagnostics = fit_hmc_e1(
+            model, likelihood, x, y, n_samples=6, n_warmup=6,
+            verbose=False, seed=0, max_tree_depth=3,
+            return_diagnostics=True)
+
+    assert all(np.isfinite(draws).all() for draws in samples.values())
+    assert diagnostics.notpsd_rejections == 1
+    assert diagnostics.notpsd_rejections_warmup == 1
+    assert diagnostics.notpsd_rejections_per_draw == ((0, 0, 0, 0, 0, 0),)
+    assert diagnostics.notpsd_post_warmup_rate == 0.0
+    assert any(record.levelno == logging.INFO and "D29" in record.message
+               for record in caplog.records)
+    assert not any(record.levelno >= logging.WARNING and "D29" in record.message
+                   for record in caplog.records)
+
+
+def test_any_post_warmup_rejection_warns_below_failure_gate(
+        stable_map_setup, monkeypatch, caplog):
+    model, likelihood, x, y = _copy_setup(stable_map_setup)
+    original_potential = E1Potential.potential_fn
+    original_hook = PotentialEvalTracker.hook
+    inject_next = False
+
+    def injected(self, state):
+        nonlocal inject_next
+        if inject_next:
+            inject_next = False
+            raise NotPSDError("planted warning-only failure")
+        return original_potential(self, state)
+
+    def scheduled_hook(self, kernel, params, stage, i):
+        nonlocal inject_next
+        original_hook(self, kernel, params, stage, i)
+        if (str(stage), int(i)) == ("Sample", 0):
+            inject_next = True
+
+    monkeypatch.setattr(E1Potential, "potential_fn", injected)
+    monkeypatch.setattr(PotentialEvalTracker, "hook", scheduled_hook)
+    monkeypatch.setattr(e1_module, "E1_NOTPSD_FAIL_RATE", 1.0)
     with caplog.at_level(logging.WARNING, logger="bistar_gp.e1_potential"):
         samples, diagnostics = fit_hmc_e1(
             model, likelihood, x, y, n_samples=6, n_warmup=6,
             verbose=False, seed=0, max_tree_depth=3,
             return_diagnostics=True)
 
-    assert calls >= max(selected_calls)
-    assert injections == len(selected_calls)
-    assert diagnostics.notpsd_rejections == injections
     assert all(np.isfinite(draws).all() for draws in samples.values())
-    assert any("D28" in record.message for record in caplog.records)
+    assert diagnostics.notpsd_rejections_per_draw == ((0, 1, 0, 0, 0, 0),)
+    assert diagnostics.notpsd_post_warmup_rate < 1.0
+    assert any("D29" in record.message and "[1]" in record.message
+               for record in caplog.records)
 
 
 def test_generic_runtime_error_propagates(
@@ -130,3 +225,36 @@ def test_map_reference_setup_has_zero_notpsd_rejections(stable_map_setup):
 
     assert all(np.isfinite(draws).all() for draws in samples.values())
     assert diagnostics.notpsd_rejections == 0
+    assert diagnostics.notpsd_rejections_warmup == 0
+    assert diagnostics.notpsd_rejections_per_draw == ((0, 0, 0, 0, 0, 0),)
+
+
+def test_explicit_init_values_round_trip_and_take_priority(stable_map_setup):
+    model, likelihood, x, y = _copy_setup(stable_map_setup)
+    values = {
+        name: closure(module).detach().clone() * 1.1
+        for name, module, _prior, closure, _setting in model.named_priors()
+    }
+
+    e1 = build_e1_potential(
+        model, likelihood, x, y, init_to_map=True, init_values=values)
+
+    assert set(e1.init_params) == set(values)
+    for site, value in values.items():
+        expected = e1.transforms[site](value)
+        assert torch.equal(e1.init_params[site], expected)
+        assert torch.equal(e1.transforms[site].inv(e1.init_params[site]), value)
+
+
+def test_explicit_init_values_reject_mismatched_site_set(stable_map_setup):
+    model, likelihood, x, y = _copy_setup(stable_map_setup)
+    values = {
+        name: closure(module).detach().clone()
+        for name, module, _prior, closure, _setting in model.named_priors()
+    }
+    values.pop(next(iter(values)))
+    values["unexpected.site"] = torch.tensor(1.0)
+
+    with pytest.raises(ValueError, match="site set mismatch"):
+        build_e1_potential(
+            model, likelihood, x, y, init_to_map=False, init_values=values)

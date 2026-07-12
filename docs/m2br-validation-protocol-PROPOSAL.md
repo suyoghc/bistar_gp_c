@@ -1,7 +1,9 @@
 # M2bR scientific-validation layer — PROPOSAL (multi-chain; pending author ratification)
 
-Status: PROPOSAL (D28, 2026-07-11). Nothing here runs until the author
-explicitly ratifies it and the M2b PR merges. Companion to
+Status: PROPOSAL, REVISED PER THE AUTHOR'S ITEM-8 VOTE (D29, 2026-07-11:
+same-MAP chain starts rejected — four same-start chains can miss the same
+basin and still pass R-hat/ESS/internal occupancy agreement). Nothing here
+runs until the author ratifies THIS revision and the M2b PR merges. Companion to
 `docs/m2br-corrected-impact-protocol.md`, whose six single-chain runs are a
 controlled HISTORICAL-IMPACT AUDIT only — this layer is what can support
 replacement scientific conclusions and the W2/W3 re-openings, and only if
@@ -35,10 +37,47 @@ reference).
 | V4 | toy_elicited | td10 | 4 (seeds 0/1/2/3) | 1000 warmup + 2000 draws |
 
 Chain seeds are disjoint from the audit layer's seed 42; the audit chain is
-never pooled into validation statistics. Every chain runs
+never pooled into validation statistics.
+
+### Overdispersed initialization (D29 revision; replaces same-MAP starts)
+
+Per cell, the four chains start from FROZEN, distinct constrained states:
+
+- Chain seed 0: the MAP init (the S1f default; doubles as the
+  near-reference NotPSD sentinel).
+- Chains seeds 1/2/3: overdispersed starts drawn from the config's existing
+  UNAFFECTED authority references (the D18 prior-IS pools; audit table 1) by
+  a deterministic rule: for every reportable noise band of that config
+  (authority mass >= 5%, the §6.15 reportable-band convention, computed from
+  the pooled prior-IS bands), one start = the band's weighted-median draw
+  (the pool draw whose noise value equals the weighted median within the
+  band; ties resolve to the lowest pool index). If a config has fewer than
+  three reportable bands, the remaining chains fill with the weighted q25
+  and q75 draws of the largest-mass band. Every noise band with material
+  authority mass therefore contributes a chain start.
+- TWO-STAGE FREEZE: this selection RULE is frozen now; the realized pool
+  indices and the sha256 of each serialized start state are pinned in a
+  pre-run M2bR addendum BEFORE any chain launches (the pools are local
+  artifacts, so realized pins cannot be committed earlier than that).
+- Mechanics: chains 1-3 pass their frozen constrained states through
+  fit_hmc_e1's init_values parameter (D29 capability; validated site set +
+  boundary guard, then pyro init_to_value).
+
+### Authority-coverage criterion (D29 addition)
+
+Internal cross-chain agreement cannot detect four chains missing the same
+basin, so the pooled chain occupancy is additionally compared against the
+INDEPENDENT authority (the config's prior-IS pooled band masses — an
+unaffected reference): per reportable band,
+
+    |pooled_chain_band - authority_band| <= 2 * sqrt(SE_auth^2 + SE_chain^2),
+
+with SE_chain = sqrt(p(1-p)/bulk ESS) — the §6.15 coverage convention
+reused verbatim rather than a new tolerance. A cell failing authority
+coverage fails validation regardless of its internal diagnostics. Every chain runs
 `fit_hmc_e1(..., return_diagnostics=True)` with the D28 NotPSD rejection
 policy active; per-chain artifacts persist samples, the full
-SamplerDiagnostics payload (schema v2, including notpsd_rejections), and
+SamplerDiagnostics payload (schema v3, including the warmup/post-warmup NotPSD rejection split), and
 hashes, with the audit protocol's atomic-rename convention.
 
 ## Diagnostics and acceptance criteria (proposed prereg values)
@@ -54,7 +93,7 @@ draws:
 | per-chain basin occupancy (noise bands low/mid/high per the audit protocol §1) vs pooled | max abs deviation <= 0.05 per band | §6.15 seed-reproducibility band convention |
 | divergence rate, pooled | < 0.1% | §6.15 |
 | depth saturation rate, pooled | < 10% | §6.15 |
-| NotPSD rejection rate, pooled | < 0.1% of potential evaluations, and zero within the first 50 post-warmup draws of any chain | D28 policy; near-reference failures are disqualifying |
+| NotPSD rejections (D29 split design) | zero within the first 50 post-warmup draws of any chain; post-warmup rate < 0.1% of post-warmup potential evaluations (the fit_hmc_e1 fail threshold); warmup rejections reported separately and do not gate | D28/D29 policy; near-reference failures are disqualifying |
 
 A cell passing ALL criteria yields validated replacement numbers (reported
 with cross-chain SDs); its historical counterparts may then be marked
@@ -75,14 +114,13 @@ per chain for MAP, scoring, diagnostics, serialization.
 - td10 chain: 3000 x 25 x 0.0165556 + 120 = 1362 s = 22.7 min; 8 chains
   (V2 + V4) = 181.6 min.
 - Cross-chain diagnostics + report: 15 min.
-- Projected total: 312 min = 5.2 h. PROPOSED CEILING: 6 h local wall,
+- Projected total: 312 min = 5.2 h. CEILING: 6 h local wall,
   stop-and-report mechanics identical to the audit protocol §4 (priority
   order V1, V3, V2, V4 so the td7 cells of both pivotal configurations
-  survive a truncated session).
-
-Reduced variant (author option): drop V2 (informative td10) — projected
-232 min, ceiling 4 h — at the cost of validating the td10 appendix numbers
-for one configuration only.
+  survive a truncated session). The author retained the FULL V1-V4 design
+  (D29 vote); the previously offered reduced variant is withdrawn. The
+  start-state selection and authority-coverage computations reuse existing
+  pool artifacts and add negligible wall time.
 
 ## What this proposal does NOT cover
 

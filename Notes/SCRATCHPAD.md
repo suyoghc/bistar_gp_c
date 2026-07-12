@@ -62,7 +62,12 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   "~200x deep-copy penalty" was mostly the plate: corrected S1 potential is
   6.0/10.5 ms (sub/full); E1's real advantages = correct gradients (S1
   saturates td7: 127 lf/draw vs S1f 6.7 at sub-150) + no deep copy.
-- **PROPOSED + D27/D28 (2026-07-11, v1.9/v1.10 — NOT ratified; D28 corrected the provenance: every item awaits the author's explicit vote via the D28 decision table)**: superseded standing, firewall
+- **BALLOT RETURNED (D29, v1.11): items 1-7 RATIFIED** (item 4 restricted:
+  leapfrog fields = aggregate engineering cost only); **item 8 pending its
+  D29 revision** (overdispersed prior-IS starts, authority-coverage
+  criterion, 6 h full design); **item 9 mechanism ratified**, split
+  diagnostics implemented (schema v3), numeric pair (1e-3 fail rate,
+  50-draw window) pending. Originally proposed as D27/D28 (v1.9/v1.10)**: superseded standing, firewall
   reading, A5 N=232 (trigger corrected: non-legacy sub-150 G-B eligibility;
   no eligible survivor = O4; S1-only branch removed), dimensioned A6
   ceilings, Draft-PR route, scope-of-claim rule. API rerouted (public

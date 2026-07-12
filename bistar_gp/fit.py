@@ -430,18 +430,35 @@ def _map_init_values(model):
     into the interior, and a value that is still invalid after clamping raises
     ValueError (callers may fall back to init_to_sample).
     """
+    init_values = {
+        entry[0]: entry[3](entry[1]).detach()
+        for entry in model.named_priors()
+    }
+    return _guard_init_values(model, init_values)
+
+
+def _guard_init_values(model, init_values):
+    """Validate and boundary-guard constrained values for every prior site."""
     from torch.distributions import biject_to
 
-    init_values = {}
-    for entry in model.named_priors():
-        name, prior, value = entry[0], entry[2], entry[3](entry[1]).detach()
+    prior_by_name = {entry[0]: entry[2] for entry in model.named_priors()}
+    expected, received = set(prior_by_name), set(init_values)
+    if received != expected:
+        raise ValueError(
+            "init_values site set mismatch: "
+            f"missing={sorted(expected - received)}, "
+            f"unexpected={sorted(received - expected)}")
+
+    guarded = {}
+    for name, prior in prior_by_name.items():
+        value = init_values[name].detach()
         if not torch.isfinite(biject_to(prior.support).inv(value)).all():
             value = value.clamp(min=1e-8)
         if not torch.isfinite(biject_to(prior.support).inv(value)).all():
             raise ValueError(
                 f"{name} is outside its prior support even after clamping")
-        init_values[name] = value
-    return init_values
+        guarded[name] = value
+    return guarded
 
 
 def fit_vi(model, likelihood, train_x, train_y,

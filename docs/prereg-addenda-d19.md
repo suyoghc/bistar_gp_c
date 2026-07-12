@@ -851,3 +851,85 @@ on the branch with regression tests (`tests/test_e1_notpsd_policy.py`):
 **What this addendum does NOT change:** no battery value of v1.4/v1.6, no
 microbenchmark number of v1.5, no audit-protocol run list, no gate of §6.7.
 Suite at this commit: 218 passed + 1 skipped.
+
+---
+
+## v1.11 — explicit author ballot on the D28 decision table; item-8 protocol revision; item-9 diagnostic split (D29) — 2026-07-11
+
+**Prereg anchor:** §6.15, §6.16, §6.8 (authority conventions), addenda
+v1.9/v1.10, `docs/d22-d24-impact-audit.md` §4, D28/D29. The author returned
+an EXPLICIT ballot on the nine-row D28 decision table — the first item-level
+author vote of the M2b sequence; the v1.10 pending labels resolve as
+follows. No run of either M2bR layer has occurred; PR #7 stays Draft; M2c
+stays blocked.
+
+**RATIFIED (author, 2026-07-11):**
+1. Withdrawal terminology and the audit classifications.
+2. The D27 API disposition: public fit_hmc/fit_gp("hmc") on the E1 path;
+   fit_hmc_legacy_pyro explicit; fit_vi/fit_hmc_laplace behind
+   allow_legacy=True.
+3. A5: N=232 with the corrected eligibility trigger (v1.9 item 2).
+4. The v1.6 firewall field list, WITH THE RESTRICTION that leapfrog-count
+   fields serve aggregate engineering-cost purposes only — they can never
+   influence scientific adequacy, prior choice, model ranking, or posterior
+   interpretation. Recorded interpretation (flagged for objection if wrong):
+   per-draw leapfrog retention in benchmark artifacts exists solely to
+   compute aggregate cost statistics such as the A5 predicate's 90th
+   percentile, and is barred from any scientific reading.
+5. The dimensioned A6 ceilings (v1.9 item 3).
+6. The Della hold (v1.8 item 5).
+7. The single-chain audit layer (`docs/m2br-corrected-impact-protocol.md`,
+   sha unchanged from v1.10) — CONFIRMED as a historical-impact audit only;
+   its outputs can never close W2/W3.
+
+**Item 8 — PENDING, revised per the author's modification.** Same-MAP chain
+starts are rejected: four same-start chains can miss the same basin and
+still pass R-hat, ESS, and internal occupancy agreement. The revised
+proposal (`docs/m2br-validation-protocol-PROPOSAL.md`, revised sha pinned
+below) now specifies: chain-0 MAP start plus three OVERDISPERSED starts
+frozen from the unaffected prior-IS authority references by a deterministic
+rule (one start per reportable noise band with authority mass >= 5% —
+weighted-median draw per band, q25/q75 fill when fewer than three bands);
+a TWO-STAGE FREEZE (rule frozen now; realized pool indices + per-state
+sha256 pinned in a pre-run M2bR addendum before any chain launches); a new
+AUTHORITY-COVERAGE acceptance criterion — pooled chain occupancy vs the
+independent prior-IS band masses within 2 sqrt(SE_auth^2 + SE_chain^2) per
+reportable band, the §6.15 convention reused verbatim; and the FULL 6 h
+V1-V4 design retained (the reduced variant is withdrawn). The
+fit_hmc_e1 init_values capability this requires (constrained-state
+injection with exact site-set validation and the _map_init_values boundary
+guard) is implemented and tested. Revised file pin:
+
+```
+sha256 3ee7967d2a176f97c26fa00f18c76cc45b28bdf9753c5e5c395ab9b5beb59dd0
+docs/m2br-validation-protocol-PROPOSAL.md (post-revision; supersedes no
+frozen artifact — the proposal was never frozen)
+```
+
+Ratification of the REVISED protocol remains with the author.
+
+**Item 9 — MECHANISM RATIFIED; thresholds pending behind the D29
+diagnostic split, now implemented.** SamplerDiagnostics schema VERSION 3:
+the hook snapshot stream now records cumulative NotPSD rejections alongside
+potential evaluations, yielding notpsd_rejections_warmup and per-draw
+notpsd_rejections_per_draw (leapfrog_counts layout) under the
+None-iff-unavailable honesty contract, with v1/v2 payload migration and the
+identity total = warmup + sum(per-draw) validated when all observed.
+Derived notpsd_post_warmup_rate uses post-warmup potential evaluations as
+the denominator (rejected attempts count as evaluations). fit_hmc_e1
+behavior, mechanics implemented with PROPOSED numeric values: warmup
+rejections reported separately (informational, no gate); ANY post-warmup
+rejection emits a warning naming the draw indices; a post-warmup rate at or
+above E1_NOTPSD_FAIL_RATE = 1e-3 raises with the completed diagnostics
+attached (a failing run's draws are never silently consumable), enforced
+whether or not diagnostics were requested. Zero-at-reference stays enforced
+by regression test. The numeric pair awaiting the author: the 1e-3 fail
+rate and the validation layer's early-draw window (zero rejections within
+the first 50 post-warmup draws of any chain).
+
+**Suite at this commit:** 224 passed + 1 skipped (independently verified:
+init_values round-trips at 9e-16; schema v3 round-trips; migrations
+covered).
+
+**What this addendum does NOT change:** no battery value, no microbenchmark
+number, no audit-protocol run list, no gate of §6.7.

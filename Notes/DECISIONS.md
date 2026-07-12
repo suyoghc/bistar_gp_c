@@ -1898,3 +1898,38 @@ the known NotPSDError crash path had been deferred to pilots instead of resolved
 
 **Status:** all four corrections implemented on feat/d19-m2b-e1; PR #7 stays DRAFT; no
 M2bR run, no M2c, until the author returns the decision table with explicit votes.
+
+## D29: first explicit author ballot — items 1-7 ratified; item 8 revised (overdispersed starts + authority coverage); item 9 mechanism ratified with the diagnostic split implemented — 2026-07-11
+
+**Problem:** D28 put nine decision rows to the author. The ballot returned: 1-7 YES (item 4
+with a leapfrog-fields restriction; item 7 confirmed audit-only), 8 MODIFY (same-MAP chain
+starts rejected — four same-start chains can miss the same basin and still pass every
+internal diagnostic), 9 mechanism-YES with the diagnostic/gate design to be extended before
+its thresholds return for a vote.
+
+**Decision (recorded as prereg addendum v1.11):**
+- Items 1-7 recorded as explicitly author-ratified. Item 4's restriction: leapfrog-count
+  fields are aggregate engineering-cost fields only, never inputs to scientific adequacy,
+  prior choice, model ranking, or posterior interpretation (per-draw retention exists
+  solely for aggregate cost statistics such as the A5 p90 — interpretation flagged for
+  objection).
+- Item 8: docs/m2br-validation-protocol-PROPOSAL.md revised — chain-0 MAP start + three
+  overdispersed starts frozen from the UNAFFECTED prior-IS authority references
+  (deterministic weighted-median-per-reportable-band rule, q25/q75 fill; two-stage
+  freeze with realized indices/hashes pinned pre-run), a new authority-coverage
+  acceptance criterion (pooled chain occupancy vs independent prior-IS band masses,
+  2 sqrt(SE_auth^2 + SE_chain^2), the §6.15 convention verbatim), full 6 h V1-V4
+  retained, reduced variant withdrawn. Ratification of the revision pending.
+- Item 9: implemented (codex gpt-5.6-sol xhigh; independently verified). Schema v3:
+  hook snapshots carry cumulative rejections; notpsd_rejections_warmup +
+  notpsd_rejections_per_draw under the honesty contract; v1/v2 migration; identity
+  validation; derived post-warmup rate over post-warmup evaluations. fit_hmc_e1: warmup
+  rejections informational; any post-warmup rejection warns with draw indices; rate >=
+  E1_NOTPSD_FAIL_RATE (proposed 1e-3) raises with diagnostics attached, enforced with or
+  without return_diagnostics. init_values constrained-state injection added for the
+  item-8 starts (site-set validation + boundary guard; round-trips at 9e-16). Suite 224
+  passed + 1 skipped.
+
+**OPEN (awaiting the author):** the revised item-8 protocol; item 9's numeric pair
+(1e-3 post-warmup fail rate; 50-draw early window). PR #7 stays DRAFT; no M2bR layer
+runs; M2c blocked.
