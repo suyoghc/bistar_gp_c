@@ -19,6 +19,7 @@ import pytest
 
 from bistar_gp.bms_star import soft_transfer
 from bistar_gp.sampler_diagnostics import SamplerDiagnostics
+from experiments import m2br_run_common as common
 from experiments.m2br_audit_run import run_audit, verify_unchanged_arms
 from experiments.m2br_run_common import (
     EXPECTED_MANIFEST_SHA256,
@@ -52,6 +53,22 @@ from experiments.m2br_validation_run import (
 )
 from experiments.m2br_run_common import build_cell_model
 from experiments import prior_sensitivity_study as pss
+
+
+@pytest.fixture
+def reg():
+    """Register test mock/sentinel samplers as ungated for the fail-closed gate,
+    then clean up so the marker does not leak across tests."""
+    added = []
+
+    def _register(fn):
+        common.register_mock_sampler(fn)
+        added.append(fn)
+        return fn
+
+    yield _register
+    for fn in added:
+        common.unregister_mock_sampler(fn)
 
 
 def _four_chain_fixture(n_draws=800):
@@ -223,10 +240,11 @@ def test_predictive_and_draw_cardinality_contracts(monkeypatch):
             expected_per_chain=2)
 
 
-def test_notpsd_failure_persists_diagnostics_and_no_sample_cache(tmp_path):
+def test_notpsd_failure_persists_diagnostics_and_no_sample_cache(tmp_path, reg):
     frozen = load_frozen_starts()
     diag = _diagnostics()
 
+    @reg
     def raising_sampler(*args, **kwargs):
         error = RuntimeError("synthetic terminal NotPSD")
         error.diagnostics = diag
@@ -253,16 +271,18 @@ class _Clock:
         return self.now
 
 
-def test_deadline_projection_gate_driver_stop_and_isolated_timeout(tmp_path):
+def test_deadline_projection_gate_driver_stop_and_isolated_timeout(tmp_path, reg):
     clock = _Clock()
     deadline = Deadline(100, reserve_seconds=10, clock=clock)
     deadline.start()
     clock.now = 11
     assert not deadline.may_start("first", 80)
     # A PASS verification lets the run reach the projection gate, which stops it.
+    # The sentinel is registered ungated so the fail-closed gate lets the run
+    # proceed to the projection stop (the sentinel must still never be called).
     report = run_audit(output_dir=tmp_path / "audit", deadline=deadline,
                        isolate=False,
-                       sampler_fn=lambda *a, **k: pytest.fail("sampler reached"),
+                       sampler_fn=reg(lambda *a, **k: pytest.fail("sampler reached")),
                        verify_arms_fn=lambda **kwargs: {"status": "PASS"})
     assert report["first_unexecuted_run"] == "d12_informative_td7"
     stop = json.loads((tmp_path / "audit" / "stop.json").read_text())
@@ -321,6 +341,35 @@ def test_bare_real_driver_calls_require_explicit_authorization(tmp_path):
         run_audit(output_dir=tmp_path / "audit")
     with pytest.raises(PermissionError, match="authorized=True"):
         run_validation(output_dir=tmp_path / "validation")
+
+
+def test_deterministic_mock_marker_survives_spawn_pickle():
+    """D35: the import-registered dry-run mock keeps its ungated marker across the
+    pickle/re-import boundary that 'spawn' uses. Runtime attributes on functions
+    do not survive spawn, but import-time registration does -- so the only
+    spawn-traversing mock stays ungated in the child."""
+    import pickle
+    round_tripped = pickle.loads(pickle.dumps(common.deterministic_mock_sampler))
+    assert common.is_ungated_sampler(round_tripped) is True
+
+
+def test_frozen_drivers_are_fail_closed_gated(tmp_path):
+    """D35: a wrapper around fit_hmc_e1 is gated exactly like the real sampler,
+    and a gated sampler may not run un-isolated (absolute cutoff must apply)."""
+    from functools import partial as _p
+    from bistar_gp.e1_potential import fit_hmc_e1
+    wrapped = _p(fit_hmc_e1)  # not the registered mock -> gated fail-closed
+    with pytest.raises(PermissionError, match="authorized=True"):
+        run_audit(sampler_fn=wrapped, output_dir=tmp_path / "a")
+    with pytest.raises(PermissionError, match="authorized=True"):
+        run_validation(sampler_fn=wrapped, output_dir=tmp_path / "v")
+    with pytest.raises(PermissionError, match="isolated"):
+        run_audit(sampler_fn=fit_hmc_e1, authorized=True, isolate=False,
+                  output_dir=tmp_path / "a2")
+    with pytest.raises(PermissionError, match="isolated"):
+        run_validation(sampler_fn=fit_hmc_e1, authorized=True, isolate=False,
+                       output_dir=tmp_path / "v2")
+    assert not any((tmp_path / d).exists() for d in ("a", "v", "a2", "v2"))
 
 
 def test_start_hash_tampering_stops_before_injection(tmp_path):
@@ -494,12 +543,13 @@ def test_missing_required_toy_rw_mh_artifact_is_fail(tmp_path):
     assert report["status"] == "FAIL"
 
 
-def test_run_audit_samples_only_on_pass_verification(tmp_path):
-    # A non-PASS unchanged-arm verdict must block sampling entirely.
+def test_run_audit_samples_only_on_pass_verification(tmp_path, reg):
+    # A non-PASS unchanged-arm verdict must block sampling entirely. The sentinel
+    # is registered ungated so the fail-closed gate is not what stops the run.
     for verdict in ("SKIP", "FAIL"):
         report = run_audit(
             output_dir=tmp_path / verdict, isolate=False,
-            sampler_fn=lambda *a, **k: pytest.fail("sampler must not run"),
+            sampler_fn=reg(lambda *a, **k: pytest.fail("sampler must not run")),
             verify_arms_fn=lambda **kwargs: {"status": verdict})
         assert report["status"] == "verification_failed"
         assert report["completed"] == []

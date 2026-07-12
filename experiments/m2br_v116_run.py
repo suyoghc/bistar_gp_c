@@ -37,10 +37,12 @@ from m2br_run_common import (
     deterministic_mock_sampler,
     diagnostics_payload,
     env_provenance,
+    is_ungated_sampler,
     json_sha256,
     pin_execution_environment,
     persist_failure,
     require_absent,
+    require_sampler_authorization,
     sample_array_hashes,
     sample_arrays_sha256,
     score_samples,
@@ -137,16 +139,15 @@ def run_v116_chain(chain, frozen, *, sampler_fn=fit_hmc_e1,
                    output_dir=DEFAULT_OUTPUT_DIR, scoring_fn=score_samples,
                    authorized=False):
     """Run one v1.16 chain with the sole numerical change: 3000/8000."""
-    if sampler_fn is fit_hmc_e1 and authorized is not True:
-        raise PermissionError(
-            "real fit_hmc_e1 requires authorized=True (CLI: --execute)")
+    require_sampler_authorization(sampler_fn, authorized)
     config, td = V116_CELL["config"], V116_CELL["td"]
     run_id = f"{V116_CELL['cell']}.chain{chain}"
     paths = v116_chain_paths(output_dir, chain)
     for path in paths.values():
         require_absent(path)
 
-    child_env = pin_execution_environment() if sampler_fn is fit_hmc_e1 else None
+    child_env = (pin_execution_environment()
+                 if not is_ungated_sampler(sampler_fn) else None)
 
     x, y, _info, x_eval_torch, candidate_results = toy_scoring_context()
     model, likelihood, _, _ = build_cell_model(config, x, y)
@@ -289,9 +290,14 @@ def run_v116(*, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
              manifest_path=FREEZE_PATH, plan_path=V116_PLAN_PATH,
              authorized=False):
     """Run the one informative-td7 v1.16 cell under the 90-minute ceiling."""
-    if sampler_fn is fit_hmc_e1 and authorized is not True:
+    require_sampler_authorization(sampler_fn, authorized)
+    # Fail-closed: a gated (real/unrecognized) sampler must run isolated so the
+    # absolute-cutoff stop-and-report always applies; only registered mocks may
+    # run in-process.
+    if not is_ungated_sampler(sampler_fn) and not isolate:
         raise PermissionError(
-            "real fit_hmc_e1 requires authorized=True (CLI: --execute)")
+            "a gated sampler must run isolated (isolate=True) for the absolute "
+            "cutoff; only registered mock samplers may run in-process")
     deadline = deadline or Deadline(
         CEILING_SECONDS, reserve_seconds=RESERVE_SECONDS)
     if deadline.t0 is None:
@@ -307,7 +313,8 @@ def run_v116(*, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
               "failed_cells": [], "failed_chains": [],
               "first_unexecuted_run": None}
     report["execution_environment"] = (
-        pin_execution_environment() if sampler_fn is fit_hmc_e1 else None)
+        pin_execution_environment()
+        if not is_ungated_sampler(sampler_fn) else None)
 
     cell_failed = False
     for chain in range(N_CHAINS):

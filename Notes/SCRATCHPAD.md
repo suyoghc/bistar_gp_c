@@ -88,8 +88,17 @@ heavy samples + pools stay UNTRACKED.
   (i) Claude subagent (codex was rate-limited); (ii) **GLM-5.2 via OpenRouter** cross-model pass —
   its 5 P2 findings cross-verified against source: #1 --execute routing test + #2 no-overwrite test
   ADDED, #4 --emit-plan made explicit, #3 already covered, **#5 (pickle-identity gate bypass) was a
-  FALSE ALARM** (parent gates before spawn at run_v116:292; fit_hmc_e1 pickles by-reference so child
-  identity holds). Full suite **274 passed + 1 skipped**. NO chain launched.
+  FALSE ALARM**. NO chain launched.
+- **D35 fail-closed sampler gate adopted across ALL THREE drivers (2026-07-12):** a 4th review
+  (GPT-5.6-sol xhigh via OpenRouter) flagged the historical `sampler_fn is fit_hmc_e1` gate as
+  fail-OPEN (a `partial(fit_hmc_e1)` ran ungated). Author said "adopt it." Inverted to fail-CLOSED via
+  a shared `m2br_run_common` primitive (`register_mock_sampler`/`is_ungated_sampler`/
+  `require_sampler_authorization`; marker is a per-object attribute, dual-import-safe). All 3 orchestrators
+  + all 3 workers gate; real runs must be isolated. GATE-ONLY, behaviour-preserving — **D33 results
+  unaffected** (drivers not re-run). GPT re-review CONFIRMED the bypass fixed + scientific path unchanged;
+  its residual findings cross-verified (worker self-isolation = architecturally unavailable + deliberate-
+  misuse-only, NOT accidental; spawn-attr footgun = non-reachable, locked by a regression test). Full
+  suite **278 passed + 1 skipped**. NO chain launched.
 - **NEXT (author):** give the SEPARATE explicit LAUNCH authorization for v1.16
   (`caffeinate -i python experiments/m2br_v116_run.py --execute`, ~42 min, 90-min ceiling) if/when
   desired; on FAIL the next step is a strategy change (new addendum), not another budget bump. Optionally

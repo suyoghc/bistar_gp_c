@@ -13,13 +13,32 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from functools import partial
+
 from bistar_gp.bms_star import GPPosteriorSample, soft_transfer
 from bistar_gp.sampler_diagnostics import SamplerDiagnostics
 from experiments import m2br_v116_run as v116
+from experiments import m2br_run_common as common
 from experiments.m2br_run_common import (
     FREEZE_PATH,
     SITE_NAMES,
 )
+
+
+@pytest.fixture
+def reg():
+    """Register test mock samplers as ungated for the duration of a test, then
+    clean up so the fail-closed registry does not leak across tests."""
+    added = []
+
+    def _register(fn):
+        common.register_mock_sampler(fn)
+        added.append(fn)
+        return fn
+
+    yield _register
+    for fn in added:
+        common.unregister_mock_sampler(fn)
 
 
 def _mock_diagnostics(n_draws, n_warmup, depth):
@@ -63,9 +82,10 @@ def _lightweight_scoring(samples, model, likelihood, x, y, x_eval_torch,
 
 
 def test_v116_mock_cell_end_to_end_writes_four_chains_and_escalated_budget(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, reg):
     calls = []
 
+    @reg
     def sampler(model, likelihood, x, y, **kwargs):
         del model, likelihood, x, y
         calls.append(kwargs)
@@ -140,11 +160,12 @@ def test_real_fit_hmc_e1_requires_programmatic_authorization(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
-def test_manifest_hash_mismatch_aborts_before_sampling(tmp_path):
+def test_manifest_hash_mismatch_aborts_before_sampling(tmp_path, reg):
     tampered = tmp_path / "tampered_manifest.json"
     tampered.write_text(Path(FREEZE_PATH).read_text() + "\n")
     sampled = []
 
+    @reg
     def forbidden_sampler(*args, **kwargs):
         sampled.append((args, kwargs))
         pytest.fail("sampler must not be reached")
@@ -160,7 +181,7 @@ def test_manifest_hash_mismatch_aborts_before_sampling(tmp_path):
 
 
 def test_start_semantic_sha_mismatch_aborts_before_sampling(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, reg):
     frozen = copy.deepcopy(v116.validation.load_frozen_starts())
     frozen["informative"]["init_values"][0][SITE_NAMES[0]][0] += 1e-9
     sampled = []
@@ -168,6 +189,7 @@ def test_start_semantic_sha_mismatch_aborts_before_sampling(
     monkeypatch.setattr(
         v116.validation, "load_frozen_starts", lambda path: frozen)
 
+    @reg
     def forbidden_sampler(*args, **kwargs):
         sampled.append((args, kwargs))
         pytest.fail("sampler must not be reached")
@@ -249,12 +271,13 @@ def test_v116_plan_exact_hash_and_frozen_start_pins_agree():
         "n_warmup": 3000, "n_draws": 8000}
 
 
-def test_v116_plan_hash_mismatch_aborts_before_sampling(tmp_path):
+def test_v116_plan_hash_mismatch_aborts_before_sampling(tmp_path, reg):
     """Symmetric to the manifest-tamper test: a mutated v1.16 pin must abort."""
     tampered = tmp_path / "tampered_plan.json"
     tampered.write_text(v116.V116_PLAN_PATH.read_text() + "\n")
     sampled = []
 
+    @reg
     def forbidden_sampler(*args, **kwargs):
         sampled.append((args, kwargs))
         pytest.fail("sampler must not be reached")
@@ -287,7 +310,8 @@ class _TimedOutDeadline:
         return {"status": "timed_out"}
 
 
-def test_v116_isolated_timeout_stops_and_reports(tmp_path):
+def test_v116_isolated_timeout_stops_and_reports(tmp_path, reg):
+    @reg
     def forbidden_sampler(*args, **kwargs):
         pytest.fail("sampler must not be reached on a timed-out chain")
 
@@ -321,13 +345,14 @@ def test_v116_execute_cli_routes_to_real_sampler_and_authorized(monkeypatch):
     assert calls[0]["output_dir"] == v116.DEFAULT_OUTPUT_DIR
 
 
-def test_v116_no_overwrite_of_existing_chain_artifact(tmp_path):
+def test_v116_no_overwrite_of_existing_chain_artifact(tmp_path, reg):
     """require_absent must refuse to clobber a prior chain artifact, before sampling."""
     output = tmp_path / "v116"
     output.mkdir(parents=True)
     (output / "chain0_samples.npz").write_text("prior-run-artifact")
     frozen = v116.validation.load_frozen_starts()
 
+    @reg
     def forbidden_sampler(*args, **kwargs):
         pytest.fail("sampler must not run when a prior artifact exists")
 
@@ -337,7 +362,8 @@ def test_v116_no_overwrite_of_existing_chain_artifact(tmp_path):
 
 
 def test_v116_acceptance_fail_marks_withdrawn_and_no_replacement(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, reg):
+    @reg
     def sampler(model, likelihood, x, y, **kwargs):
         del model, likelihood, x, y
         n = kwargs["n_samples"]
@@ -369,3 +395,21 @@ def test_v116_acceptance_fail_marks_withdrawn_and_no_replacement(
     assert cell["status"] == "failed_validation"
     assert cell["replacement_numbers"] is None
     assert cell["historical_counterparts"] == "WITHDRAWN/UNVALIDATED"
+
+
+def test_v116_partial_wrapped_real_sampler_is_gated(tmp_path):
+    """Fail-closed (D35): a wrapper around fit_hmc_e1 is not the registered mock,
+    so it is gated exactly like the real sampler -- closes the identity bypass."""
+    wrapped = partial(v116.fit_hmc_e1)
+    with pytest.raises(PermissionError, match="authorized=True"):
+        v116.run_v116(sampler_fn=wrapped, output_dir=tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+def test_v116_gated_sampler_rejected_when_not_isolated(tmp_path):
+    """A gated (real) sampler must run isolated; isolate=False is refused before
+    any chain, so the absolute cutoff always applies to real runs (D35)."""
+    with pytest.raises(PermissionError, match="isolated"):
+        v116.run_v116(sampler_fn=v116.fit_hmc_e1, authorized=True,
+                      isolate=False, output_dir=tmp_path / "out")
+    assert not (tmp_path / "out").exists()

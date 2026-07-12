@@ -2243,3 +2243,68 @@ further author action under D28 supersession terminology.
 **Status:** RATIFIED. Next: pin v1.16 + build/test/review the driver, then STOP (no chain launches
 without a separate explicit authorization). PR #8 stays Draft; M2c stays blocked; A7 Della on hold (v1.8);
 no vague/gamma_relaxed cells.
+
+## D35: fail-closed sampler capability gate adopted across all three M2bR drivers (author-ratified after a GPT cross-model review) — 2026-07-12
+
+**Problem:** A fourth independent review of the v1.16 driver (GPT-5.6-sol xhigh via OpenRouter)
+returned CHANGES-REQUIRED where two prior reviews (Claude subagent, GLM-5.2) returned APPROVE. On
+cross-verification its 3 "P0" findings were NOT accidental-run risks and matched the author-ratified
+frozen-driver pattern; 2 of the 5 were unreachable/false alarms. BUT its underlying principle was
+sound: the historical gate `if sampler_fn is fit_hmc_e1 and authorized is not True: raise` is
+**fail-OPEN** — any callable that is not that exact object (e.g. `partial(fit_hmc_e1)`) ran WITHOUT
+authorization. The author elected to adopt the fail-closed pattern across all three drivers.
+
+**Decision (author-ratified, "yes adopt it"):** invert the gate to **fail-CLOSED** via one shared
+primitive in `experiments/m2br_run_common.py`:
+- `register_mock_sampler(fn)` marks a sampler ungated (a marker ATTRIBUTE on the function object, not
+  a module-level set — the drivers import `m2br_run_common` bare while tests import
+  `experiments.m2br_run_common`, so a module-level registry would be duplicated and never agree; a
+  per-object attribute travels with the callable). `deterministic_mock_sampler` is registered at load.
+- `require_sampler_authorization(sampler_fn, authorized)` raises unless the sampler is a registered
+  mock OR `authorized is True`. Real HMC **and every unrecognized callable (incl. `partial(fit_hmc_e1)`)**
+  are gated.
+- `is_ungated_sampler(fn)` replaces the `sampler_fn is fit_hmc_e1` identity used for env-pinning.
+- Each driver's orchestrator (`run_audit`, `run_validation`, `run_v116`) additionally REJECTS a gated
+  sampler when `isolate=False` (a real run must be isolated so the absolute-cutoff stop-and-report
+  always applies). The two `child_env` selects per driver now key on `is_ungated_sampler`.
+- The per-run/per-chain WORKERS also gate now (`run_audit_one`, `run_validation_chain`,
+  `run_v116_chain` each call `require_sampler_authorization`; the orchestrators forward `authorized`
+  into the isolated child so it re-checks) — every sampler-executing entry point is fail-closed on
+  authorization, not just the orchestrators.
+
+**Scope — this MODIFIES two frozen, already-executed drivers (`m2br_audit_run.py`,
+`m2br_validation_run.py`) plus `m2br_run_common.py` and the live `m2br_v116_run.py`.** It is
+GATE-ONLY and behaviour-preserving for the scientific path: it changes only WHETHER a sampler is
+permitted to run, never HOW sampling/scoring/persistence works. **The D33 audit + validation results
+are unaffected** (their artifacts are untouched; the drivers are not re-run). The change is for
+consistency and for the future v1.16 launch. `fit_hmc_e1` remains the only real sampler.
+
+**Verification.** Full suite **278 passed + 1 skipped** (was 274+1: +2 v116 fail-closed tests
+[`partial(fit_hmc_e1)` now raises; real+`isolate=False` rejected], +1 frozen-driver parity test, +1
+spawn regression test [the import-registered mock's marker survives pickle/re-import]; the 3 tests a
+naive change broke now pass via a `reg` fixture that registers sentinel mocks). Behaviour preserved
+empirically: real HMC still requires authorization (bare `run_audit`/`run_validation`/`run_v116` raise),
+the registered `deterministic_mock_sampler` still runs ungated (all three `--dry-run` paths work), and no
+`sampler_fn is fit_hmc_e1` code identity check remains (only a doc comment). Independently re-reviewed by
+GPT-5.6-sol (the model that requested the change) on the diff: it CONFIRMED the fail-open bypass is fixed
+in all three drivers and the scientific path is unchanged.
+
+**Alternatives considered.** (a) Leave the ratified identity+authorization pattern — REJECTED by the
+author ("adopt it"). (b) Apply only to v116 — REJECTED for cross-driver consistency (all three share
+the primitive now). (c) A module-level registry set — REJECTED (the bare-vs-package dual-import gives
+two sets that never agree; a per-object attribute is dual-import-safe). (d) Worker SELF-ISOLATION so a
+direct `run_x_chain(authorized=True)` call is subject to the absolute cutoff (GPT round-2/3 finding) —
+NOT adopted: a single-chain worker is the thing being isolated and cannot self-isolate, and there is no
+`spawn`-safe UNFORGEABLE proof of "I am the isolated child" (any token forgeable by a direct caller); the
+residual is deliberate misuse of a private worker, NOT an accidental-run risk, since the public
+orchestrators + CLIs always isolate. The workers are gated on authorization (real HMC needs `authorized`)
+and documented as orchestrator-driven. (e) Worker-side pin re-verification / capability tokens — NOT
+adopted: tokens reintroduce the pickle-identity fragility across `spawn`; the worker already re-hashes
+each start and the orchestrator verifies the manifest/plan pins.
+
+**Result:** all three drivers migrated to the shared fail-closed gate; the `partial(fit_hmc_e1)`
+bypass and the un-isolated-real-run path are closed; scientific behaviour and the D33 outcomes are
+unchanged.
+
+**Status:** COMPLETE (independently cross-model re-reviewed). No chain launched; launching v1.16 still
+needs a separate explicit authorization. PR #8 stays Draft; M2c stays blocked; A7 Della on hold (v1.8).

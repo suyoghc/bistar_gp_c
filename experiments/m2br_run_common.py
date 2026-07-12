@@ -640,6 +640,65 @@ def deterministic_mock_sampler(model, likelihood, x, y, **kwargs):
     return (samples, diagnostics) if kwargs.get("return_diagnostics") else samples
 
 
+# --- Fail-closed sampler capability gate (D35) --------------------------------
+# The historical gate keyed on ``sampler_fn is fit_hmc_e1`` -- fail-OPEN: any
+# callable that was not that exact object (e.g. ``partial(fit_hmc_e1)``) ran
+# without authorization. This inverts it to fail-CLOSED: ONLY samplers explicitly
+# registered as safe mocks may run without ``authorized=True``; the real sampler
+# and every unrecognized callable are gated. Behaviour for the two intended
+# entrypoints is unchanged: real HMC still requires authorization, and the
+# registered ``deterministic_mock_sampler`` (dry-run) still runs ungated.
+#
+# The "registration" is a marker attribute ON THE FUNCTION OBJECT, not a
+# module-level set: the drivers import this module bare (``m2br_run_common``)
+# while tests import it as ``experiments.m2br_run_common``, so a module-level
+# registry would be duplicated and never agree. A per-object attribute travels
+# with the callable regardless of which module copy inspects it.
+#
+# SPAWN NOTE: a mock that must survive an isolated (``spawn``) run has to be
+# registered at IMPORT time -- like ``deterministic_mock_sampler`` below -- so the
+# re-imported child object carries the marker. Functions pickle by module/name,
+# so a marker added at RUNTIME is not present in the child; a runtime-registered
+# mock is therefore only valid for in-process (``isolate=False``) use. In practice
+# the only samplers that traverse spawn are ``fit_hmc_e1`` (gated) and the
+# import-registered dry-run mock, so this is a documented constraint, not a hole.
+_UNGATED_ATTR = "_m2br_ungated_mock"
+
+
+def register_mock_sampler(fn):
+    """Mark a deterministic mock sampler as safe to run without authorization."""
+    setattr(fn, _UNGATED_ATTR, True)
+    return fn
+
+
+def unregister_mock_sampler(fn) -> None:
+    """Remove a mock marker (used by test fixtures for cleanup)."""
+    try:
+        delattr(fn, _UNGATED_ATTR)
+    except AttributeError:
+        pass
+
+
+def is_ungated_sampler(fn) -> bool:
+    """True only for explicitly registered mock samplers."""
+    return getattr(fn, _UNGATED_ATTR, False) is True
+
+
+def require_sampler_authorization(sampler_fn, authorized) -> None:
+    """Fail-closed gate: raise unless ``sampler_fn`` is a registered mock or
+    ``authorized is True``. Real HMC AND any unrecognized callable (including a
+    wrapper such as ``partial(fit_hmc_e1)``) are gated."""
+    if is_ungated_sampler(sampler_fn):
+        return
+    if authorized is not True:
+        raise PermissionError(
+            "sampler requires authorized=True (CLI: --execute); only registered "
+            "mock samplers run without authorization")
+
+
+register_mock_sampler(deterministic_mock_sampler)
+
+
 def json_sha256(obj) -> str:
     encoded = json.dumps(obj, sort_keys=True, separators=(",", ":"),
                          allow_nan=False).encode("utf-8")

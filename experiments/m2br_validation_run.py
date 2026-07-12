@@ -39,10 +39,12 @@ from m2br_run_common import (
     diagnostics_payload,
     emit_run_plan,
     env_provenance,
+    is_ungated_sampler,
     json_sha256,
     pin_execution_environment,
     persist_failure,
     require_absent,
+    require_sampler_authorization,
     sample_array_hashes,
     sample_arrays_sha256,
     score_samples,
@@ -428,8 +430,12 @@ def _load_predictives(path):
 
 def run_validation_chain(cell, chain, frozen, *, sampler_fn=fit_hmc_e1,
                          output_dir=DEFAULT_OUTPUT_DIR,
-                         scoring_fn=score_samples):
+                         scoring_fn=score_samples, authorized=False):
     """Run one injected-start chain and atomically preserve all observations."""
+    # Fail-closed at the worker too (D35): a direct call with a real/unrecognized
+    # sampler is gated, matching run_v116_chain; the orchestrator forwards its
+    # authorization so the isolated child re-checks.
+    require_sampler_authorization(sampler_fn, authorized)
     cell_id, config, td = cell["cell"], cell["config"], int(cell["td"])
     run_id = f"{cell_id}.chain{chain}"
     paths = validation_chain_paths(output_dir, cell_id, chain)
@@ -438,7 +444,7 @@ def run_validation_chain(cell, chain, frozen, *, sampler_fn=fit_hmc_e1,
 
     # Pin threads INSIDE this (possibly spawned) chain process so it governs the
     # real sampler; skipped for the mock sampler.
-    child_env = pin_execution_environment() if sampler_fn is fit_hmc_e1 else None
+    child_env = pin_execution_environment() if not is_ungated_sampler(sampler_fn) else None
 
     x, y, _info, x_eval_torch, candidate_results = toy_scoring_context()
     model, likelihood, _, _ = build_cell_model(config, x, y)
@@ -580,9 +586,11 @@ def run_validation(*, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
                    deadline=None, isolate=True, scoring_fn=score_samples,
                    manifest_path=FREEZE_PATH, authorized=False):
     """Run V1,V3,V2,V4 with the 6 h per-chain projection gate."""
-    if sampler_fn is fit_hmc_e1 and authorized is not True:
+    require_sampler_authorization(sampler_fn, authorized)
+    if not is_ungated_sampler(sampler_fn) and not isolate:
         raise PermissionError(
-            "real fit_hmc_e1 requires authorized=True (CLI: --execute)")
+            "a gated sampler must run isolated (isolate=True) for the absolute "
+            "cutoff; only registered mock samplers may run in-process")
     deadline = deadline or Deadline(21600, reserve_seconds=600)
     if deadline.t0 is None:
         deadline.start()
@@ -593,7 +601,7 @@ def run_validation(*, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
               "failed_cells": [], "failed_chains": [],
               "first_unexecuted_run": None}
     report["execution_environment"] = (
-        pin_execution_environment() if sampler_fn is fit_hmc_e1 else None)
+        pin_execution_environment() if not is_ungated_sampler(sampler_fn) else None)
 
     for cell in VALIDATION_CELLS:
         cell_failed = False
@@ -607,7 +615,7 @@ def run_validation(*, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
                 return report
             fn = partial(run_validation_chain, cell, chain, frozen,
                          sampler_fn=sampler_fn, output_dir=output_dir,
-                         scoring_fn=scoring_fn)
+                         scoring_fn=scoring_fn, authorized=authorized)
             if isolate:
                 isolated = deadline.run_isolated(
                     fn, projection, deadline.sampling_cutoff(), run_id=run_id,

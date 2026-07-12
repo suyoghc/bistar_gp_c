@@ -41,10 +41,12 @@ from m2br_run_common import (
     diagnostics_payload,
     emit_run_plan,
     env_provenance,
+    is_ungated_sampler,
     pin_execution_environment,
     json_sha256,
     persist_failure,
     require_absent,
+    require_sampler_authorization,
     sample_array_hashes,
     sample_arrays_sha256,
     score_samples,
@@ -410,8 +412,12 @@ def verify_unchanged_arms(*, source_dir=None, output_path=None,
 
 
 def run_audit_one(run, *, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
-                  map_fn=fit_map, scoring_fn=score_samples):
+                  map_fn=fit_map, scoring_fn=score_samples, authorized=False):
     """Execute one frozen audit arm; suitable for injected hermetic tests."""
+    # Fail-closed at the worker too (D35): a direct call with a real/unrecognized
+    # sampler is gated, matching run_v116_chain; the orchestrator forwards its
+    # authorization so the isolated child re-checks.
+    require_sampler_authorization(sampler_fn, authorized)
     run_id, config, td = run["run_id"], run["config"], int(run["td"])
     paths = audit_paths(output_dir, run_id)
     for key in ("samples", "diagnostics", "results", "failure"):
@@ -420,7 +426,7 @@ def run_audit_one(run, *, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
     # Pin threads INSIDE this (possibly spawned) process so it governs the real
     # sampler, not just the orchestrator. Skipped for the mock sampler so tests
     # never perturb the interpreter's thread count.
-    child_env = pin_execution_environment() if sampler_fn is fit_hmc_e1 else None
+    child_env = pin_execution_environment() if not is_ungated_sampler(sampler_fn) else None
 
     x, y, _info, x_eval_torch, candidate_results = toy_scoring_context()
     model, likelihood, _, _ = build_cell_model(config, x, y)
@@ -518,9 +524,11 @@ def run_audit(*, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
               scoring_fn=score_samples, authorized=False,
               verify_arms_fn=verify_unchanged_arms):
     """Run the frozen list in order with its 2 h stop-and-report rule."""
-    if sampler_fn is fit_hmc_e1 and authorized is not True:
+    require_sampler_authorization(sampler_fn, authorized)
+    if not is_ungated_sampler(sampler_fn) and not isolate:
         raise PermissionError(
-            "real fit_hmc_e1 requires authorized=True (CLI: --execute)")
+            "a gated sampler must run isolated (isolate=True) for the absolute "
+            "cutoff; only registered mock samplers may run in-process")
     deadline = deadline or Deadline(7200, reserve_seconds=600)
     if deadline.t0 is None:
         deadline.start()
@@ -531,7 +539,7 @@ def run_audit(*, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
     # Pin + record the compute environment before real sampling so the frozen
     # leapfrog projections stay valid (skipped for the mock sampler).
     report["execution_environment"] = (
-        pin_execution_environment() if sampler_fn is fit_hmc_e1 else None)
+        pin_execution_environment() if not is_ungated_sampler(sampler_fn) else None)
 
     verification = verify_arms_fn(
         output_path=output_dir / "unchanged_arms_verification.json")
@@ -550,7 +558,7 @@ def run_audit(*, sampler_fn=fit_hmc_e1, output_dir=DEFAULT_OUTPUT_DIR,
             break
         fn = partial(run_audit_one, run, sampler_fn=sampler_fn,
                      output_dir=output_dir, map_fn=map_fn,
-                     scoring_fn=scoring_fn)
+                     scoring_fn=scoring_fn, authorized=authorized)
         if isolate:
             isolated = deadline.run_isolated(
                 fn, projection, deadline.sampling_cutoff(), run_id=run_id,
