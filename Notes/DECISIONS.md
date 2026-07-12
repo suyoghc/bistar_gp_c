@@ -1998,3 +1998,82 @@ calls. No code logic changed (only the "proposed"->ratified relabel); suite gree
 
 **Status:** all nine decision-table items ratified; PR #7 set Ready; M2b merge + M2bR run
 await the author; M2c blocked on M2bR; nothing scientific has run.
+
+## D32: M2bR two-stage start freeze — realized validation starts pinned + independently verified (the pre-run gate) — 2026-07-11
+
+**Problem:** The M2bR corrective milestone opens on branch `feat/d19-m2br` (off `origin/main`
+bd0b399, the merged M2b PR #7). Its hard ordering gate: the two-stage validation start freeze
+is the FIRST substantive action, and NO chain of ANY layer (audit or validation) may launch
+until the realized freeze is committed AND independently reproduced byte-for-byte. The
+selection RULE was frozen at prereg v1.11-v1.13; the realized pool indices, fallback-advance
+counts, and per-state hashes could not be pinned earlier because the prior-IS pools are local
+artifacts. This entry records the author-ratified filler/aggregation refinements, the realized
+freeze, and its independent verification — the gate itself.
+
+**Decision (author-ratified refinements baked into the freeze):**
+- **R-A (filler selection).** 3 authority slots (chains 1-3). B = number of reportable noise
+  bands (pooled prior-IS mass >= 5%; bands lo `noise<0.15`, mid `0.15<=noise<=0.30`, hi
+  `noise>0.30`). Band-medians fill B slots; the remaining `3-B` slots are fillers from the
+  LARGEST-MASS reportable band: B=3 no filler; B=2 the largest-mass band's weighted-q75 draw;
+  B=1 the largest-mass band's weighted-q25 AND q75 draws.
+- **R-B (replacement-number aggregation; applies at the validation RUN, not the freeze).** 200
+  predictives/chain via the frozen D12/D18 extraction rule; the PRIMARY per-cell validated BMS
+  posterior = the concatenated 800 predictive-level G rows, equal per-chain contribution, ONE
+  final normalization. Per-chain separately-normalized posteriors and the cross-chain SD are
+  DIAGNOSTICS only, never the primary estimator.
+- Deterministic details 1-5 (lexicographic `(seed,row)` pooling; softmax-weighted band
+  quantiles, first cumulative weight `>= q`, noise-ascending with `(seed,row)` tie-break;
+  same-band `|Δnoise|` fallback ordering; chain 0 = frozen MAP via `init_values` not
+  `init_to_map`, cell-unstartable-if-MAP-fails; `atol=1e-12` pool verification as a STOP
+  condition) are applied throughout. Full text in prereg v1.14.
+
+**Realized freeze (prereg v1.14; `experiments/m2br_start_freeze.py`; manifest
+`docs/m2br_freeze/start_freeze_v1.14.json`, sha256 `b1abfa3c…2643d891`).** Start states depend
+only on config, so V1/V2 share the `informative` set and V3/V4 share `toy_elicited` (2 sets x 4
+chains = 8 starts). Reportability from pooled masses: `informative` lo/mid/hi = 0.2768/0.1310/
+0.5922 -> B=3, no filler; `toy_elicited` lo/mid/hi = 0.7627/0.1911/0.0463 -> hi<5%, B=2, one
+filler = q75(lo). All targets passed D30 preflight (fallback=0 everywhere); both MAP starts
+passed; no cell unstartable.
+
+| Cell(s) | Chain(seed) | Role | Realized `(seed,row)` | Semantic sha256 |
+|---|---|---|---|---|
+| V1,V2 informative | 0(0) | MAP | — | `72a7e891…4a8b215a` |
+| V1,V2 informative | 1(1) | median(lo) | (2,39347) | `c9f37584…d0d7fd4ad` |
+| V1,V2 informative | 2(2) | median(mid) | (2,152981) | `2db18020…da309cda` |
+| V1,V2 informative | 3(3) | median(hi) | (0,166451) | `5cf298a7…1de45649` |
+| V3,V4 toy_elicited | 0(0) | MAP | — | `e666fbca…d8bf747b` |
+| V3,V4 toy_elicited | 1(1) | median(lo) | (0,43612) | `50209065…812f4978` |
+| V3,V4 toy_elicited | 2(2) | median(mid) | (1,1491) | `a806fa8a…e5fcd752` |
+| V3,V4 toy_elicited | 3(3) | q75(lo) filler | (0,53543) | `c965203c…085776c48` |
+
+**Independent verification (the gate — PASSED).** Three independent implementations of the
+frozen rule agree byte-for-byte on all 8 starts (realized `(seed,row)`, fallback counts, and
+semantic sha256, chain 0 included):
+1. codex gpt-5.6-sol (xhigh) — the committed freeze script; two runs -> identical manifest hash.
+2. Fable — an independent from-scratch recomputation (separate implementation of R-A + details
+   1-4 and the hashing convention, not importing the freeze script); also confirmed the
+   `atol=1e-12` pool verification (per-seed + pooled vs `stage_a_{config}.json`), the four-site
+   topology, and MAP determinism.
+3. codex gpt-5.6-sol (xhigh) — a CLEAN-ROOM recomputation, verifiably barred from reading the
+   freeze script / manifest / prereg (its script references none of them), writing its own
+   result; byte-compared to the committed manifest = all 8 starts identical.
+
+**Alternatives considered / reconciliations recorded in v1.14:** (a) the validation-proposal
+doc-hash drifted (v1.12 pinned `bdbabb86…`; retitled RATIFIED at D31 -> current governing
+`1045c11c…`) — recorded as a fingerprint update, no criterion change; (b) the audit protocol's
+stale "PROPOSED, PENDING" header is SUPERSEDED by D31 without editing the frozen file (its run
+list and sha `45999e2f…` stay frozen); (c) the proposal's "7-site constrained draws" is a
+Mauna-model carryover — the toy E1 model has EXACTLY 4 sites, and the criteria ("every site")
+are unchanged. No ratified value, criterion, budget, run list, or cell design was altered.
+
+**Result:** Commit A `10edc2d` (v1.14 + `experiments/m2br_start_freeze.py` + manifest) and this
+Commit B (D32) both exist; the clean-room recomputation matches byte-for-byte. The hard
+ordering gate is satisfied. Nothing scientific has run: no HMC/VI/`hmc_laplace`, no Mauna
+access, no pool regeneration; the local pools and original invalid caches are untouched.
+
+**Status:** GATE PASSED. The audit layer (`docs/m2br-corrected-impact-protocol.md`: 6
+single-chain seed-42 runs, 2 h ceiling, "corrected single-chain comparison" label, cannot close
+W2/W3) and the validation layer (`docs/m2br-validation-protocol-PROPOSAL.md`: cells V1,V3,V2,V4
+from the frozen starts, 4 chains, 6 h ceiling) MAY now execute per their frozen protocols with
+stop-and-report. Outcomes (which withdrawn numbers are superseded vs still withdrawn) will be a
+SEPARATE later D-entry. M2c stays blocked; the A7 Della vehicle stays on hold (v1.8).
