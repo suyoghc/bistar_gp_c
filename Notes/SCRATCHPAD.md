@@ -67,9 +67,19 @@ heavy samples + pools stay UNTRACKED.
   (hashes + verdicts + provenance + pooled occupancy); D33 in `Notes/DECISIONS.md`; proposed (pending
   author ratification) `docs/m2br-w2w3-writeup-PROPOSAL.md`. Draft PR #8 updated, kept DRAFT pending
   author sign-off.
-- **NEXT (author):** ratify/adjust the W2/W3 proposal; decide whether to open a v1.16+ escalation for
-  the informative cells (V1/V2) and/or +2 validation cells for vague/gamma_relaxed. Do NOT begin M2c;
-  A7 Della on hold (v1.8).
+- **W2/W3 proposal REVISED (rev-2, 2026-07-12)** after codex review + author direction: corrected NUTS
+  (Sin+Linear 0.4205 td7 SD 0.0063 / 0.4220 td10 SD 0.0077) and SIR (0.441±0.005; pools 0.419/0.438/0.431)
+  reported SEPARATELY (not merged into 0.42–0.44); prior-IS/SIR = ONE IS-family reference (shared pools),
+  independent check = NUTS vs IS/SIR family; ALL VI claims WITHDRAWN pending corrected-VI rerun (VI hit by
+  same D22 defect); mass-faithful language qualified as conditional on the fixed data-elicited prior,
+  N=20 toy-only. See `docs/m2br-w2w3-writeup-PROPOSAL.md`.
+- **v1.16 informative-only escalation PREPARED (not run):** `docs/m2br-v1.16-informative-escalation-PROPOSAL.md`
+  — informative td7 only, same 4 frozen starts/seeds, warmup 1000→3000 + draws 2000→8000 (only change),
+  unchanged thresholds + authority ref, 90-min ceiling, one stop-and-report. Grounded in the measured
+  ~46 ms/iter and the chain-2 under-adaptation failure signature (step 0.33, 6/8 divergences).
+- **NEXT (author's explicit vote):** ratify the revised W2 + interim-withdrawn W3; vote yes/no on the
+  v1.16 escalation (then a v1.16 manifest addendum is pinned + drivers built/tested BEFORE any launch).
+  No sampler runs meanwhile. Do NOT begin M2c; A7 Della on hold (v1.8); no vague/gamma_relaxed cells.
 
 
 ## D19 Mauna study — M2a DONE (D20); M2b code complete, ALL 9 decision items ratified (D21-D31); PR #7 Ready; merge + M2bR = author's next call
