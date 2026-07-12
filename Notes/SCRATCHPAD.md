@@ -114,11 +114,19 @@ heavy samples + pools stay UNTRACKED.
   (D33 4×2000 + v1.16 4×8000); any further attempt = STRATEGY change via new addendum, never a budget bump.
   No corrected-VI claim. toy_elicited (D33) UNAFFECTED — still superseded. Provenance:
   `docs/m2br_freeze/v116_result_manifest.json`; heavy samples `runs/m2br_v116_informative/` UNTRACKED.
-- **NEXT (author):** M2bR's scientific questions are now resolved (toy_elicited superseded; informative
-  withdrawn, twice-tested). Options: (a) apply the ratified toy_elicited W2/W3 supersession into the
-  historical docs; (b) mark PR #8 Ready; (c) decide whether an informative STRATEGY-change addendum is
-  worth pursuing or accept informative-as-withdrawn. Not started: Mauna, M2c, VI repair. A7 Della on hold
-  (v1.8); PR #8 stays Draft.
+- **D36-c1 (correction):** divergences are NOT a high-noise-basin effect — they concentrate in the
+  larger-adapted-step chains 0/2/3 and endpoint-localize to LOW/MID noise (pooled 137/53/39 of 229;
+  1.69/1.25/0.20%); chain1 is 65.4% high-band with 0 div. All docs corrected; result manifest carries
+  SHA256 for all 17 artifacts. Deterministic archive: 26.04 MiB, sha256 c0aea0b9…e2a3a7b9 (untracked).
+- **M2bR CLOSED (D37, 2026-07-12).** Outcomes propagated (banners): tracked
+  `docs/{prior-sensitivity-study,fit-method-metric-comparison,appendix-tree-depth-cap}.md`; local
+  `WRITEUP_DRAFT/DECISIONS` + 2 kb/Wiki articles (SIR 0.696-0.707 hard-win left UNAFFECTED). G-toy gate:
+  validated toy_elicited does NOT close G-toy (an M2c §6.9 derivation); informative withdrawal is
+  NON-BLOCKING (plan L305-307: coverage-repairing sampler NOT required). **PR #8 → Ready** (not merged).
+- **NEXT (author decisions, flagged not made):** (1) declare M2bR closed + open M2c; (2) revise the §6.9
+  G-toy golden that referenced the now-withdrawn 0.696; (3) informative strategy-change addendum vs
+  accept-withdrawn (codex recommends accept); (4) merge PR #8; (5) fold banners into final paper prose.
+  Not started: Mauna, M2c, VI repair, informative-strategy. A7 Della on hold (v1.8).
 
 
 ## D19 Mauna study — M2a DONE (D20); M2b code complete, ALL 9 decision items ratified (D21-D31); PR #7 Ready; merge + M2bR = author's next call

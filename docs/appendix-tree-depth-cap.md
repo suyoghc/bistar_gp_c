@@ -12,6 +12,15 @@
 > quantities. This statement concerns THIS repository's pyro/gpytorch
 > implementation only — it establishes nothing about the thesis's original
 > gpflow/ADVI implementation or its conclusions.
+>
+> **UPDATE — M2bR corrected reruns COMPLETE (D33, 2026-07-12; D36).** Under the corrected E1 target
+> the tree-depth cap is NOT binding: for the seed-42 audit runs, td7 and td10 produced bit-identical
+> draws (depth-saturation 0.0), so this appendix's td7-vs-td10 contrast is a pre-correction artifact.
+> The historical HMC numbers here are WITHDRAWN — `toy_elicited` is SUPERSEDED (validated corrected
+> Sin+Linear ≈ 0.42, conditional on the fixed data-elicited N=20 prior; the historical 0.696/0.683
+> are superseded), `informative` stays WITHDRAWN/UNVALIDATED with no replacement (D33/D36; the
+> failure is an unresolved geometry/adaptation interaction, not a high-noise-basin effect — D36-c1).
+> VI unchanged (withdrawn). See `Notes/DECISIONS.md` D33/D36.
 
 Companion to `docs/fit-method-metric-comparison.md` (D12). The main comparison
 ran the two NUTS methods uncapped (pyro default `max_tree_depth=10`); this

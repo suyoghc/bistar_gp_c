@@ -2395,3 +2395,71 @@ per-chain diagnostics, start-sha↔manifest match, sample hashes, provenance). H
 
 **Status:** COMPLETE (one-shot, per authorization). Stopping here — no patch, retry, budget extension, or
 additional chain. No Mauna, M2c, or VI-repair work begun. PR #8 stays Draft; A7 Della on hold (v1.8).
+
+## D37: M2bR CLOSEOUT — supersession/withdrawal propagated to affected docs; G-toy gate analysis; PR #8 → Ready — 2026-07-12
+
+**Problem:** With D33 (toy_elicited superseded, informative withdrawn), D34 (W2/W3 ratified), D35 (gate
+scoped to v1.16), D36 (v1.16 FAIL), and D36-c1 (divergence-localization correction) all settled, close
+M2bR: propagate the outcomes into affected historical documents, verify the frozen gate language, and
+ready PR #8. No further sampling / strategy development (author instruction).
+
+**Propagation (banners; historical text preserved).** Dated M2bR-outcome banners added/updated so no
+document asserts a withdrawn number without the correction beside it:
+- Tracked (in this commit): `docs/prior-sensitivity-study.md` (D18) and `docs/appendix-tree-depth-cap.md`
+  — existing D26/D28 "pending rerun" banners UPDATED to the outcome (toy_elicited SUPERSEDED by validated
+  Sin+Linear ≈0.42 conditional on the fixed data-elicited N=20 prior; informative WITHDRAWN, no
+  replacement; VI withdrawn; td7≡td10 under the corrected target); `docs/fit-method-metric-comparison.md`
+  (D12, informative-only) — banner UPDATED to WITHDRAWN/no-replacement.
+- Local-only (untracked/gitignored; updated for the author's records, NOT in this commit):
+  `Notes/WRITEUP_DRAFT.md`, `Notes/WRITEUP_DECISIONS.md` (W2/W3 log), `kb/Wiki/HMC vs MAP for GP
+  Posteriors.md` (its MAP-init mode-confinement claim is superseded for toy_elicited), `kb/Wiki/Metric
+  Choice Justification.md`. Care taken to NOT banner the UNAFFECTED SIR/prior-IS numbers — e.g. the
+  "0.696-0.707" hard-best-match rate at n_pred=1000 is a SIR quantity (verified unchanged @1e-12 at D33),
+  NOT the withdrawn HMC 0.696 model posterior.
+- Cross-document consistency verified: toy_elicited = validated/superseding (conditional on the fixed
+  data-elicited N=20 prior); informative = withdrawn/unvalidated, no replacement model-probability
+  number; VI = still withdrawn (no corrected-VI evidence); thesis-scope = these corrections concern THIS
+  repository's pyro/gpytorch replication, not the thesis's original gpflow/ADVI implementation. No
+  uncorrected "high-noise-basin" wording remains.
+
+**G-toy gate analysis (records ONLY what the frozen rules support).**
+- The validated `toy_elicited` result does NOT by itself CLOSE G-toy: G-toy is the estimator-specific
+  toy-golden derivation of plan §6.9, scheduled for M2c "after this layer's outcome is known"
+  (`docs/m2br-validation-protocol-PROPOSAL.md`; plan decision table "G-toy per-estimator numeric
+  tolerances | M2c"). The M2bR validation validated the HMC sampler's characterization; it is an INPUT to
+  M2c's G-toy derivation, not that derivation.
+- `informative`'s withdrawal is NON-BLOCKING for the G-toy / toy-smoke gate SPECIFICALLY under the frozen
+  rule "Toy smoke-validation (G-toy) … a coverage-repairing sampler is NOT required" (`docs/plan-d19-mauna.md`
+  L305-307): because the G-toy gate does not require a coverage-repairing sampler, informative's coverage/
+  convergence-validation failure does not block it. (This is scoped to the G-toy gate under that rule, not
+  a general claim about any sampler failure anywhere.)
+
+**Author decisions FLAGGED (not made here):**
+1. Declare M2bR formally closed and open M2c? The frozen rules make informative's withdrawal non-blocking
+   for the G-toy gate, and the scientific work is done, but formally declaring the milestone closed and
+   opening M2c is the author's call.
+2. The §6.9 G-toy golden was written to "reproduce the confined 0.696" — a number withdrawn as a D22
+   artifact (D22/D33; refined by D36). The author must decide WHETHER/HOW to revise the M2c G-toy
+   derivation to account for the supersession; not resolved here (M2c scope).
+3. Whether to pursue an informative STRATEGY-change addendum (reparam / mass matrix / different sampler)
+   or accept informative-as-withdrawn. Cross-review (codex) recommends ACCEPT-withdrawn (the failure is
+   scientifically useful and toy_elicited already supplies the validated toy result); not started.
+4. Converting the superseded/withdrawn banners into final paper prose is an author writeup action (the
+   ratified W2/W3 in `docs/m2br-w2w3-writeup-PROPOSAL.md` is the source).
+
+**Provenance / archive.** `docs/m2br_freeze/v116_result_manifest.json` carries SHA256 for all 17
+persisted artifacts. A deterministic archive of `runs/m2br_v116_informative/` (sorted names, normalized
+metadata) is **26.04 MiB (27,310,080 bytes), SHA256
+`c0aea0b958a5d52877a5fde98dcff267b4b6bcd2ad4a634d99bca510e2a3a7b9`** — kept UNTRACKED
+(`runs/m2br_v116_informative.archive.tar`); durable archiving/relocation is a separate author choice (no
+artifact moved/uploaded/deleted).
+
+**Result:** The M2bR SCIENTIFIC work is done — toy_elicited superseded (validated), informative withdrawn
+(twice-tested), VI withdrawn; outcomes propagated; no blocker remains under the frozen rules. Per the
+author's instruction ("if no blocker remains, flip PR #8 to Ready, do not merge"), PR #8 is set to
+**Ready** (NOT merged). Formally declaring the milestone closed and opening M2c remain the author decisions
+flagged above; this entry does not make them.
+
+**Status:** Scientific work COMPLETE; PR #8 Ready (not merged), awaiting the author's merge + milestone-
+closure/M2c decisions. No M2c / Mauna / VI-repair / informative-strategy addendum started. A7 Della on
+hold (v1.8).
