@@ -26,7 +26,9 @@ NO chain launched.** prereg **v1.15** provenance erratum (R-A/R-B ratified in th
 message + recorded in D32, not by the D31 rows-8/9 vote). Drivers:
 `experiments/m2br_run_common.py` (Deadline w/ absolute cutoff, transactional_persist samples-last,
 failure records, schema-v3), `experiments/m2br_audit_run.py` (6 runs + §3 unchanged-arm
-re-verification: prior-IS + SIR PASS @1e-12 on real data, RW-MH partial SKIP), and
+re-verification: prior-IS + SIR PASS @1e-12 on real data; RW-MH broadened — toy_elicited
+thorough PASS (occupancy sum, 30000-integral, P_lo + crossings [44,40,38] unchanged @1e-12,
+code params 30000/5000/0.1), other 3 configs NOT_APPLICABLE (RW-MH referee is toy_elicited-only)), and
 `experiments/m2br_validation_run.py` (V1/V3/V2/V4, frozen-start injection w/ manifest-hash anchor
 `b1abfa3c` + per-start sha verify, arviz criteria, authority coverage, R-B pooled-800 primary).
 `tests/test_m2br_drivers.py` 21 hermetic tests (incl. R-B pooled≠averaged proof). Real HMC gated

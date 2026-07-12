@@ -181,6 +181,99 @@ def _recompute_sir(config, per_seed_pools, pooled_ths, pooled_lml):
     }
 
 
+# RW-MH referee (prior_sensitivity_study.mh_noise_occupancy) unchanged-arm
+# reference. The referee ran ONLY for toy_elicited (the D18 noise-marginal
+# deep-dive; prior_sensitivity_study.stage_noise_marginal defaults its config
+# list to ["toy_elicited"]). For every other config there is no RW-MH arm to
+# re-verify -- that is NOT_APPLICABLE, not a missing artifact. Pinned D18
+# reference values (prior_sensitivity_study.py FIGURE dict rwmh_* and the
+# stored results_noise_marginal_toy_elicited.json rw_mh rows):
+RWMH_CONFIGS = ("toy_elicited",)
+RWMH_LO_BY_SEED = (0.7958666666666666, 0.8082333333333334, 0.8428333333333333)
+RWMH_LO_HI_CROSSINGS = (44, 40, 38)
+RWMH_N_SAMPLES, RWMH_N_BURNIN, RWMH_PROPOSAL_SCALE = 30000, 5000, 0.1
+
+
+def _rw_mh_code_params_ok():
+    """Code-level provenance for the params that are NOT stored per row
+    (retained draws, burn-in, proposal scale): inspect the referee's defaults
+    and the proposal_scale literal in prior_sensitivity_study.mh_noise_occupancy."""
+    import inspect
+    try:
+        sig = inspect.signature(study.mh_noise_occupancy)
+        src = inspect.getsource(study.mh_noise_occupancy)
+    except (TypeError, OSError, AttributeError):
+        return False
+    return (tuple(sig.parameters["seeds"].default) == (42, 1, 2)
+            and sig.parameters["n_samples"].default == RWMH_N_SAMPLES
+            and sig.parameters["n_burnin"].default == RWMH_N_BURNIN
+            and f"proposal_scale={RWMH_PROPOSAL_SCALE}" in src)
+
+
+def _verify_rw_mh(config, source_dir):
+    """Broadened AUDIT §3 step-4 RW-MH re-verification.
+
+    Returns (entry, performed). For a config that never ran the RW-MH referee
+    the entry is NOT_APPLICABLE (performed=False) -- distinct from a missing
+    artifact. For toy_elicited it checks: exactly three rows with seeds
+    42/1/2; per-row occupancy sums to 1 and every band mass x 30000 is integral
+    (confirming the 30,000 retained draws that are not stored per row);
+    P_noise_lo per seed and the lo/hi crossing counts unchanged vs the pinned
+    D18 reference at atol=1e-12; and the referee's code-level params
+    (30,000 retained, 5,000 burn-in, proposal scale 0.1)."""
+    if config not in RWMH_CONFIGS:
+        return ({"status": "NOT_APPLICABLE",
+                 "reason": ("RW-MH referee (noise-marginal stage) is "
+                            "toy_elicited-only per "
+                            "prior_sensitivity_study.stage_noise_marginal; this "
+                            "config never ran an RW-MH arm, so there is no "
+                            "unchanged reference to verify")}, False)
+    rw_path = source_dir / f"results_noise_marginal_{config}.json"
+    if not rw_path.is_file():
+        return ({"status": "SKIP",
+                 "reason": f"missing local artifact: {rw_path}"}, False)
+    try:
+        rows = json.loads(rw_path.read_bytes())["rw_mh"]
+        seeds = [int(row["seed"]) for row in rows]
+        occ_sum_ok = integral_ok = True
+        for row in rows:
+            total = (float(row["P_noise_lo"]) + float(row["P_noise_mid"])
+                     + float(row["P_noise_hi"]))
+            if abs(total - 1.0) > 1e-9:
+                occ_sum_ok = False
+            for band in ("P_noise_lo", "P_noise_mid", "P_noise_hi"):
+                scaled = float(row[band]) * RWMH_N_SAMPLES
+                if abs(scaled - round(scaled)) > 1e-6:
+                    integral_ok = False
+        checks = {
+            "exactly_three_rows": len(rows) == 3,
+            "seeds_42_1_2": seeds == [42, 1, 2],
+            "occupancies_sum_to_one": occ_sum_ok,
+            "retained_30000_integral": integral_ok,
+            "P_lo_unchanged": len(rows) == len(RWMH_LO_BY_SEED) and all(
+                abs(float(row["P_noise_lo"]) - ref) <= VERIFY_ATOL
+                for row, ref in zip(rows, RWMH_LO_BY_SEED)),
+            "lo_hi_crossings_unchanged": (
+                [int(row["lo_hi_crossings"]) for row in rows]
+                == list(RWMH_LO_HI_CROSSINGS)),
+            "code_params_30000_5000_0p1": _rw_mh_code_params_ok(),
+        }
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return ({"status": "FAIL", "reason": str(exc)}, False)
+    failed = [name for name, ok in checks.items() if not ok]
+    return ({"status": "PASS" if not failed else "FAIL",
+             "atol": VERIFY_ATOL,
+             "seeds": seeds,
+             "checks": checks,
+             "failed_checks": failed,
+             "verified_params": {"n_samples": RWMH_N_SAMPLES,
+                                 "n_burnin": RWMH_N_BURNIN,
+                                 "proposal_scale": RWMH_PROPOSAL_SCALE},
+             "reference": {"P_lo_by_seed": list(RWMH_LO_BY_SEED),
+                           "lo_hi_crossings": list(RWMH_LO_HI_CROSSINGS)}},
+            True)
+
+
 def verify_unchanged_arms(*, source_dir=None, output_path=None,
                           configs=UNCHANGED_CONFIGS, run_sir=True):
     """Re-verify unaffected prior-IS, deterministic SIR, and stored RW-MH."""
@@ -258,33 +351,9 @@ def verify_unchanged_arms(*, source_dir=None, output_path=None,
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 entry["sir"] = {"status": "FAIL", "reason": str(exc)}
 
-        rw_path = source_dir / f"results_noise_marginal_{config}.json"
-        if not rw_path.is_file():
-            entry["rw_mh"] = {"status": "SKIP",
-                              "reason": f"missing local artifact: {rw_path}"}
-        else:
-            try:
-                rows = json.loads(rw_path.read_bytes())["rw_mh"]
-                seeds = [int(row["seed"]) for row in rows]
-                row_fields = ("P_noise_lo", "P_noise_mid", "P_noise_hi",
-                              "lo_hi_crossings")
-                missing_fields = [f"row{index}.{field}"
-                                  for index, row in enumerate(rows)
-                                  for field in row_fields if field not in row]
-                passed = seeds == [42, 1, 2] and not missing_fields
-                entry["rw_mh"] = {
-                    "status": "PASS" if passed else "FAIL",
-                    "performed": ["stored seeds", "stored occupancies",
-                                  "stored lo/hi crossing counts"],
-                    "seeds": seeds,
-                    "missing_fields": missing_fields,
-                    "unavailable_in_stored_json": [
-                        "retained_samples=30000", "burn_in=5000",
-                        "proposal_scale=0.1"],
-                }
-                any_performed = True
-            except (OSError, ValueError, KeyError, TypeError) as exc:
-                entry["rw_mh"] = {"status": "FAIL", "reason": str(exc)}
+        entry["rw_mh"], rw_performed = _verify_rw_mh(config, source_dir)
+        if rw_performed:
+            any_performed = True
 
         statuses = [entry["prior_is"].get("status"),
                     entry["sir"].get("status"), entry["rw_mh"].get("status")]

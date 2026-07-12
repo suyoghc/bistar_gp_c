@@ -345,6 +345,94 @@ def test_unchanged_prior_is_summary_verification_passes_and_detects_drift(tmp_pa
     assert any(item["field"] == "P_noise_mid" for item in check["mismatches"])
 
 
+def _write_prior_is_fixture(tmp_path, config):
+    per_seed, all_ths, all_lml = {}, [], []
+    for seed in (0, 1, 2):
+        ths = np.array([
+            [1.0, 1.1, 0.08, 0.10],
+            [1.2, 0.9, 0.07, 0.20],
+            [0.8, 1.0, 0.09, 0.35],
+            [1.1, 1.2, 0.06, 0.50],
+        ]) + seed * 1e-3
+        lml = np.array([-0.2, -0.1, -1.0, -1.5]) - seed * 0.01
+        np.savez(tmp_path / f"is_draws_{config}_s{seed}.npz",
+                 ths=ths, lml=lml, seed=seed)
+        per_seed[str(seed)] = pss._is_summary(ths, lml)
+        all_ths.append(ths)
+        all_lml.append(lml)
+    authority = {"per_seed": per_seed,
+                 "pooled": pss._is_summary(np.concatenate(all_ths),
+                                           np.concatenate(all_lml))}
+    (tmp_path / f"stage_a_{config}.json").write_text(
+        json.dumps({"prior_is": authority}))
+
+
+# The D18 stored RW-MH referee rows (unchanged reference); every band mass
+# times 30000 is integral and each row sums to one.
+_RW_MH_STORED_ROWS = [
+    {"seed": 42, "P_noise_lo": 0.7958666666666666,
+     "P_noise_mid": 0.16753333333333334, "P_noise_hi": 0.0366,
+     "lo_hi_crossings": 44},
+    {"seed": 1, "P_noise_lo": 0.8082333333333334,
+     "P_noise_mid": 0.1755, "P_noise_hi": 0.016266666666666665,
+     "lo_hi_crossings": 40},
+    {"seed": 2, "P_noise_lo": 0.8428333333333333,
+     "P_noise_mid": 0.1402, "P_noise_hi": 0.016966666666666668,
+     "lo_hi_crossings": 38},
+]
+
+
+def test_rw_mh_broadened_verification_pass_and_detects_drift(tmp_path):
+    config = "toy_elicited"
+    _write_prior_is_fixture(tmp_path, config)
+    import copy
+    rows = copy.deepcopy(_RW_MH_STORED_ROWS)
+    rw_path = tmp_path / f"results_noise_marginal_{config}.json"
+    rw_path.write_text(json.dumps({"rw_mh": rows}))
+
+    passing = verify_unchanged_arms(
+        source_dir=tmp_path, configs=(config,), run_sir=False)
+    rw = passing["configs"][config]["rw_mh"]
+    assert rw["status"] == "PASS", rw
+    assert rw["checks"]["retained_30000_integral"] is True
+    assert rw["checks"]["P_lo_unchanged"] is True
+    assert rw["checks"]["lo_hi_crossings_unchanged"] is True
+    assert rw["checks"]["code_params_30000_5000_0p1"] is True
+    assert passing["status"] == "PASS"
+
+    # Perturb one crossing count -> unchanged-crossings check fails.
+    rows[0]["lo_hi_crossings"] = 45
+    rw_path.write_text(json.dumps({"rw_mh": rows}))
+    failing = verify_unchanged_arms(
+        source_dir=tmp_path, configs=(config,), run_sir=False)
+    rwf = failing["configs"][config]["rw_mh"]
+    assert rwf["status"] == "FAIL"
+    assert "lo_hi_crossings_unchanged" in rwf["failed_checks"]
+    assert failing["status"] == "FAIL"
+
+    # Perturb an occupancy off the 30000 grid -> integrality check fails.
+    rows[0]["lo_hi_crossings"] = 44
+    rows[0]["P_noise_lo"] = 0.7958666666666666 + 1e-4
+    rw_path.write_text(json.dumps({"rw_mh": rows}))
+    drifted = verify_unchanged_arms(
+        source_dir=tmp_path, configs=(config,), run_sir=False)
+    rwd = drifted["configs"][config]["rw_mh"]
+    assert rwd["status"] == "FAIL"
+    assert "P_lo_unchanged" in rwd["failed_checks"]
+
+
+def test_rw_mh_not_applicable_for_non_toy_elicited(tmp_path):
+    config = "informative"
+    _write_prior_is_fixture(tmp_path, config)
+    report = verify_unchanged_arms(
+        source_dir=tmp_path, configs=(config,), run_sir=False)
+    rw = report["configs"][config]["rw_mh"]
+    assert rw["status"] == "NOT_APPLICABLE"
+    assert "toy_elicited-only" in rw["reason"]
+    # NOT_APPLICABLE must not drag the overall verdict away from PASS.
+    assert report["status"] == "PASS"
+
+
 def test_transaction_commits_samples_last_and_failure_leaves_no_cache(
         tmp_path, monkeypatch):
     import experiments.m2br_run_common as common
