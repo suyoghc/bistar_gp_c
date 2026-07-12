@@ -2308,3 +2308,70 @@ primitive is additive.
 
 **Status:** COMPLETE. No chain launched; launching v1.16 still needs a separate explicit authorization.
 PR #8 stays Draft; M2c stays blocked; A7 Della on hold (v1.8).
+
+## D36: v1.16 informative escalation OUTCOME — FAIL (divergence rate + cross-chain occupancy); informative stays WITHDRAWN — 2026-07-12
+
+**Problem:** Per the D34-ratified v1.16 numerical protocol, execute the informative-only escalation ONCE
+(td7, same four frozen v1.14 starts/seeds, warmup 1000→3000 + draws 2000→8000, unchanged thresholds/
+authority/R-B rule, 90-min ceiling, one-shot stop-and-report) to test whether a longer same-strategy run
+validates the corrected informative posterior that FAILED at D33 (4×2000).
+
+**Execution (author-authorized one-shot, HEAD `d0f4b02`).** Frozen preflight PASSED (branch/HEAD, clean
+tracked tree, plan sha `db177b8b…`, freeze sha `b1abfa3c…`, pristine target dir, 15 launch-gate tests,
+driver-verified start shas). `caffeinate -i python experiments/m2br_v116_run.py --execute` → exit 0, ~27
+min wall (90-min ceiling), no failure/stop records. All 17 artifacts present + atomically persisted; all
+four chain `frozen_start_semantic_sha256` match the manifest byte-exact; provenance git `d0f4b02`, host
+PSY-KGK4G03W1F, threads 10, arviz 0.23.4 / torch 2.10.0 / gpytorch 1.15.1 / pyro 1.9.1 / numpy 1.26.4.
+No code, protocol, starts, thresholds, budgets, or output paths altered. Outputs →
+`runs/m2br_v116_informative/` (UNTRACKED).
+
+**Result: FAIL** (`failed_criteria: ['occupancy', 'divergence_rate']`), evaluated at the UNRELAXED frozen
+thresholds by the driver:
+
+| criterion | threshold | D33 (4×2000) | v1.16 (4×8000) | verdict |
+|---|---|---|---|---|
+| rank R-hat, every site | < 1.01 | 1.0114 | **1.0081** | PASS (improved) |
+| bulk-ESS, pooled | > 400 | 378 | **1158** | PASS (improved) |
+| tail-ESS, pooled | > 400 | — | 5581 | PASS |
+| per-chain occupancy dev | ≤ 0.05 | 0.104 | **0.0604** (hi) | **FAIL** (improved, still over) |
+| divergence rate, pooled | < 0.001 | 0.001 | **0.00716** | **FAIL** (worse) |
+| depth saturation | < 0.10 | 0.0 | 0.0 | PASS |
+| NotPSD (early / rate) | 0 / <1e-3 | 0 / 0 | 0 / 0 | PASS |
+| authority coverage | 2-SE | PASS | **PASS** | PASS |
+
+Per-chain divergences (of 8000): chain0/MAP **71** (acc 0.886, step 0.372), chain1/median-lo **0** (acc
+0.997, step 0.164), chain2/median-mid **43** (acc 0.891, step 0.327), chain3/median-hi **115** (acc 0.818,
+step 0.395); pooled 229/32000 = 0.716%. Pooled occupancy lo/mid/hi = 0.2532/0.1325/0.6142, within 2 SE of
+the prior-IS authority 0.2768/0.1310/0.5922 (authority coverage PASS).
+
+**Interpretation (hypothesis test, D34 framing).** The EFFICIENCY hypotheses held: 4× draws lifted
+bulk-ESS 378→1158 and dropped R-hat 1.0114→1.0081 (both now clear), and occupancy reproducibility improved
+(0.104→0.060). But the failure is GEOMETRIC, not sample-size: longer warmup did NOT reduce divergences — it
+made the pooled rate WORSE (0.001→0.00716), concentrated in the three chains that explore the high-noise
+basin (0/2/3 adapt to large steps 0.33–0.40 with acc 0.82–0.89 and diverge; chain1 in the low-noise basin
+is clean). More draws in this posterior surface more divergent transitions rather than eliminate them, and
+the residual cross-chain occupancy spread persists just over the 0.05 bar. This is the ratified one-shot
+outcome: the last "same-strategy, longer-run" attempt does not validate informative.
+
+**Consequence.**
+- **informative stays WITHDRAWN/UNVALIDATED** (`replacement_numbers = None`,
+  `historical_counterparts = "WITHDRAWN/UNVALIDATED"`). The withdrawn HMC headline (Sin+Linear 0.673, occ
+  1.00/0.00/0.00) is neither restored nor replaced. The corrected characterization is broad/high-noise-
+  dominant and CONSISTENT with the independent prior-IS authority (authority coverage passes) and near-
+  uniform in model posterior (pooled BMS* τ=1 diagnostic: L .2454 / Sin .2478 / S+L .2613 / Q .2455), but
+  it does NOT meet the preregistered convergence criteria, so NO validated informative number is reported.
+- Per the ratified decision rule, the next step (if any) is a STRATEGY change — reparameterization, a tuned
+  mass matrix, or a different sampler — proposed as a NEW addendum, **NOT** another budget bump. The
+  same-strategy escalation lane is now exhausted (two attempts: D33 4×2000, v1.16 4×8000).
+- **W2:** informative remains the "prior-misspecification case study" with a WITHDRAWN HMC number; it is now
+  empirically established (across two preregistered attempts) that the corrected sampler cannot validate an
+  informative point estimate under this design. toy_elicited (D33 V3/V4) is UNAFFECTED — still validated/
+  superseded (Sin+Linear ~0.42).
+- **W3 / VI:** NO corrected-VI evidence is claimed. VI stays interim-withdrawn pending a corrected (E1-based)
+  VI rerun (out of scope; unchanged).
+
+**Provenance committed:** `docs/m2br_freeze/v116_result_manifest.json` (verdict, per-criterion values,
+per-chain diagnostics, start-sha↔manifest match, sample hashes, provenance). Heavy samples stay UNTRACKED.
+
+**Status:** COMPLETE (one-shot, per authorization). Stopping here — no patch, retry, budget extension, or
+additional chain. No Mauna, M2c, or VI-repair work begun. PR #8 stays Draft; A7 Della on hold (v1.8).

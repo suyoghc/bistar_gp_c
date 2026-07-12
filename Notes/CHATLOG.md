@@ -501,3 +501,36 @@ pilots, no expensive runs, no scientific result read before the commit.
   the Mauna path; the audit layer + W2/W3 rewrite are independent cleanup; the
   item-8 validation doubles as the plan's G-toy gate that de-risks Mauna).
   Suite 230+1.
+
+## 2026-07-12 — M2bR compute executed: audit + validation (D33), W2/W3 + v1.16 ratified (D34), fail-closed gate v1.16-only (D35), v1.16 escalation FAIL (D36) (Fable session, branch feat/d19-m2br)
+
+Executed both M2bR compute layers and the ratified v1.16 escalation, each stop-and-report, each
+preceded by frozen preflight; nothing scientific ran before its gates passed.
+
+- **AUDIT + VALIDATION (D33).** 6 single-chain audit runs (clean) + 16 validation chains from the
+  frozen manifest starts. toy_elicited (V3/V4) PASS all criteria → SUPERSEDED (validated R-B pooled-800
+  Sin+Linear 0.4205 td7 / 0.4220 td10, occ ≈0.76/0.19/0.05, agreeing with SIR 0.441 and prior-IS
+  authority). informative (V1/V2) FAIL 4 marginal criteria → WITHDRAWN. Manifests committed; heavy
+  samples untracked. Codex-reviewed; findings fixed.
+- **W2/W3 + v1.16 (D34).** After codex (GLM-5.2, GPT-5.6-sol) cross-model review + author direction,
+  revised W2 (report corrected NUTS and SIR separately; prior-IS/SIR = one IS-family; mass-faithful
+  qualified to the fixed data-elicited N=20 prior), interim-withdrew W3 (VI still on the defective
+  target), and ratified the v1.16 informative-only escalation numerical protocol. Corrected the
+  "~6-SE" failure diagnosis to ~2.0 combined MCSE (pooled vs per-chain ESS). Built + hermetically
+  tested + independently reviewed the v1.16 driver (no chain run).
+- **Fail-closed gate (D35, then scoped to v1.16 only).** A 4th review (GPT-5.6-sol) flagged the
+  `sampler_fn is fit_hmc_e1` gate as fail-open (partial(fit_hmc_e1) ran ungated). Adopted a fail-closed
+  primitive, then — on the author's provenance call — scoped it to the live v1.16 driver ONLY and
+  reverted the two frozen, already-executed drivers to their exact as-executed bytes (b56a5a2), so
+  the freeze story stays footnote-free. run_common addition is additive; D33 results provably unaffected.
+- **v1.16 escalation (D36) — FAIL.** Author-authorized one-shot run at HEAD d0f4b02 (preflight PASSED,
+  ~27 min, 90-min ceiling). informative td7, 4 chains, 3000 warmup + 8000 draws. Result: FAIL on
+  occupancy (per-chain dev 0.0604 > 0.05) and divergence rate (0.00716 > 0.001). The longer chains FIXED
+  ESS (378→1158) and R-hat (1.0114→1.0081) and improved occupancy (0.104→0.060), but divergences are
+  geometric and got worse — concentrated in the high-noise-basin chains (0/2/3). informative stays
+  WITHDRAWN/UNVALIDATED; the same-strategy lane is exhausted (next step = strategy change via new
+  addendum, not a budget bump). No corrected-VI claim. toy_elicited unaffected.
+
+Commits: audit/validation outcomes 6f96c9e; W2/W3 rev ed89517; D34 build 24113a4; GLM hardening 8fc9edc;
+D35 fail-closed 12b7aaf; D35 split d0f4b02; D36 v1.16 outcome (this commit). PR #8 kept Draft throughout;
+no Mauna / M2c / VI-repair started; A7 Della on hold (v1.8). Heavy run artifacts never tracked.

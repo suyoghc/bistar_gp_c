@@ -101,11 +101,20 @@ heavy samples + pools stay UNTRACKED.
   import-registered mock survives spawn). v1.16 gates at orchestrator+worker and rejects real+isolate=False.
   D33 results provably unaffected (frozen drivers == as-executed). Full suite **277 passed + 1 skipped**.
   NO chain launched.
-- **NEXT (author):** give the SEPARATE explicit LAUNCH authorization for v1.16
-  (`caffeinate -i python experiments/m2br_v116_run.py --execute`, ~42 min, 90-min ceiling) if/when
-  desired; on FAIL the next step is a strategy change (new addendum), not another budget bump. Optionally
-  re-run the codex independent review after its usage limit resets (2:29 PM). Do NOT begin M2c; A7 Della
-  on hold (v1.8); no vague/gamma_relaxed cells; PR #8 stays Draft.
+- **v1.16 EXECUTED once (D36, 2026-07-12, author-authorized) → FAIL.** HEAD `d0f4b02`, preflight PASSED,
+  exit 0, ~27 min. `failed_criteria: occupancy (0.0604>0.05) + divergence_rate (0.00716>0.001)`. R-hat and
+  ESS were FIXED by the longer chains (378→1158 bulk-ESS; 1.0114→1.0081 R-hat); occupancy improved
+  (0.104→0.060) but still fails; divergences got WORSE (0.001→0.00716, geometric — concentrated in the
+  high-noise-basin chains 0/2/3). Authority coverage PASS (pooled 0.253/0.133/0.614 ≈ prior-IS authority).
+  → **informative stays WITHDRAWN/UNVALIDATED; no replacement number.** Same-strategy lane exhausted
+  (D33 4×2000 + v1.16 4×8000); any further attempt = STRATEGY change via new addendum, never a budget bump.
+  No corrected-VI claim. toy_elicited (D33) UNAFFECTED — still superseded. Provenance:
+  `docs/m2br_freeze/v116_result_manifest.json`; heavy samples `runs/m2br_v116_informative/` UNTRACKED.
+- **NEXT (author):** M2bR's scientific questions are now resolved (toy_elicited superseded; informative
+  withdrawn, twice-tested). Options: (a) apply the ratified toy_elicited W2/W3 supersession into the
+  historical docs; (b) mark PR #8 Ready; (c) decide whether an informative STRATEGY-change addendum is
+  worth pursuing or accept informative-as-withdrawn. Not started: Mauna, M2c, VI repair. A7 Della on hold
+  (v1.8); PR #8 stays Draft.
 
 
 ## D19 Mauna study — M2a DONE (D20); M2b code complete, ALL 9 decision items ratified (D21-D31); PR #7 Ready; merge + M2bR = author's next call

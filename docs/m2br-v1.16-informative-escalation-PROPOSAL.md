@@ -97,3 +97,26 @@ The escalation TESTS, it does not promise repair:
 appendix robustness). No VI/`hmc_laplace`/Mauna/profile-Laplace. td10 informative. Any G-toy/M2c work.
 No sampler runs until the v1.16 pin is committed and the driver is built, tested, and reviewed — and
 even then only on a separate explicit launch authorization.
+
+---
+
+## OUTCOME (append-only; the ratified protocol above is unchanged) — 2026-07-12 (D36)
+
+Executed ONCE under explicit author authorization at HEAD `d0f4b02`; frozen preflight PASSED; exit 0,
+~27 min (90-min ceiling); all 17 artifacts atomically persisted; all four chain start shas match the
+manifest byte-exact. Nothing was altered (code/protocol/starts/thresholds/budget/paths).
+
+**Verdict: FAIL** (`failed_criteria: ['occupancy', 'divergence_rate']`), evaluated at the UNRELAXED
+thresholds by the driver. vs D33 (4×2000): R-hat 1.0114→**1.0081** (PASS), bulk-ESS 378→**1158** (PASS),
+tail-ESS **5581** (PASS), per-chain occupancy dev 0.104→**0.0604** (still > 0.05, FAIL), divergence rate
+0.001→**0.00716** (> 0.001, FAIL, worse), saturation 0.0, NotPSD 0, authority coverage PASS (pooled occ
+0.2532/0.1325/0.6142 within 2 SE of authority 0.2768/0.1310/0.5922). Per-chain divergences (of 8000):
+chain0 71 / chain1 0 / chain2 43 / chain3 115 (pooled 229/32000). The efficiency criteria (ESS, R-hat)
+were fixed by the longer chains, but the divergences are geometric (concentrated in the high-noise-basin
+chains) and worsen with more draws, and the cross-chain occupancy spread persists just over the bar.
+
+**Consequence:** informative stays WITHDRAWN/UNVALIDATED; no replacement number. This exhausts the
+"same-strategy, longer-run" lane (D33 4×2000 + this 4×8000). Any further attempt is a STRATEGY change
+(reparameterization / tuned mass matrix / different sampler) proposed as a NEW addendum, never another
+budget bump. No corrected-VI evidence is claimed. Full record: `Notes/DECISIONS.md` D36; provenance
+`docs/m2br_freeze/v116_result_manifest.json`; heavy samples untracked.
