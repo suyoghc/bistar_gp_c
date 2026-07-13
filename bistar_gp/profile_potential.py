@@ -52,9 +52,9 @@ class ProfilePotential:
                     f"{list(authoritative)} are not a one-to-one ordering of "
                     f"model.named_priors {sorted(discovered)} (fail-closed; no "
                     "pyro oracle built)")
-            self.sites = authoritative
+            self._sites = authoritative
         else:
-            self.sites = discovered
+            self._sites = discovered
         # Provenance flag: True only when an explicit ordered inventory was
         # supplied (and passed the same-set/no-duplicate validation above).
         # NOTE: this flag alone is NOT sufficient authority — it only records
@@ -67,10 +67,10 @@ class ProfilePotential:
         # named_priors() fallback (sites=None). sites=None stays available for
         # low-level/exploratory use (the gradient/curvature batteries, which do
         # not go through the bridge).
-        self.sites_are_authoritative = sites is not None
-        self._site_map = _site_parameter_map(model, self.sites)
+        self._sites_are_authoritative = sites is not None
+        self._site_map = _site_parameter_map(model, self._sites)
         noise_sites = tuple(
-            site for site in self.sites if "noise_covar.noise" in site
+            site for site in self._sites if "noise_covar.noise" in site
         )
         if len(noise_sites) != 1:
             raise RuntimeError(
@@ -78,11 +78,34 @@ class ProfilePotential:
                 f"noise_covar.noise site, found {len(noise_sites)}: "
                 f"{noise_sites}"
             )
-        self.noise_site = noise_sites[0]
-        self.nuisance_sites = tuple(
-            site for site in self.sites if site != self.noise_site
+        self._noise_site = noise_sites[0]
+        self._nuisance_sites = tuple(
+            site for site in self._sites if site != self._noise_site
         )
         self._joint = _JointModule(model)
+
+    # The ordered inventory is READ-ONLY after construction (backed by set-once
+    # private state). g_value / g_grad_functional and the scientific bridge
+    # re-read these on every call, so making them immutable to the public surface
+    # is what actually enforces the coordinate-order contract: a caller cannot
+    # inject a wrong order by assigning to nuisance_sites/noise_site/sites after
+    # construction. Only private-state mutation (self._sites, ...) could bypass
+    # this, which Python cannot prevent and is out of the contract's scope.
+    @property
+    def sites(self) -> tuple:
+        return self._sites
+
+    @property
+    def sites_are_authoritative(self) -> bool:
+        return self._sites_are_authoritative
+
+    @property
+    def noise_site(self) -> str:
+        return self._noise_site
+
+    @property
+    def nuisance_sites(self) -> tuple:
+        return self._nuisance_sites
 
     def _coordinate(self, value, connected):
         coordinate = torch.as_tensor(

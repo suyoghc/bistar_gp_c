@@ -1052,18 +1052,24 @@ def test_scientific_bridge_order_is_not_self_certifiable():
             forged, sites_order=forged.nuisance_sites
         )
 
-    # (c) MUTABLE-FIELD FORGERY: mutate the authentic profile's cached
-    #     `nuisance_sites` to a permutation after construction and hand it back as
-    #     sites_order. The bridge derives the nuisance order from the re-derived
-    #     e1.sites (not the mutable field), so the wrong order is rejected.
-    mutated = ProfilePotential(profile._model, profile._likelihood, x, y, sites=full)
-    mut_nz = mutated.nuisance_sites
+    # (c) IMMUTABLE ORDER: the order fields are READ-ONLY properties, so a caller
+    #     cannot mutate the public nuisance_sites/noise_site/sites/authority flag
+    #     to forge a wrong scoring order. This is what actually enforces the
+    #     contract, because g_value/g_grad_functional re-read these on every call
+    #     — a mutable field would let a drop/duplicate corrupt scoring silently
+    #     even with a correct sites_order (codex+Sonnet final finding).
+    mut_nz = profile.nuisance_sites
     assert len(mut_nz) >= 2
-    mutated.nuisance_sites = (mut_nz[1], mut_nz[0]) + mut_nz[2:]
-    with pytest.raises(ValueError, match="independently-derived E1 nuisance order"):
-        integration.profile_potential_callables(
-            mutated, sites_order=mutated.nuisance_sites
-        )
+    with pytest.raises(AttributeError):
+        profile.nuisance_sites = (mut_nz[1], mut_nz[0]) + mut_nz[2:]
+    with pytest.raises(AttributeError):
+        profile.nuisance_sites = mut_nz + (mut_nz[0],)          # duplicate attempt
+    with pytest.raises(AttributeError):
+        profile.noise_site = mut_nz[0]
+    with pytest.raises(AttributeError):
+        profile.sites = tuple(reversed(profile.sites))
+    with pytest.raises(AttributeError):
+        profile.sites_are_authoritative = False
 
     # (d) An arbitrary same-set PERMUTATION supplied as sites_order (with an
     #     otherwise-authoritative, correctly-ordered profile) is rejected.

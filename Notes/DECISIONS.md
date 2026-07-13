@@ -2883,4 +2883,20 @@ noise↔non-noise (noise is at `e1.sites[0]` for the toy) so it only exercised t
 the test now swaps two genuine NON-noise sites and asserts the nuisance subsequence is reordered, and a
 new case mutates `profile.nuisance_sites` and asserts the bridge rejects it. Verified by probe (mutated
 REJECTED, correct ACCEPTED). Full suite 331 passed / 1 skipped; rev-5 sha256 unchanged; historical path
-untouched. Re-reviewed by codex + Sonnet. PR #10 kept Draft.
+untouched. PR #10 kept Draft.
+
+**Update (2026-07-13, ninth review round — immutable order fields):** the final confirmation (codex +
+Sonnet BOTH CHANGES-REQUIRED, converging) found one more PUBLIC-surface vector, explicitly NOT out of
+scope: `g_value`/`g_grad_functional` re-read the mutable public `profile.nuisance_sites`/`noise_site` on
+every call, so a caller could mutate those AFTER obtaining the bridge callables — a drop/duplicate
+mutation silently corrupts the scored value (Sonnet probe: g −12.97 vs correct −18.34) even with a correct
+`sites_order`, since the bridge only fixed its OWN u-vector mapping. FIX: `ProfilePotential.sites`,
+`nuisance_sites`, `noise_site`, and `sites_are_authoritative` are now READ-ONLY properties backed by
+set-once private state (`self._sites`, ...), so no public assignment can inject a wrong order (raises
+`AttributeError`); the immutability is what enforces the contract because the scoring methods re-read the
+fields per call. The only remaining route is mutating private `_`-state, which Python cannot prevent and
+both models agree is out of scope. Test case (c) now asserts assigning `nuisance_sites`/`noise_site`/
+`sites`/the flag raises `AttributeError` (drop AND duplicate attempts); read access + `g_value` verified
+intact. This closes the public-surface order-forgery class end-to-end (construction-time via the bridge's
+E1 re-derivation; post-construction via immutability). Full suite 331 passed / 1 skipped; rev-5 sha256
+unchanged; historical path untouched. Re-reviewed by codex + Sonnet. PR #10 kept Draft.
