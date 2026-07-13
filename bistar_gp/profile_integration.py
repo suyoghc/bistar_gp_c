@@ -1047,21 +1047,31 @@ def _corrected_profile_stop(
     }
 
 
-def _band_edges_are_exact_nodes(
+def _band_edges_are_interior_nodes(
     grid: np.ndarray, band_edges: Sequence[float]
 ) -> bool:
-    """True iff every band edge is an exact node of ``grid``.
+    """True iff every band edge is a STRICTLY INTERIOR exact node of ``grid``.
 
-    A decade-restricted stage/pullback grid drops any band edge lying outside
-    its cap domain, so `band_masses` (which requires exact edge nodes) would
-    raise there. The caller checks this first to convert an out-of-domain edge
-    into a recorded diagnostic STOP (earlier stages) or a structured
-    fail-closed STOP (final pullbacks), rather than an uncaught AssertionError —
-    important because the Mauna q25/q75 edges are unknown pre-compute.
+    `band_masses` requires each edge to be an exact node AND not the first/last
+    node (its own `edge_indices[0] == 0 or edge_indices[1] == nodes.size-1`
+    check). A decade-restricted stage/pullback grid can (a) DROP an edge lying
+    outside its cap domain, or (b) place an edge exactly ON a cap boundary node
+    (an edge value equal to a decade-cap constant) — both make `band_masses`
+    raise. The caller checks strict interiority first to convert either case
+    into a recorded diagnostic STOP (earlier stages) or a structured fail-closed
+    STOP (final pullbacks), rather than an uncaught error — important because the
+    Mauna q25/q75 edges are unknown pre-compute.
     """
 
     nodes = np.asarray(grid, dtype=np.float64)
-    return all(bool(np.any(nodes == float(edge))) for edge in band_edges)
+    for edge in band_edges:
+        matches = np.flatnonzero(nodes == float(edge))
+        if matches.size == 0:
+            return False                      # outside the domain (dropped)
+        index = int(matches[0])
+        if index == 0 or index == nodes.size - 1:
+            return False                      # boundary node — band_masses rejects
+    return True
 
 
 def corrected_profile_band_masses(
@@ -1174,16 +1184,16 @@ def corrected_profile_band_masses(
     }
     for direction in ("upper", "lower"):
         for cap, stage_grid in ladders[direction].items():
-            # A band edge outside this decade stage's domain was dropped from
-            # stage_grid; record a diagnostic STOP rather than letting
-            # band_masses raise. Diagnostic stages never gate the verdict, so
-            # this does NOT fail-close the corrected profile.
-            if not _band_edges_are_exact_nodes(stage_grid, band_edges):
+            # A band edge outside this decade stage's domain (dropped from
+            # stage_grid) or on its boundary node makes band_masses raise;
+            # record a diagnostic STOP instead. Diagnostic stages never gate the
+            # verdict, so this does NOT fail-close the corrected profile.
+            if not _band_edges_are_interior_nodes(stage_grid, band_edges):
                 cap_ladder_trace[direction][cap] = {
                     "stop": True,
                     "reason": (
-                        "band edge(s) outside the diagnostic cap domain "
-                        f"[{stage_grid[0]:.6g}, {stage_grid[-1]:.6g}]"
+                        "band edge(s) not strictly interior to the diagnostic "
+                        f"cap domain [{stage_grid[0]:.6g}, {stage_grid[-1]:.6g}]"
                     ),
                     "stop_index": None,
                     "band_masses": None,
@@ -1232,16 +1242,17 @@ def corrected_profile_band_masses(
     grids["upper_pullback"] = upper_grid
     grids["lower_pullback"] = lower_grid
 
-    # The one-decade pullbacks GATE the verdict (δ_tail), so a band edge outside
-    # a pullback domain is a structured fail-closed STOP (not a crash).
+    # The one-decade pullbacks GATE the verdict (δ_tail), so a band edge that is
+    # outside a pullback domain OR on its boundary node is a structured
+    # fail-closed STOP (not a crash).
     for pullback_name, pullback_grid in (
         ("upper", upper_grid),
         ("lower", lower_grid),
     ):
-        if not _band_edges_are_exact_nodes(pullback_grid, band_edges):
+        if not _band_edges_are_interior_nodes(pullback_grid, band_edges):
             return _corrected_profile_stop(
-                f"{pullback_name}-pullback: band edge(s) outside the pullback "
-                f"domain [{pullback_grid[0]:.6g}, {pullback_grid[-1]:.6g}]",
+                f"{pullback_name}-pullback: band edge(s) not strictly interior "
+                f"to the pullback domain [{pullback_grid[0]:.6g}, {pullback_grid[-1]:.6g}]",
                 grids=grids,
                 delta_quad_value=quad,
                 converged_level=converged_level,

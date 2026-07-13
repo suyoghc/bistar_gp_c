@@ -834,7 +834,7 @@ def test_diagnostic_cap_stage_records_edge_outside_domain_without_crashing():
     upper = result["cap_ladder_trace"]["upper"]
     assert upper[10.0]["stop"] is True
     assert upper[10.0]["band_masses"] is None
-    assert "outside the diagnostic cap domain" in upper[10.0]["reason"]
+    assert "not strictly interior to the diagnostic cap domain" in upper[10.0]["reason"]
     assert upper[100.0]["stop"] is True                     # 200 is outside [.., 100]
     assert upper[1000.0]["stop"] is False                   # both edges < 1000
     for cap, stage in result["cap_ladder_trace"]["lower"].items():
@@ -853,7 +853,33 @@ def test_final_pullback_edge_outside_domain_fails_closed():
     assert result["band_masses"] is None
     assert result["logm"] is None
     assert result["profiles"] == {}
-    assert "upper-pullback: band edge(s) outside the pullback domain" in result["reason"]
+    assert "upper-pullback: band edge(s) not strictly interior" in result["reason"]
+
+
+@pytest.mark.parametrize(
+    ("edges", "expected_side"),
+    [
+        ((0.15, 1000.0), "upper"),   # upper edge == the upper-pullback cap (last node)
+        ((1e-6, 0.30), "lower"),     # lower edge == the lower-pullback cap (first node)
+    ],
+    ids=("upper-cap-equal", "lower-cap-equal"),
+)
+def test_band_edge_equal_to_decade_cap_fails_closed_not_crash(edges, expected_side):
+    # A band edge whose value EQUALS a decade-cap constant is an exact node but a
+    # BOUNDARY node of the corresponding pullback grid, which band_masses rejects
+    # (strictly-interior requirement). The strengthened guard must degrade this
+    # to a structured fail-closed STOP, never an uncaught ValueError (codex +
+    # Sonnet follow-up). Both edge values are interior to the full domain, so the
+    # crash previously surfaced only at the decade stage / pullback.
+    g_of, grad_of = _gaussian_profile_oracle()
+    result = integration.corrected_profile_band_masses(
+        g_of, grad_of, ORACLE_MU, NUISANCE_ORDER, edges
+    )
+    assert result["stop"] is True
+    assert result["band_masses"] is None
+    assert result["logm"] is None
+    assert result["profiles"] == {}
+    assert f"{expected_side}-pullback: band edge(s) not strictly interior" in result["reason"]
 
 
 def test_profile_logm_calls_optimizer_before_curvature_at_every_node(monkeypatch):

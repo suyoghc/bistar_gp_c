@@ -2816,3 +2816,17 @@ The scoped re-review of that refactor (codex + Sonnet) then found one more issue
 Full suite 328 passed / 1 skipped; rev-5 sha256 unchanged; historical functions +
 `experiments/prior_sensitivity_study.py` still untouched. PR #10 kept Draft; the v1.18 recompute remains
 gated and execution-only; nothing here runs compute.
+
+**Update (2026-07-13, fifth review round — guard-contract completion):** the confirmation re-review
+(codex CHANGES-REQUIRED / Sonnet APPROVE-with-follow-up, both converging) found the edge guard closed the
+strictly-outside-domain case but not the boundary-exact case: a band edge whose value EQUALS a decade-cap
+constant (10/100/1000/1e-4/1e-5/1e-6) is an exact node but a BOUNDARY node, which `band_masses` rejects
+(strict-interior precondition) — an uncaught `ValueError`. Currently unreachable (toy 0.15/0.30, Mauna
+q25/q75 ~0.1-1 never equal a cap), but a real guard-contract gap. FIX: strengthened
+`_band_edges_are_exact_nodes` → `_band_edges_are_interior_nodes`, which requires each edge to be an exact
+node AND not the first/last node (mirroring `band_masses`' own `edge_indices[0]==0 or
+edge_indices[1]==last` check); an out-of-domain OR boundary edge now degrades to a recorded diagnostic
+STOP (earlier stages) or a structured fail-closed STOP (final pullbacks). Parametrized cap-equality tests
+`(0.15, 1000.0)`→upper-pullback and `(1e-6, 0.30)`→lower-pullback assert fail-closed, not crash; toy and
+Mauna-like edges verified unaffected. Full suite 330 passed / 1 skipped; rev-5 sha256 unchanged; historical
+path untouched.
