@@ -2646,3 +2646,86 @@ artifacts preserved, unmoved.
 **Status:** M2c ALGORITHM FREEZE COMPLETE (v1.17 ratified). STOPPED per authorization. Next (requires
 a SEPARATE explicit author `--execute`): implement the owed new code (S2 metric / M1 builder / profile
 gradient path), then the gated deterministic profile recompute → v1.18 result freeze. No compute begun.
+
+---
+
+## D41: M2c PR-A — profile-core implementation (P1 functional gradient, optimizer/curvature gates, P3 grid/quadrature) — hermetic, no compute — 2026-07-13
+
+**Problem:** prereg **v1.17** (D40) froze the M2c profile-core numerical machinery
+(`docs/m2c-freeze-package-PROPOSAL.md` rev-5, sha256 `c3e9db66…`) but the code did not exist:
+`profile_laplace_noise_marginal` used derivative-free Nelder-Mead with no stationarity/curvature gate,
+built its Hessian from second differences of values (not the v1.8 §3 first-gradient protocol), and its
+`_profile_band_masses` dropped the two straddling trapezoids at the off-grid toy edges 0.15/0.30 (Σ P_b
+= 0.9232, the historical buggy triplet). v1.17 obliges: (P1) a functional (`functional_call`, no-`.data`)
+profile gradient validated vs central FD + a D23 sentinel; a frozen L-BFGS-B optimizer gate with
+mandatory stationarity; a curvature gate (K = −H via central FD of the validated gradient; SPD +
+rcond ≥ 1e-8, NO flooring, retry-once-then-STOP per J1); the P3 nested-grid + full-domain [1e-7,1e4]
+protocol; corrected float-safe band-mass partition/normalization; exact-quadratic quantile inversion;
+and δ_quad/δ_hess/δ_tail numerical-sensitivity reporting.
+
+**Decision (PR A — profile core ONLY; hermetic; NO compute/recompute/v1.18):** three new modules +
+three new hermetic test files, none touching the live experiment path:
+- `bistar_gp/m2c_freeze.py` — every frozen v1.17 profile-core constant, each pinned by a test (the v1.4
+  "module-level frozen values" pattern; code half of the future manifest==code CI in PR D).
+- `bistar_gp/profile_potential.py` — `ProfilePotential`: model-agnostic differentiable profile potential
+  g(u)=log_joint(exp(u),noise)+Σu over the nuisance coords at fixed noise, via `torch.func.functional_call`
+  (reusing E1's `_JointModule` + `_site_parameter_map`); noise site selected by semantic role (exactly
+  one, else STOP); nuisance = remaining sites in `named_priors()` order (test-asserted == `e1.sites`).
+- `bistar_gp/profile_integration.py` — P3 grid (base r=(1.2/0.005)^(1/39)=1.150882688488405; full
+  [1e-7,1e4] = 40+76+64+2 = 182 nodes, 184 with toy edges; nested geometric-midpoint refine 2N−1,
+  L_max=3) with a `refine_until_converged` convergence/STOP driver; L-BFGS-B optimizer gate (maxiter
+  500/maxfun 5000/ftol 1e-12/gtol 1e-8, τ_stat=1e-4, one jittered restart `default_rng(300+idx)` then
+  STOP, 2-start agreement never substituting for stationarity); curvature gate (h-sweep {5e-4,1e-3,2e-3}
+  center 1e-3, logdet-stability 1e-3, symmetry 1e-6, directional 1e-3 `default_rng {200,201,202}` order
+  ls/os/lv, SPD+rcond≥1e-8 NO flooring retry-once gtol 1e-10/ftol 1e-14 then STOP; the retried u* is
+  re-checked for stationarity); corrected band-mass integration (exact edge nodes, total:=Σ band_int,
+  Σ P_b≡1); exact-quadratic quantile inversion; δ_quad/δ_hess/δ_tail.
+- tests: `tests/test_m2c_freeze_constants.py`, `tests/test_m2c_profile_gradient.py` (P1 battery + D23
+  sentinel on synthetic toy(4)/mauna_structure(7)/generic(9) fixtures, STATIC points = MAP + 10 prior
+  draws, gradient gate 1e-4 abs + 1e-4·scale vs the independent `log_joint` FD), and
+  `tests/test_m2c_profile_integration.py` (grid, band-mass Σ≡1, quantile, quadratic-oracle optimizer +
+  curvature, refinement convergence/STOP, numerical-error). All hermetic, synthetic-only.
+
+**Recompute boundary (unchanged from v1.17):** batteries run on STATIC fixtures, never the profile's
+conditional optima u*(η). The historical buggy triplet (0.9232; `profile_laplace_lo=0.7626153713752779`,
+`FIGURE_EXPECTATIONS`) is preserved untouched as HISTORICAL-only provenance — the corrected values are
+produced ONLY by the separately-authorized v1.18 recompute. `experiments/prior_sensitivity_study.py` is
+NOT modified.
+
+**Alternatives considered:** (a) route the profile through `E1Potential`'s pyro potential — rejected:
+architecture §4.3 says the profile scores through the direct `_mh_log_joint` path, not E1Potential; we
+reuse only E1's model-level functional-call building blocks. (b) edit `_profile_band_masses` in place —
+rejected: it is test-pinned historical provenance; the corrected algorithm is new code. (c) apply the
+M1-gate 1e-3 eigenvalue floor or S2's λ_min≥1e-6 to the profile curvature — rejected: J1 mandates NO
+flooring for the profile; those thresholds belong to PR C / PR B respectively and are not cross-applied.
+
+**Verification:** implementation by codex gpt-5.6-sol xHigh against a byte-exact-derived spec (Claude
+authored the spec + reviewed every file line-by-line). Adversarial cross-model review = codex gpt-5.6-sol
+xHigh (primary) + a Claude Sonnet-5 cross-model pass (Gemini and Fable were both unavailable — quota /
+outage / credits — not worked around). Every finding cross-verified against source. Findings + fixes:
+- **codex blocker 1 (CONFIRMED, Sonnet missed it):** `curvature_gate`'s §2c retry accepted a
+  non-stationary re-optimized u* (only checked SciPy status, never re-checked τ_stat). FIX:
+  `_curvature_evaluation` now computes `grad_inf_norm` + `stationary = ‖∇g(u*)‖_∞ ≤ TAU_STAT` and folds
+  it into the `stop` conjunction, so any evaluated/re-optimized point is rejected if non-stationary
+  (rev-5 §2b L112-117). Isolation test `test_curvature_retry_rejects_nonstationary_reoptimum` fails
+  without the fix, passes with it.
+- **codex blocker 2 (CONFIRMED, corroborated by Sonnet):** the frozen §1 L62-73 nested-grid
+  refinement convergence/STOP gate was absent (`EPS_GRID`/`REFINE_L_MAX` unused). FIX: added
+  `refine_until_converged(band_masses_on_grid, grid0)` — refines while `max_b δ_quad^(ℓ) ≥ EPS_GRID` up
+  to `REFINE_L_MAX=3`, reports `δ_quad` at the final level, STOP if still `≥ EPS_GRID` at L_max; two tests
+  (converge / STOP).
+- **Sonnet minor A (traceability):** `D23_SENTINEL_MIN_REL=1e-2` is not a rev-5 number. FIX: docstring +
+  comment now cite it as the v1.4 E1 sentinel floor (`tests/test_e1_potential.py per_site>1e-2`) that
+  rev-5 §2a directs the profile sentinel to mirror.
+- **Sonnet minor B (inert double-count):** `g_grad_naive_data` scored via `ExactMarginalLogLikelihood`
+  (which re-adds priors) on top of an explicit prior sum — inert (the score is graph-severed from `u`,
+  gradient unchanged) but dishonest. FIX: score likelihood-only through `_JointModule`, mirroring
+  `g_value`; D23 mismatch numbers unchanged (2.14 / 2.72).
+Full suite green (baseline 277+1 → 309 passed / 1 skipped, +32 new); rev-5 sha256 re-verified unchanged;
+zero tracked files modified; nothing under `runs/` staged.
+
+**Status:** PR A implemented, reviewed (codex + Sonnet), fixed, re-verified; Draft PR opened to `main`.
+Runtime checks deferred to the gated v1.18 recompute: real u*(η) optimization, the curvature gate on the
+real profile at conditional optima, the corrected band-mass triplet / any golden PASS/FAIL against real
+data, the v1.18 result manifest, and the S2 end-to-end HMC smoke (PR B). PRs B (S2/S3), C
+(M1/overlap/nugget), D (divergence/MCSE/manifests/umbrella) follow.

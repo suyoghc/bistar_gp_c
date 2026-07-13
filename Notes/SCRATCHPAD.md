@@ -28,6 +28,25 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   exact hashes + passing tests, then stop-and-report; HMC only via `fit_hmc_e1`; VI+hmc_laplace
   withdrawn; A7 Della on hold (v1.8); holdout SEALED (§6.6).
 
+### PR A — profile core IMPLEMENTED (branch `feat/d19-m2c-pr-a` off main a7e108d7; D41, 2026-07-13)
+
+- **Scope = profile core only** (P1 functional gradient + battery + D23 sentinel; L-BFGS-B optimizer
+  gate; curvature gate; P3 grid/quadrature; band-mass partition; quantile inversion; δ_quad/hess/tail).
+  6 NEW files: `bistar_gp/{m2c_freeze,profile_potential,profile_integration}.py` +
+  `tests/test_m2c_{freeze_constants,profile_gradient,profile_integration}.py`. **Zero tracked files
+  modified**; the historical buggy triplet + `experiments/prior_sensitivity_study.py` untouched.
+- **Hermetic only** — synthetic fixtures / quadratic oracles; NO real compute, sampler, Mauna, or u*(η).
+- **Verified:** full suite **309 passed / 1 skipped** (+32); rev-5 sha256 unchanged; measured gradient
+  dev ≤7.67e-6, D23 mismatch 2.14/2.72, band-mass ΣP_b−1=0, curvature vs diag(1,4,9)=0.
+- **Adversarial review:** codex gpt-5.6-sol xHigh (primary) + Sonnet-5 cross-model. 2 codex blockers
+  fixed (curvature-retry stationarity re-check; the §1 `refine_until_converged` convergence/STOP gate)
+  + 2 Sonnet minors (D23 floor provenance; inert prior double-count). Gemini/Fable unavailable
+  (quota/outage/credits).
+- **Deferred to the gated v1.18 recompute:** real u*(η) optimization; curvature gate on the real
+  profile; corrected band-mass triplet / real golden PASS-FAIL; v1.18 result manifest; S2 HMC smoke.
+- **NEXT PRs (roadmap):** B (S2 fixed-metric + S3 reparam), C (M1 Matern builder + overlap + nugget),
+  D (divergence + MCSE + manifests + umbrella suite; lands last, pins the manifest).
+
 ## M2bR corrective milestone — COMPUTE LAYERS EXECUTED (D33, branch feat/d19-m2br, 2026-07-12); start-freeze gate PASSED (D32)
 
 Branch `feat/d19-m2br` off `origin/main` (bd0b399 = merged M2b PR #7). The two-stage
