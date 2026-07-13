@@ -40,15 +40,20 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 - **Hermetic only** — synthetic fixtures / quadratic + Gaussian-profile oracles; NO real compute,
   sampler, Mauna, or u*(η). The orchestrator is tested on analytic oracles only; the adapter at a
   single MAP point.
-- **Verified:** full suite **324 passed / 1 skipped**; rev-5 sha256 unchanged; measured gradient dev
+- **Verified:** full suite **328 passed / 1 skipped**; rev-5 sha256 unchanged; measured gradient dev
   ≤7.67e-6, D23 mismatch 2.14/2.72, band-mass ΣP_b−1=0, curvature vs diag(1,4,9)=0, oracle logm error
-  5.4e-14.
-- **Adversarial review (3 rounds):** codex gpt-5.6-sol xHigh (primary) + Sonnet-5 cross-model. R1: 2
-  codex blockers (curvature-retry stationarity; §1 refine gate) + 2 Sonnet minors. R2 (codex reviewed
-  the actual PR diff): S1 missing orchestrator + S2/S3 conformance. R3 (scoped re-review): 4 orchestrator
-  defects — curvature-retry Laplace bookkeeping (High, BOTH models), fail-closed logm leak, refine=False
-  bypass, non-one-to-one site order. All fixed; codex + Sonnet APPROVE. Gemini/Fable unavailable
-  (quota/outage/credits).
+  5.4e-14, discriminating-refinement level-0-vs-final mass shift 0.191 (ℓ*=2).
+- **Author interpretation of v1.17 (pre-compute, D41):** once nested refinement converges, the FINAL
+  converged grid is authoritative for every reported output (band masses/logm/quantiles); sensitivities
+  at matched resolution; all six diagnostic decade-cap stages evaluated as a non-fail-closing trace.
+- **Adversarial review (5 rounds):** codex gpt-5.6-sol xHigh (primary) + Sonnet-5 cross-model. R1: 2
+  codex blockers + 2 Sonnet minors. R2 (codex on the actual diff): S1 missing orchestrator + S2/S3.
+  R3: 4 orchestrator defects (curvature-retry Laplace bookkeeping High — BOTH models; fail-closed logm
+  leak; refine=False bypass; non-one-to-one site order). R4: reported coarse level-0 instead of the
+  final converged level + confounded sensitivities + unevaluated diagnostic stages + optional bridge
+  order → refinement-authority refactor. R5: out-of-domain band edge crashed the diagnostic trace
+  (codex) + fail-closed docstring over-claim (Sonnet). All fixed; codex + Sonnet APPROVE each round.
+  Gemini/Fable unavailable (quota/outage/credits).
 - **Deferred to the gated v1.18 recompute:** real u*(η) optimization; curvature gate on the real
   profile; corrected band-mass triplet / real golden PASS-FAIL; v1.18 result manifest; S2 HMC smoke.
 - **NEXT PRs (roadmap):** B (S2 fixed-metric + S3 reparam), C (M1 Matern builder + overlap + nugget),

@@ -210,6 +210,7 @@ def refine_until_converged(
         "converged": converged,
         "stop": not converged,
         "n_refinements": len(grids) - 1,
+        "converged_level": len(grids) - 1 if converged else None,
         "grids": grids,
         "masses_by_level": masses,
         "reason": (
@@ -1005,17 +1006,23 @@ def _corrected_profile_stop(
     grids: Mapping[str, Any] | None = None,
     delta_quad_value: Mapping[str, float] | None = None,
     delta_tail_value: Mapping[str, float] | None = None,
+    converged_level: int | None = None,
+    cap_ladder_trace: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a uniform unusable result after any corrected-profile STOP.
 
-    A STOP means the quadrature/tail/refinement is not trustworthy, so NO usable
-    marginal or band masses may be exposed (rev-5 §1 fail-closed). ``logm`` and
-    ``band_masses`` are always ``None`` and no per-stage ``logm`` array is
-    surfaced — even the full-grid profile that succeeded before a later gate
-    STOPped must not be handed back as an integrable result. Provenance of where
-    the STOP occurred is carried by ``reason`` + ``stop_index``; the partial
-    ``delta_quad``/``delta_tail`` computed before the STOP are reported as
-    diagnostics only.
+    A STOP means the authoritative quadrature/tail/refinement result is not
+    trustworthy, so the VERDICT fields — ``band_masses``, ``logm``, and
+    ``profiles`` — are always ``None``/``{}`` (rev-5 §1 fail-closed): even the
+    full-grid profile that succeeded before a later gate STOPped must not be
+    handed back as an integrable authoritative marginal. This "no usable
+    marginal" guarantee scopes to those verdict fields only. The DIAGNOSTIC
+    channels are deliberately retained as provenance and are never the verdict:
+    ``reason`` + ``stop_index`` (where the STOP occurred); the partial
+    ``delta_quad``/``delta_tail`` computed before the STOP; and
+    ``cap_ladder_trace`` — the earlier decade-cap band masses that rev-5 §1
+    L50-51/L77-78 requires recorded diagnostically ("never used for the pass/fail
+    verdict").
     """
 
     return {
@@ -1031,7 +1038,30 @@ def _corrected_profile_stop(
         "grids": {} if grids is None else dict(grids),
         "logm": None,
         "profiles": {},
+        "converged_level": converged_level,
+        "cap_ladder_trace": (
+            {"upper": {}, "lower": {}}
+            if cap_ladder_trace is None
+            else dict(cap_ladder_trace)
+        ),
     }
+
+
+def _band_edges_are_exact_nodes(
+    grid: np.ndarray, band_edges: Sequence[float]
+) -> bool:
+    """True iff every band edge is an exact node of ``grid``.
+
+    A decade-restricted stage/pullback grid drops any band edge lying outside
+    its cap domain, so `band_masses` (which requires exact edge nodes) would
+    raise there. The caller checks this first to convert an out-of-domain edge
+    into a recorded diagnostic STOP (earlier stages) or a structured
+    fail-closed STOP (final pullbacks), rather than an uncaught AssertionError —
+    important because the Mauna q25/q75 edges are unknown pre-compute.
+    """
+
+    nodes = np.asarray(grid, dtype=np.float64)
+    return all(bool(np.any(nodes == float(edge))) for edge in band_edges)
 
 
 def corrected_profile_band_masses(
@@ -1054,7 +1084,10 @@ def corrected_profile_band_masses(
     """
 
     full_grid = full_domain_grid(band_edges=band_edges)
-    grids: dict[str, Any] = {"full": full_grid}
+    grids: dict[str, Any] = {
+        "full": full_grid,
+        "full_level0": full_grid,
+    }
     full_profile = profile_logm_on_grid(
         g_of,
         grad_of,
@@ -1068,13 +1101,14 @@ def corrected_profile_band_masses(
             stop_index=full_profile["stop_index"],
             grids=grids,
         )
-    P_full = band_masses(full_profile["logm"], full_grid, band_edges)
+    P_level0 = band_masses(full_profile["logm"], full_grid, band_edges)
+    refinement_holder: dict[str, Any] = {}
 
     def masses_on_grid(grid: np.ndarray) -> Mapping[str, float]:
         # refine_until_converged asks for level 0 first; reuse the already
         # gated full result instead of repeating identical work.
         if np.array_equal(grid, full_grid):
-            return P_full
+            return P_level0
         result = profile_logm_on_grid(
             g_of,
             grad_of,
@@ -1085,6 +1119,11 @@ def corrected_profile_band_masses(
         )
         if result["stop"]:
             raise _ProfileGridStop(result)
+        # Retain the last non-reused evaluation. Refinement is strictly
+        # sequential, so once convergence is declared this is exactly the
+        # profile at refinement["grids"][-1].
+        refinement_holder["profile"] = result
+        refinement_holder["grid"] = grid
         return band_masses(result["logm"], grid, band_edges)
 
     try:
@@ -1106,15 +1145,108 @@ def corrected_profile_band_masses(
             grids=grids,
             delta_quad_value=refinement.get("delta_quad"),
         )
+    converged_level = int(refinement["n_refinements"])
+    final_grid = np.asarray(refinement["grids"][-1], dtype=np.float64)
+    retained_grid = refinement_holder.get("grid")
+    final_profile = refinement_holder.get("profile")
+    if (
+        final_profile is None
+        or retained_grid is None
+        or not np.array_equal(retained_grid, final_grid)
+    ):
+        return _corrected_profile_stop(
+            "refinement: converged final profile was not retained",
+            grids=grids,
+            delta_quad_value=refinement.get("delta_quad"),
+            converged_level=converged_level,
+        )
+    P_final = band_masses(final_profile["logm"], final_grid, band_edges)
+    grids["full"] = final_grid
     # Reuse the standalone sensitivity primitive as the authoritative
     # final-vs-previous calculation.
     quad = delta_quad(refinement["masses_by_level"])
 
     ladders = cap_ladder_grids(band_edges=band_edges)
-    upper_grid = ladders["upper"][CAP_LADDER_UPPER_DIAGNOSTIC[-1]]
-    lower_grid = ladders["lower"][CAP_LADDER_LOWER_DIAGNOSTIC[-1]]
+    grids["cap_ladder_diagnostic"] = ladders
+    cap_ladder_trace: dict[str, dict[float, dict[str, Any]]] = {
+        "upper": {},
+        "lower": {},
+    }
+    for direction in ("upper", "lower"):
+        for cap, stage_grid in ladders[direction].items():
+            # A band edge outside this decade stage's domain was dropped from
+            # stage_grid; record a diagnostic STOP rather than letting
+            # band_masses raise. Diagnostic stages never gate the verdict, so
+            # this does NOT fail-close the corrected profile.
+            if not _band_edges_are_exact_nodes(stage_grid, band_edges):
+                cap_ladder_trace[direction][cap] = {
+                    "stop": True,
+                    "reason": (
+                        "band edge(s) outside the diagnostic cap domain "
+                        f"[{stage_grid[0]:.6g}, {stage_grid[-1]:.6g}]"
+                    ),
+                    "stop_index": None,
+                    "band_masses": None,
+                    "grid": stage_grid,
+                }
+                continue
+            stage_profile = profile_logm_on_grid(
+                g_of,
+                grad_of,
+                stage_grid,
+                mode_u,
+                nuisance_order,
+                warm0=mode_u,
+            )
+            if stage_profile["stop"]:
+                cap_ladder_trace[direction][cap] = {
+                    "stop": True,
+                    "reason": stage_profile["reason"],
+                    "stop_index": stage_profile["stop_index"],
+                    "band_masses": None,
+                    "grid": stage_grid,
+                }
+                continue
+            cap_ladder_trace[direction][cap] = {
+                "stop": False,
+                "reason": "",
+                "stop_index": None,
+                "band_masses": band_masses(
+                    stage_profile["logm"], stage_grid, band_edges
+                ),
+                "grid": stage_grid,
+            }
+
+    def refine_to_converged_level(grid: np.ndarray) -> np.ndarray:
+        refined = grid
+        for _ in range(converged_level):
+            refined = nested_refine(refined)
+        return refined
+
+    upper_grid = refine_to_converged_level(
+        ladders["upper"][CAP_LADDER_UPPER_DIAGNOSTIC[-1]]
+    )
+    lower_grid = refine_to_converged_level(
+        ladders["lower"][CAP_LADDER_LOWER_DIAGNOSTIC[-1]]
+    )
     grids["upper_pullback"] = upper_grid
     grids["lower_pullback"] = lower_grid
+
+    # The one-decade pullbacks GATE the verdict (δ_tail), so a band edge outside
+    # a pullback domain is a structured fail-closed STOP (not a crash).
+    for pullback_name, pullback_grid in (
+        ("upper", upper_grid),
+        ("lower", lower_grid),
+    ):
+        if not _band_edges_are_exact_nodes(pullback_grid, band_edges):
+            return _corrected_profile_stop(
+                f"{pullback_name}-pullback: band edge(s) outside the pullback "
+                f"domain [{pullback_grid[0]:.6g}, {pullback_grid[-1]:.6g}]",
+                grids=grids,
+                delta_quad_value=quad,
+                converged_level=converged_level,
+                cap_ladder_trace=cap_ladder_trace,
+            )
 
     upper_profile = profile_logm_on_grid(
         g_of,
@@ -1130,6 +1262,8 @@ def corrected_profile_band_masses(
             stop_index=upper_profile["stop_index"],
             grids=grids,
             delta_quad_value=quad,
+            converged_level=converged_level,
+            cap_ladder_trace=cap_ladder_trace,
         )
     P_upper = band_masses(upper_profile["logm"], upper_grid, band_edges)
 
@@ -1147,41 +1281,45 @@ def corrected_profile_band_masses(
             stop_index=lower_profile["stop_index"],
             grids=grids,
             delta_quad_value=quad,
+            converged_level=converged_level,
+            cap_ladder_trace=cap_ladder_trace,
         )
     P_lower = band_masses(lower_profile["logm"], lower_grid, band_edges)
 
-    tail_result = delta_tail(P_full, P_upper, P_lower)
+    tail_result = delta_tail(P_final, P_upper, P_lower)
     if tail_result["stop"]:
         return _corrected_profile_stop(
             f"tail: {tail_result['reason']}",
             grids=grids,
             delta_quad_value=quad,
             delta_tail_value=tail_result["delta_tail"],
+            converged_level=converged_level,
+            cap_ladder_trace=cap_ladder_trace,
         )
 
     dimension = np.asarray(mode_u, dtype=np.float64).size
     laplace_constant = 0.5 * dimension * np.log(2.0 * np.pi)
     masses_by_h: dict[float, Mapping[str, float]] = {
-        HESS_H_CENTER: P_full
+        HESS_H_CENTER: P_final
     }
     logm_by_h: dict[float, np.ndarray] = {
-        HESS_H_CENTER: np.asarray(full_profile["logm"], dtype=np.float64)
+        HESS_H_CENTER: np.asarray(final_profile["logm"], dtype=np.float64)
     }
     for h in HESS_H_SWEEP:
         if h == HESS_H_CENTER:
             continue
         logm_h = (
-            full_profile["g_star"]
+            final_profile["g_star"]
             + laplace_constant
-            - 0.5 * full_profile["logdet_by_h"][h]
+            - 0.5 * final_profile["logdet_by_h"][h]
         )
         logm_by_h[h] = np.asarray(logm_h, dtype=np.float64)
-        masses_by_h[h] = band_masses(logm_h, full_grid, band_edges)
+        masses_by_h[h] = band_masses(logm_h, final_grid, band_edges)
     hess = delta_hess(masses_by_h)
 
     quantiles = {
         float(q): quantile_exact_quadratic(
-            _density_from_logm(full_profile["logm"]), full_grid, float(q)
+            _density_from_logm(final_profile["logm"]), final_grid, float(q)
         )
         for q in quantile_qs
     }
@@ -1191,12 +1329,12 @@ def corrected_profile_band_masses(
         else heuristic_error_envelope(quad, hess, tail_result)
     )
     profiles = {
-        "full": full_profile,
+        "full": final_profile,
         "upper_pullback": upper_profile,
         "lower_pullback": lower_profile,
     }
     return {
-        "band_masses": P_full,
+        "band_masses": P_final,
         "delta_quad": quad,
         "delta_hess": hess,
         "delta_tail": tail_result["delta_tail"],
@@ -1206,10 +1344,13 @@ def corrected_profile_band_masses(
         "stop_index": None,
         "reason": "",
         "grids": grids,
-        "logm": full_profile["logm"],
+        "logm": final_profile["logm"],
         "logm_by_h": logm_by_h,
+        "hessian_band_masses": masses_by_h,
         "profiles": profiles,
         "refinement": refinement,
+        "converged_level": converged_level,
+        "cap_ladder_trace": cap_ladder_trace,
         "tail_sensitivity": tail_result,
         "error_envelope": envelope,
     }
@@ -1224,12 +1365,15 @@ def profile_potential_callables(
 ]:
     """Adapt a ``ProfilePotential`` to the NumPy orchestrator interface."""
 
+    if sites_order is None:
+        raise ValueError("sites_order is required for corrected profile orchestration")
+
     # Torch is deliberately confined to this thin boundary adapter; the
     # orchestrator above stays NumPy-only and model-agnostic.
     import torch
 
     nuisance_sites = tuple(profile.nuisance_sites)
-    order = nuisance_sites if sites_order is None else tuple(sites_order)
+    order = tuple(sites_order)
     if len(order) != len(nuisance_sites) or set(order) != set(nuisance_sites):
         raise ValueError("sites_order must contain every nuisance site exactly once")
     target = getattr(profile, "_y", None)

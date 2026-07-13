@@ -2773,3 +2773,46 @@ Also added coverage for the previously-untested upper/lower-pullback sub-profile
 Full suite 324 passed / 1 skipped (+13 across both rounds); rev-5 sha256 unchanged; historical functions
 + `experiments/prior_sensitivity_study.py` still untouched. Re-review verdict after fixes: codex + Sonnet
 APPROVE. The v1.18 recompute remains gated and execution-only; nothing here runs compute.
+
+**Update (2026-07-13, fourth review round — refinement authority + author interpretation):** codex
+reran the targeted suite (47 passed) but found a structural refinement bug the smooth Gaussian oracle
+could not discriminate: `corrected_profile_band_masses` ran the mandatory nested refinement yet REPORTED
+the coarse level-0 band masses / logm / quantiles (the converged final-level masses were used only for
+δ_quad) and computed δ_hess/δ_tail at level-0 resolution — so the recompute would truthfully report a
+refinement sensitivity while publishing the unrefined answer. Two conformance gaps remained: the earlier
+decade-cap diagnostic stages were constructed but not evaluated, and the scientific bridge allowed a
+silent `named_priors()` order fallback.
+
+**Author interpretation of v1.17 (pre-compute, recorded):** once the nested-grid refinement converges,
+the **FINAL CONVERGED GRID is authoritative for every reported scientific output** — band masses, `logm`,
+and quantiles all come from level ℓ*, and the numerical sensitivities are evaluated at matched resolution
+so cap/Hessian sensitivity is not confounded with quadrature resolution. Applied consistently (no v1.17
+contradiction found):
+- `corrected_profile_band_masses` returns the FINAL-level grid / profile / band masses / quantiles
+  (captured from the refinement's last evaluated level via `refinement_holder`, with a defensive
+  holder-consistency guard), plus a `converged_level` field.
+- δ_hess is computed on the final grid; the upper/lower δ_tail pullbacks are refined to the SAME level
+  ℓ* as the accepted full-domain result (`refine_to_converged_level`) before `delta_tail`.
+- All six diagnostic decade-cap stages (upper 10/100/1000; lower 1e-4/1e-5/1e-6) are evaluated and
+  retained as a `cap_ladder_trace` (rev-5 §1 "recorded diagnostically … never used for the pass/fail
+  verdict"), clearly separated from the final one-decade pass/fail pullbacks; a STOP on a diagnostic-only
+  stage is recorded but does NOT fail-close the verdict.
+- `profile_potential_callables` now REQUIRES an explicit authoritative `sites_order` (fail-closed
+  scientific bridge); low-level `ProfilePotential(sites=None)` stays flexible.
+A discriminating test (a narrow/off-node profile: level-0 vs final band masses differ by 0.191,
+converges at ℓ*=2) asserts the returned outputs equal the FINAL level, not level 0.
+
+The scoped re-review of that refactor (codex + Sonnet) then found one more issue + one cleanup, fixed:
+- **Out-of-domain band edge crashed the diagnostic trace (codex, CONFIRMED):** a band edge outside an
+  inner decade stage's domain (dropped from that stage grid) was still passed to `band_masses`, whose
+  exact-node assertion raised — a crash, not a recorded STOP; the Mauna q25/q75 edges are unknown
+  pre-compute. FIX: `_band_edges_are_exact_nodes` guards both paths — a diagnostic stage records an
+  "edge outside domain" STOP (non-fail-closing), and a final one-decade pullback (which gates δ_tail)
+  returns a structured fail-closed STOP. Tests for both.
+- **Fail-closed docstring over-claimed (Sonnet):** `_corrected_profile_stop` said "no usable marginal or
+  band masses may be exposed", but the `cap_ladder_trace` (which rev-5 §1 requires recorded) legitimately
+  retains per-stage masses. FIX: docstring scoped to the verdict fields (`band_masses`/`logm`/`profiles`),
+  with a test locking the trace as retained diagnostic provenance on a downstream STOP.
+Full suite 328 passed / 1 skipped; rev-5 sha256 unchanged; historical functions +
+`experiments/prior_sensitivity_study.py` still untouched. PR #10 kept Draft; the v1.18 recompute remains
+gated and execution-only; nothing here runs compute.

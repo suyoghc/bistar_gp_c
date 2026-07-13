@@ -82,6 +82,32 @@ def _gaussian_profile_oracle(indefinite_at=None):
     return g_of, grad_of
 
 
+def _narrow_off_node_profile_oracle():
+    peak = 0.158
+    log_width = 0.008
+
+    def log_noise_profile(noise):
+        value = -0.5 * (
+            (np.log(float(noise)) - np.log(peak)) / log_width
+        ) ** 2
+        # Values below -100 are scientifically negligible here; clipping the
+        # additive noise-only term avoids cancellation in the independent
+        # directional-curvature check at the frozen extreme caps.
+        return max(-100.0, float(value))
+
+    def g_of(u, noise):
+        delta = np.asarray(u, dtype=np.float64) - ORACLE_MU
+        return (
+            -0.5 * float(delta @ ORACLE_A @ delta)
+            + log_noise_profile(noise)
+        )
+
+    def grad_of(u, noise):
+        return -ORACLE_A @ (np.asarray(u, dtype=np.float64) - ORACLE_MU)
+
+    return g_of, grad_of, log_noise_profile
+
+
 def test_p3_grid_geometry_and_nested_refinement():
     base = integration.base_grid()
     assert base.size == PROFILE_GRID_BASE_N
@@ -432,6 +458,10 @@ def test_corrected_profile_band_masses_matches_gaussian_oracle(
     result = corrected_gaussian_oracle
     assert result["stop"] is False
     grid = result["grids"]["full"]
+    assert result["converged_level"] == result["refinement"]["n_refinements"]
+    assert result["refinement"]["converged_level"] == result["converged_level"]
+    np.testing.assert_array_equal(grid, result["refinement"]["grids"][-1])
+    np.testing.assert_array_equal(result["logm"], result["profiles"]["full"]["logm"])
     expected_logdet = float(np.linalg.slogdet(ORACLE_A)[1])
     expected_logm = np.asarray([_oracle_c(noise) for noise in grid]) + (
         1.5 * np.log(2.0 * np.pi) - 0.5 * expected_logdet
@@ -442,6 +472,11 @@ def test_corrected_profile_band_masses_matches_gaussian_oracle(
     for key in BAND_KEYS:
         assert result["band_masses"][key] == pytest.approx(
             expected_masses[key], rel=0, abs=1e-10
+        )
+        assert result["band_masses"][key] == pytest.approx(
+            result["refinement"]["masses_by_level"][-1][key],
+            rel=0,
+            abs=1e-14,
         )
     residual = sum(result["band_masses"][key] for key in BAND_KEYS) - 1.0
     assert abs(residual) <= 1e-15
@@ -463,7 +498,175 @@ def test_corrected_profile_band_masses_matches_gaussian_oracle(
             rtol=0,
             atol=1e-10,
         )
+        assert result["logm_by_h"][h].shape == grid.shape
+        expected_h_masses = integration.band_masses(
+            result["logm_by_h"][h], grid, TOY_BAND_EDGES
+        )
+        for key in BAND_KEYS:
+            assert result["hessian_band_masses"][h][key] == pytest.approx(
+                expected_h_masses[key], rel=0, abs=1e-14
+            )
+    assert integration.delta_hess(result["hessian_band_masses"]) == pytest.approx(
+        result["delta_hess"], rel=0, abs=1e-15
+    )
+
+    ladders = integration.cap_ladder_grids()
+    for direction, cap in (
+        ("upper", CAP_LADDER_UPPER_DIAGNOSTIC[-1]),
+        ("lower", CAP_LADDER_LOWER_DIAGNOSTIC[-1]),
+    ):
+        expected_grid = ladders[direction][cap]
+        for _ in range(result["converged_level"]):
+            expected_grid = integration.nested_refine(expected_grid)
+        actual_grid = result["grids"][f"{direction}_pullback"]
+        assert actual_grid.size == expected_grid.size
+        np.testing.assert_array_equal(actual_grid, expected_grid)
+        for edge in TOY_BAND_EDGES:
+            assert np.count_nonzero(actual_grid == edge) == 1
+        assert np.count_nonzero(actual_grid == cap) == 1
+
+    assert tuple(result["cap_ladder_trace"]["upper"]) == (
+        CAP_LADDER_UPPER_DIAGNOSTIC
+    )
+    assert tuple(result["cap_ladder_trace"]["lower"]) == (
+        CAP_LADDER_LOWER_DIAGNOSTIC
+    )
+    for direction in ("upper", "lower"):
+        for stage in result["cap_ladder_trace"][direction].values():
+            assert stage["stop"] is False
+            assert stage["band_masses"] is not None
     assert result["quantiles"][0.25] < result["quantiles"][0.75]
+
+
+def test_corrected_profile_reports_materially_different_final_refinement_level():
+    g_of, grad_of, log_noise_profile = _narrow_off_node_profile_oracle()
+    quantile_qs = (0.25, 0.5, 0.75)
+    result = integration.corrected_profile_band_masses(
+        g_of,
+        grad_of,
+        ORACLE_MU,
+        NUISANCE_ORDER,
+        TOY_BAND_EDGES,
+        quantile_qs=quantile_qs,
+    )
+
+    assert result["stop"] is False
+    assert result["converged_level"] == 2
+    refinement = result["refinement"]
+    level0_masses = refinement["masses_by_level"][0]
+    final_masses = refinement["masses_by_level"][-1]
+    final_grid = refinement["grids"][-1]
+    np.testing.assert_array_equal(result["grids"]["full"], final_grid)
+    assert result["logm"].shape == final_grid.shape
+    for key in BAND_KEYS:
+        assert result["band_masses"][key] == pytest.approx(
+            final_masses[key], rel=0, abs=1e-14
+        )
+    mass_difference = max(
+        abs(result["band_masses"][key] - level0_masses[key])
+        for key in BAND_KEYS
+    )
+    assert mass_difference > 100.0 * EPS_GRID
+
+    expected_final_quantiles = {
+        q: integration.quantile_exact_quadratic(
+            integration._density_from_logm(result["logm"]), final_grid, q
+        )
+        for q in quantile_qs
+    }
+    level0_grid = refinement["grids"][0]
+    level0_logm = np.asarray(
+        [log_noise_profile(noise) for noise in level0_grid],
+        dtype=np.float64,
+    )
+    level0_quantiles = {
+        q: integration.quantile_exact_quadratic(
+            integration._density_from_logm(level0_logm), level0_grid, q
+        )
+        for q in quantile_qs
+    }
+    for q in quantile_qs:
+        assert result["quantiles"][q] == pytest.approx(
+            expected_final_quantiles[q], rel=0, abs=1e-14
+        )
+    quantile_difference = max(
+        abs(result["quantiles"][q] - level0_quantiles[q])
+        for q in quantile_qs
+    )
+    assert quantile_difference > 10.0 * EPS_GRID
+
+    ladders = integration.cap_ladder_grids()
+    for direction, cap in (
+        ("upper", CAP_LADDER_UPPER_DIAGNOSTIC[-1]),
+        ("lower", CAP_LADDER_LOWER_DIAGNOSTIC[-1]),
+    ):
+        matched = ladders[direction][cap]
+        for _ in range(result["converged_level"]):
+            matched = integration.nested_refine(matched)
+        assert result["grids"][f"{direction}_pullback"].size == matched.size
+
+    upper_masses = integration.band_masses(
+        result["profiles"]["upper_pullback"]["logm"],
+        result["grids"]["upper_pullback"],
+        TOY_BAND_EDGES,
+    )
+    lower_masses = integration.band_masses(
+        result["profiles"]["lower_pullback"]["logm"],
+        result["grids"]["lower_pullback"],
+        TOY_BAND_EDGES,
+    )
+    expected_tail = integration.delta_tail(
+        result["band_masses"], upper_masses, lower_masses
+    )
+    assert result["tail_sensitivity"]["upper"] == pytest.approx(
+        expected_tail["upper"], rel=0, abs=1e-15
+    )
+    assert result["tail_sensitivity"]["lower"] == pytest.approx(
+        expected_tail["lower"], rel=0, abs=1e-15
+    )
+
+    for h in HESS_H_SWEEP:
+        assert result["logm_by_h"][h].shape == final_grid.shape
+        expected = integration.band_masses(
+            result["logm_by_h"][h], final_grid, TOY_BAND_EDGES
+        )
+        for key in BAND_KEYS:
+            assert result["hessian_band_masses"][h][key] == pytest.approx(
+                expected[key], rel=0, abs=1e-14
+            )
+
+
+def test_diagnostic_cap_stage_stop_is_recorded_without_fail_closing():
+    bad_diagnostic_cap = CAP_LADDER_UPPER_DIAGNOSTIC[0]
+    assert np.count_nonzero(
+        integration.full_domain_grid() == bad_diagnostic_cap
+    ) == 0
+    g_of, grad_of = _gaussian_profile_oracle(
+        indefinite_at=bad_diagnostic_cap
+    )
+    result = integration.corrected_profile_band_masses(
+        g_of,
+        grad_of,
+        ORACLE_MU,
+        NUISANCE_ORDER,
+        TOY_BAND_EDGES,
+    )
+
+    assert result["stop"] is False
+    failed_stage = result["cap_ladder_trace"]["upper"][bad_diagnostic_cap]
+    assert failed_stage["stop"] is True
+    assert failed_stage["band_masses"] is None
+    assert "curvature is not strictly SPD" in failed_stage["reason"]
+    assert sum(
+        len(result["cap_ladder_trace"][direction])
+        for direction in ("upper", "lower")
+    ) == 6
+    for direction in ("upper", "lower"):
+        for cap, stage in result["cap_ladder_trace"][direction].items():
+            if direction == "upper" and cap == bad_diagnostic_cap:
+                continue
+            assert stage["stop"] is False
+            assert stage["band_masses"] is not None
 
 
 def test_profile_orchestrators_fail_closed_on_optimizer_stop(monkeypatch):
@@ -605,6 +808,52 @@ def test_corrected_profile_propagates_pullback_subprofile_stop():
     assert result["profiles"] == {}
     assert "upper-pullback profile" in result["reason"]
     assert "curvature is not strictly SPD" in result["reason"]
+    # The "no usable marginal" guarantee scopes to the VERDICT fields above. The
+    # diagnostic cap-ladder trace (which rev-5 §1 requires recorded) is retained
+    # as provenance across a downstream STOP: the stages that did NOT hit the
+    # indefinite 1000.0 node keep their diagnostic band masses.
+    trace = result["cap_ladder_trace"]
+    assert set(trace) == {"upper", "lower"}
+    assert trace["upper"][1000.0]["stop"] is True          # the failing stage
+    assert trace["upper"][10.0]["band_masses"] is not None  # a passing stage — provenance kept
+    assert trace["lower"][1e-6]["band_masses"] is not None
+
+
+def test_diagnostic_cap_stage_records_edge_outside_domain_without_crashing():
+    # Band edges unknown pre-compute may fall outside an inner decade stage's
+    # domain (dropped from that stage grid). The stage must record a diagnostic
+    # STOP, NOT raise AssertionError from band_masses (codex re-review finding).
+    # edges (20, 200): upper cap-10 excludes both; cap-100 excludes 200; the full
+    # domain + final pullbacks (cap 1000 / 1e-6) contain both, so the verdict
+    # still succeeds.
+    g_of, grad_of = _gaussian_profile_oracle()
+    result = integration.corrected_profile_band_masses(
+        g_of, grad_of, ORACLE_MU, NUISANCE_ORDER, (20.0, 200.0)
+    )
+    assert result["stop"] is False                          # verdict not fail-closed
+    upper = result["cap_ladder_trace"]["upper"]
+    assert upper[10.0]["stop"] is True
+    assert upper[10.0]["band_masses"] is None
+    assert "outside the diagnostic cap domain" in upper[10.0]["reason"]
+    assert upper[100.0]["stop"] is True                     # 200 is outside [.., 100]
+    assert upper[1000.0]["stop"] is False                   # both edges < 1000
+    for cap, stage in result["cap_ladder_trace"]["lower"].items():
+        assert stage["stop"] is False                       # 20, 200 > every lower cap
+
+
+def test_final_pullback_edge_outside_domain_fails_closed():
+    # A band edge outside a FINAL one-decade pullback domain GATES the verdict,
+    # so it is a structured fail-closed STOP (not a crash). edge 5000 is inside
+    # the full domain [1e-7, 1e4] but outside the upper pullback [1e-7, 1e3].
+    g_of, grad_of = _gaussian_profile_oracle()
+    result = integration.corrected_profile_band_masses(
+        g_of, grad_of, ORACLE_MU, NUISANCE_ORDER, (0.15, 5000.0)
+    )
+    assert result["stop"] is True
+    assert result["band_masses"] is None
+    assert result["logm"] is None
+    assert result["profiles"] == {}
+    assert "upper-pullback: band edge(s) outside the pullback domain" in result["reason"]
 
 
 def test_profile_logm_calls_optimizer_before_curvature_at_every_node(monkeypatch):
@@ -695,7 +944,11 @@ def test_profile_potential_adapter_matches_single_synthetic_map_evaluation():
         ],
         dtype=np.float64,
     )
-    g_of, grad_of = integration.profile_potential_callables(profile)
+    with pytest.raises(ValueError, match="sites_order is required"):
+        integration.profile_potential_callables(profile)
+    g_of, grad_of = integration.profile_potential_callables(
+        profile, sites_order=profile.nuisance_sites
+    )
     assert g_of(u0, float(noise)) == pytest.approx(
         expected_value, rel=0, abs=1e-10
     )
@@ -770,6 +1023,7 @@ def test_refine_until_converged_converges_below_eps_grid():
     assert out["converged"] is True
     assert out["stop"] is False
     assert out["n_refinements"] == 1
+    assert out["converged_level"] == 1
     assert max(out["delta_quad"].values()) < EPS_GRID
     assert out["delta_quad"] == pytest.approx(
         {"P_noise_lo": 5e-5, "P_noise_mid": 4e-5, "P_noise_hi": 1e-5}, abs=1e-15
@@ -790,6 +1044,7 @@ def test_refine_until_converged_stops_when_unconverged_at_l_max():
     assert out["converged"] is False
     assert out["stop"] is True
     assert out["n_refinements"] == REFINE_L_MAX
+    assert out["converged_level"] is None
     assert max(out["delta_quad"].values()) >= EPS_GRID
     assert "did not converge" in out["reason"]
 
@@ -828,6 +1083,7 @@ def test_refine_until_converged_reports_intermediate_level_delta():
     assert out["converged"] is True
     assert out["stop"] is False
     assert out["n_refinements"] == 2
+    assert out["converged_level"] == 2
     assert out["delta_quad"] == pytest.approx(
         {"P_noise_lo": 5e-6, "P_noise_mid": 0.0, "P_noise_hi": 0.0}, abs=1e-15
     )
