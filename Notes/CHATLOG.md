@@ -577,3 +577,17 @@ pre-retry point, silently mis-combining g and K (~7% mass error); plus a fail-cl
 `refine=False` bypass of the mandatory §1 gate, and a set-only (dup-accepting) site check. All fixed;
 codex + Sonnet re-review APPROVE. Commit **45556e5**; full suite **324 passed / 1 skipped**; PR #10 kept
 Draft. Still hermetic — no compute/sampler/Mauna/u*(η)/--execute; historical path unchanged.
+
+**Rounds 4-6 (same day):** R4 — codex found `corrected_profile_band_masses` ran the mandatory nested
+refinement but published the coarse level-0 answer; author interpretation recorded (final converged grid
+authoritative for all reported outputs; matched-resolution δ_hess/δ_tail; all six diagnostic decade
+stages evaluated as a non-fail-closing trace; fail-closed bridge order). Discriminating narrow-profile
+test (0.191 level-0-vs-final shift). R5 — out-of-domain band edge crashed the diagnostic trace (codex) +
+fail-closed docstring over-claim (Sonnet); guarded to recorded/structured STOP; confirmation pass then
+found a residual boundary-exact (edge == decade-cap) crash, fixed by requiring strictly-interior edge
+nodes. R6 — codex found the E1-order contract was still self-certifiable (fallback profile + bridge
+accepted any permutation); hardened: `ProfilePotential.sites_are_authoritative` provenance +
+`profile_potential_callables` fail-closes unless authoritative and `sites_order` equals the E1 order
+exactly; adapter test rebuilt on `E1Potential.sites` + negative tests. Commits **966be5d, 45556e5,
+bd56786, b7f3bed, 8adaaa5**; full suite **331 passed / 1 skipped**; rev-5 sha256 unchanged; historical
+path untouched; PR #10 kept Draft throughout. No compute begun; holdout SEALED.
