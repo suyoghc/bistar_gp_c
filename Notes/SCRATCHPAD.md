@@ -2,6 +2,32 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
+## M2c — v1.17 ALGORITHM FREEZE RATIFIED (branch `feat/d19-m2c` off main fcc3ce4; D40, 2026-07-13). STOPPED before compute.
+
+- **Two ratified deliverables (committed):** `docs/m2c-gtoy-profile-PROPOSAL.md` (D39 architecture,
+  directionally ratified P1-P8) + `docs/m2c-freeze-package-PROPOSAL.md` (**rev-5, umbrella-ratified**;
+  the complete numerical freeze). Prereg **v1.17** appended, pinning the rev-5 package byte-exact at
+  **sha256 `c3e9db66…d1ce3f`**. D40 records the umbrella vote.
+- **Adversarial review DONE:** 5 codex gpt-5.6-sol (xhigh) rounds on the architecture doc + 5 more on
+  the freeze package + 1 independent subagent; every finding cross-verified against source. Caught +
+  fixed pre-freeze: an invalid MAP-likelihood tail bound, the directional-curvature SIGN, and the Q2
+  IACT global-shift. codex outputs in session scratchpad (not committed).
+- **Umbrella vote (2026-07-13, own-words):** J1 no-flooring (SPD + rcond≥1e-8, Claude-PROPOSED, retry-
+  then-STOP); J2=1e-3; J3=0.90 (a priori); J4=report-only; staged FULL-domain [1e-7,1e4] cap-SENSITIVITY
+  (NOT a bound); + the P1-P8 directions. Frozen via §6.16.
+- **FROZEN (v1.17):** HMC-independent references (prior-IS/RW-MH pooled/SIR); the profile-integration
+  algorithm (exact-edge partition + staged cap-sensitivity + nested refinement + P1 gradient battery +
+  L-BFGS-B + SPD/rcond curvature); chain-aware MCSE (MBB on Q2 soft-contribution); numerical-error =
+  sensitivity (never SE); estimator goldens+tolerances; the 5 §6.15 predicates (S2/S3/divergence/
+  overlap/nugget); two-manifest schema. Historical buggy triplet 0.76262/0.13752/0.02311 (sum 0.9232)
+  = HISTORICAL-only.
+- **NEXT (requires a SEPARATE explicit author `--execute`):** implement the owed NEW code — the S2
+  fixed-metric path, the **M1 Matern builder** (does not exist yet), and the profile functional-gradient
+  path — then the gated deterministic profile recompute → **v1.18** result freeze. **NO compute begun.**
+- **HARD GATES:** no compute/recompute/sampler/Mauna/holdout without `--execute` + clean tree + byte-
+  exact hashes + passing tests, then stop-and-report; HMC only via `fit_hmc_e1`; VI+hmc_laplace
+  withdrawn; A7 Della on hold (v1.8); holdout SEALED (§6.6).
+
 ## M2bR corrective milestone — COMPUTE LAYERS EXECUTED (D33, branch feat/d19-m2br, 2026-07-12); start-freeze gate PASSED (D32)
 
 Branch `feat/d19-m2br` off `origin/main` (bd0b399 = merged M2b PR #7). The two-stage

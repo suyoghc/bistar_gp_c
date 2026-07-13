@@ -2504,3 +2504,145 @@ UNMOVED/UNCOMMITTED; durable relocation is a separate author choice.
 
 **Status:** M2bR CLOSED. M2c is the next milestone (NOT started this session). VI repair and the
 informative strategy-change remain independent, optional/later items. A7 Della on hold (v1.8).
+
+## D39: M2c OPENED — G-toy/profile planning proposal drafted + adversarially reviewed; ARCHITECTURE directionally ratified (P1–P8), NUMERICAL FREEZE still pending — 2026-07-12
+
+**Problem:** With M2bR CLOSED (D38), open M2c — "G-toy golden derivation + normalized profile
+band-mass recomputation" (§6.9 as SUPERSEDED by v1.4/v1.6/v1.8 + D22–D24 + D38). First session is
+PLANNING ONLY: reconcile base plan §6.9 against v1.8 + D38, then PROPOSE (for author ratification,
+before building or running anything) the normalized profile-integration algorithm, the
+HMC-independent references + formulas, the estimator-specific tolerances, and the versioned freeze
+addendum. No implementation, no compute, holdout SEALED.
+
+**Decision:** Opened branch `feat/d19-m2c` off `main` (fcc3ce4, the PR #8 merge). Wrote
+`docs/m2c-gtoy-profile-PROPOSAL.md` (PROPOSED; NOT freeze-grade). Reconciliation outcomes (precedence:
+addenda/D-entries WIN over pre-D22 §6.9):
+- **Four quantity types kept distinct** everywhere (noise-band masses / model probabilities /
+  hard-best-match rates / diagnostic-only); do-not-conflate list frozen (never compare Q2 0.42 with
+  Q1 0.763; the numeral 0.696 is BOTH the withdrawn HMC posterior AND the unaffected SIR hard-win
+  0.696–0.707).
+- **HMC-independent references (code-cited, all D22-unaffected):** prior-IS pooled band masses
+  0.762660±0.004283 / 0.191078±0.003838 / 0.046262±0.000866 (primary authority; hi 0.0463<5% → B=2);
+  SIR Sin+Linear 0.441±0.005 (Q2) + hard-win 0.696–0.707 (Q3); RW-MH referee **pooled** centers
+  0.815644 / 0.161078 / 0.023278 with half-range SE 0.023483 / 0.017650 / 0.010167 (fallback
+  authority; independently reproduced from the persisted per-seed rows). prior-IS + SIR = ONE
+  IS-family (not double-counted). Corrected-NUTS D33 V3/V4 = cross-check ONLY, never a tolerance-setter.
+- **Profile band-mass fix:** the D18 `_profile_band_masses` masks off-grid edges 0.15/0.30 on
+  `geomspace(0.005,1.2,40)`, dropping the straddling intervals [0.14579,0.16778] and [0.29435,0.33877]
+  from every band while counting them in `total` → persisted triplet 0.76262/0.13752/0.02311 (sum
+  0.9232). Corrected algorithm = exact-edge re-evaluation as integration nodes + float-safe exact
+  partition (total := Σ band_int) + SPD/STOP curvature + optimizer-stationarity gate + convergence-
+  based unbounded-tail handling + exact-quadratic quantile inversion for Mauna q25/q75 edges. Profile-
+  Laplace is D22/D23/D24-immune but bound by the v1.8 §3 shared Hessian protocol (first-gradient).
+- **S1 0.696** demoted to HISTORICAL-only (no new legacy run; P5). **informative** non-blocking (not
+  the G-toy reference config). **VI** stays withdrawn.
+
+**Adversarial review (REQUIRED at milestone):** 5 codex gpt-5.6-sol (xhigh) rounds via `/use-codex` +
+1 independent repo-reading Claude subagent (Gemini quota-blocked; independent subagent is a permitted
+cross-model pass). Every finding cross-verified against source before acting. Round 2 = 11 confirmed
+defects (all folded in); round 3 caught a CRITICAL invalid tail bound (my "MAP-likelihood domination"
+— MAP maximizes L·p, not L) + 3 contradictions; round 4 caught the "certified" trapezoid bound was
+uncertifiable on 40 nodes + a stale P3; round 5 = APPROVE-WITH-CHANGES (2 cosmetic). Numbers + core
+math independently confirmed correct throughout. Provenance: codex outputs in the session scratchpad
+(not committed).
+
+**Author decisions (explicit own-words vote, 2026-07-12) — ARCHITECTURAL DIRECTION ONLY:**
+P1 functional_call gradient validated vs central FD; P2 exact boundary evaluation primary
+(interpolation = regression test); **P3 a prospective amendment for domain extension + nested grid
+refinement is authorized IN PRINCIPLE, but its NUMERICAL PROTOCOL is NOT yet ratified**; P4 v1.17
+(algorithm) / v1.18 (results); P5 no new legacy S1 run; P6 fresh pinned-seed S1f smoke AFTER the
+complete freeze (D33 V3/V4 cross-checks); P7 one umbrella freeze package (all seven §6.15 predicates +
+companion specs land together); P8 S4 Q2 diagnostic-only.
+
+**EXPLICIT SCOPE OF THIS RATIFICATION (author instruction):** the ARCHITECTURE is reviewed and
+directionally ratified; the **NUMERICAL FREEZE is INCOMPLETE**. The proposal is NOT to be described as
+freeze-grade. No v1.17 is appended. Owed next as a SEPARATE document for a SECOND explicit vote: the
+complete freeze package — (1) exact P3 nested-grid/domain-extension protocol (numerical
+convergence/sensitivity, NOT a proven tail bound); (2) exact optimizer + curvature gate numbers;
+(3) a CHAIN-AWARE `MCSE_strategy` estimator (batch-means / moving-block bootstrap — MCMC predictive
+rows are autocorrelated; ordinary row bootstrap underestimates it), kept separate from the MCSE≤0.02
+precision gate; (4) exact numerical-error reporting for deterministic profile masses (never an SE);
+(5) full specs for the five remaining §6.15 M2c predicates (S2 mass-convention, S3 Jacobian/
+equivalence, divergence clustering, spectral/covariance overlap, M1 nugget-floor); (6) one manifest
+schema (frozen value, source, test, sha256). That package is adversarially reviewed, then returned for
+ratification.
+
+**Alternatives considered:** (a) describing the reviewed proposal as freeze-grade — REJECTED by the
+author (numerical specs blank; a distant tail resurgence remains possible until the P3 protocol is
+numerically fixed). (b) appending v1.17 now — REJECTED (numerical freeze not ratified; the umbrella
+package must land complete). (c) staggered per-predicate freezes — REJECTED (P7 umbrella: all seven
+land together before any compute). (d) an ordinary row bootstrap for MCSE_strategy — REJECTED
+(autocorrelated MCMC rows; chain-aware estimator required).
+
+**Result:** M2c opened; the G-toy/profile ARCHITECTURE is directionally ratified (P1–P8) and committed
+as the planning proposal; the numerical freeze package is owed for a second vote. No scientific result
+changed; no compute, no freeze, no Mauna access, holdout SEALED (§6.6); HMC only via `fit_hmc_e1`; VI
++ hmc_laplace withdrawn; A7 Della on hold (v1.8). Untracked M2bR run artifacts preserved, unmoved.
+
+**Status:** M2c ARCHITECTURE directionally ratified; NUMERICAL FREEZE pending the complete package +
+a second explicit author vote. Next: draft the complete freeze package, adversarially review it,
+return for ratification. No v1.17 appended; no compute.
+
+## D40: M2c NUMERICAL FREEZE — author umbrella vote ratifies the complete P7 package; prereg v1.17 appended; STOP before any compute — 2026-07-13
+
+**Problem:** With the M2c architecture directionally ratified (D39), the complete numerical freeze
+package (`docs/m2c-freeze-package-PROPOSAL.md`) was drafted for the SECOND explicit vote — the exact
+P3 grid/domain protocol, optimizer/curvature gates, chain-aware MCSE, numerical-error reporting, the
+five remaining §6.15 predicates, and the manifest schema (P7 umbrella). This entry records the
+author's umbrella vote and the resulting v1.17 freeze.
+
+**Adversarial review (REQUIRED at milestone).** The freeze package was drafted (components 1-4, 6 by
+Claude; component 5 — the five predicates — researched by codex, every CONFIRMED fact re-verified
+against source) and hardened through **5 codex gpt-5.6-sol (xhigh) rounds** (rev-1 → rev-5) + a prior
+independent subagent, each finding cross-verified. Two math errors were caught and fixed pre-freeze:
+the **directional-curvature sign** (K = −H_g, g maximized ⇒ vᵀKv ≈ −D²_g(v)) and the **Q2 IACT global
+shift** (a per-draw max_j shift distorts autocorrelation; use `soft_transfer`'s single global shift).
+The staged-cap/tail handling, SPD/rcond curvature, MBB, and manifest schema were tightened across
+rounds; frozen values (divergence 0.001, correlation 0.95, M1 eig-floor 1e-3, nugget 1.9e-4, SIR
+0.441) verified untouched throughout.
+
+**Author decisions (explicit own-words, 2026-07-13).**
+- **J-decisions (directional, then frozen by the umbrella vote):** J1 = **no eigenvalue flooring** of
+  the profile determinant (SPD required; rcond = λ_min/λ_max ≥ **1e-8** — a Claude-PROPOSED threshold,
+  frozen by this vote; retry-once-then-STOP on near-singular); J2 = step-stability **1e-3**; J3 =
+  overlap alignment **0.90** (fixed a priori, fixtures may not select it post hoc); J4 = nugget-floor
+  **REPORT-ONLY** (never blocks M1).
+- **Three freeze-precision corrections (applied in rev-5):** (1) P3 order dependence removed — always
+  evaluate the FULL [1e-7, 1e4] domain (182 nodes) as the reported cap result; final one-sided
+  sensitivities compare the full domain against one-decade-narrower caps; STOP if either ≥ 1e-4;
+  earlier stages diagnostic-only; still cap-SENSITIVITY, not a proven bound. (2) Provenance corrected —
+  rcond ≥ 1e-8 is Claude-PROPOSED; J-decisions author-selected/directional, nothing frozen until this
+  vote. (3) Manifest traceability — each algorithm sub-object carries one named test.
+- **Umbrella vote:** the author RATIFIED the complete P7 package as revised in rev-5 (staged full-cap
+  sensitivity, rcond ≥ 1e-8 no-flooring, J2=1e-3, J3=0.90, J4=report-only), authorizing: (1) preserve
+  the exact rev-5 package as durable provenance (committed + sha256 recorded in v1.17); (2) append the
+  complete v1.17 algorithm freeze to `docs/prereg-addenda-d19.md`; (3) this D-entry. Then STOP.
+
+**Decision (this entry).** Prereg **v1.17** appended (append-only; the M2c algorithm freeze, numbered
+v1.17 because v1.16 is the M2bR run label per P4). It pins the rev-5 package byte-exact at **sha256
+`c3e9db66e189b2a8cad19bf11b5c4acc6518d4b6d2597ae93b0f700587d1ce3f`** and inlines the frozen HMC-
+independent references, the normalized profile-integration algorithm, the chain-aware MCSE, the
+estimator goldens+tolerances, the five §6.15 predicates, and the two-manifest schema. The rev-5
+package is preserved EXACTLY (its "pending-vote" header is the historical pre-vote state; ratification
+is recorded here + in v1.17, not by editing the frozen artifact). Two-stage sequencing (P4): v1.17
+(algorithm) → gated deterministic recompute (separate `--execute`) → v1.18 (results). Implementation
+owed before the recompute (disclosed, NOT authorized here): the S2 fixed-metric path, the M1 Matern
+builder, and the profile functional-gradient path are NEW code.
+
+**Alternatives considered.** (a) Editing the rev-5 package header to "RATIFIED" — REJECTED (the author
+directed preserving the EXACT rev-5 package; ratification is external, in v1.17 + D40, mirroring the
+M2bR SHA-pinned frozen docs). (b) Requiring the certified tail-envelope rather than cap-sensitivity —
+REJECTED by the author (profile-Laplace is corroborating, not the verdict authority; the envelope
+remains the documented rigor-if-wanted alternative). (c) Freezing v1.17 + running the deterministic
+recompute in one step — REJECTED (the recompute needs a separate explicit `--execute`; v1.17 is
+algorithm-only).
+
+**Result.** M2c numerical freeze RATIFIED and recorded; v1.17 is the canonical frozen algorithm
+addendum; the rev-5 package is durable provenance (committed + SHA-pinned). No scientific result
+changed; **no compute, recompute, sampler, VI, `hmc_laplace`, or Mauna access occurred; the holdout
+stays SEALED (§6.6)**; HMC only via `fit_hmc_e1`; A7 Della on hold (v1.8). Untracked M2bR run
+artifacts preserved, unmoved.
+
+**Status:** M2c ALGORITHM FREEZE COMPLETE (v1.17 ratified). STOPPED per authorization. Next (requires
+a SEPARATE explicit author `--execute`): implement the owed new code (S2 metric / M1 builder / profile
+gradient path), then the gated deterministic profile recompute → v1.18 result freeze. No compute begun.

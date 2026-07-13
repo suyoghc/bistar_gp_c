@@ -1246,3 +1246,104 @@ and all eight pinned starts stand.
 **What this addendum does NOT change or authorize.** No value, start, hash,
 criterion, or budget. No run of any layer. Toy-only; §6.5/§6.6 continue to
 govern.
+
+---
+
+## v1.17 — M2c G-toy/profile algorithm freeze: normalized profile-integration algorithm, HMC-independent references, estimator-specific goldens + tolerances, and the five §6.15 M2c predicates (author umbrella vote) — 2026-07-13
+
+**Prereg anchor:** §6.9 (G-toy goldens; profile band-mass caution L657-666), §6.15 (the seven M2c
+predicates L819-828, incl. "G-toy per-estimator numeric tolerances" and "Corrected normalized
+profile-Laplace band masses"), §6.8 (two-reference arbitration), §6.7 (G-A M1 pre-check, G-B
+divergence), §7 A1, D38/D39, and the D22-D24 correctness chain. Provenance: the author cast an
+explicit own-words **umbrella vote (2026-07-13)** ratifying the complete P7 package as revised in
+rev-5, after directional ratification of P1-P8 (D39) and the J1-J4 decisions + three
+freeze-precision corrections. No pilot, posterior, Mauna, or holdout access exists or is authorized.
+
+**Numbering.** This is the M2c ALGORITHM freeze. It is **v1.17**, not v1.16: v1.16 is the M2bR
+run/protocol label (manifests `docs/m2br_freeze/v116_*.json`; D34/D36 titles), never an addendum, so
+the addenda sequence goes v1.15 → v1.17 (P4). The post-compute RESULT freeze is **v1.18**.
+
+**Frozen complete specification (byte-exact).** The full algorithm, protocols, tolerances, references,
+predicate specs, and manifest schemas are frozen as `docs/m2c-freeze-package-PROPOSAL.md` (rev-5),
+pinned at
+
+```
+sha256 c3e9db66e189b2a8cad19bf11b5c4acc6518d4b6d2597ae93b0f700587d1ce3f
+```
+
+The key frozen values are inlined below; the pinned document governs on any detail. Adversarial
+review before this freeze: 5 codex gpt-5.6-sol (xhigh) rounds + 1 independent repo-reading subagent,
+every finding cross-verified against source (two math errors — directional-curvature sign, Q2 IACT
+global shift — caught and fixed pre-freeze).
+
+**1. HMC-independent references (all D22-unaffected; §2 of the package).** prior-IS pooled toy_elicited
+band masses **0.762660±0.004283 / 0.191078±0.003838 / 0.046262±0.000866** (primary authority; hi
+0.0463<5% → B=2); RW-MH pooled **0.815644 / 0.161078 / 0.023278**, half-range SE **0.023483 /
+0.017650 / 0.010167** (fallback authority / referee); SIR Sin+Linear **0.441±0.005** (Q2) + hard-win
+**0.696-0.707** (Q3). prior-IS + SIR = ONE IS family (not double-counted). Corrected-NUTS D33 V3/V4
+(Sin+Linear 0.4205/0.4220; occ ~0.76/0.19/0.05) = cross-check ONLY, never a tolerance-setter.
+
+**2. Normalized profile-integration algorithm (§4 of the package).** Corrected `_profile_band_masses`
+= exact band-edge nodes (0.15/0.30 toy; Mauna q25/q75 via exact-quadratic CDF inversion) + float-safe
+exact partition (total := Σ band_int) + normalization (Σ P_b ≡ 1). Grid r = (1.2/0.005)^(1/39).
+**Staged full-domain cap-SENSITIVITY (NOT a proven bound):** always evaluate the full [1e-7, 1e4]
+domain (182 nodes) as the reported result; final one-sided δ_tail^upper = |P([1e-7,1e4]) −
+P([1e-7,1e3])|, δ_tail^lower = |P([1e-7,1e4]) − P([1e-6,1e4])|; **STOP if either ≥ ε_domain = 1e-4**;
+earlier decade stages diagnostic-only. Nested geometric-midpoint refinement, δ_quad^(ℓ) < ε_grid =
+1e-4, L_max=3. **Profile-gradient battery (P1):** functional (`functional_call`) gradient validated vs
+central FD (1e-4 abs + 1e-4·scale) + D23 sentinel. **Optimizer:** L-BFGS-B (maxiter 500, maxfun 5000,
+ftol 1e-12, gtol 1e-8), mandatory stationarity τ_stat=1e-4, 1 jittered restart then STOP.
+**Curvature (v1.8 §3 shared protocol):** K = −H by central differences of the validated gradient
+(never create_graph); h-sweep {5e-4,1e-3,2e-3}, center 1e-3, logdet-stability 1e-3, symmetry 1e-6,
+directional check 1e-3 (RNG numpy default_rng seeds {200,201,202}, float64, unit-L2, order ls/os/lv);
+**SPD + rcond = λ_min/λ_max ≥ 1e-8, NO eigenvalue flooring, retry-once-then-STOP (J1).** Measure =
+linear noise space. δ_tail is cap-sensitivity, not a bound; the certified tail-envelope
+(L_max · ∫ LogNormal tail) is the documented rigor-if-wanted alternative, not adopted.
+
+**3. Chain-aware MCSE_strategy (§3).** Moving-block bootstrap on the **Q2 soft-contribution series**
+c_t = exp(−G_{t,j*}/τ − M_global) (single global shift), NOT the Q3 hard winner; ℓ = ⌈2·τ_int⌉
+(UNDETERMINED if <2 distinct blocks), B=1000, seed 20260712; kept separate from the MCSE≤0.02 G-C
+precision gate and the W5 pool scatter.
+
+**4. Numerical-error reporting (§4).** The deterministic profile masses carry **numerical
+sensitivity estimates** δ_quad/δ_hess/δ_tail reported separately — **never an SE, never a proven
+bound** (an optional max is a heuristic envelope).
+
+**5. Estimator-specific G-toy goldens + tolerances (§5 of the package + architecture doc §5).** Tied
+to independent-reference MC error (prior-IS delta-SE / RW-MH half-range / SIR bootstrap MCSE) and the
+frozen §6.8/§6.15 conventions; never to E1/S1f/S2/S3 own output. Q2 agreement = |p_strat − p_SIR| ≤
+2√(MCSE_strat² + MCSE_SIR²) (MCSE_strat chain-aware, §3), separate from the MCSE≤0.02 precision floor.
+S1 0.696-family = HISTORICAL-only (no new legacy run). S4 Q2 vs SIR 0.441 = diagnostic-only (base §6.9
+L668).
+
+**6. The five §6.15 M2c predicates (§5.1-5.5 of the package).** S2 mass-convention (first-order FD
+Hessian, whitening M=H, λ_min≥1e-6/n_clipped=0, skew 1e-5, step-stability **1e-3 (J2)**, oracle
+diag(1,4,9) 1e-10); S3 Jacobian/equivalence (7-coord, volume-preserving log|det ∂u/∂z|=0, M0-only, 33
+states, v1.4 envelopes); divergence non-clustering (rate 0.001 + chain-concentration factor 3 +
+per-chain 10% time-window; parameter-band clustering UNEVALUABLE without a schema extension);
+spectral/covariance overlap (centered alignment tr(AB)/√(tr A² tr B²), K_rest EXCLUDES M1, cap
+q_overlap≤0.05, **alignment 0.90 (J3)**; M1 Matern builder is NEW implementation, UNVERIFIED); M1
+nugget-floor (p_below^{M1} > 0.05 flag vs 1.9e-4 variance, **REPORT-ONLY (J4)**, not blocking).
+
+**7. Manifests (§6).** Two append-only manifests: immutable **v1.17** algorithm manifest (JSON-Schema,
+every reference/tolerance/predicate + each algorithm sub-object carries a named test) and a separate
+**v1.18** result manifest referencing the v1.17 manifest sha256. Neither is produced by this freeze;
+v1.18 follows the gated deterministic recompute.
+
+**Two-stage sequencing (P4).** v1.17 (this addendum, algorithm) → the gated deterministic profile
+recompute (a SEPARATE explicit author `--execute`, then stop-and-report) → v1.18 (result addendum,
+corrected band-mass values + numerical sensitivities). The corrected profile triplet is NOT quoted
+here; the historical buggy triplet (persisted 0.76262/0.13752/0.02311, sum 0.9232; §6.9 rounds to
+0.763/0.138/0.023) is retained as HISTORICAL-only provenance.
+
+**Implementation owed before the recompute (disclosed, not authorized here):** the S2 fixed-metric
+path, the M1 Matern builder, and the profile functional-gradient path are NEW code; the P3 grid
+amendment (full [1e-7,1e4] domain + nested refinement) amends the frozen "profile grid 40 points"
+(§6.15 L811) and is ratified by this umbrella vote via §6.16.
+
+**What this addendum does NOT change or authorize.** No §6.7 gate value, no arm, no candidate set, no
+M2bR frozen artifact (drivers, manifests, protocol docs, committed D-entries), no §6.5/§6.6
+relaxation. It authorizes **NO** compute, recompute, sampler run, VI, `hmc_laplace`, or Mauna access;
+the 60-month **holdout stays SEALED (§6.6)**. HMC remains available only via `fit_hmc_e1`. The A7
+Della vehicle stays on hold (v1.8). Any v1.18 computation requires a separate explicit author
+`--execute` authorization.
