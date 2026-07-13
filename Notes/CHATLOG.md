@@ -565,3 +565,15 @@ untouched; nothing under `runs/` staged. Commit **ef31571**; **Draft PR #10** �
 Deferred to the gated v1.18 recompute (disclosed in PR/D41): real u*(η) optimization, curvature gate on
 the real profile, corrected band-mass triplet, v1.18 result manifest, S2 HMC smoke. Next: PR B (S2/S3),
 C (M1/overlap/nugget), D (diagnostics/manifests/umbrella). No compute begun; holdout SEALED.
+
+**Second/third review rounds (same day):** codex reviewed PR #10's actual diff and correctly flagged
+that PR-A shipped the numerical PRIMITIVES without a top-level corrected-profile ORCHESTRATOR (so the
+v1.18 recompute would have had to WRITE orchestration, not just run it), plus two conformance gaps
+(cap-ladder dropped Mauna edges; E1 site order was test-only). Added the hermetic orchestrator
+(`profile_logm_on_grid`, `corrected_profile_band_masses`, `profile_potential_callables`) + S2/S3 fixes.
+A scoped re-review (codex + Sonnet-5) then found 4 orchestrator defects — the High-severity one (both
+models): the curvature §2c retry can re-optimize u*, but the driver kept g_star/warm-start from the
+pre-retry point, silently mis-combining g and K (~7% mass error); plus a fail-closed logm leak, a
+`refine=False` bypass of the mandatory §1 gate, and a set-only (dup-accepting) site check. All fixed;
+codex + Sonnet re-review APPROVE. Commit **45556e5**; full suite **324 passed / 1 skipped**; PR #10 kept
+Draft. Still hermetic — no compute/sampler/Mauna/u*(η)/--execute; historical path unchanged.
