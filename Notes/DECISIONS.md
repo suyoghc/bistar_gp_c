@@ -2972,9 +2972,11 @@ labels; documented the choice instead).
 **Result:** `python -m pytest -q` → **349 passed / 1 skipped** (baseline 331/1 + 15 codex tests + 3
 review-fix tests). rev-5 sha256 unchanged; `m2c_freeze.py`, the freeze package, the historical
 `experiments/prior_sensitivity_study.py`, and PR-A source (`profile_potential.py`/`profile_integration.py`)
-all byte-identical to `70e3eb3`; nothing staged under `runs/`. No sampler executed, no Mauna/holdout
-access, no `--execute`. **Status:** Draft PR opened; STOP before PR C, PR D, any sampler execution, or the
-v1.18 recompute (still blocked on the PR-D v1.17 JSON algorithm manifest).
+all byte-identical to `70e3eb3`; nothing staged under `runs/`. No S2/S3 sampler route or scientific chain
+executed; no Mauna/holdout computation ran; no `--execute`. The full suite did execute its pre-existing
+hermetic tiny-E1 sampler regression tests. **Status:** Draft PR #11 opened, then flipped to Ready
+2026-07-13 (author accepted the constrained-bridge fix); STOP before merge, PR C, PR D, any scientific
+sampler execution, or the v1.18 recompute (still blocked on the PR-D v1.17 JSON algorithm manifest).
 
 **Update (2026-07-13, target-to-output bridge — author-directed S2/S3 fix, PR #11 kept Draft):** the S3
 target is evaluated in E1's u coordinates (`s3_potential = e1.potential_fn(z_to_e1_u(z))`), but the
@@ -2995,4 +2997,6 @@ asserts `== 0.0`, not merely small (scoped to the frozen CPU M0 battery — a de
 backend, not a cross-backend float guarantee). The gate exists so any future non-exp constraint (or non-M0
 model) is caught rather than silently mis-reported. `python -m pytest -q` → 350 passed / 1 skipped. Focused adversarial review (codex xHigh) of
 the bridge. rev-5 sha256 unchanged; `m2c_freeze.py` / PR-A source / historical path untouched; no `runs/`
-staged. PR #11 kept Draft.
+staged. Provenance (precise): no S2/S3 sampler route or scientific chain executed; no Mauna/holdout
+computation ran; the full suite did execute its pre-existing hermetic tiny-E1 sampler regression tests.
+PR #11 flipped to Ready 2026-07-13 after this fix was accepted.
