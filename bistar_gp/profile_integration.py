@@ -130,16 +130,20 @@ def full_domain_grid(
     return grid
 
 
-def cap_ladder_grids() -> dict[str, dict[float, np.ndarray]]:
+def cap_ladder_grids(
+    band_edges: Sequence[float] = TOY_BAND_EDGES,
+) -> dict[str, dict[float, np.ndarray]]:
     """Return the earlier decade-cap grids used only as a diagnostic trace.
 
     Upper pullbacks retain the full lower cap; lower pullbacks retain the full
-    upper cap.  Exact stage caps and toy band edges are present in every grid
-    where they lie in the retained domain.  These grids never encode a
-    pass/fail verdict.
+    upper cap.  The caller's band edges (toy 0.15/0.30 or the per-arm Mauna
+    q25/q75) are inserted into the base full-domain grid and remain present in
+    every stage grid where they lie inside the retained domain — so the
+    diagnostic band masses at each decade stage use the arm's own edges, not a
+    hard-coded toy pair.  These grids never encode a pass/fail verdict.
     """
 
-    full = full_domain_grid()
+    full = full_domain_grid(band_edges=band_edges)
     upper: dict[float, np.ndarray] = {}
     for cap in CAP_LADDER_UPPER_DIAGNOSTIC:
         stage = full[full < cap]
@@ -821,3 +825,442 @@ def heuristic_error_envelope(
         "delta_env": envelope,
         "label": "heuristic envelope, not a bound",
     }
+
+
+class _ProfileGridStop(RuntimeError):
+    """Carry a fail-closed profile result out of a refinement callback."""
+
+    def __init__(self, result: Mapping[str, Any]):
+        super().__init__(str(result["reason"]))
+        self.result = result
+
+
+def _profile_stop_result(
+    *,
+    noise: float,
+    index: int,
+    stage: str,
+    stage_reason: str,
+    u_stars: list[np.ndarray],
+    g_stars: list[float],
+    logdets: list[float],
+    logdet_by_h: Mapping[float, list[float]],
+) -> dict[str, Any]:
+    message = f"{stage}: {stage_reason}"
+    return {
+        # A stopped evaluation must never expose a marginal that a caller can
+        # accidentally integrate.  The accepted prefix is retained only in
+        # the explicitly named diagnostic fields below.
+        "logm": None,
+        "u_stars": [u.copy() for u in u_stars],
+        "g_star": np.asarray(g_stars, dtype=np.float64),
+        "logdet": np.asarray(logdets, dtype=np.float64),
+        "logdet_by_h": {
+            h: np.asarray(values, dtype=np.float64)
+            for h, values in logdet_by_h.items()
+        },
+        "stop": True,
+        "stop_index": index,
+        "stop_noise": noise,
+        "stop_record": (noise, index, message),
+        "reason": f"noise_grid[{index}]={noise:.17g}: {message}",
+    }
+
+
+def profile_logm_on_grid(
+    g_of: Callable[[np.ndarray, float], float],
+    grad_of: Callable[[np.ndarray, float], np.ndarray],
+    noise_grid: np.ndarray | Sequence[float],
+    mode_u: np.ndarray | Sequence[float],
+    nuisance_order: Sequence[str],
+    warm0: np.ndarray | Sequence[float] | None = None,
+) -> dict[str, Any]:
+    """Evaluate the gated conditional Laplace profile on a noise grid.
+
+    The grid is evaluated from low to high with the preceding conditional
+    optimum as the next warm start.  Any optimizer or curvature STOP discards
+    the marginal array and returns only diagnostic information for the
+    accepted prefix.
+    """
+
+    grid = _as_increasing_grid(noise_grid)
+    mode = np.asarray(mode_u, dtype=np.float64)
+    order = tuple(nuisance_order)
+    if mode.ndim != 1 or mode.size == 0 or len(order) != mode.size:
+        raise ValueError(
+            "mode_u and nuisance_order must describe the same nonempty vector"
+        )
+    if not np.all(np.isfinite(mode)):
+        raise ValueError("mode_u must be finite")
+    warm = mode.copy() if warm0 is None else np.asarray(warm0, dtype=np.float64)
+    if warm.shape != mode.shape or not np.all(np.isfinite(warm)):
+        raise ValueError("warm0 must be finite and have the same shape as mode_u")
+    warm = warm.copy()
+
+    u_stars: list[np.ndarray] = []
+    g_stars: list[float] = []
+    logm_values: list[float] = []
+    logdets: list[float] = []
+    logdet_by_h: dict[float, list[float]] = {h: [] for h in HESS_H_SWEEP}
+
+    for index, node in enumerate(grid):
+        noise = float(node)
+        opt = optimize_conditional(
+            lambda u, eta=noise: -float(g_of(u, eta)),
+            lambda u, eta=noise: -np.asarray(
+                grad_of(u, eta), dtype=np.float64
+            ),
+            warm,
+            mode,
+        )
+        if opt["stop"]:
+            return _profile_stop_result(
+                noise=noise,
+                index=index,
+                stage="optimizer",
+                stage_reason=str(opt["reason"]),
+                u_stars=u_stars,
+                g_stars=g_stars,
+                logdets=logdets,
+                logdet_by_h=logdet_by_h,
+            )
+
+        u_star = np.asarray(opt["u_star"], dtype=np.float64)
+        cur = curvature_gate(
+            lambda u, eta=noise: float(g_of(u, eta)),
+            lambda u, eta=noise: np.asarray(grad_of(u, eta), dtype=np.float64),
+            u_star,
+            order,
+        )
+        if cur["stop"]:
+            return _profile_stop_result(
+                noise=noise,
+                index=index,
+                stage="curvature",
+                stage_reason=str(cur["reason"]),
+                u_stars=u_stars,
+                g_stars=g_stars,
+                logdets=logdets,
+                logdet_by_h=logdet_by_h,
+            )
+
+        # curvature_gate may RE-OPTIMIZE u* (the rev-5 §2c retry); the accepted
+        # optimum is the point at which curvature was actually evaluated
+        # (cur["u_star"]). Use it consistently for g(u*), the Laplace value, the
+        # recorded optimum, and the next warm start — never combine g from the
+        # pre-retry optimizer point with K from the retried point. When no retry
+        # occurs cur["u_star"] == opt["u_star"] and g(u*) == opt["g_star"].
+        u_accepted = np.asarray(cur["u_star"], dtype=np.float64)
+        g_star = float(g_of(u_accepted, noise))
+        logdet = float(cur["logdet"])
+        dimension = u_accepted.size
+        logm = (
+            g_star
+            + 0.5 * dimension * np.log(2.0 * np.pi)
+            - 0.5 * logdet
+        )
+        u_stars.append(u_accepted.copy())
+        g_stars.append(g_star)
+        logm_values.append(float(logm))
+        logdets.append(logdet)
+        for h in HESS_H_SWEEP:
+            logdet_by_h[h].append(float(cur["logdet_by_h"][h]))
+        warm = u_accepted.copy()
+
+    return {
+        "logm": np.asarray(logm_values, dtype=np.float64),
+        "u_stars": u_stars,
+        "g_star": np.asarray(g_stars, dtype=np.float64),
+        "logdet": np.asarray(logdets, dtype=np.float64),
+        "logdet_by_h": {
+            h: np.asarray(values, dtype=np.float64)
+            for h, values in logdet_by_h.items()
+        },
+        "stop": False,
+        "stop_index": None,
+        "stop_noise": None,
+        "stop_record": None,
+        "reason": "",
+    }
+
+
+def _density_from_logm(logm: np.ndarray | Sequence[float]) -> np.ndarray:
+    """Exponentiate log-density values after a float-safe common shift."""
+
+    values = np.asarray(logm, dtype=np.float64)
+    if values.ndim != 1 or np.any(np.isnan(values)) or np.any(np.isposinf(values)):
+        raise ValueError("logm must be one-dimensional and contain no NaN or +inf")
+    finite = np.isfinite(values)
+    if not np.any(finite):
+        raise ValueError("logm must contain at least one finite value")
+    density = np.zeros_like(values)
+    density[finite] = np.exp(values[finite] - np.max(values[finite]))
+    return density
+
+
+def _corrected_profile_stop(
+    reason: str,
+    *,
+    stop_index: int | None = None,
+    grids: Mapping[str, Any] | None = None,
+    delta_quad_value: Mapping[str, float] | None = None,
+    delta_tail_value: Mapping[str, float] | None = None,
+) -> dict[str, Any]:
+    """Return a uniform unusable result after any corrected-profile STOP.
+
+    A STOP means the quadrature/tail/refinement is not trustworthy, so NO usable
+    marginal or band masses may be exposed (rev-5 §1 fail-closed). ``logm`` and
+    ``band_masses`` are always ``None`` and no per-stage ``logm`` array is
+    surfaced — even the full-grid profile that succeeded before a later gate
+    STOPped must not be handed back as an integrable result. Provenance of where
+    the STOP occurred is carried by ``reason`` + ``stop_index``; the partial
+    ``delta_quad``/``delta_tail`` computed before the STOP are reported as
+    diagnostics only.
+    """
+
+    return {
+        "band_masses": None,
+        "delta_quad": delta_quad_value,
+        "delta_hess": None,
+        "delta_tail": delta_tail_value,
+        "delta_env": None,
+        "quantiles": {},
+        "stop": True,
+        "stop_index": stop_index,
+        "reason": reason,
+        "grids": {} if grids is None else dict(grids),
+        "logm": None,
+        "profiles": {},
+    }
+
+
+def corrected_profile_band_masses(
+    g_of: Callable[[np.ndarray, float], float],
+    grad_of: Callable[[np.ndarray, float], np.ndarray],
+    mode_u: np.ndarray | Sequence[float],
+    nuisance_order: Sequence[str],
+    band_edges: Sequence[float],
+    *,
+    quantile_qs: Sequence[float] = (),
+) -> dict[str, Any]:
+    """Compose the corrected conditional profile into bands and sensitivities.
+
+    This is model-agnostic orchestration: all scientific evaluation arrives
+    through NumPy callables, while optimization, curvature, grids, quadrature,
+    and the frozen numerical gates are delegated to this module's reviewed
+    primitives. The rev-5 §1 nested-grid refinement gate is MANDATORY — there is
+    no bypass: a usable result is returned only if refinement converges below
+    EPS_GRID; otherwise the whole profile STOPs.
+    """
+
+    full_grid = full_domain_grid(band_edges=band_edges)
+    grids: dict[str, Any] = {"full": full_grid}
+    full_profile = profile_logm_on_grid(
+        g_of,
+        grad_of,
+        full_grid,
+        mode_u,
+        nuisance_order,
+    )
+    if full_profile["stop"]:
+        return _corrected_profile_stop(
+            f"full profile: {full_profile['reason']}",
+            stop_index=full_profile["stop_index"],
+            grids=grids,
+        )
+    P_full = band_masses(full_profile["logm"], full_grid, band_edges)
+
+    def masses_on_grid(grid: np.ndarray) -> Mapping[str, float]:
+        # refine_until_converged asks for level 0 first; reuse the already
+        # gated full result instead of repeating identical work.
+        if np.array_equal(grid, full_grid):
+            return P_full
+        result = profile_logm_on_grid(
+            g_of,
+            grad_of,
+            grid,
+            mode_u,
+            nuisance_order,
+            warm0=mode_u,
+        )
+        if result["stop"]:
+            raise _ProfileGridStop(result)
+        return band_masses(result["logm"], grid, band_edges)
+
+    try:
+        refinement = refine_until_converged(
+            band_masses_on_grid=masses_on_grid,
+            grid0=full_grid,
+        )
+    except _ProfileGridStop as exc:
+        failed = exc.result
+        return _corrected_profile_stop(
+            f"refinement profile: {failed['reason']}",
+            stop_index=failed["stop_index"],
+            grids=grids,
+        )
+    grids["refinement"] = refinement.get("grids", [])
+    if refinement["stop"]:
+        return _corrected_profile_stop(
+            f"refinement: {refinement['reason']}",
+            grids=grids,
+            delta_quad_value=refinement.get("delta_quad"),
+        )
+    # Reuse the standalone sensitivity primitive as the authoritative
+    # final-vs-previous calculation.
+    quad = delta_quad(refinement["masses_by_level"])
+
+    ladders = cap_ladder_grids(band_edges=band_edges)
+    upper_grid = ladders["upper"][CAP_LADDER_UPPER_DIAGNOSTIC[-1]]
+    lower_grid = ladders["lower"][CAP_LADDER_LOWER_DIAGNOSTIC[-1]]
+    grids["upper_pullback"] = upper_grid
+    grids["lower_pullback"] = lower_grid
+
+    upper_profile = profile_logm_on_grid(
+        g_of,
+        grad_of,
+        upper_grid,
+        mode_u,
+        nuisance_order,
+        warm0=mode_u,
+    )
+    if upper_profile["stop"]:
+        return _corrected_profile_stop(
+            f"upper-pullback profile: {upper_profile['reason']}",
+            stop_index=upper_profile["stop_index"],
+            grids=grids,
+            delta_quad_value=quad,
+        )
+    P_upper = band_masses(upper_profile["logm"], upper_grid, band_edges)
+
+    lower_profile = profile_logm_on_grid(
+        g_of,
+        grad_of,
+        lower_grid,
+        mode_u,
+        nuisance_order,
+        warm0=mode_u,
+    )
+    if lower_profile["stop"]:
+        return _corrected_profile_stop(
+            f"lower-pullback profile: {lower_profile['reason']}",
+            stop_index=lower_profile["stop_index"],
+            grids=grids,
+            delta_quad_value=quad,
+        )
+    P_lower = band_masses(lower_profile["logm"], lower_grid, band_edges)
+
+    tail_result = delta_tail(P_full, P_upper, P_lower)
+    if tail_result["stop"]:
+        return _corrected_profile_stop(
+            f"tail: {tail_result['reason']}",
+            grids=grids,
+            delta_quad_value=quad,
+            delta_tail_value=tail_result["delta_tail"],
+        )
+
+    dimension = np.asarray(mode_u, dtype=np.float64).size
+    laplace_constant = 0.5 * dimension * np.log(2.0 * np.pi)
+    masses_by_h: dict[float, Mapping[str, float]] = {
+        HESS_H_CENTER: P_full
+    }
+    logm_by_h: dict[float, np.ndarray] = {
+        HESS_H_CENTER: np.asarray(full_profile["logm"], dtype=np.float64)
+    }
+    for h in HESS_H_SWEEP:
+        if h == HESS_H_CENTER:
+            continue
+        logm_h = (
+            full_profile["g_star"]
+            + laplace_constant
+            - 0.5 * full_profile["logdet_by_h"][h]
+        )
+        logm_by_h[h] = np.asarray(logm_h, dtype=np.float64)
+        masses_by_h[h] = band_masses(logm_h, full_grid, band_edges)
+    hess = delta_hess(masses_by_h)
+
+    quantiles = {
+        float(q): quantile_exact_quadratic(
+            _density_from_logm(full_profile["logm"]), full_grid, float(q)
+        )
+        for q in quantile_qs
+    }
+    envelope = (
+        None
+        if quad is None
+        else heuristic_error_envelope(quad, hess, tail_result)
+    )
+    profiles = {
+        "full": full_profile,
+        "upper_pullback": upper_profile,
+        "lower_pullback": lower_profile,
+    }
+    return {
+        "band_masses": P_full,
+        "delta_quad": quad,
+        "delta_hess": hess,
+        "delta_tail": tail_result["delta_tail"],
+        "delta_env": None if envelope is None else envelope["delta_env"],
+        "quantiles": quantiles,
+        "stop": False,
+        "stop_index": None,
+        "reason": "",
+        "grids": grids,
+        "logm": full_profile["logm"],
+        "logm_by_h": logm_by_h,
+        "profiles": profiles,
+        "refinement": refinement,
+        "tail_sensitivity": tail_result,
+        "error_envelope": envelope,
+    }
+
+
+def profile_potential_callables(
+    profile: Any,
+    sites_order: Sequence[str] | None = None,
+) -> tuple[
+    Callable[[np.ndarray, float], float],
+    Callable[[np.ndarray, float], np.ndarray],
+]:
+    """Adapt a ``ProfilePotential`` to the NumPy orchestrator interface."""
+
+    # Torch is deliberately confined to this thin boundary adapter; the
+    # orchestrator above stays NumPy-only and model-agnostic.
+    import torch
+
+    nuisance_sites = tuple(profile.nuisance_sites)
+    order = nuisance_sites if sites_order is None else tuple(sites_order)
+    if len(order) != len(nuisance_sites) or set(order) != set(nuisance_sites):
+        raise ValueError("sites_order must contain every nuisance site exactly once")
+    target = getattr(profile, "_y", None)
+    device = None if target is None else target.device
+
+    def as_site_dict(u: np.ndarray | Sequence[float]) -> dict[str, Any]:
+        vector = np.asarray(u, dtype=np.float64)
+        if vector.shape != (len(order),) or not np.all(np.isfinite(vector)):
+            raise ValueError(
+                "u must be a finite vector with one coordinate per nuisance site"
+            )
+        return {
+            site: torch.as_tensor(
+                vector[index], dtype=torch.float64, device=device
+            )
+            for index, site in enumerate(order)
+        }
+
+    def g_of(u: np.ndarray, noise: float) -> float:
+        return float(profile.g_value(as_site_dict(u), float(noise)))
+
+    def grad_of(u: np.ndarray, noise: float) -> np.ndarray:
+        gradients = profile.g_grad_functional(as_site_dict(u), float(noise))
+        values: list[float] = []
+        for site in order:
+            gradient = gradients[site]
+            if gradient.numel() != 1:
+                raise ValueError(
+                    "each nuisance site must map to exactly one adapter coordinate"
+                )
+            values.append(float(gradient.detach().reshape(-1)[0]))
+        return np.asarray(values, dtype=np.float64)
+
+    return g_of, grad_of

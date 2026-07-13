@@ -31,16 +31,23 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 ### PR A — profile core IMPLEMENTED (branch `feat/d19-m2c-pr-a` off main a7e108d7; D41, 2026-07-13)
 
 - **Scope = profile core only** (P1 functional gradient + battery + D23 sentinel; L-BFGS-B optimizer
-  gate; curvature gate; P3 grid/quadrature; band-mass partition; quantile inversion; δ_quad/hess/tail).
+  gate; curvature gate; P3 grid/quadrature; band-mass partition; quantile inversion; δ_quad/hess/tail;
+  **the top-level orchestrator** `profile_logm_on_grid` + `corrected_profile_band_masses` +
+  `profile_potential_callables` that COMPOSE the primitives so v1.18 is execution-only).
   6 NEW files: `bistar_gp/{m2c_freeze,profile_potential,profile_integration}.py` +
-  `tests/test_m2c_{freeze_constants,profile_gradient,profile_integration}.py`. **Zero tracked files
-  modified**; the historical buggy triplet + `experiments/prior_sensitivity_study.py` untouched.
-- **Hermetic only** — synthetic fixtures / quadratic oracles; NO real compute, sampler, Mauna, or u*(η).
-- **Verified:** full suite **309 passed / 1 skipped** (+32); rev-5 sha256 unchanged; measured gradient
-  dev ≤7.67e-6, D23 mismatch 2.14/2.72, band-mass ΣP_b−1=0, curvature vs diag(1,4,9)=0.
-- **Adversarial review:** codex gpt-5.6-sol xHigh (primary) + Sonnet-5 cross-model. 2 codex blockers
-  fixed (curvature-retry stationarity re-check; the §1 `refine_until_converged` convergence/STOP gate)
-  + 2 Sonnet minors (D23 floor provenance; inert prior double-count). Gemini/Fable unavailable
+  `tests/test_m2c_{freeze_constants,profile_gradient,profile_integration}.py`. The historical buggy
+  triplet + `experiments/prior_sensitivity_study.py` untouched.
+- **Hermetic only** — synthetic fixtures / quadratic + Gaussian-profile oracles; NO real compute,
+  sampler, Mauna, or u*(η). The orchestrator is tested on analytic oracles only; the adapter at a
+  single MAP point.
+- **Verified:** full suite **324 passed / 1 skipped**; rev-5 sha256 unchanged; measured gradient dev
+  ≤7.67e-6, D23 mismatch 2.14/2.72, band-mass ΣP_b−1=0, curvature vs diag(1,4,9)=0, oracle logm error
+  5.4e-14.
+- **Adversarial review (3 rounds):** codex gpt-5.6-sol xHigh (primary) + Sonnet-5 cross-model. R1: 2
+  codex blockers (curvature-retry stationarity; §1 refine gate) + 2 Sonnet minors. R2 (codex reviewed
+  the actual PR diff): S1 missing orchestrator + S2/S3 conformance. R3 (scoped re-review): 4 orchestrator
+  defects — curvature-retry Laplace bookkeeping (High, BOTH models), fail-closed logm leak, refine=False
+  bypass, non-one-to-one site order. All fixed; codex + Sonnet APPROVE. Gemini/Fable unavailable
   (quota/outage/credits).
 - **Deferred to the gated v1.18 recompute:** real u*(η) optimization; curvature gate on the real
   profile; corrected band-mass triplet / real golden PASS-FAIL; v1.18 result manifest; S2 HMC smoke.

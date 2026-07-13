@@ -260,6 +260,42 @@ def test_site_order_and_noise_role_match_e1(profile_case):
     )
 
 
+def test_authoritative_site_order_is_a_production_contract(profile_case):
+    """When the caller supplies the authoritative E1 order, ProfilePotential
+    validates it against named_priors and uses it (rev-5 §5.2), failing closed
+    on any set mismatch — without constructing the pyro oracle itself."""
+    case = profile_case
+    e1 = E1Potential(case["model"], case["likelihood"], case["x"], case["y"])
+    # Authoritative order accepted and honoured.
+    contracted = ProfilePotential(
+        case["model"], case["likelihood"], case["x"], case["y"], sites=e1.sites
+    )
+    assert contracted.sites == e1.sites
+    assert contracted.noise_site == case["profile"].noise_site
+    # The supplied ORDER is used, not merely the set: a permutation that differs
+    # from named_priors order is honoured verbatim (guards against a set-only
+    # implementation that would silently keep the discovered order).
+    permuted = (e1.sites[1], e1.sites[0]) + e1.sites[2:]
+    assert permuted != e1.sites
+    permuted_profile = ProfilePotential(
+        case["model"], case["likelihood"], case["x"], case["y"], sites=permuted
+    )
+    assert permuted_profile.sites == permuted
+    # A set that cannot be reconciled with named_priors fails closed.
+    bad_sites = e1.sites[:-1] + ("covar_module.kernels.99.not_a_real_prior",)
+    with pytest.raises(RuntimeError, match="site-order contract"):
+        ProfilePotential(
+            case["model"], case["likelihood"], case["x"], case["y"], sites=bad_sites
+        )
+    # A duplicated site (same set, but not one-to-one) also fails closed —
+    # otherwise g_value would loop over and double-count that coordinate.
+    dup_sites = e1.sites + (e1.sites[0],)
+    with pytest.raises(RuntimeError, match="site-order contract"):
+        ProfilePotential(
+            case["model"], case["likelihood"], case["x"], case["y"], sites=dup_sites
+        )
+
+
 def test_generic_nine_site_inventory_is_supported(synthetic_9site):
     profile = synthetic_9site
     assert len(profile.sites) == 9

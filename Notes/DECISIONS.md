@@ -2729,3 +2729,47 @@ Runtime checks deferred to the gated v1.18 recompute: real u*(η) optimization, 
 real profile at conditional optima, the corrected band-mass triplet / any golden PASS/FAIL against real
 data, the v1.18 result manifest, and the S2 end-to-end HMC smoke (PR B). PRs B (S2/S3), C
 (M1/overlap/nugget), D (divergence/MCSE/manifests/umbrella) follow.
+
+**Update (2026-07-13, second review round — codex reviewed PR #10's actual diff):** codex confirmed the
+34 targeted tests pass but flagged that PR-A had shipped the numerical PRIMITIVES without a top-level
+corrected-profile ORCHESTRATOR, plus two conformance gaps. All three addressed (still hermetic, no
+compute; historical path untouched):
+- **S1 (scope) — the missing orchestration is now added**, so the gated v1.18 recompute is
+  execution-only (it calls reviewed code, does not write new orchestration): `profile_logm_on_grid`
+  (per-noise gated Laplace: optimize → curvature → logm = g(u*) + (d/2)log2π − 0.5·log det K;
+  warm-start progression; fail-closed on optimizer/curvature STOP with `logm=None`);
+  `corrected_profile_band_masses` (composes full grid → profile → `band_masses` → nested refinement
+  with STOP propagation → δ_tail via the one-decade pullbacks `cap_ladder_grids[1000]`/`[1e-6]` → δ_hess
+  from reused per-node h-sweep logdets → exact-quadratic quantiles → heuristic envelope; fail-closed on
+  every gate); `profile_potential_callables` (thin torch↔numpy adapter — the v1.18 bridge). Distinct
+  from the primitives (`optimize_conditional`, `curvature_gate`, grid/band/quantile/δ functions): the
+  orchestrator COMPOSES them. Hermetic Gaussian-profile oracle test (analytic u*=μ, K=A) proves the
+  Laplace formula (logm error 5.4e-14), band masses vs analytic (ΣP_b−1=0), warm-start, call-ordering,
+  and fail-closed propagation from all four gates (optimizer/curvature/refinement/tail); the adapter is
+  checked at a single MAP point only (no orchestrator run on real optima).
+- **S2 — `cap_ladder_grids(band_edges=...)`** now threads the caller's edges into `full_domain_grid`, so
+  the Mauna per-arm q25/q75 diagnostic grids are no longer silently replaced by the toy 0.15/0.30.
+- **S3 — E1 site order is now a production contract:** `ProfilePotential(..., sites=<authoritative>)`
+  validates the set against `named_priors()` and fails closed on mismatch, without constructing the
+  pyro oracle (only its frozen ordering authority is honoured). Fallback to `named_priors()` order for
+  toy/M0 retained.
+The scoped re-review of these additions (codex + Sonnet-5) then found **4 further defects in the new
+orchestrator**, all fixed (both reviewers independently flagged the High-severity one):
+- **Curvature-retry Laplace bookkeeping (High; codex + Sonnet):** `profile_logm_on_grid` combined
+  `g_star` from the pre-retry optimizer point with `logdet`/K from `curvature_gate`'s re-optimized point
+  (§2c retry), and warm-started from the stale point — a silent (non-STOP) wrong `logm` whenever a retry
+  succeeds at a materially different optimum (Sonnet reproduced a 0.068-nat / ~7% error). FIX: use
+  `u_accepted = cur["u_star"]`, recompute `g_star = g_of(u_accepted, noise)`, warm-start from it; δ_hess
+  inherits the now-consistent `g_star`. Discriminating test added (retry lands at a different point).
+- **Fail-closed leak (codex):** `_corrected_profile_stop` still exposed the successful full-grid `logm`
+  (and via `profiles`) after a later refinement/pullback/tail STOP. FIX: `logm=None`, `profiles={}`
+  unconditionally; STOP tests now assert both.
+- **Mandatory-gate bypass (codex):** a public `refine=False` skipped the rev-5 §1 refinement gate. FIX:
+  the `refine` parameter is removed; refinement is always run (converge-or-STOP).
+- **Non-one-to-one site order (codex):** the S3 contract validated by SET only, accepting a duplicated
+  site (which `g_value` would double-count). FIX: also reject duplicates; the order test now covers a
+  permutation (proves the order, not just the set) and a duplicate rejection.
+Also added coverage for the previously-untested upper/lower-pullback sub-profile STOP branches.
+Full suite 324 passed / 1 skipped (+13 across both rounds); rev-5 sha256 unchanged; historical functions
++ `experiments/prior_sensitivity_study.py` still untouched. Re-review verdict after fixes: codex + Sonnet
+APPROVE. The v1.18 recompute remains gated and execution-only; nothing here runs compute.

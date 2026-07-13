@@ -21,14 +21,40 @@ class ProfilePotential:
     """Differentiable ``log_joint(exp(u), noise) + sum(u)`` profile target."""
 
     def __init__(self, model, likelihood, train_x, train_y,
-                 jitter=DEFAULT_JITTER):
+                 jitter=DEFAULT_JITTER, sites=None):
+        """``sites`` is the AUTHORITATIVE ordered site inventory (rev-5 §5.2:
+        emit in ``E1Potential.sites`` order). When supplied it is validated
+        against ``model.named_priors()`` (same SET, fail-closed on mismatch) and
+        used as the coordinate order — the production contract. The pyro oracle
+        is NEVER constructed or scored here; only its frozen ordering authority
+        (a plain tuple obtained upstream) is honoured. When ``sites`` is omitted
+        the order falls back to ``named_priors()`` (valid for the toy/M0
+        inventories, where a test asserts it equals ``E1Potential.sites``)."""
         self._model = model
         self._likelihood = likelihood
         self._x = train_x.double()
         self._y = train_y.double()
         self._jitter = jitter
 
-        self.sites = tuple(name for name, *_ in model.named_priors())
+        discovered = tuple(name for name, *_ in model.named_priors())
+        if sites is not None:
+            authoritative = tuple(sites)
+            # A one-to-one order: same set AND no duplicates (rev-5 §5.2 emits in
+            # the authoritative site order). A set-only check would accept a
+            # duplicated nuisance site, which would then be looped over — and its
+            # prior/Jacobian double-counted — in g_value.
+            if (
+                len(authoritative) != len(set(authoritative))
+                or set(authoritative) != set(discovered)
+            ):
+                raise RuntimeError(
+                    "profile site-order contract violation: authoritative sites "
+                    f"{list(authoritative)} are not a one-to-one ordering of "
+                    f"model.named_priors {sorted(discovered)} (fail-closed; no "
+                    "pyro oracle built)")
+            self.sites = authoritative
+        else:
+            self.sites = discovered
         self._site_map = _site_parameter_map(model, self.sites)
         noise_sites = tuple(
             site for site in self.sites if "noise_covar.noise" in site

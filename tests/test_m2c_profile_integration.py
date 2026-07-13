@@ -28,6 +28,10 @@ from bistar_gp.m2c_freeze import (
 
 BAND_KEYS = ("P_noise_lo", "P_noise_mid", "P_noise_hi")
 NUISANCE_ORDER = ("ls", "os", "lv")
+ORACLE_A = np.diag([1.0, 4.0, 9.0])
+ORACLE_MU = np.array([0.4, -0.7, 1.1], dtype=np.float64)
+ORACLE_ETA0 = 0.22
+ORACLE_SIGMA = 0.8
 
 
 def _quadratic_oracle(A, center=None):
@@ -52,6 +56,30 @@ def _bands(lo, mid, hi):
         "P_noise_mid": mid,
         "P_noise_hi": hi,
     }
+
+
+def _oracle_c(noise):
+    return -0.5 * (
+        (np.log(float(noise)) - np.log(ORACLE_ETA0)) / ORACLE_SIGMA
+    ) ** 2
+
+
+def _gaussian_profile_oracle(indefinite_at=None):
+    def matrix(noise):
+        if indefinite_at is not None and float(noise) == float(indefinite_at):
+            return np.diag([1.0, 4.0, -2.0])
+        return ORACLE_A
+
+    def g_of(u, noise):
+        delta = np.asarray(u, dtype=np.float64) - ORACLE_MU
+        A = matrix(noise)
+        return -0.5 * float(delta @ A @ delta) + _oracle_c(noise)
+
+    def grad_of(u, noise):
+        A = matrix(noise)
+        return -A @ (np.asarray(u, dtype=np.float64) - ORACLE_MU)
+
+    return g_of, grad_of
 
 
 def test_p3_grid_geometry_and_nested_refinement():
@@ -104,6 +132,23 @@ def test_cap_ladder_grids_are_diagnostic_decade_stages():
     for cap, grid in ladders["lower"].items():
         assert grid[0] == cap
         assert grid[-1] == FULL_DOMAIN_HI
+
+
+def test_cap_ladder_grids_honour_caller_band_edges():
+    # Mauna arm uses per-arm q25/q75 edges, NOT the toy 0.15/0.30. The
+    # diagnostic cap grids must carry the caller's edges (regression for the
+    # dropped-Mauna-edges defect), and must not silently inject toy edges.
+    mauna_edges = (0.5, 3.0)
+    ladders = integration.cap_ladder_grids(band_edges=mauna_edges)
+    upper_10 = ladders["upper"][10.0]
+    for edge in mauna_edges:
+        assert np.count_nonzero(upper_10 == edge) == 1
+    for toy_edge in TOY_BAND_EDGES:
+        assert np.count_nonzero(upper_10 == toy_edge) == 0
+    # Default still inserts the toy edges.
+    default_upper_10 = integration.cap_ladder_grids()["upper"][10.0]
+    for toy_edge in TOY_BAND_EDGES:
+        assert np.count_nonzero(default_upper_10 == toy_edge) == 1
 
 
 def test_band_masses_partition_sums_to_one_on_synthetic_profile():
@@ -342,6 +387,323 @@ def test_numerical_error_components_envelope_and_domain_stop():
     assert triggered["stop"] is True
 
 
+def test_profile_logm_on_grid_matches_gaussian_profile_oracle():
+    g_of, grad_of = _gaussian_profile_oracle()
+    grid = np.geomspace(0.02, 2.0, 9)
+    result = integration.profile_logm_on_grid(
+        g_of,
+        grad_of,
+        grid,
+        ORACLE_MU,
+        NUISANCE_ORDER,
+    )
+
+    expected_logdet = float(np.linalg.slogdet(ORACLE_A)[1])
+    expected = np.asarray([_oracle_c(noise) for noise in grid]) + (
+        1.5 * np.log(2.0 * np.pi) - 0.5 * expected_logdet
+    )
+    assert result["stop"] is False
+    assert result["stop_index"] is None
+    assert len(result["u_stars"]) == grid.size
+    for u_star in result["u_stars"]:
+        np.testing.assert_allclose(u_star, ORACLE_MU, rtol=0, atol=1e-10)
+    np.testing.assert_allclose(
+        result["logdet"], expected_logdet, rtol=0, atol=1e-10
+    )
+    np.testing.assert_allclose(result["logm"], expected, rtol=0, atol=1e-8)
+
+
+@pytest.fixture(scope="module")
+def corrected_gaussian_oracle():
+    g_of, grad_of = _gaussian_profile_oracle()
+    return integration.corrected_profile_band_masses(
+        g_of,
+        grad_of,
+        ORACLE_MU,
+        NUISANCE_ORDER,
+        TOY_BAND_EDGES,
+        quantile_qs=(0.25, 0.75),
+    )
+
+
+def test_corrected_profile_band_masses_matches_gaussian_oracle(
+    corrected_gaussian_oracle,
+):
+    result = corrected_gaussian_oracle
+    assert result["stop"] is False
+    grid = result["grids"]["full"]
+    expected_logdet = float(np.linalg.slogdet(ORACLE_A)[1])
+    expected_logm = np.asarray([_oracle_c(noise) for noise in grid]) + (
+        1.5 * np.log(2.0 * np.pi) - 0.5 * expected_logdet
+    )
+    expected_masses = integration.band_masses(
+        expected_logm, grid, TOY_BAND_EDGES
+    )
+    for key in BAND_KEYS:
+        assert result["band_masses"][key] == pytest.approx(
+            expected_masses[key], rel=0, abs=1e-10
+        )
+    residual = sum(result["band_masses"][key] for key in BAND_KEYS) - 1.0
+    assert abs(residual) <= 1e-15
+
+    for sensitivity in (
+        result["delta_quad"],
+        result["delta_hess"],
+        result["delta_tail"],
+        result["delta_env"],
+    ):
+        assert all(np.isfinite(sensitivity[key]) for key in BAND_KEYS)
+    assert max(result["delta_quad"].values()) < EPS_GRID
+    assert max(result["delta_tail"].values()) < EPS_DOMAIN
+    assert max(result["delta_hess"].values()) < 1e-12
+    for h in HESS_H_SWEEP:
+        np.testing.assert_allclose(
+            result["profiles"]["full"]["logdet_by_h"][h],
+            expected_logdet,
+            rtol=0,
+            atol=1e-10,
+        )
+    assert result["quantiles"][0.25] < result["quantiles"][0.75]
+
+
+def test_profile_orchestrators_fail_closed_on_optimizer_stop(monkeypatch):
+    g_of, grad_of = _gaussian_profile_oracle()
+    real_optimize = integration.optimize_conditional
+    call_count = 0
+
+    def stop_at_second_node(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            return {"stop": True, "reason": "synthetic optimizer stop"}
+        return real_optimize(*args, **kwargs)
+
+    monkeypatch.setattr(
+        integration, "optimize_conditional", stop_at_second_node
+    )
+    direct = integration.profile_logm_on_grid(
+        g_of,
+        grad_of,
+        np.array([0.1, 0.2, 0.3]),
+        ORACLE_MU,
+        NUISANCE_ORDER,
+    )
+    assert direct["stop"] is True
+    assert direct["stop_index"] == 1
+    assert direct["logm"] is None
+    assert "optimizer: synthetic optimizer stop" in direct["reason"]
+
+    call_count = 0
+    corrected = integration.corrected_profile_band_masses(
+        g_of,
+        grad_of,
+        ORACLE_MU,
+        NUISANCE_ORDER,
+        TOY_BAND_EDGES,
+    )
+    assert corrected["stop"] is True
+    assert corrected["stop_index"] == 1
+    assert corrected["band_masses"] is None
+    assert corrected["logm"] is None
+    assert corrected["profiles"] == {}
+    assert "optimizer: synthetic optimizer stop" in corrected["reason"]
+
+
+def test_profile_logm_fails_closed_on_single_indefinite_curvature_node():
+    bad_noise = 0.2
+    g_of, grad_of = _gaussian_profile_oracle(indefinite_at=bad_noise)
+    result = integration.profile_logm_on_grid(
+        g_of,
+        grad_of,
+        np.array([0.1, bad_noise, 0.3]),
+        ORACLE_MU,
+        NUISANCE_ORDER,
+    )
+    assert result["stop"] is True
+    assert result["stop_index"] == 1
+    assert result["stop_noise"] == bad_noise
+    assert result["logm"] is None
+    assert "curvature: curvature is not strictly SPD" in result["reason"]
+
+
+def test_corrected_profile_propagates_refinement_stop(monkeypatch):
+    g_of, grad_of = _gaussian_profile_oracle()
+    stopped_delta = _bands(2e-4, 1e-4, 3e-4)
+
+    def stopped_refinement(**kwargs):
+        return {
+            "stop": True,
+            "reason": "synthetic refinement stop",
+            "delta_quad": stopped_delta,
+            "grids": [kwargs["grid0"]],
+        }
+
+    monkeypatch.setattr(
+        integration, "refine_until_converged", stopped_refinement
+    )
+    result = integration.corrected_profile_band_masses(
+        g_of,
+        grad_of,
+        ORACLE_MU,
+        NUISANCE_ORDER,
+        TOY_BAND_EDGES,
+    )
+    assert result["stop"] is True
+    assert result["band_masses"] is None
+    assert result["logm"] is None                  # no usable marginal past STOP
+    assert result["profiles"] == {}
+    assert result["delta_quad"] == stopped_delta
+    assert "refinement: synthetic refinement stop" in result["reason"]
+
+
+def test_corrected_profile_propagates_tail_stop(monkeypatch):
+    g_of, grad_of = _gaussian_profile_oracle()
+
+    def stopped_tail(*args):
+        return {
+            "upper": _bands(0.0, EPS_DOMAIN, 0.0),
+            "lower": _bands(0.0, 0.0, 0.0),
+            "delta_tail": _bands(0.0, EPS_DOMAIN, 0.0),
+            "stop": True,
+            "reason": "synthetic tail stop",
+        }
+
+    monkeypatch.setattr(integration, "delta_tail", stopped_tail)
+    result = integration.corrected_profile_band_masses(
+        g_of,
+        grad_of,
+        ORACLE_MU,
+        NUISANCE_ORDER,
+        TOY_BAND_EDGES,
+    )
+    assert result["stop"] is True
+    assert result["band_masses"] is None
+    assert result["logm"] is None                  # no usable marginal past STOP
+    assert result["profiles"] == {}
+    assert result["delta_tail"]["P_noise_mid"] == EPS_DOMAIN
+    assert "tail: synthetic tail stop" in result["reason"]
+
+
+def test_corrected_profile_propagates_pullback_subprofile_stop():
+    # A curvature STOP that occurs only on the upper/lower one-decade pullback
+    # grid (not on the full grid) must still fail the whole corrected profile
+    # closed — these branches were previously untested (codex/Sonnet coverage
+    # gap). The upper pullback [1e-7, 1e3] contains 1000.0 as its cap node; make
+    # the oracle indefinite exactly there so the full grid passes but the
+    # upper-pullback profile STOPs.
+    g_of, grad_of = _gaussian_profile_oracle(indefinite_at=1000.0)
+    result = integration.corrected_profile_band_masses(
+        g_of,
+        grad_of,
+        ORACLE_MU,
+        NUISANCE_ORDER,
+        TOY_BAND_EDGES,
+    )
+    assert result["stop"] is True
+    assert result["band_masses"] is None
+    assert result["logm"] is None
+    assert result["profiles"] == {}
+    assert "upper-pullback profile" in result["reason"]
+    assert "curvature is not strictly SPD" in result["reason"]
+
+
+def test_profile_logm_calls_optimizer_before_curvature_at_every_node(monkeypatch):
+    g_of, grad_of = _gaussian_profile_oracle()
+    call_log = []
+
+    def fake_optimize(neg_g, neg_grad, u0_warm, u0_mode):
+        call_log.append("optimize")
+        u_star = np.asarray(u0_mode, dtype=np.float64).copy()
+        return {
+            "stop": False,
+            "reason": "",
+            "u_star": u_star,
+            "g_star": -float(neg_g(u_star)),
+        }
+
+    def fake_curvature(g, grad, u_star, nuisance_order):
+        call_log.append("curvature")
+        return {
+            "stop": False,
+            "reason": "",
+            "u_star": np.asarray(u_star, dtype=np.float64).copy(),
+            "logdet": float(np.linalg.slogdet(ORACLE_A)[1]),
+            "logdet_by_h": {
+                h: float(np.linalg.slogdet(ORACLE_A)[1])
+                for h in HESS_H_SWEEP
+            },
+        }
+
+    monkeypatch.setattr(integration, "optimize_conditional", fake_optimize)
+    monkeypatch.setattr(integration, "curvature_gate", fake_curvature)
+    result = integration.profile_logm_on_grid(
+        g_of,
+        grad_of,
+        np.array([0.1, 0.2, 0.3]),
+        ORACLE_MU,
+        NUISANCE_ORDER,
+    )
+    assert result["stop"] is False
+    assert call_log == ["optimize", "curvature"] * 3
+
+
+def test_profile_potential_adapter_matches_single_synthetic_map_evaluation():
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("gpytorch")
+    from bistar_gp.config import (
+        PRIOR_CONFIGS,
+        build_kernels_from_config,
+        build_likelihood_from_config,
+    )
+    from bistar_gp.fit import fit_map
+    from bistar_gp.model import build_model
+    from bistar_gp.profile_potential import ProfilePotential
+
+    torch.manual_seed(17)
+    x = torch.linspace(0.0, 5.0, 20).double()
+    y = (torch.sin(2.0 * x) + 0.15 * torch.randn(20)).double()
+    prior = PRIOR_CONFIGS["toy_elicited_n20"]
+    kernels, names = build_kernels_from_config(prior)
+    likelihood = build_likelihood_from_config(prior)
+    model, likelihood = build_model(x, y, kernels, names, likelihood)
+    fit_map(model, likelihood, x, y, n_iter=80, lr=0.05, verbose=False)
+    profile = ProfilePotential(model, likelihood, x, y)
+
+    parameters = dict(model.named_parameters())
+    u_map = {}
+    for site in profile.nuisance_sites:
+        _prior, fqname, constraint, _raw_shape = profile._site_map[site]
+        raw = parameters[fqname].detach().clone()
+        theta = constraint.transform(raw) if constraint is not None else raw
+        u_map[site] = torch.log(theta)
+    _prior, fqname, constraint, _raw_shape = profile._site_map[
+        profile.noise_site
+    ]
+    raw_noise = parameters[fqname].detach().clone()
+    noise = constraint.transform(raw_noise) if constraint is not None else raw_noise
+    u0 = np.asarray(
+        [float(u_map[site].reshape(-1)[0]) for site in profile.nuisance_sites],
+        dtype=np.float64,
+    )
+
+    expected_value = float(profile.g_value(u_map, noise))
+    expected_gradients = profile.g_grad_functional(u_map, noise)
+    expected_gradient = np.asarray(
+        [
+            float(expected_gradients[site].detach().reshape(-1)[0])
+            for site in profile.nuisance_sites
+        ],
+        dtype=np.float64,
+    )
+    g_of, grad_of = integration.profile_potential_callables(profile)
+    assert g_of(u0, float(noise)) == pytest.approx(
+        expected_value, rel=0, abs=1e-10
+    )
+    np.testing.assert_allclose(
+        grad_of(u0, float(noise)), expected_gradient, rtol=0, atol=1e-10
+    )
+
+
 def test_curvature_retry_rejects_nonstationary_reoptimum(monkeypatch):
     """The §2c retry re-optimizes u*; a SciPy status==0 result at a
     non-stationary but well-conditioned SPD point must still STOP (rev-5 §2b
@@ -469,3 +831,39 @@ def test_refine_until_converged_reports_intermediate_level_delta():
     assert out["delta_quad"] == pytest.approx(
         {"P_noise_lo": 5e-6, "P_noise_mid": 0.0, "P_noise_hi": 0.0}, abs=1e-15
     )
+
+
+def test_profile_logm_uses_curvature_retry_reoptimum(monkeypatch):
+    # rev-5 §2c: a successful curvature retry re-optimizes u*, so the Laplace
+    # value must combine g AND K at the SAME (retried) point. The quadratic
+    # oracles used elsewhere reconverge to the identical point, so this path is
+    # otherwise untested (codex defect 5 / Sonnet item 1). Simulate a retry that
+    # lands at a materially different accepted point and assert the profile uses
+    # g(cur["u_star"]), not g(optimizer u*).
+    g_of, grad_of = _gaussian_profile_oracle()          # g maximized at ORACLE_MU
+    retry_point = ORACLE_MU + np.array([0.5, 0.0, 0.0])
+    logdet_A = float(np.linalg.slogdet(ORACLE_A)[1])
+
+    def fake_curvature(g, grad, u_star, nuisance_order):
+        # Pretend the §2c retry re-optimized to `retry_point` (SPD, accepted).
+        return {
+            "stop": False,
+            "reason": "",
+            "u_star": retry_point.copy(),
+            "logdet": logdet_A,
+            "logdet_by_h": {h: logdet_A for h in HESS_H_SWEEP},
+            "retry_count": 1,
+        }
+
+    monkeypatch.setattr(integration, "curvature_gate", fake_curvature)
+    grid = np.array([0.2, 0.5])
+    result = integration.profile_logm_on_grid(
+        g_of, grad_of, grid, ORACLE_MU, NUISANCE_ORDER
+    )
+    expected_g = g_of(retry_point, 0.2)                 # g at the RETRIED point
+    expected_logm = expected_g + 1.5 * np.log(2.0 * np.pi) - 0.5 * logdet_A
+    # Discriminating: g at the optimizer point (mu) differs by 0.125 nats.
+    assert g_of(ORACLE_MU, 0.2) - expected_g == pytest.approx(0.125, abs=1e-9)
+    assert result["logm"][0] == pytest.approx(expected_logm, rel=0, abs=1e-10)
+    assert result["g_star"][0] == pytest.approx(expected_g, rel=0, abs=1e-10)
+    np.testing.assert_allclose(result["u_stars"][0], retry_point, rtol=0, atol=1e-12)
