@@ -28,7 +28,13 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   exact hashes + passing tests, then stop-and-report; HMC only via `fit_hmc_e1`; VI+hmc_laplace
   withdrawn; A7 Della on hold (v1.8); holdout SEALED (§6.6).
 
-### PR A — profile core IMPLEMENTED (branch `feat/d19-m2c-pr-a` off main a7e108d7; D41, 2026-07-13)
+### PR A — profile core READY (PR #10, branch `feat/d19-m2c-pr-a` off main a7e108d7; D41, 2026-07-13)
+
+- **PR #10 flipped Draft → Ready 2026-07-13** after S2 authority path closed (9 review rounds, codex +
+  Sonnet BOTH APPROVE). MERGEABLE / CLEAN, current with `main`, no `runs/` in the diff. Exact full-suite
+  command: `python -m pytest -q` → 331 passed / 1 skipped (bare `pytest -q` has a pre-existing
+  `experiments` collection issue — out of scope, do NOT broaden PR A to fix it). STOPPED before merge per
+  author instruction; merge is the author's call. No v1.18/recompute/sampler/Mauna.
 
 - **Scope = profile core only** (P1 functional gradient + battery + D23 sentinel; L-BFGS-B optimizer
   gate; curvature gate; P3 grid/quadrature; band-mass partition; quantile inversion; δ_quad/hess/tail;
