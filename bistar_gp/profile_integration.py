@@ -1423,11 +1423,22 @@ def profile_potential_callables(
     # orchestrator above stays NumPy-only and model-agnostic.
     import torch
 
-    nuisance_sites = tuple(profile.nuisance_sites)
+    # Derive the operative nuisance order DIRECTLY from the independently
+    # re-derived e1.sites (minus the noise site), NOT from the mutable
+    # profile.nuisance_sites field — otherwise a caller could mutate that cached
+    # tuple after construction and mis-map the positional u-vector to the wrong
+    # site while both the full-inventory check and this check still pass. The
+    # noise site is identified by the same semantic role used everywhere.
+    e1_noise = tuple(site for site in e1.sites if "noise_covar.noise" in site)
+    if len(e1_noise) != 1:
+        raise ValueError(
+            f"independently-derived E1 inventory has {len(e1_noise)} noise sites; "
+            "expected exactly one — cannot certify the nuisance order")
+    nuisance_sites = tuple(site for site in e1.sites if site != e1_noise[0])
     order = tuple(sites_order)
     if order != nuisance_sites:
         raise ValueError(
-            "sites_order must equal the profile's authoritative nuisance order "
+            "sites_order must equal the independently-derived E1 nuisance order "
             f"EXACTLY (got {list(order)}, expected {list(nuisance_sites)}); an "
             "arbitrary same-set permutation — or a missing/duplicate site — is "
             "rejected")

@@ -2869,4 +2869,18 @@ sites_order required → profile explicitly authoritative → `profile.sites` ==
 `e1.sites` → `sites_order` == `profile.nuisance_sites` exactly. New test asserts a permutation-as-`sites`
 profile (authoritative flag True) is REJECTED by the re-derivation; the `sites_are_authoritative` comment
 documents that the flag alone is not the authority. Full suite 331 passed / 1 skipped; rev-5 sha256
-unchanged; historical path untouched. Re-reviewed by codex + Sonnet. PR #10 kept Draft.
+unchanged; historical path untouched. PR #10 kept Draft.
+
+**Update (2026-07-13, eighth review round — mutable nuisance-order field):** the confirmation re-review
+(codex CHANGES-REQUIRED / Sonnet APPROVE) found one more residual: the bridge verified the full inventory
+`profile.sites == e1.sites` but then took the OPERATIVE nuisance order (used to map the positional
+u-vector to site names) from the separate MUTABLE `profile.nuisance_sites` field — a caller could mutate
+that cached tuple after construction to a permutation and mis-map coordinates (probe reproduced:
+`MUTATED -> ACCEPTED`). FIX: the bridge now derives the nuisance order DIRECTLY from the re-derived
+`e1.sites` (minus the semantically-identified noise site), trusting nothing mutable on the profile except
+the model/data used to re-derive E1. Sonnet separately noted the permutation test happened to swap
+noise↔non-noise (noise is at `e1.sites[0]` for the toy) so it only exercised the full-inventory check;
+the test now swaps two genuine NON-noise sites and asserts the nuisance subsequence is reordered, and a
+new case mutates `profile.nuisance_sites` and asserts the bridge rejects it. Verified by probe (mutated
+REJECTED, correct ACCEPTED). Full suite 331 passed / 1 skipped; rev-5 sha256 unchanged; historical path
+untouched. Re-reviewed by codex + Sonnet. PR #10 kept Draft.

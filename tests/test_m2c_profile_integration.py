@@ -1026,24 +1026,46 @@ def test_scientific_bridge_order_is_not_self_certifiable():
             fallback, sites_order=fallback.nuisance_sites
         )
 
-    # (b) NON-FORGEABLE: a profile CONSTRUCTED with a same-set PERMUTATION as its
-    #     `sites` is marked authoritative (the constructor only checks the set),
-    #     but the bridge INDEPENDENTLY re-derives E1Potential.sites from the model
-    #     and rejects the mismatch — a wrong coordinate order cannot self-certify.
+    # (b) NON-FORGEABLE: a profile CONSTRUCTED with a same-set PERMUTATION of two
+    #     genuine NON-NOISE sites as its `sites` is marked authoritative (the
+    #     constructor only checks the set), but the bridge INDEPENDENTLY re-derives
+    #     E1Potential.sites from the model and rejects the mismatch — a wrong
+    #     coordinate order cannot self-certify.
     full = tuple(e1.sites)
-    assert len(full) >= 3
-    permuted_full = (full[1], full[0]) + full[2:]      # swap two non-noise sites
+    non_noise_idx = [
+        i for i, s in enumerate(full) if "noise_covar.noise" not in s
+    ]
+    assert len(non_noise_idx) >= 2
+    i, j = non_noise_idx[0], non_noise_idx[1]
+    permuted_full = list(full)
+    permuted_full[i], permuted_full[j] = permuted_full[j], permuted_full[i]
+    permuted_full = tuple(permuted_full)
     assert set(permuted_full) == set(full) and permuted_full != full
+    # the nuisance subsequence is genuinely reordered (not just a noise swap)
     forged = ProfilePotential(
         profile._model, profile._likelihood, x, y, sites=permuted_full
     )
     assert forged.sites_are_authoritative is True       # constructor accepts the set
+    assert forged.nuisance_sites != profile.nuisance_sites
     with pytest.raises(ValueError, match="independently-derived E1Potential.sites"):
         integration.profile_potential_callables(
             forged, sites_order=forged.nuisance_sites
         )
 
-    # (c) An arbitrary same-set PERMUTATION supplied as sites_order (with an
+    # (c) MUTABLE-FIELD FORGERY: mutate the authentic profile's cached
+    #     `nuisance_sites` to a permutation after construction and hand it back as
+    #     sites_order. The bridge derives the nuisance order from the re-derived
+    #     e1.sites (not the mutable field), so the wrong order is rejected.
+    mutated = ProfilePotential(profile._model, profile._likelihood, x, y, sites=full)
+    mut_nz = mutated.nuisance_sites
+    assert len(mut_nz) >= 2
+    mutated.nuisance_sites = (mut_nz[1], mut_nz[0]) + mut_nz[2:]
+    with pytest.raises(ValueError, match="independently-derived E1 nuisance order"):
+        integration.profile_potential_callables(
+            mutated, sites_order=mutated.nuisance_sites
+        )
+
+    # (d) An arbitrary same-set PERMUTATION supplied as sites_order (with an
     #     otherwise-authoritative, correctly-ordered profile) is rejected.
     nuisance = profile.nuisance_sites
     assert len(nuisance) >= 2
