@@ -2,6 +2,30 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
+## M2c OPENED (branch `feat/d19-m2c` off main fcc3ce4; D39, 2026-07-12) — G-toy/profile planning; ARCHITECTURE directionally ratified, NUMERICAL FREEZE pending
+
+- **Deliverable so far:** `docs/m2c-gtoy-profile-PROPOSAL.md` (PROPOSED; **NOT freeze-grade**). Reconciles
+  §6.9 vs v1.8+D38; the normalized profile-integration algorithm; HMC-independent references+formulas;
+  estimator-specific goldens+tolerances; the versioned-freeze-addendum structure. NO compute, NO freeze,
+  holdout SEALED.
+- **Adversarial review DONE:** 5 codex gpt-5.6-sol (xhigh) rounds + 1 independent subagent (Gemini
+  quota-blocked). Converged round-5 APPROVE-WITH-CHANGES. Numbers + core math independently confirmed.
+  Round-3 caught a real invalid tail bound (fixed → convergence-based); round-4 caught the trapezoid
+  error bound isn't certifiable on 40 nodes (→ needs P3 grid-refinement). codex outputs in session
+  scratchpad (not committed).
+- **Author directional ratification (2026-07-12, own-words):** P1 functional_call gradient; P2 exact
+  boundary eval primary; **P3 amendment authorized IN PRINCIPLE, numerical protocol NOT ratified**;
+  P4 v1.17/v1.18; P5 no legacy S1 run; P6 fresh S1f smoke after freeze; P7 one umbrella package; P8 S4
+  Q2 diagnostic-only. **Architecture ratified; NUMERICAL FREEZE incomplete.**
+- **NEXT (owed): draft the complete freeze package for a SECOND vote** — (1) exact P3 nested-grid/
+  domain-extension protocol (numerical convergence, not a proven bound); (2) exact optimizer+curvature
+  gate numbers; (3) chain-aware `MCSE_strategy` (batch-means/moving-block; NOT ordinary row bootstrap);
+  (4) exact numerical-error reporting (never an SE); (5) full specs for the 5 remaining §6.15 predicates
+  (S2 mass-convention, S3 Jacobian/equivalence, divergence clustering, spectral/covariance overlap, M1
+  nugget-floor); (6) one manifest schema (value/source/test/sha256). Adversarially review, then return.
+- **HARD GATES unchanged:** no v1.17 appended until the package is ratified; no compute/recompute/
+  sampler/Mauna/holdout; HMC only via `fit_hmc_e1`; VI+hmc_laplace withdrawn; A7 Della on hold (v1.8).
+
 ## M2bR corrective milestone — COMPUTE LAYERS EXECUTED (D33, branch feat/d19-m2br, 2026-07-12); start-freeze gate PASSED (D32)
 
 Branch `feat/d19-m2br` off `origin/main` (bd0b399 = merged M2b PR #7). The two-stage
