@@ -2906,3 +2906,97 @@ non-security scientific API. Adjacent (not in PR-A scope, not a live vector): `E
 mutable attribute on the frozen M2b `E1Potential` class, but unreachable as a forgery vector because the
 bridge builds its own fresh `E1Potential` and reads `.sites` immediately; the frozen class is not
 modified. **S2 authority path CLOSED after 9 review rounds.** PR #10 kept Draft.
+
+## D42: M2c PR-B — S2 fixed-metric path + S3 M0 7-coord reparameterization (sampler-capable routes) — hermetic, no compute — 2026-07-13
+
+**Problem:** v1.17 (rev-5, sha256 `c3e9db66…1ce3f`) freezes two more M2c strategy paths that PR-A did not
+cover: **S2** (§5.1) a fixed MAP-Hessian whitened metric for E1, and **S3** (§5.2) a bijective
+7-coordinate reparameterization of M0. Both must be implemented as complete, sampler-capable NUTS-pilot
+routes (suitable for the later authorized pilot) WITHOUT executing any sampler, without touching PR-A's
+frozen `bistar_gp/m2c_freeze.py`, and without changing the public default strategy (`fit_hmc_e1`).
+
+**Decision:** Implemented on branch `feat/d19-m2c-pr-b` off merged `main` (`70e3eb3`). HERMETIC — synthetic
+E1 fixtures + a seedless quadratic oracle only; S2/S3 sampler routes verified with MOCKED NUTS/MCMC (no
+real chain in PR B).
+- **Sibling constants** `bistar_gp/m2c_freeze_s2s3.py` (NOT `m2c_freeze.py`): all §5.1/§5.2 tolerances,
+  each pinned by `tests/test_m2c_freeze_s2s3_constants.py` (S2_FD_STEP=1e-5, S2_SKEW_TOL=1e-5,
+  S2_STEP_STABILITY_TOL=S2_DIRECTIONAL_TOL=1e-3, S2_WHITENING_TOL=1e-8, S2_EIG_FLOOR=1e-6,
+  S2_ORACLE_TOL=1e-10; S3_SLOGDET_TOL=S3_ROUNDTRIP_TOL=1e-10, S3_DENSITY_TOL=1e-9, S3_GRAD_ABS=GRAD_REL=1e-4,
+  S3_N_STATES=33, prior seeds 100..109, neighborhood seeds 0..4, sigmas 0.1/1.0).
+- **Refactor** `bistar_gp/e1_potential.py`: extracted a shared `_run_e1_nuts_route(...)` core (NotPSD
+  rejection + `PotentialEvalTracker` + `diagnostics_from_pyro_mcmc` + the D31 post-warmup NotPSD gate,
+  single-sourced). `fit_hmc_e1` is now a thin wrapper with IDENTICAL public signature/defaults/behavior
+  (`adapt_mass_matrix=True` is pyro's own NUTS default; `e1._model is model` — no clone — so the `.eval()`
+  target is unchanged). Regression guards `tests/test_e1_potential.py` + `tests/test_e1_notpsd_policy.py`
+  are byte-for-byte UNCHANGED and pass (incl. real tiny synthetic chains).
+- **S2** `bistar_gp/s2_fixed_metric.py`: central-FD Hessian of the validated E1 first gradient (never
+  create_graph; `h_j=η·max(1,|u_j|)`); mass **M=H_reg** (position space), whitener **A=Q·diag(λ_reg^{−1/2})**,
+  inverse_mass=AAᵀ; gates skew/step-stability/directional/whitening + the DISTINCT SPD rule
+  **λ_min(H)≥1e-6 AND n_clipped==0**; any failure ⇒ `S2GateError` STOP with NO identity fallback. Route
+  `fit_hmc_e1_fixed_metric` samples flat z with `u=u_MAP+Az`, z-init 0, `adapt_mass_matrix=False`.
+- **S3** `bistar_gp/s3_reparam.py`: `z=(ℓ_t,ℓ_s,ℓ_m,s,a_t,a_s,r)` ↔ semantic u ↔ θ (ALR via `logsumexp`);
+  `log|det ∂u/∂z|=0` (volume-preserving), `log|det ∂θ/∂z|=Σuᵢ`; M0-ONLY structural role resolution (4-site
+  toy and 9-site M1 both STOP "outside the frozen S3 definition"); the 33-state equivalence battery
+  (density + gradient chain-rule + both slogdets + round-trips). Route `fit_hmc_e1_reparam` samples flat z
+  with `V₃(z)=V_E1(u(z))`, z-init z_map, `adapt_mass_matrix=True` (rev-5 §5.2 freezes NO S3 mass override →
+  preserve S1f/pyro adaptation).
+
+**Adversarial review (codex gpt-5.6-sol xHigh primary + Sonnet-5 cross-model):**
+- **codex #1 (High, BLOCKING) — FIXED:** the 33-state battery was self-referential (expected+actual both
+  through `z_to_u`), so a bijective trend↔seasonal-lengthscale relabeling passed all 33 gates (density err
+  0.0). Added `test_semantic_coordinate_map_is_independently_anchored` (hard-coded golden `z_to_u`/`z_to_theta`
+  vectors on a distinct-valued z + slot/role/z-name order pins) and
+  `test_role_resolution_is_anchored_to_independent_model_structure` (role→site cross-checked against the
+  model's kernel inventory), making the coordinate semantics non-self-certifying end to end.
+- **codex #2 (Medium, BLOCKING) — FIXED:** the 12 §5.2(c) near-boundary offsets (−15/±8, combined
+  near-singular, 5 ALR pairs) were literals no test pinned. Added
+  `test_frozen_boundary_states_match_5_2_c_exactly` pinning each boundary state's exact offset from z_map
+  plus the full frozen label set.
+- **Sonnet nits — addressed as doc clarifications:** (a) S2/S3 pass `site_names=e1.sites` while the raw
+  sample dict is a single flat "z" (harmless — diagnostics never key by it — but commented at both route
+  call sites); (b) S2 directional gate uses `quadratic − second` vs PR-A's `quadratic + second` (both
+  correct under different sign conventions: S2 `raw_hessian` is U's Hessian, PR-A curvature is K=−H of a
+  maximized objective — commented).
+- **Honesty note (both reviewers, informational, not a defect):** the frozen Mauna-structure fixture
+  (n=120, seed 0) has a genuinely non-SPD MAP Hessian (λ_min≈−9.13), so S2 correctly STOPs on it; the
+  full PASSING S2 path is exercised by the 4-site toy fixture + the diag(1,4,9) oracle. Analogous to the
+  M1 9-site caveat — S2's happy path on 7-site structure is not exercised end-to-end in PR B.
+
+**Alternatives considered:** (a) put S2/S3 constants in `m2c_freeze.py` — rejected (PR-A immutable; sibling
+module resolves the ownership contradiction). (b) duplicate the E1 sampler core for S2/S3 — rejected
+(would fork NotPSD/diagnostics/gate protections; extracted a shared core instead). (c) per-site NUTS with a
+custom fixed mass matrix for S2 — rejected in favor of the freeze-specified whitening reparam (flat z,
+identity metric). (d) `site_names=("z",)` for the reparam routes — rejected (loses the reported θ-site
+labels; documented the choice instead).
+
+**Result:** `python -m pytest -q` → **349 passed / 1 skipped** (baseline 331/1 + 15 codex tests + 3
+review-fix tests). rev-5 sha256 unchanged; `m2c_freeze.py`, the freeze package, the historical
+`experiments/prior_sensitivity_study.py`, and PR-A source (`profile_potential.py`/`profile_integration.py`)
+all byte-identical to `70e3eb3`; nothing staged under `runs/`. No S2/S3 sampler route or scientific chain
+executed; no Mauna/holdout computation ran; no `--execute`. The full suite did execute its pre-existing
+hermetic tiny-E1 sampler regression tests. **Status:** Draft PR #11 opened, then flipped to Ready
+2026-07-13 (author accepted the constrained-bridge fix); STOP before merge, PR C, PR D, any scientific
+sampler execution, or the v1.18 recompute (still blocked on the PR-D v1.17 JSON algorithm manifest).
+
+**Update (2026-07-13, target-to-output bridge — author-directed S2/S3 fix, PR #11 kept Draft):** the S3
+target is evaluated in E1's u coordinates (`s3_potential = e1.potential_fn(z_to_e1_u(z))`), but the
+returned constrained draws used the MANUAL closed form `z_to_e1_theta = exp(z_to_u)`; the 33-state battery
+only checked that manual map against its own inverse, never against E1's ACTUAL transforms
+(`e1.constrain = e1.transforms[s].inv`). FIX: (a) new frozen `S3_CONSTRAINED_BRIDGE_TOL = 1e-10`
+(`m2c_freeze_s2s3.py`, pinned) gating a new 33-state metric
+`max_site |z_to_e1_theta(z) − e1.constrain(z_to_e1_u(z))| ≤ 1e-10` in `validate_s3_equivalence`
+(`max_constrained_bridge_error` on `S3EquivalenceResult`); (b) `fit_hmc_e1_reparam.coords_to_theta` now
+reports through `e1.constrain(z_to_e1_u(draws))` so the draws provably match the sampled u-target, while
+`z_to_e1_theta`/`z_to_theta` + the Jacobian tests are RETAINED as the independent frozen §5.2 closed form;
+(c) a discriminating test corrupts the manual map on one site (+1.0) and asserts the bridge gate — not an
+incidental round-trip — raises; (d) `_FakeE1` gained a `constrain` method. **The present M0 comparison is
+EXACTLY zero** (all seven M0 sites are positive ⇒ `biject_to(positive) = ExpTransform = exp`, so the manual
+`exp(z_to_u)` map and `e1.constrain` are bit-identical — E1's inverse is
+`ComposeTransform(ExpTransform(), AffineTransform(loc=0, scale=1))`, i.e. exp then identity) — the battery
+asserts `== 0.0`, not merely small (scoped to the frozen CPU M0 battery — a determinism fact on that
+backend, not a cross-backend float guarantee). The gate exists so any future non-exp constraint (or non-M0
+model) is caught rather than silently mis-reported. `python -m pytest -q` → 350 passed / 1 skipped. Focused adversarial review (codex xHigh) of
+the bridge. rev-5 sha256 unchanged; `m2c_freeze.py` / PR-A source / historical path untouched; no `runs/`
+staged. Provenance (precise): no S2/S3 sampler route or scientific chain executed; no Mauna/holdout
+computation ran; the full suite did execute its pre-existing hermetic tiny-E1 sampler regression tests.
+PR #11 flipped to Ready 2026-07-13 after this fix was accepted.
