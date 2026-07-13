@@ -371,51 +371,51 @@ def select_start_state(model, likelihood, train_x, train_y, candidates,
         f"failure reasons: {reason_text}")
 
 
-def fit_hmc_e1(model, likelihood, train_x, train_y,
-               n_samples=500, n_warmup=200, verbose=True, seed=None,
-               init_to_map=True, max_tree_depth=10, return_diagnostics=False,
-               jitter=DEFAULT_JITTER, init_values=None):
-    """S1f: NUTS on the E1 potential — fit_hmc's sampler settings, statistically
-    identical target and coordinates, no per-leapfrog deep copy.
+def _run_e1_nuts_route(
+        e1, *, potential_over_coords, initial_params, coords_to_theta,
+        site_names, sampler_name, n_samples, n_warmup, max_tree_depth,
+        step_size=0.1, adapt_step_size=True, adapt_mass_matrix=True,
+        target_accept_prob=0.8, jitter=DEFAULT_JITTER, verbose=True,
+        return_diagnostics=False):
+    """Run a sampler route through the shared E1 safety/diagnostic core.
 
-    Mirrors fit_hmc exactly where the two share surface: init_to_map with the
-    same boundary-guarded fallback to init_to_sample (pass a MAP-fitted
-    model), step_size 0.1 with adaptation, target_accept_prob 0.8,
-    max_tree_depth, the returned dict schema (site name -> (n,) constrained
-    numpy array), and return_diagnostics -> (samples, SamplerDiagnostics)
-    with sampler="nuts_e1" (leapfrog counts derived from potential
-    evaluations, one per leapfrog step, as the D20 tracker does for the
-    traced path). A constrained ``init_values`` dict takes precedence over
-    ``init_to_map`` when supplied.
+    This is the common NUTS vehicle for S1f, S2, and S3 under prereg v1.17
+    and the rev-5 freeze package §§5.1-5.2.  Coordinate-specific routes only
+    supply their potential, initial state, and constrained-output map; the
+    terminal-NotPSD rejection policy, potential-evaluation tracking,
+    diagnostic honesty contract, and D31 post-warmup failure gate remain
+    single-sourced here.
+
+    ``adapt_mass_matrix=True`` is Pyro's current NUTS default and preserves
+    S1f behavior.  S2 explicitly passes ``False``; S3 explicitly preserves
+    this default because rev-5 §5.2 freezes no different metric convention.
     """
-    import pyro
     from pyro.infer.mcmc import NUTS, MCMC
 
-    from .sampler_diagnostics import PotentialEvalTracker, diagnostics_from_pyro_mcmc
+    from .sampler_diagnostics import (
+        PotentialEvalTracker,
+        diagnostics_from_pyro_mcmc,
+    )
 
-    if seed is not None:
-        pyro.set_rng_seed(seed)
-
-    e1 = build_e1_potential(model, likelihood, train_x, train_y, jitter=jitter,
-                            init_to_map=init_to_map, init_values=init_values)
-
-    rejecting_potential = _NotPSDRejectingPotential(e1.potential_fn)
+    rejecting_potential = _NotPSDRejectingPotential(potential_over_coords)
     tracker = PotentialEvalTracker(rejecting_potential)
-    potential = tracker
 
     nuts = NUTS(
-        potential_fn=potential,
+        potential_fn=tracker,
         jit_compile=False,
-        step_size=0.1,
-        adapt_step_size=True,
-        target_accept_prob=0.8,
+        step_size=step_size,
+        adapt_step_size=adapt_step_size,
+        adapt_mass_matrix=adapt_mass_matrix,
+        target_accept_prob=target_accept_prob,
         max_tree_depth=max_tree_depth,
     )
     mcmc_run = MCMC(
         nuts,
         num_samples=n_samples,
         warmup_steps=n_warmup,
-        initial_params={s: v.clone() for s, v in e1.init_params.items()},
+        initial_params={
+            name: value.clone() for name, value in initial_params.items()
+        },
         disable_progbar=(not verbose),
         hook_fn=tracker.hook,
     )
@@ -424,10 +424,10 @@ def fit_hmc_e1(model, likelihood, train_x, train_y,
 
     diagnostics = diagnostics_from_pyro_mcmc(
         mcmc_run,
-        sampler="nuts_e1",
+        sampler=sampler_name,
         n_draws=n_samples,
         n_warmup=n_warmup,
-        site_names=tuple(e1.sites),
+        site_names=tuple(site_names),
         max_tree_depth=max_tree_depth,
         step_size=getattr(nuts, "step_size", None),
         eval_records=tracker.records,
@@ -456,24 +456,72 @@ def fit_hmc_e1(model, likelihood, train_x, train_y,
             f"{notpsd_rate:.12g} reaches the ratified failure threshold "
             f"{E1_NOTPSD_FAIL_RATE:.12g} (D31)")
         error.diagnostics = diagnostics
-        model.eval()
-        likelihood.eval()
+        e1._model.eval()
+        e1._likelihood.eval()
         raise error
 
-    # Constrained via the oracle's transforms; reshape(-1), NOT squeeze()
-    # (fit_hmc's documented (n,) schema, including at n_samples=1).
-    u_draws = mcmc_run.get_samples()
-    samples = {}
-    for s in e1.sites:
-        theta = e1.transforms[s].inv(u_draws[s])
-        samples[s] = theta.detach().numpy().reshape(-1)
+    samples = coords_to_theta(mcmc_run.get_samples())
 
     if verbose:
         mcmc_run.summary()
 
-    model.eval()
-    likelihood.eval()
+    e1._model.eval()
+    e1._likelihood.eval()
 
     if return_diagnostics:
         return samples, diagnostics
     return samples
+
+
+def fit_hmc_e1(model, likelihood, train_x, train_y,
+               n_samples=500, n_warmup=200, verbose=True, seed=None,
+               init_to_map=True, max_tree_depth=10, return_diagnostics=False,
+               jitter=DEFAULT_JITTER, init_values=None):
+    """S1f: NUTS on the E1 potential — fit_hmc's sampler settings, statistically
+    identical target and coordinates, no per-leapfrog deep copy.
+
+    Mirrors fit_hmc exactly where the two share surface: init_to_map with the
+    same boundary-guarded fallback to init_to_sample (pass a MAP-fitted
+    model), step_size 0.1 with adaptation, target_accept_prob 0.8,
+    max_tree_depth, the returned dict schema (site name -> (n,) constrained
+    numpy array), and return_diagnostics -> (samples, SamplerDiagnostics)
+    with sampler="nuts_e1" (leapfrog counts derived from potential
+    evaluations, one per leapfrog step, as the D20 tracker does for the
+    traced path). A constrained ``init_values`` dict takes precedence over
+    ``init_to_map`` when supplied.
+    """
+    import pyro
+
+    if seed is not None:
+        pyro.set_rng_seed(seed)
+
+    e1 = build_e1_potential(model, likelihood, train_x, train_y, jitter=jitter,
+                            init_to_map=init_to_map, init_values=init_values)
+
+    def coords_to_theta(u_draws):
+        # Constrained via the oracle's transforms; reshape(-1), NOT squeeze()
+        # (fit_hmc's documented (n,) schema, including at n_samples=1).
+        return {
+            site: e1.transforms[site].inv(u_draws[site])
+            .detach().numpy().reshape(-1)
+            for site in e1.sites
+        }
+
+    return _run_e1_nuts_route(
+        e1,
+        potential_over_coords=e1.potential_fn,
+        initial_params=e1.init_params,
+        coords_to_theta=coords_to_theta,
+        site_names=e1.sites,
+        sampler_name="nuts_e1",
+        n_samples=n_samples,
+        n_warmup=n_warmup,
+        max_tree_depth=max_tree_depth,
+        step_size=0.1,
+        adapt_step_size=True,
+        adapt_mass_matrix=True,
+        target_accept_prob=0.8,
+        jitter=jitter,
+        verbose=verbose,
+        return_diagnostics=return_diagnostics,
+    )

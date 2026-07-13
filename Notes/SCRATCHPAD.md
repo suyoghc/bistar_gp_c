@@ -28,7 +28,24 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   exact hashes + passing tests, then stop-and-report; HMC only via `fit_hmc_e1`; VI+hmc_laplace
   withdrawn; A7 Della on hold (v1.8); holdout SEALED (§6.6).
 
-### PR A — profile core READY (PR #10, branch `feat/d19-m2c-pr-a` off main a7e108d7; D41, 2026-07-13)
+### PR B — S2 fixed-metric + S3 reparam DRAFT (branch `feat/d19-m2c-pr-b` off merged main `70e3eb3`; D42, 2026-07-13)
+
+- **Scope:** S2 (§5.1) fixed MAP-Hessian whitened metric + S3 (§5.2) M0 7-coord reparam, BOTH as complete
+  sampler-capable NUTS-pilot routes. HERMETIC — synthetic fixtures + quadratic oracle; S2/S3 routes tested
+  with MOCKED NUTS/MCMC (no real chain). New: `bistar_gp/m2c_freeze_s2s3.py` (sibling constants, NOT
+  `m2c_freeze.py`), `bistar_gp/s2_fixed_metric.py`, `bistar_gp/s3_reparam.py` + 3 test files. Refactor:
+  extracted shared `_run_e1_nuts_route` core in `e1_potential.py`; `fit_hmc_e1` behavior IDENTICAL
+  (regression guards unedited). `python -m pytest -q` → **349 passed / 1 skipped**.
+- **Adversarial review (codex xHigh + Sonnet-5):** codex found 2 BLOCKERS — the S3 33-state battery was
+  self-referential (a coord relabeling passed all gates) and the 12 §5.2(c) boundary offsets were unpinned;
+  BOTH FIXED with independent golden/role/boundary anchor tests. Sonnet APPROVE + 2 doc nits (site_names
+  label, S2 directional sign vs PR-A) addressed as comments. Honesty note: the Mauna-structure fixture's
+  MAP Hessian is non-SPD (λ_min≈−9.13) → S2 correctly STOPs; the passing S2 path is exercised by the toy
+  fixture + oracle (analogous to the M1 9-site caveat).
+- **STOP after Draft PR** — before PR C, PR D, any sampler execution, or v1.18. rev-5 sha256 unchanged;
+  PR-A source + historical path + `m2c_freeze.py` byte-identical to `70e3eb3`; no `runs/` staged.
+
+### PR A — profile core MERGED (PR #10 → main `70e3eb3`, branch `feat/d19-m2c-pr-a` off main a7e108d7; D41, 2026-07-13)
 
 - **PR #10 flipped Draft → Ready 2026-07-13** after S2 authority path closed (9 review rounds, codex +
   Sonnet BOTH APPROVE). MERGEABLE / CLEAN, current with `main`, no `runs/` in the diff. Exact full-suite
