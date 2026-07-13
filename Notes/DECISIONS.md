@@ -2849,5 +2849,24 @@ order straight back — no E1-derived authority was ever required. Harmless for 
   a missing site, and a duplicate are all rejected. Verified non-vacuous by probe (fallback REJECTED,
   authoritative+exact ACCEPTED, permutation REJECTED).
 Full suite 331 passed / 1 skipped; rev-5 sha256 unchanged; historical path + `experiments/
-prior_sensitivity_study.py` untouched. Re-reviewed by codex + Sonnet (authority path). PR #10 kept Draft;
-the v1.18 recompute remains gated and execution-only.
+prior_sensitivity_study.py` untouched. PR #10 kept Draft; the v1.18 recompute remains gated and
+execution-only.
+
+**Update (2026-07-13, seventh review round — non-forgeable E1 authority):** the authority-path re-review
+(codex CHANGES-REQUIRED / Sonnet APPROVE-but-document, both finding the same residual) showed the
+provenance-flag fix was still forgeable: `ProfilePotential.__init__` validates only same-set/no-duplicates,
+so `sites_are_authoritative=True` proves an order was *declared*, not that it is genuinely
+`E1Potential.sites` — a caller could restate `named_priors()` order OR pass an arbitrary same-set
+permutation as `sites` (a *wrong* coordinate order silently accepted; probe reproduced it). Inert today
+(toy/M0 `named_priors()` == `E1Potential.sites`, no orchestrator wired), but a latent correctness hole
+once M1 diverges. FIX (robust, non-forgeable): `profile_potential_callables` now INDEPENDENTLY re-derives
+`E1Potential.sites` from the profile's OWN model (via `build_e1_potential`, whose order comes from pyro's
+`initialize_model`) and requires `profile.sites == e1.sites` exactly — a restated `named_priors()` order,
+a permutation, or a flipped flag cannot pass, because the bridge derives the authority rather than
+trusting the caller. Only E1's ORDERING authority is consulted; the profile is never scored through the
+pyro oracle (ProfilePotential stays pyro-free; the bridge is the recompute entry). Layered contract:
+sites_order required → profile explicitly authoritative → `profile.sites` == independently-re-derived
+`e1.sites` → `sites_order` == `profile.nuisance_sites` exactly. New test asserts a permutation-as-`sites`
+profile (authoritative flag True) is REJECTED by the re-derivation; the `sites_are_authoritative` comment
+documents that the flag alone is not the authority. Full suite 331 passed / 1 skipped; rev-5 sha256
+unchanged; historical path untouched. Re-reviewed by codex + Sonnet. PR #10 kept Draft.

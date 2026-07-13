@@ -1018,32 +1018,41 @@ def test_scientific_bridge_order_is_not_self_certifiable():
 
     profile, e1, model, x, y = _authoritative_toy_profile()
 
-    # (a) A named_priors() FALLBACK profile (no explicit authority) is rejected,
-    #     even when handed its own nuisance order.
-    torch.manual_seed(17)
-    x2 = torch.linspace(0.0, 5.0, 20).double()
-    y2 = (torch.sin(2.0 * x2) + 0.15 * torch.randn(20)).double()
-    prior = PRIOR_CONFIGS["toy_elicited_n20"]
-    kernels, names = build_kernels_from_config(prior)
-    likelihood2 = build_likelihood_from_config(prior)
-    model2, likelihood2 = build_model(x2, y2, kernels, names, likelihood2)
-    fit_map(model2, likelihood2, x2, y2, n_iter=80, lr=0.05, verbose=False)
-    fallback = ProfilePotential(model2, likelihood2, x2, y2)      # sites=None
+    # (a) A named_priors() FALLBACK profile (no explicit authority) is rejected.
+    fallback = ProfilePotential(profile._model, profile._likelihood, x, y)  # sites=None
     assert fallback.sites_are_authoritative is False
     with pytest.raises(ValueError, match="explicit authoritative E1 site order"):
         integration.profile_potential_callables(
             fallback, sites_order=fallback.nuisance_sites
         )
 
-    # (b) An arbitrary same-set PERMUTATION of the authoritative order is rejected.
+    # (b) NON-FORGEABLE: a profile CONSTRUCTED with a same-set PERMUTATION as its
+    #     `sites` is marked authoritative (the constructor only checks the set),
+    #     but the bridge INDEPENDENTLY re-derives E1Potential.sites from the model
+    #     and rejects the mismatch — a wrong coordinate order cannot self-certify.
+    full = tuple(e1.sites)
+    assert len(full) >= 3
+    permuted_full = (full[1], full[0]) + full[2:]      # swap two non-noise sites
+    assert set(permuted_full) == set(full) and permuted_full != full
+    forged = ProfilePotential(
+        profile._model, profile._likelihood, x, y, sites=permuted_full
+    )
+    assert forged.sites_are_authoritative is True       # constructor accepts the set
+    with pytest.raises(ValueError, match="independently-derived E1Potential.sites"):
+        integration.profile_potential_callables(
+            forged, sites_order=forged.nuisance_sites
+        )
+
+    # (c) An arbitrary same-set PERMUTATION supplied as sites_order (with an
+    #     otherwise-authoritative, correctly-ordered profile) is rejected.
     nuisance = profile.nuisance_sites
     assert len(nuisance) >= 2
-    permuted = (nuisance[1], nuisance[0]) + nuisance[2:]
-    assert set(permuted) == set(nuisance) and permuted != nuisance
+    permuted_order = (nuisance[1], nuisance[0]) + nuisance[2:]
+    assert set(permuted_order) == set(nuisance) and permuted_order != nuisance
     with pytest.raises(ValueError, match="EXACTLY"):
-        integration.profile_potential_callables(profile, sites_order=permuted)
+        integration.profile_potential_callables(profile, sites_order=permuted_order)
 
-    # (c) A MISSING site and (d) a DUPLICATE site are rejected.
+    # (d) A MISSING site and (e) a DUPLICATE site in sites_order are rejected.
     with pytest.raises(ValueError, match="EXACTLY"):
         integration.profile_potential_callables(
             profile, sites_order=nuisance[:-1]

@@ -1394,6 +1394,31 @@ def profile_potential_callables(
             "explicit authoritative E1 site order (sites=E1Potential.sites); a "
             "named_priors() fallback profile cannot certify the recompute order")
 
+    # Non-forgeable authority: INDEPENDENTLY re-derive the E1 site order from the
+    # profile's OWN model and require the profile's order to match it exactly.
+    # E1Potential.sites comes from pyro's initialize_model, so it cannot be
+    # manufactured by restating named_priors() order, by supplying an arbitrary
+    # same-set permutation as `sites`, or by flipping the sites_are_authoritative
+    # flag — a wrong order is caught here. Only E1's ORDERING authority is
+    # consulted; the profile is never SCORED through the pyro oracle (rev-5 §5.2;
+    # ProfilePotential itself stays pyro-free, this bridge is the recompute entry).
+    from bistar_gp.e1_potential import build_e1_potential
+
+    try:
+        e1 = build_e1_potential(
+            profile._model, profile._likelihood, profile._x, profile._y
+        )
+    except Exception as exc:  # pragma: no cover - defensive (NotPSD/pyro failure)
+        raise ValueError(
+            "could not independently derive E1 ordering authority for this "
+            f"profile, so the recompute coordinate order cannot be certified: {exc}"
+        ) from exc
+    if tuple(profile.sites) != tuple(e1.sites):
+        raise ValueError(
+            "profile site order is not the independently-derived E1Potential.sites "
+            f"order (profile {list(profile.sites)} vs E1 {list(e1.sites)}); the "
+            "recompute coordinate order cannot be self-certified or forged")
+
     # Torch is deliberately confined to this thin boundary adapter; the
     # orchestrator above stays NumPy-only and model-agnostic.
     import torch

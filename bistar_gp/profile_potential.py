@@ -55,12 +55,18 @@ class ProfilePotential:
             self.sites = authoritative
         else:
             self.sites = discovered
-        # Provenance of the coordinate order: True only when an explicit
-        # authoritative inventory (e.g. E1Potential.sites) was supplied and
-        # validated. The corrected scientific bridge (profile_potential_callables)
-        # fail-closes on a non-authoritative (named_priors fallback) profile, so
-        # the fallback order can never self-certify the recompute; sites=None
-        # stays available for low-level/exploratory use only.
+        # Provenance flag: True only when an explicit ordered inventory was
+        # supplied (and passed the same-set/no-duplicate validation above).
+        # NOTE: this flag alone is NOT sufficient authority — it only records
+        # that *an* order was declared, not that the order is genuinely
+        # E1Potential.sites (a caller could restate named_priors() order or pass
+        # an arbitrary same-set permutation). The corrected scientific bridge
+        # (profile_potential_callables) therefore INDEPENDENTLY re-derives
+        # E1Potential.sites from this model and requires self.sites to match it
+        # exactly; this flag is only the cheap first gate that rejects a
+        # named_priors() fallback (sites=None). sites=None stays available for
+        # low-level/exploratory use (the gradient/curvature batteries, which do
+        # not go through the bridge).
         self.sites_are_authoritative = sites is not None
         self._site_map = _site_parameter_map(model, self.sites)
         noise_sites = tuple(
