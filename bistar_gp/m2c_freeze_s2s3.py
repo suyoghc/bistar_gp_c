@@ -27,3 +27,7 @@ S3_N_STATES = 33
 S3_PRIOR_DRAW_SEEDS = tuple(range(100, 110))
 S3_NEIGHBORHOOD_SEEDS = (0, 1, 2, 3, 4)
 S3_NEIGHBORHOOD_SIGMAS = (0.1, 1.0)
+# Target-to-output bridge: the manual constrained map exp(z_to_u) must equal
+# E1's own transforms e1.constrain(z_to_e1_u(.)) at every battery state, so the
+# reported draws provably match the u-space target that was actually sampled.
+S3_CONSTRAINED_BRIDGE_TOL = 1e-10

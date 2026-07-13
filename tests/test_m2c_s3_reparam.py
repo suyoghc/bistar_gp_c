@@ -71,6 +71,34 @@ def test_m0_roles_and_33_state_equivalence_battery(mauna_e1):
     assert result.max_theta_slogdet_error <= S3_SLOGDET_TOL
     assert result.max_u_roundtrip_error <= S3_ROUNDTRIP_TOL
     assert result.max_theta_roundtrip_error <= S3_ROUNDTRIP_TOL
+    # Target-to-output bridge: the manual exp(z_to_u) constrained map matches
+    # E1's own transforms bit-for-bit for M0 (all seven sites are positive, so
+    # e1.transforms[.].inv IS exp).  Recorded as EXACTLY zero, not merely small.
+    assert result.max_constrained_bridge_error == 0.0
+
+
+def test_constrained_bridge_gate_catches_a_wrong_manual_map(mauna_e1, monkeypatch):
+    """A manual constrained map disagreeing with E1's transforms must STOP.
+
+    The target is evaluated in E1's u coordinates, so the reported draws now go
+    through ``e1.constrain(z_to_e1_u(.))``.  The frozen closed-form map
+    ``z_to_e1_theta = exp(z_to_u)`` is retained but must AGREE with that path at
+    every battery state.  Corrupt the manual map on one site and confirm the
+    bridge gate — not some incidental round-trip check — fires.
+    """
+    real_map = s3.z_to_e1_theta
+    corrupt_site = mauna_e1.sites[0]
+
+    def wrong_map(z, e1, roles=None):
+        theta = dict(real_map(z, e1, roles))
+        # Additive, so |manual - e1.constrain| = 1.0 >> 1e-10 at every state,
+        # regardless of the site's constrained magnitude.
+        theta[corrupt_site] = theta[corrupt_site] + 1.0
+        return theta
+
+    monkeypatch.setattr(s3, "z_to_e1_theta", wrong_map)
+    with pytest.raises(s3.S3GateError, match=r"constrained bridge.*E1 constrain"):
+        s3.validate_s3_equivalence(mauna_e1)
 
 
 def test_four_site_toy_is_outside_frozen_s3_definition():
@@ -106,6 +134,10 @@ class _FakeE1:
             site: value.detach().clone() for site, value in state.items()
         })
         return sum((value ** 2).sum() for value in state.values())
+
+    def constrain(self, u):
+        # E1's positive sites use biject_to(positive) = ExpTransform.
+        return {site: torch.exp(u[site]) for site in self.sites}
 
 
 def _install_mock_sampler(monkeypatch, draws, captured):

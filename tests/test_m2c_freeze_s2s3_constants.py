@@ -24,4 +24,5 @@ def test_s3_constants_are_pinned():
     assert frozen.S3_PRIOR_DRAW_SEEDS == tuple(range(100, 110))
     assert frozen.S3_NEIGHBORHOOD_SEEDS == (0, 1, 2, 3, 4)
     assert frozen.S3_NEIGHBORHOOD_SIGMAS == (0.1, 1.0)
+    assert frozen.S3_CONSTRAINED_BRIDGE_TOL == 1e-10
 

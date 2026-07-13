@@ -2975,3 +2975,24 @@ review-fix tests). rev-5 sha256 unchanged; `m2c_freeze.py`, the freeze package, 
 all byte-identical to `70e3eb3`; nothing staged under `runs/`. No sampler executed, no Mauna/holdout
 access, no `--execute`. **Status:** Draft PR opened; STOP before PR C, PR D, any sampler execution, or the
 v1.18 recompute (still blocked on the PR-D v1.17 JSON algorithm manifest).
+
+**Update (2026-07-13, target-to-output bridge — author-directed S2/S3 fix, PR #11 kept Draft):** the S3
+target is evaluated in E1's u coordinates (`s3_potential = e1.potential_fn(z_to_e1_u(z))`), but the
+returned constrained draws used the MANUAL closed form `z_to_e1_theta = exp(z_to_u)`; the 33-state battery
+only checked that manual map against its own inverse, never against E1's ACTUAL transforms
+(`e1.constrain = e1.transforms[s].inv`). FIX: (a) new frozen `S3_CONSTRAINED_BRIDGE_TOL = 1e-10`
+(`m2c_freeze_s2s3.py`, pinned) gating a new 33-state metric
+`max_site |z_to_e1_theta(z) − e1.constrain(z_to_e1_u(z))| ≤ 1e-10` in `validate_s3_equivalence`
+(`max_constrained_bridge_error` on `S3EquivalenceResult`); (b) `fit_hmc_e1_reparam.coords_to_theta` now
+reports through `e1.constrain(z_to_e1_u(draws))` so the draws provably match the sampled u-target, while
+`z_to_e1_theta`/`z_to_theta` + the Jacobian tests are RETAINED as the independent frozen §5.2 closed form;
+(c) a discriminating test corrupts the manual map on one site (+1.0) and asserts the bridge gate — not an
+incidental round-trip — raises; (d) `_FakeE1` gained a `constrain` method. **The present M0 comparison is
+EXACTLY zero** (all seven M0 sites are positive ⇒ `biject_to(positive) = ExpTransform = exp`, so the manual
+`exp(z_to_u)` map and `e1.constrain` are bit-identical — E1's inverse is
+`ComposeTransform(ExpTransform(), AffineTransform(loc=0, scale=1))`, i.e. exp then identity) — the battery
+asserts `== 0.0`, not merely small (scoped to the frozen CPU M0 battery — a determinism fact on that
+backend, not a cross-backend float guarantee). The gate exists so any future non-exp constraint (or non-M0
+model) is caught rather than silently mis-reported. `python -m pytest -q` → 350 passed / 1 skipped. Focused adversarial review (codex xHigh) of
+the bridge. rev-5 sha256 unchanged; `m2c_freeze.py` / PR-A source / historical path untouched; no `runs/`
+staged. PR #11 kept Draft.

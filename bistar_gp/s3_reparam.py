@@ -21,6 +21,7 @@ import torch
 from .e1_potential import _run_e1_nuts_route, build_e1_potential
 from .fit import DEFAULT_JITTER
 from .m2c_freeze_s2s3 import (
+    S3_CONSTRAINED_BRIDGE_TOL,
     S3_DENSITY_TOL,
     S3_GRAD_ABS,
     S3_GRAD_REL,
@@ -78,6 +79,7 @@ class S3EquivalenceResult:
     max_theta_roundtrip_error: float
     max_density_error: float
     max_gradient_error: float
+    max_constrained_bridge_error: float
 
 
 def _outside_definition(site_count: int) -> S3GateError:
@@ -416,6 +418,16 @@ def _state_equivalence_metrics(e1, z, roles: S3SiteRoles):
     density_error = abs(float(value_s3 - e1_value))
     density_limit = S3_DENSITY_TOL * max(1.0, abs(float(e1_value)))
 
+    # Target-to-output bridge: the target is evaluated in E1's u coordinates
+    # (e1.potential_fn(e1_u)), so the reported constrained draws must come from
+    # E1's OWN transforms at that same u.  Prove the manual closed-form map
+    # z_to_e1_theta = exp(z_to_u) agrees with e1.constrain(z_to_e1_u(.)) here,
+    # rather than assuming exp is E1's constraint transform.
+    manual_theta = z_to_e1_theta(z, e1, roles)
+    e1_theta = e1.constrain(e1_u)
+    constrained_bridge_error = max(
+        _max_abs(manual_theta[site] - e1_theta[site]) for site in e1.sites)
+
     z_required = z.detach().clone().requires_grad_(True)
     value = s3_potential(e1, z_required, roles)
     gradient_s3, = torch.autograd.grad(value, z_required)
@@ -439,6 +451,7 @@ def _state_equivalence_metrics(e1, z, roles: S3SiteRoles):
         "density_limit": density_limit,
         "gradient_error": gradient_error,
         "gradient_limit": gradient_limit,
+        "constrained_bridge_error": constrained_bridge_error,
     }
 
 
@@ -466,6 +479,8 @@ def validate_s3_equivalence(e1) -> S3EquivalenceResult:
             ("density", observed["density_error"], observed["density_limit"]),
             ("gradient", observed["gradient_error"],
              observed["gradient_limit"]),
+            ("constrained bridge (exp(z_to_u) vs E1 constrain)",
+             observed["constrained_bridge_error"], S3_CONSTRAINED_BRIDGE_TOL),
         )
         for name, error, limit in checks:
             if not np.isfinite(error) or error > limit:
@@ -491,6 +506,7 @@ def validate_s3_equivalence(e1) -> S3EquivalenceResult:
         max_theta_roundtrip_error=maximum("theta_roundtrip_error"),
         max_density_error=maximum("density_error"),
         max_gradient_error=maximum("gradient_error"),
+        max_constrained_bridge_error=maximum("constrained_bridge_error"),
     )
 
 
@@ -526,7 +542,11 @@ def fit_hmc_e1_reparam(
         return s3_potential(e1, coords[S3_COORDINATE], roles)
 
     def coords_to_theta(draws):
-        theta = z_to_e1_theta(draws[S3_COORDINATE], e1, roles)
+        # Report through E1's OWN transforms at the sampled u, so the returned
+        # constrained draws provably match the u-space target that was sampled
+        # (the manual z_to_e1_theta closed form stays as the independent frozen
+        # formula, gated against this path by validate_s3_equivalence).
+        theta = e1.constrain(z_to_e1_u(draws[S3_COORDINATE], e1, roles))
         return {
             site: theta[site].detach().numpy().reshape(-1)
             for site in e1.sites
