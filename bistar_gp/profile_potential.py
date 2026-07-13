@@ -55,6 +55,13 @@ class ProfilePotential:
             self.sites = authoritative
         else:
             self.sites = discovered
+        # Provenance of the coordinate order: True only when an explicit
+        # authoritative inventory (e.g. E1Potential.sites) was supplied and
+        # validated. The corrected scientific bridge (profile_potential_callables)
+        # fail-closes on a non-authoritative (named_priors fallback) profile, so
+        # the fallback order can never self-certify the recompute; sites=None
+        # stays available for low-level/exploratory use only.
+        self.sites_are_authoritative = sites is not None
         self._site_map = _site_parameter_map(model, self.sites)
         noise_sites = tuple(
             site for site in self.sites if "noise_covar.noise" in site

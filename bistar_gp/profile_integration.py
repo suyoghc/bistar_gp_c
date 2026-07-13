@@ -1374,10 +1374,25 @@ def profile_potential_callables(
     Callable[[np.ndarray, float], float],
     Callable[[np.ndarray, float], np.ndarray],
 ]:
-    """Adapt a ``ProfilePotential`` to the NumPy orchestrator interface."""
+    """Adapt a ``ProfilePotential`` to the NumPy orchestrator interface.
+
+    This is the SCIENTIFIC bridge into the recompute, so the coordinate order is
+    fail-closed against E1 authority (rev-5 §5.2 "emit in E1Potential.sites
+    order"): the profile must have been constructed with an EXPLICIT authoritative
+    site order (`sites=E1Potential.sites`), and the caller-supplied `sites_order`
+    must equal the resulting authoritative nuisance order EXACTLY — not merely be
+    a same-set permutation of it, and not the `named_priors()` fallback order.
+    This prevents the order from self-certifying, which matters once M1 introduces
+    sites whose `named_priors()` order may diverge from the E1 inventory.
+    """
 
     if sites_order is None:
         raise ValueError("sites_order is required for corrected profile orchestration")
+    if not getattr(profile, "sites_are_authoritative", False):
+        raise ValueError(
+            "corrected scientific bridge requires a ProfilePotential built with an "
+            "explicit authoritative E1 site order (sites=E1Potential.sites); a "
+            "named_priors() fallback profile cannot certify the recompute order")
 
     # Torch is deliberately confined to this thin boundary adapter; the
     # orchestrator above stays NumPy-only and model-agnostic.
@@ -1385,8 +1400,12 @@ def profile_potential_callables(
 
     nuisance_sites = tuple(profile.nuisance_sites)
     order = tuple(sites_order)
-    if len(order) != len(nuisance_sites) or set(order) != set(nuisance_sites):
-        raise ValueError("sites_order must contain every nuisance site exactly once")
+    if order != nuisance_sites:
+        raise ValueError(
+            "sites_order must equal the profile's authoritative nuisance order "
+            f"EXACTLY (got {list(order)}, expected {list(nuisance_sites)}); an "
+            "arbitrary same-set permutation — or a missing/duplicate site — is "
+            "rejected")
     target = getattr(profile, "_y", None)
     device = None if target is None else target.device
 

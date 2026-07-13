@@ -922,14 +922,19 @@ def test_profile_logm_calls_optimizer_before_curvature_at_every_node(monkeypatch
     assert call_log == ["optimize", "curvature"] * 3
 
 
-def test_profile_potential_adapter_matches_single_synthetic_map_evaluation():
+def _authoritative_toy_profile():
+    """Build a synthetic toy_elicited_n20 profile carrying EXPLICIT E1 ordering
+    authority (sites=E1Potential.sites), MAP-fitted. Returns (profile, e1, model,
+    x, y). Used by the adapter + authority-contract tests."""
     torch = pytest.importorskip("torch")
     pytest.importorskip("gpytorch")
+    pytest.importorskip("pyro")
     from bistar_gp.config import (
         PRIOR_CONFIGS,
         build_kernels_from_config,
         build_likelihood_from_config,
     )
+    from bistar_gp.e1_potential import E1Potential
     from bistar_gp.fit import fit_map
     from bistar_gp.model import build_model
     from bistar_gp.profile_potential import ProfilePotential
@@ -942,7 +947,17 @@ def test_profile_potential_adapter_matches_single_synthetic_map_evaluation():
     likelihood = build_likelihood_from_config(prior)
     model, likelihood = build_model(x, y, kernels, names, likelihood)
     fit_map(model, likelihood, x, y, n_iter=80, lr=0.05, verbose=False)
-    profile = ProfilePotential(model, likelihood, x, y)
+    # The AUTHORITATIVE ordering authority comes from E1, not named_priors.
+    e1 = E1Potential(model, likelihood, x, y)
+    profile = ProfilePotential(model, likelihood, x, y, sites=e1.sites)
+    return profile, e1, model, x, y
+
+
+def test_profile_potential_adapter_matches_single_synthetic_map_evaluation():
+    torch = pytest.importorskip("torch")
+    profile, e1, model, x, y = _authoritative_toy_profile()
+    assert profile.sites_are_authoritative is True
+    assert profile.sites == e1.sites          # order came from E1, not named_priors
 
     parameters = dict(model.named_parameters())
     u_map = {}
@@ -981,6 +996,62 @@ def test_profile_potential_adapter_matches_single_synthetic_map_evaluation():
     np.testing.assert_allclose(
         grad_of(u0, float(noise)), expected_gradient, rtol=0, atol=1e-10
     )
+
+
+def test_scientific_bridge_order_is_not_self_certifiable():
+    """The corrected bridge must fail closed unless the profile carries EXPLICIT
+    E1 ordering authority and the caller's order equals that authoritative
+    nuisance order EXACTLY (rev-5 §5.2). A named_priors() fallback profile, an
+    arbitrary same-set permutation, and a missing/duplicate site are all rejected
+    — the fallback order can never self-certify the recompute (codex re-review)."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("gpytorch")
+    pytest.importorskip("pyro")
+    from bistar_gp.config import (
+        PRIOR_CONFIGS,
+        build_kernels_from_config,
+        build_likelihood_from_config,
+    )
+    from bistar_gp.fit import fit_map
+    from bistar_gp.model import build_model
+    from bistar_gp.profile_potential import ProfilePotential
+
+    profile, e1, model, x, y = _authoritative_toy_profile()
+
+    # (a) A named_priors() FALLBACK profile (no explicit authority) is rejected,
+    #     even when handed its own nuisance order.
+    torch.manual_seed(17)
+    x2 = torch.linspace(0.0, 5.0, 20).double()
+    y2 = (torch.sin(2.0 * x2) + 0.15 * torch.randn(20)).double()
+    prior = PRIOR_CONFIGS["toy_elicited_n20"]
+    kernels, names = build_kernels_from_config(prior)
+    likelihood2 = build_likelihood_from_config(prior)
+    model2, likelihood2 = build_model(x2, y2, kernels, names, likelihood2)
+    fit_map(model2, likelihood2, x2, y2, n_iter=80, lr=0.05, verbose=False)
+    fallback = ProfilePotential(model2, likelihood2, x2, y2)      # sites=None
+    assert fallback.sites_are_authoritative is False
+    with pytest.raises(ValueError, match="explicit authoritative E1 site order"):
+        integration.profile_potential_callables(
+            fallback, sites_order=fallback.nuisance_sites
+        )
+
+    # (b) An arbitrary same-set PERMUTATION of the authoritative order is rejected.
+    nuisance = profile.nuisance_sites
+    assert len(nuisance) >= 2
+    permuted = (nuisance[1], nuisance[0]) + nuisance[2:]
+    assert set(permuted) == set(nuisance) and permuted != nuisance
+    with pytest.raises(ValueError, match="EXACTLY"):
+        integration.profile_potential_callables(profile, sites_order=permuted)
+
+    # (c) A MISSING site and (d) a DUPLICATE site are rejected.
+    with pytest.raises(ValueError, match="EXACTLY"):
+        integration.profile_potential_callables(
+            profile, sites_order=nuisance[:-1]
+        )
+    with pytest.raises(ValueError, match="EXACTLY"):
+        integration.profile_potential_callables(
+            profile, sites_order=nuisance + (nuisance[0],)
+        )
 
 
 def test_curvature_retry_rejects_nonstationary_reoptimum(monkeypatch):

@@ -2830,3 +2830,24 @@ STOP (earlier stages) or a structured fail-closed STOP (final pullbacks). Parame
 `(0.15, 1000.0)`→upper-pullback and `(1e-6, 0.30)`→lower-pullback assert fail-closed, not crash; toy and
 Mauna-like edges verified unaffected. Full suite 330 passed / 1 skipped; rev-5 sha256 unchanged; historical
 path untouched.
+
+**Update (2026-07-13, sixth review round — E1-order provenance, non-self-certifiable bridge):** codex
+confirmed the refinement fix + 51/51 M2c but flagged that the E1-ordering contract was still
+SELF-CERTIFIABLE: `ProfilePotential(sites=None)` falls back to `named_priors()` order, and the bridge
+accepted any same-set permutation of `profile.nuisance_sites`, so the adapter test handed the fallback
+order straight back — no E1-derived authority was ever required. Harmless for the toy/M0 (where
+`named_priors()` order equals `E1Potential.sites`), but a real gap once M1 (PR C) introduces sites whose
+`named_priors()` order may diverge from the E1 pyro inventory. FIX (narrow, scientific-bridge only):
+- `ProfilePotential.sites_are_authoritative` records whether an EXPLICIT authoritative order was supplied
+  and validated (True iff `sites` given); `sites=None` remains for low-level/exploratory use.
+- `profile_potential_callables` (the recompute bridge) now fail-closes unless
+  `profile.sites_are_authoritative`, AND requires `sites_order == profile.nuisance_sites` EXACTLY (the
+  authoritative E1 order minus noise) — an arbitrary same-set permutation, a missing site, or a
+  duplicate is rejected (previously only a permutation-membership check).
+- The adapter test now builds `E1Potential`, passes `e1.sites` into `ProfilePotential`, and uses the
+  resulting authoritative nuisance order; a new negative test asserts a fallback profile, a permutation,
+  a missing site, and a duplicate are all rejected. Verified non-vacuous by probe (fallback REJECTED,
+  authoritative+exact ACCEPTED, permutation REJECTED).
+Full suite 331 passed / 1 skipped; rev-5 sha256 unchanged; historical path + `experiments/
+prior_sensitivity_study.py` untouched. Re-reviewed by codex + Sonnet (authority path). PR #10 kept Draft;
+the v1.18 recompute remains gated and execution-only.
