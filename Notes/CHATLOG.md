@@ -538,3 +538,30 @@ preceded by frozen preflight; nothing scientific ran before its gates passed.
 Commits: audit/validation outcomes 6f96c9e; W2/W3 rev ed89517; D34 build 24113a4; GLM hardening 8fc9edc;
 D35 fail-closed 12b7aaf; D35 split d0f4b02; D36 v1.16 outcome (this commit). PR #8 kept Draft throughout;
 no Mauna / M2c / VI-repair started; A7 Della on hold (v1.8). Heavy run artifacts never tracked.
+
+## 2026-07-13 — M2c PR A: profile-core implementation (hermetic, no compute)
+
+Implemented the v1.17 M2c **profile core** (rev-5 sha256 `c3e9db66…` verified byte-exact first) on a
+fresh branch `feat/d19-m2c-pr-a` off updated `main` (a7e108d7). Scope = P1 functional gradient + battery
++ D23 sentinel, the L-BFGS-B optimizer gate, the curvature gate (SPD+rcond, NO flooring), and the P3
+grid/quadrature — **code + hermetic tests only; no compute/recompute/sampler/Mauna/u*(η)/--execute**.
+
+Approach: Claude read the full frozen spec (freeze rev-5 §1/§2/§4, prereg v1.17/v1.4/v1.8§3, architecture
+§4) + the governing source files, empirically verified the grid arithmetic (182/184, 76/64, straddle
+indices) and the D23 mechanism (`apply_hp_value` severs the graph → grad None), then authored a
+byte-exact-derived implementation spec. codex gpt-5.6-sol xHigh implemented against it in two calls
+(constants+P1; integration). Claude reviewed every file line-by-line.
+
+Adversarial cross-model review: codex gpt-5.6-sol xHigh (primary) + a Claude Sonnet-5 cross-model pass
+(Gemini quota-exhausted / flash 503, Fable out of credits — not worked around). Found + fixed: **2 codex
+blockers** (curvature-retry never re-checked stationarity — Sonnet missed this; and the frozen §1
+refinement convergence/STOP gate was absent) + **2 Sonnet minors** (D23 floor provenance; inert prior
+double-count). codex re-review of the fixes = APPROVE. Every finding cross-verified against source.
+
+Result: 6 new files (`bistar_gp/{m2c_freeze,profile_potential,profile_integration}.py` +
+`tests/test_m2c_{freeze_constants,profile_gradient,profile_integration}.py`); full suite **311 passed /
+1 skipped** (+34); rev-5 sha256 unchanged; historical buggy triplet + `prior_sensitivity_study.py`
+untouched; nothing under `runs/` staged. Commit **ef31571**; **Draft PR #10** → `main`; **D41** logged.
+Deferred to the gated v1.18 recompute (disclosed in PR/D41): real u*(η) optimization, curvature gate on
+the real profile, corrected band-mass triplet, v1.18 result manifest, S2 HMC smoke. Next: PR B (S2/S3),
+C (M1/overlap/nugget), D (diagnostics/manifests/umbrella). No compute begun; holdout SEALED.
