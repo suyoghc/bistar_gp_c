@@ -588,6 +588,13 @@ found a residual boundary-exact (edge == decade-cap) crash, fixed by requiring s
 nodes. R6 — codex found the E1-order contract was still self-certifiable (fallback profile + bridge
 accepted any permutation); hardened: `ProfilePotential.sites_are_authoritative` provenance +
 `profile_potential_callables` fail-closes unless authoritative and `sites_order` equals the E1 order
-exactly; adapter test rebuilt on `E1Potential.sites` + negative tests. Commits **966be5d, 45556e5,
-bd56786, b7f3bed, 8adaaa5**; full suite **331 passed / 1 skipped**; rev-5 sha256 unchanged; historical
+exactly; adapter test rebuilt on `E1Potential.sites` + negative tests. R7-R9 (E1-order provenance,
+progressively deeper, each codex-found + fixed): the provenance flag was forgeable (restate named_priors
+order / permutation-as-sites) → the bridge now INDEPENDENTLY re-derives `e1.sites` from the profile's own
+model and requires an exact match; then it trusted the mutable `profile.nuisance_sites` for the operative
+order → derive the nuisance order from `e1.sites` too; then `g_value`/`g_grad` re-read mutable public
+fields per call → made `sites`/`nuisance_sites`/`noise_site`/authority-flag READ-ONLY properties. **S2
+authority path CLOSED after 9 rounds — codex + Sonnet BOTH APPROVE**; only private `_`-state mutation
+remains, agreed out of scope. Commits **966be5d, 45556e5, bd56786, b7f3bed, 8adaaa5, b11166e, 8adaaa5,
+91d7671, b02c4cd, 6eefb9f**; full suite **331 passed / 1 skipped**; rev-5 sha256 unchanged; historical
 path untouched; PR #10 kept Draft throughout. No compute begun; holdout SEALED.

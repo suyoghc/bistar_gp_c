@@ -2899,4 +2899,10 @@ both models agree is out of scope. Test case (c) now asserts assigning `nuisance
 `sites`/the flag raises `AttributeError` (drop AND duplicate attempts); read access + `g_value` verified
 intact. This closes the public-surface order-forgery class end-to-end (construction-time via the bridge's
 E1 re-derivation; post-construction via immutability). Full suite 331 passed / 1 skipped; rev-5 sha256
-unchanged; historical path untouched. Re-reviewed by codex + Sonnet. PR #10 kept Draft.
+unchanged; historical path untouched. **Re-review verdict: codex + Sonnet BOTH APPROVE** — the
+public-surface order-forgery class is closed end-to-end (construction-time E1 re-derivation + immutable
+fields); the only remaining route (private `_`-state mutation) both agree is out of scope for a
+non-security scientific API. Adjacent (not in PR-A scope, not a live vector): `E1Potential.sites` is a
+mutable attribute on the frozen M2b `E1Potential` class, but unreachable as a forgery vector because the
+bridge builds its own fresh `E1Potential` and reads `.sites` immediately; the frozen class is not
+modified. **S2 authority path CLOSED after 9 review rounds.** PR #10 kept Draft.
