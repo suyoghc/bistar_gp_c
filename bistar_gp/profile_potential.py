@@ -1,0 +1,234 @@
+"""Functional M2c profile potential (P1, prereg v1.17 rev-5 section 2a).
+
+The nuisance coordinates are logs of constrained hyperparameters. Kernel and
+likelihood values are substituted with ``torch.func.functional_call`` so the
+likelihood graph remains connected, while the fixed noise coordinate is kept
+outside the profile state.
+"""
+
+import gpytorch
+import torch
+
+from .e1_potential import _JointModule, _site_parameter_map
+from .fit import DEFAULT_JITTER
+from .model import apply_hp_value
+
+
+torch.set_default_dtype(torch.float64)
+
+
+class ProfilePotential:
+    """Differentiable ``log_joint(exp(u), noise) + sum(u)`` profile target."""
+
+    def __init__(self, model, likelihood, train_x, train_y,
+                 jitter=DEFAULT_JITTER, sites=None):
+        """``sites`` is the AUTHORITATIVE ordered site inventory (rev-5 §5.2:
+        emit in ``E1Potential.sites`` order). When supplied it is validated
+        against ``model.named_priors()`` (same SET, fail-closed on mismatch) and
+        used as the coordinate order — the production contract. The pyro oracle
+        is NEVER constructed or scored here; only its frozen ordering authority
+        (a plain tuple obtained upstream) is honoured. When ``sites`` is omitted
+        the order falls back to ``named_priors()`` (valid for the toy/M0
+        inventories, where a test asserts it equals ``E1Potential.sites``)."""
+        self._model = model
+        self._likelihood = likelihood
+        self._x = train_x.double()
+        self._y = train_y.double()
+        self._jitter = jitter
+
+        discovered = tuple(name for name, *_ in model.named_priors())
+        if sites is not None:
+            authoritative = tuple(sites)
+            # A one-to-one order: same set AND no duplicates (rev-5 §5.2 emits in
+            # the authoritative site order). A set-only check would accept a
+            # duplicated nuisance site, which would then be looped over — and its
+            # prior/Jacobian double-counted — in g_value.
+            if (
+                len(authoritative) != len(set(authoritative))
+                or set(authoritative) != set(discovered)
+            ):
+                raise RuntimeError(
+                    "profile site-order contract violation: authoritative sites "
+                    f"{list(authoritative)} are not a one-to-one ordering of "
+                    f"model.named_priors {sorted(discovered)} (fail-closed; no "
+                    "pyro oracle built)")
+            self._sites = authoritative
+        else:
+            self._sites = discovered
+        # Provenance flag: True only when an explicit ordered inventory was
+        # supplied (and passed the same-set/no-duplicate validation above).
+        # NOTE: this flag alone is NOT sufficient authority — it only records
+        # that *an* order was declared, not that the order is genuinely
+        # E1Potential.sites (a caller could restate named_priors() order or pass
+        # an arbitrary same-set permutation). The corrected scientific bridge
+        # (profile_potential_callables) therefore INDEPENDENTLY re-derives
+        # E1Potential.sites from this model and requires self.sites to match it
+        # exactly; this flag is only the cheap first gate that rejects a
+        # named_priors() fallback (sites=None). sites=None stays available for
+        # low-level/exploratory use (the gradient/curvature batteries, which do
+        # not go through the bridge).
+        self._sites_are_authoritative = sites is not None
+        self._site_map = _site_parameter_map(model, self._sites)
+        noise_sites = tuple(
+            site for site in self._sites if "noise_covar.noise" in site
+        )
+        if len(noise_sites) != 1:
+            raise RuntimeError(
+                "profile site-role ambiguity: expected exactly one "
+                f"noise_covar.noise site, found {len(noise_sites)}: "
+                f"{noise_sites}"
+            )
+        self._noise_site = noise_sites[0]
+        self._nuisance_sites = tuple(
+            site for site in self._sites if site != self._noise_site
+        )
+        self._joint = _JointModule(model)
+
+    # The ordered inventory is READ-ONLY after construction (backed by set-once
+    # private state). g_value / g_grad_functional and the scientific bridge
+    # re-read these on every call, so making them immutable to the public surface
+    # is what actually enforces the coordinate-order contract: a caller cannot
+    # inject a wrong order by assigning to nuisance_sites/noise_site/sites after
+    # construction. Only private-state mutation (self._sites, ...) could bypass
+    # this, which Python cannot prevent and is out of the contract's scope.
+    @property
+    def sites(self) -> tuple:
+        return self._sites
+
+    @property
+    def sites_are_authoritative(self) -> bool:
+        return self._sites_are_authoritative
+
+    @property
+    def noise_site(self) -> str:
+        return self._noise_site
+
+    @property
+    def nuisance_sites(self) -> tuple:
+        return self._nuisance_sites
+
+    def _coordinate(self, value, connected):
+        coordinate = torch.as_tensor(
+            value, dtype=torch.float64, device=self._y.device
+        )
+        return coordinate if connected else coordinate.detach()
+
+    def _fixed_noise(self, noise):
+        value = float(torch.as_tensor(noise).detach())
+        return torch.as_tensor(
+            value, dtype=torch.float64, device=self._y.device
+        )
+
+    def g_value(self, u, noise, connected=True):
+        """Return the scalar profile log density in constrained-log space."""
+        self._model.train()
+        self._likelihood.train()
+        overrides = {}
+        log_prior = self._y.new_zeros(())
+        log_jacobian = self._y.new_zeros(())
+
+        for site in self.nuisance_sites:
+            coordinate = self._coordinate(u[site], connected)
+            theta = torch.exp(coordinate)
+            prior, fqname, constraint, raw_shape = self._site_map[site]
+            log_prior = log_prior + prior.log_prob(theta).sum()
+            log_jacobian = log_jacobian + coordinate.sum()
+            raw = (
+                constraint.inverse_transform(theta)
+                if constraint is not None else theta
+            )
+            overrides["gp." + fqname] = raw.reshape(raw_shape)
+
+        theta_noise = self._fixed_noise(noise)
+        prior, fqname, constraint, raw_shape = self._site_map[self.noise_site]
+        log_prior = log_prior + prior.log_prob(theta_noise).sum()
+        raw_noise = (
+            constraint.inverse_transform(theta_noise)
+            if constraint is not None else theta_noise
+        )
+        overrides["gp." + fqname] = raw_noise.reshape(raw_shape)
+
+        with gpytorch.settings.cholesky_jitter(self._jitter):
+            log_marginal = torch.func.functional_call(
+                self._joint, overrides, (self._x, self._y)
+            )
+        return log_marginal + log_prior + log_jacobian
+
+    def g_grad_functional(self, u, noise):
+        """Differentiate the functional profile value over nuisance sites."""
+        u_required = {
+            site: torch.as_tensor(u[site], dtype=torch.float64)
+            .clone().detach().requires_grad_(True)
+            for site in self.nuisance_sites
+        }
+        value = self.g_value(u_required, noise)
+        gradients = torch.autograd.grad(
+            value, [u_required[site] for site in self.nuisance_sites]
+        )
+        return dict(zip(self.nuisance_sites, gradients))
+
+    def g_grad_naive_data(self, u, noise):
+        """Return the D23-broken ``.data``-injection reference gradient.
+
+        ``apply_hp_value`` writes constrained values into module parameters,
+        severing the nuisance-to-likelihood graph. Explicit prior and log
+        Jacobian terms remain connected, exposing the missing likelihood
+        contribution used by the prereg v1.3/D23 sentinel.
+        """
+        u_required = {
+            site: torch.as_tensor(u[site], dtype=torch.float64)
+            .clone().detach().requires_grad_(True)
+            for site in self.nuisance_sites
+        }
+        saved_parameters = {
+            name: parameter.detach().clone()
+            for name, parameter in self._model.named_parameters()
+        }
+
+        try:
+            self._model.train()
+            self._likelihood.train()
+            log_prior = self._y.new_zeros(())
+            log_jacobian = self._y.new_zeros(())
+            for site in self.nuisance_sites:
+                theta = torch.exp(u_required[site])
+                if not apply_hp_value(
+                        self._model, self._likelihood, site, theta):
+                    raise RuntimeError(
+                        f"profile site could not be applied by name: {site}"
+                    )
+                prior = self._site_map[site][0]
+                log_prior = log_prior + prior.log_prob(theta).sum()
+                log_jacobian = log_jacobian + u_required[site].sum()
+
+            theta_noise = self._fixed_noise(noise)
+            if not apply_hp_value(
+                    self._model, self._likelihood,
+                    self.noise_site, theta_noise):
+                raise RuntimeError(
+                    "profile noise site could not be applied by name: "
+                    f"{self.noise_site}"
+                )
+            noise_prior = self._site_map[self.noise_site][0]
+            log_prior = log_prior + noise_prior.log_prob(theta_noise).sum()
+
+            # Likelihood-only score through the SAME _JointModule as the
+            # functional path, but reached after apply_hp_value's ``.data``
+            # writes (which sever the kernel-site graph — the D23 defect).
+            # Priors are added explicitly above (log_prior), mirroring
+            # g_value's decomposition exactly, so this scalar does NOT
+            # double-count priors (an ExactMarginalLogLikelihood would add
+            # every registered prior a second time).
+            with gpytorch.settings.cholesky_jitter(self._jitter):
+                fresh_score = self._joint(self._x, self._y)
+            naive_value = fresh_score + log_prior + log_jacobian
+            gradients = torch.autograd.grad(
+                naive_value,
+                [u_required[site] for site in self.nuisance_sites],
+                allow_unused=True,
+            )
+            return dict(zip(self.nuisance_sites, gradients))
+        finally:
+            with torch.no_grad():
+                for name, parameter in self._model.named_parameters():
+                    parameter.copy_(saved_parameters[name])

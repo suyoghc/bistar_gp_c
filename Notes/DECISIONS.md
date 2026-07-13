@@ -2646,3 +2646,263 @@ artifacts preserved, unmoved.
 **Status:** M2c ALGORITHM FREEZE COMPLETE (v1.17 ratified). STOPPED per authorization. Next (requires
 a SEPARATE explicit author `--execute`): implement the owed new code (S2 metric / M1 builder / profile
 gradient path), then the gated deterministic profile recompute → v1.18 result freeze. No compute begun.
+
+---
+
+## D41: M2c PR-A — profile-core implementation (P1 functional gradient, optimizer/curvature gates, P3 grid/quadrature) — hermetic, no compute — 2026-07-13
+
+**Problem:** prereg **v1.17** (D40) froze the M2c profile-core numerical machinery
+(`docs/m2c-freeze-package-PROPOSAL.md` rev-5, sha256 `c3e9db66…`) but the code did not exist:
+`profile_laplace_noise_marginal` used derivative-free Nelder-Mead with no stationarity/curvature gate,
+built its Hessian from second differences of values (not the v1.8 §3 first-gradient protocol), and its
+`_profile_band_masses` dropped the two straddling trapezoids at the off-grid toy edges 0.15/0.30 (Σ P_b
+= 0.9232, the historical buggy triplet). v1.17 obliges: (P1) a functional (`functional_call`, no-`.data`)
+profile gradient validated vs central FD + a D23 sentinel; a frozen L-BFGS-B optimizer gate with
+mandatory stationarity; a curvature gate (K = −H via central FD of the validated gradient; SPD +
+rcond ≥ 1e-8, NO flooring, retry-once-then-STOP per J1); the P3 nested-grid + full-domain [1e-7,1e4]
+protocol; corrected float-safe band-mass partition/normalization; exact-quadratic quantile inversion;
+and δ_quad/δ_hess/δ_tail numerical-sensitivity reporting.
+
+**Decision (PR A — profile core ONLY; hermetic; NO compute/recompute/v1.18):** three new modules +
+three new hermetic test files, none touching the live experiment path:
+- `bistar_gp/m2c_freeze.py` — every frozen v1.17 profile-core constant, each pinned by a test (the v1.4
+  "module-level frozen values" pattern; code half of the future manifest==code CI in PR D).
+- `bistar_gp/profile_potential.py` — `ProfilePotential`: model-agnostic differentiable profile potential
+  g(u)=log_joint(exp(u),noise)+Σu over the nuisance coords at fixed noise, via `torch.func.functional_call`
+  (reusing E1's `_JointModule` + `_site_parameter_map`); noise site selected by semantic role (exactly
+  one, else STOP); nuisance = remaining sites in `named_priors()` order (test-asserted == `e1.sites`).
+- `bistar_gp/profile_integration.py` — P3 grid (base r=(1.2/0.005)^(1/39)=1.150882688488405; full
+  [1e-7,1e4] = 40+76+64+2 = 182 nodes, 184 with toy edges; nested geometric-midpoint refine 2N−1,
+  L_max=3) with a `refine_until_converged` convergence/STOP driver; L-BFGS-B optimizer gate (maxiter
+  500/maxfun 5000/ftol 1e-12/gtol 1e-8, τ_stat=1e-4, one jittered restart `default_rng(300+idx)` then
+  STOP, 2-start agreement never substituting for stationarity); curvature gate (h-sweep {5e-4,1e-3,2e-3}
+  center 1e-3, logdet-stability 1e-3, symmetry 1e-6, directional 1e-3 `default_rng {200,201,202}` order
+  ls/os/lv, SPD+rcond≥1e-8 NO flooring retry-once gtol 1e-10/ftol 1e-14 then STOP; the retried u* is
+  re-checked for stationarity); corrected band-mass integration (exact edge nodes, total:=Σ band_int,
+  Σ P_b≡1); exact-quadratic quantile inversion; δ_quad/δ_hess/δ_tail.
+- tests: `tests/test_m2c_freeze_constants.py`, `tests/test_m2c_profile_gradient.py` (P1 battery + D23
+  sentinel on synthetic toy(4)/mauna_structure(7)/generic(9) fixtures, STATIC points = MAP + 10 prior
+  draws, gradient gate 1e-4 abs + 1e-4·scale vs the independent `log_joint` FD), and
+  `tests/test_m2c_profile_integration.py` (grid, band-mass Σ≡1, quantile, quadratic-oracle optimizer +
+  curvature, refinement convergence/STOP, numerical-error). All hermetic, synthetic-only.
+
+**Recompute boundary (unchanged from v1.17):** batteries run on STATIC fixtures, never the profile's
+conditional optima u*(η). The historical buggy triplet (0.9232; `profile_laplace_lo=0.7626153713752779`,
+`FIGURE_EXPECTATIONS`) is preserved untouched as HISTORICAL-only provenance — the corrected values are
+produced ONLY by the separately-authorized v1.18 recompute. `experiments/prior_sensitivity_study.py` is
+NOT modified.
+
+**Alternatives considered:** (a) route the profile through `E1Potential`'s pyro potential — rejected:
+architecture §4.3 says the profile scores through the direct `_mh_log_joint` path, not E1Potential; we
+reuse only E1's model-level functional-call building blocks. (b) edit `_profile_band_masses` in place —
+rejected: it is test-pinned historical provenance; the corrected algorithm is new code. (c) apply the
+M1-gate 1e-3 eigenvalue floor or S2's λ_min≥1e-6 to the profile curvature — rejected: J1 mandates NO
+flooring for the profile; those thresholds belong to PR C / PR B respectively and are not cross-applied.
+
+**Verification:** implementation by codex gpt-5.6-sol xHigh against a byte-exact-derived spec (Claude
+authored the spec + reviewed every file line-by-line). Adversarial cross-model review = codex gpt-5.6-sol
+xHigh (primary) + a Claude Sonnet-5 cross-model pass (Gemini and Fable were both unavailable — quota /
+outage / credits — not worked around). Every finding cross-verified against source. Findings + fixes:
+- **codex blocker 1 (CONFIRMED, Sonnet missed it):** `curvature_gate`'s §2c retry accepted a
+  non-stationary re-optimized u* (only checked SciPy status, never re-checked τ_stat). FIX:
+  `_curvature_evaluation` now computes `grad_inf_norm` + `stationary = ‖∇g(u*)‖_∞ ≤ TAU_STAT` and folds
+  it into the `stop` conjunction, so any evaluated/re-optimized point is rejected if non-stationary
+  (rev-5 §2b L112-117). Isolation test `test_curvature_retry_rejects_nonstationary_reoptimum` fails
+  without the fix, passes with it.
+- **codex blocker 2 (CONFIRMED, corroborated by Sonnet):** the frozen §1 L62-73 nested-grid
+  refinement convergence/STOP gate was absent (`EPS_GRID`/`REFINE_L_MAX` unused). FIX: added
+  `refine_until_converged(band_masses_on_grid, grid0)` — refines while `max_b δ_quad^(ℓ) ≥ EPS_GRID` up
+  to `REFINE_L_MAX=3`, reports `δ_quad` at the final level, STOP if still `≥ EPS_GRID` at L_max; two tests
+  (converge / STOP).
+- **Sonnet minor A (traceability):** `D23_SENTINEL_MIN_REL=1e-2` is not a rev-5 number. FIX: docstring +
+  comment now cite it as the v1.4 E1 sentinel floor (`tests/test_e1_potential.py per_site>1e-2`) that
+  rev-5 §2a directs the profile sentinel to mirror.
+- **Sonnet minor B (inert double-count):** `g_grad_naive_data` scored via `ExactMarginalLogLikelihood`
+  (which re-adds priors) on top of an explicit prior sum — inert (the score is graph-severed from `u`,
+  gradient unchanged) but dishonest. FIX: score likelihood-only through `_JointModule`, mirroring
+  `g_value`; D23 mismatch numbers unchanged (2.14 / 2.72).
+Full suite green (baseline 277+1 → 309 passed / 1 skipped, +32 new); rev-5 sha256 re-verified unchanged;
+zero tracked files modified; nothing under `runs/` staged.
+
+**Status:** PR A implemented, reviewed (codex + Sonnet), fixed, re-verified; Draft PR opened to `main`.
+Runtime checks deferred to the gated v1.18 recompute: real u*(η) optimization, the curvature gate on the
+real profile at conditional optima, the corrected band-mass triplet / any golden PASS/FAIL against real
+data, the v1.18 result manifest, and the S2 end-to-end HMC smoke (PR B). PRs B (S2/S3), C
+(M1/overlap/nugget), D (divergence/MCSE/manifests/umbrella) follow.
+
+**Update (2026-07-13, second review round — codex reviewed PR #10's actual diff):** codex confirmed the
+34 targeted tests pass but flagged that PR-A had shipped the numerical PRIMITIVES without a top-level
+corrected-profile ORCHESTRATOR, plus two conformance gaps. All three addressed (still hermetic, no
+compute; historical path untouched):
+- **S1 (scope) — the missing orchestration is now added**, so the gated v1.18 recompute is
+  execution-only (it calls reviewed code, does not write new orchestration): `profile_logm_on_grid`
+  (per-noise gated Laplace: optimize → curvature → logm = g(u*) + (d/2)log2π − 0.5·log det K;
+  warm-start progression; fail-closed on optimizer/curvature STOP with `logm=None`);
+  `corrected_profile_band_masses` (composes full grid → profile → `band_masses` → nested refinement
+  with STOP propagation → δ_tail via the one-decade pullbacks `cap_ladder_grids[1000]`/`[1e-6]` → δ_hess
+  from reused per-node h-sweep logdets → exact-quadratic quantiles → heuristic envelope; fail-closed on
+  every gate); `profile_potential_callables` (thin torch↔numpy adapter — the v1.18 bridge). Distinct
+  from the primitives (`optimize_conditional`, `curvature_gate`, grid/band/quantile/δ functions): the
+  orchestrator COMPOSES them. Hermetic Gaussian-profile oracle test (analytic u*=μ, K=A) proves the
+  Laplace formula (logm error 5.4e-14), band masses vs analytic (ΣP_b−1=0), warm-start, call-ordering,
+  and fail-closed propagation from all four gates (optimizer/curvature/refinement/tail); the adapter is
+  checked at a single MAP point only (no orchestrator run on real optima).
+- **S2 — `cap_ladder_grids(band_edges=...)`** now threads the caller's edges into `full_domain_grid`, so
+  the Mauna per-arm q25/q75 diagnostic grids are no longer silently replaced by the toy 0.15/0.30.
+- **S3 — E1 site order is now a production contract:** `ProfilePotential(..., sites=<authoritative>)`
+  validates the set against `named_priors()` and fails closed on mismatch, without constructing the
+  pyro oracle (only its frozen ordering authority is honoured). Fallback to `named_priors()` order for
+  toy/M0 retained.
+The scoped re-review of these additions (codex + Sonnet-5) then found **4 further defects in the new
+orchestrator**, all fixed (both reviewers independently flagged the High-severity one):
+- **Curvature-retry Laplace bookkeeping (High; codex + Sonnet):** `profile_logm_on_grid` combined
+  `g_star` from the pre-retry optimizer point with `logdet`/K from `curvature_gate`'s re-optimized point
+  (§2c retry), and warm-started from the stale point — a silent (non-STOP) wrong `logm` whenever a retry
+  succeeds at a materially different optimum (Sonnet reproduced a 0.068-nat / ~7% error). FIX: use
+  `u_accepted = cur["u_star"]`, recompute `g_star = g_of(u_accepted, noise)`, warm-start from it; δ_hess
+  inherits the now-consistent `g_star`. Discriminating test added (retry lands at a different point).
+- **Fail-closed leak (codex):** `_corrected_profile_stop` still exposed the successful full-grid `logm`
+  (and via `profiles`) after a later refinement/pullback/tail STOP. FIX: `logm=None`, `profiles={}`
+  unconditionally; STOP tests now assert both.
+- **Mandatory-gate bypass (codex):** a public `refine=False` skipped the rev-5 §1 refinement gate. FIX:
+  the `refine` parameter is removed; refinement is always run (converge-or-STOP).
+- **Non-one-to-one site order (codex):** the S3 contract validated by SET only, accepting a duplicated
+  site (which `g_value` would double-count). FIX: also reject duplicates; the order test now covers a
+  permutation (proves the order, not just the set) and a duplicate rejection.
+Also added coverage for the previously-untested upper/lower-pullback sub-profile STOP branches.
+Full suite 324 passed / 1 skipped (+13 across both rounds); rev-5 sha256 unchanged; historical functions
++ `experiments/prior_sensitivity_study.py` still untouched. Re-review verdict after fixes: codex + Sonnet
+APPROVE. The v1.18 recompute remains gated and execution-only; nothing here runs compute.
+
+**Update (2026-07-13, fourth review round — refinement authority + author interpretation):** codex
+reran the targeted suite (47 passed) but found a structural refinement bug the smooth Gaussian oracle
+could not discriminate: `corrected_profile_band_masses` ran the mandatory nested refinement yet REPORTED
+the coarse level-0 band masses / logm / quantiles (the converged final-level masses were used only for
+δ_quad) and computed δ_hess/δ_tail at level-0 resolution — so the recompute would truthfully report a
+refinement sensitivity while publishing the unrefined answer. Two conformance gaps remained: the earlier
+decade-cap diagnostic stages were constructed but not evaluated, and the scientific bridge allowed a
+silent `named_priors()` order fallback.
+
+**Author interpretation of v1.17 (pre-compute, recorded):** once the nested-grid refinement converges,
+the **FINAL CONVERGED GRID is authoritative for every reported scientific output** — band masses, `logm`,
+and quantiles all come from level ℓ*, and the numerical sensitivities are evaluated at matched resolution
+so cap/Hessian sensitivity is not confounded with quadrature resolution. Applied consistently (no v1.17
+contradiction found):
+- `corrected_profile_band_masses` returns the FINAL-level grid / profile / band masses / quantiles
+  (captured from the refinement's last evaluated level via `refinement_holder`, with a defensive
+  holder-consistency guard), plus a `converged_level` field.
+- δ_hess is computed on the final grid; the upper/lower δ_tail pullbacks are refined to the SAME level
+  ℓ* as the accepted full-domain result (`refine_to_converged_level`) before `delta_tail`.
+- All six diagnostic decade-cap stages (upper 10/100/1000; lower 1e-4/1e-5/1e-6) are evaluated and
+  retained as a `cap_ladder_trace` (rev-5 §1 "recorded diagnostically … never used for the pass/fail
+  verdict"), clearly separated from the final one-decade pass/fail pullbacks; a STOP on a diagnostic-only
+  stage is recorded but does NOT fail-close the verdict.
+- `profile_potential_callables` now REQUIRES an explicit authoritative `sites_order` (fail-closed
+  scientific bridge); low-level `ProfilePotential(sites=None)` stays flexible.
+A discriminating test (a narrow/off-node profile: level-0 vs final band masses differ by 0.191,
+converges at ℓ*=2) asserts the returned outputs equal the FINAL level, not level 0.
+
+The scoped re-review of that refactor (codex + Sonnet) then found one more issue + one cleanup, fixed:
+- **Out-of-domain band edge crashed the diagnostic trace (codex, CONFIRMED):** a band edge outside an
+  inner decade stage's domain (dropped from that stage grid) was still passed to `band_masses`, whose
+  exact-node assertion raised — a crash, not a recorded STOP; the Mauna q25/q75 edges are unknown
+  pre-compute. FIX: `_band_edges_are_exact_nodes` guards both paths — a diagnostic stage records an
+  "edge outside domain" STOP (non-fail-closing), and a final one-decade pullback (which gates δ_tail)
+  returns a structured fail-closed STOP. Tests for both.
+- **Fail-closed docstring over-claimed (Sonnet):** `_corrected_profile_stop` said "no usable marginal or
+  band masses may be exposed", but the `cap_ladder_trace` (which rev-5 §1 requires recorded) legitimately
+  retains per-stage masses. FIX: docstring scoped to the verdict fields (`band_masses`/`logm`/`profiles`),
+  with a test locking the trace as retained diagnostic provenance on a downstream STOP.
+Full suite 328 passed / 1 skipped; rev-5 sha256 unchanged; historical functions +
+`experiments/prior_sensitivity_study.py` still untouched. PR #10 kept Draft; the v1.18 recompute remains
+gated and execution-only; nothing here runs compute.
+
+**Update (2026-07-13, fifth review round — guard-contract completion):** the confirmation re-review
+(codex CHANGES-REQUIRED / Sonnet APPROVE-with-follow-up, both converging) found the edge guard closed the
+strictly-outside-domain case but not the boundary-exact case: a band edge whose value EQUALS a decade-cap
+constant (10/100/1000/1e-4/1e-5/1e-6) is an exact node but a BOUNDARY node, which `band_masses` rejects
+(strict-interior precondition) — an uncaught `ValueError`. Currently unreachable (toy 0.15/0.30, Mauna
+q25/q75 ~0.1-1 never equal a cap), but a real guard-contract gap. FIX: strengthened
+`_band_edges_are_exact_nodes` → `_band_edges_are_interior_nodes`, which requires each edge to be an exact
+node AND not the first/last node (mirroring `band_masses`' own `edge_indices[0]==0 or
+edge_indices[1]==last` check); an out-of-domain OR boundary edge now degrades to a recorded diagnostic
+STOP (earlier stages) or a structured fail-closed STOP (final pullbacks). Parametrized cap-equality tests
+`(0.15, 1000.0)`→upper-pullback and `(1e-6, 0.30)`→lower-pullback assert fail-closed, not crash; toy and
+Mauna-like edges verified unaffected. Full suite 330 passed / 1 skipped; rev-5 sha256 unchanged; historical
+path untouched.
+
+**Update (2026-07-13, sixth review round — E1-order provenance, non-self-certifiable bridge):** codex
+confirmed the refinement fix + 51/51 M2c but flagged that the E1-ordering contract was still
+SELF-CERTIFIABLE: `ProfilePotential(sites=None)` falls back to `named_priors()` order, and the bridge
+accepted any same-set permutation of `profile.nuisance_sites`, so the adapter test handed the fallback
+order straight back — no E1-derived authority was ever required. Harmless for the toy/M0 (where
+`named_priors()` order equals `E1Potential.sites`), but a real gap once M1 (PR C) introduces sites whose
+`named_priors()` order may diverge from the E1 pyro inventory. FIX (narrow, scientific-bridge only):
+- `ProfilePotential.sites_are_authoritative` records whether an EXPLICIT authoritative order was supplied
+  and validated (True iff `sites` given); `sites=None` remains for low-level/exploratory use.
+- `profile_potential_callables` (the recompute bridge) now fail-closes unless
+  `profile.sites_are_authoritative`, AND requires `sites_order == profile.nuisance_sites` EXACTLY (the
+  authoritative E1 order minus noise) — an arbitrary same-set permutation, a missing site, or a
+  duplicate is rejected (previously only a permutation-membership check).
+- The adapter test now builds `E1Potential`, passes `e1.sites` into `ProfilePotential`, and uses the
+  resulting authoritative nuisance order; a new negative test asserts a fallback profile, a permutation,
+  a missing site, and a duplicate are all rejected. Verified non-vacuous by probe (fallback REJECTED,
+  authoritative+exact ACCEPTED, permutation REJECTED).
+Full suite 331 passed / 1 skipped; rev-5 sha256 unchanged; historical path + `experiments/
+prior_sensitivity_study.py` untouched. PR #10 kept Draft; the v1.18 recompute remains gated and
+execution-only.
+
+**Update (2026-07-13, seventh review round — non-forgeable E1 authority):** the authority-path re-review
+(codex CHANGES-REQUIRED / Sonnet APPROVE-but-document, both finding the same residual) showed the
+provenance-flag fix was still forgeable: `ProfilePotential.__init__` validates only same-set/no-duplicates,
+so `sites_are_authoritative=True` proves an order was *declared*, not that it is genuinely
+`E1Potential.sites` — a caller could restate `named_priors()` order OR pass an arbitrary same-set
+permutation as `sites` (a *wrong* coordinate order silently accepted; probe reproduced it). Inert today
+(toy/M0 `named_priors()` == `E1Potential.sites`, no orchestrator wired), but a latent correctness hole
+once M1 diverges. FIX (robust, non-forgeable): `profile_potential_callables` now INDEPENDENTLY re-derives
+`E1Potential.sites` from the profile's OWN model (via `build_e1_potential`, whose order comes from pyro's
+`initialize_model`) and requires `profile.sites == e1.sites` exactly — a restated `named_priors()` order,
+a permutation, or a flipped flag cannot pass, because the bridge derives the authority rather than
+trusting the caller. Only E1's ORDERING authority is consulted; the profile is never scored through the
+pyro oracle (ProfilePotential stays pyro-free; the bridge is the recompute entry). Layered contract:
+sites_order required → profile explicitly authoritative → `profile.sites` == independently-re-derived
+`e1.sites` → `sites_order` == `profile.nuisance_sites` exactly. New test asserts a permutation-as-`sites`
+profile (authoritative flag True) is REJECTED by the re-derivation; the `sites_are_authoritative` comment
+documents that the flag alone is not the authority. Full suite 331 passed / 1 skipped; rev-5 sha256
+unchanged; historical path untouched. PR #10 kept Draft.
+
+**Update (2026-07-13, eighth review round — mutable nuisance-order field):** the confirmation re-review
+(codex CHANGES-REQUIRED / Sonnet APPROVE) found one more residual: the bridge verified the full inventory
+`profile.sites == e1.sites` but then took the OPERATIVE nuisance order (used to map the positional
+u-vector to site names) from the separate MUTABLE `profile.nuisance_sites` field — a caller could mutate
+that cached tuple after construction to a permutation and mis-map coordinates (probe reproduced:
+`MUTATED -> ACCEPTED`). FIX: the bridge now derives the nuisance order DIRECTLY from the re-derived
+`e1.sites` (minus the semantically-identified noise site), trusting nothing mutable on the profile except
+the model/data used to re-derive E1. Sonnet separately noted the permutation test happened to swap
+noise↔non-noise (noise is at `e1.sites[0]` for the toy) so it only exercised the full-inventory check;
+the test now swaps two genuine NON-noise sites and asserts the nuisance subsequence is reordered, and a
+new case mutates `profile.nuisance_sites` and asserts the bridge rejects it. Verified by probe (mutated
+REJECTED, correct ACCEPTED). Full suite 331 passed / 1 skipped; rev-5 sha256 unchanged; historical path
+untouched. PR #10 kept Draft.
+
+**Update (2026-07-13, ninth review round — immutable order fields):** the final confirmation (codex +
+Sonnet BOTH CHANGES-REQUIRED, converging) found one more PUBLIC-surface vector, explicitly NOT out of
+scope: `g_value`/`g_grad_functional` re-read the mutable public `profile.nuisance_sites`/`noise_site` on
+every call, so a caller could mutate those AFTER obtaining the bridge callables — a drop/duplicate
+mutation silently corrupts the scored value (Sonnet probe: g −12.97 vs correct −18.34) even with a correct
+`sites_order`, since the bridge only fixed its OWN u-vector mapping. FIX: `ProfilePotential.sites`,
+`nuisance_sites`, `noise_site`, and `sites_are_authoritative` are now READ-ONLY properties backed by
+set-once private state (`self._sites`, ...), so no public assignment can inject a wrong order (raises
+`AttributeError`); the immutability is what enforces the contract because the scoring methods re-read the
+fields per call. The only remaining route is mutating private `_`-state, which Python cannot prevent and
+both models agree is out of scope. Test case (c) now asserts assigning `nuisance_sites`/`noise_site`/
+`sites`/the flag raises `AttributeError` (drop AND duplicate attempts); read access + `g_value` verified
+intact. This closes the public-surface order-forgery class end-to-end (construction-time via the bridge's
+E1 re-derivation; post-construction via immutability). Full suite 331 passed / 1 skipped; rev-5 sha256
+unchanged; historical path untouched. **Re-review verdict: codex + Sonnet BOTH APPROVE** — the
+public-surface order-forgery class is closed end-to-end (construction-time E1 re-derivation + immutable
+fields); the only remaining route (private `_`-state mutation) both agree is out of scope for a
+non-security scientific API. Adjacent (not in PR-A scope, not a live vector): `E1Potential.sites` is a
+mutable attribute on the frozen M2b `E1Potential` class, but unreachable as a forgery vector because the
+bridge builds its own fresh `E1Potential` and reads `.sites` immediately; the frozen class is not
+modified. **S2 authority path CLOSED after 9 review rounds.** PR #10 kept Draft.

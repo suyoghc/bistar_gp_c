@@ -538,3 +538,63 @@ preceded by frozen preflight; nothing scientific ran before its gates passed.
 Commits: audit/validation outcomes 6f96c9e; W2/W3 rev ed89517; D34 build 24113a4; GLM hardening 8fc9edc;
 D35 fail-closed 12b7aaf; D35 split d0f4b02; D36 v1.16 outcome (this commit). PR #8 kept Draft throughout;
 no Mauna / M2c / VI-repair started; A7 Della on hold (v1.8). Heavy run artifacts never tracked.
+
+## 2026-07-13 — M2c PR A: profile-core implementation (hermetic, no compute)
+
+Implemented the v1.17 M2c **profile core** (rev-5 sha256 `c3e9db66…` verified byte-exact first) on a
+fresh branch `feat/d19-m2c-pr-a` off updated `main` (a7e108d7). Scope = P1 functional gradient + battery
++ D23 sentinel, the L-BFGS-B optimizer gate, the curvature gate (SPD+rcond, NO flooring), and the P3
+grid/quadrature — **code + hermetic tests only; no compute/recompute/sampler/Mauna/u*(η)/--execute**.
+
+Approach: Claude read the full frozen spec (freeze rev-5 §1/§2/§4, prereg v1.17/v1.4/v1.8§3, architecture
+§4) + the governing source files, empirically verified the grid arithmetic (182/184, 76/64, straddle
+indices) and the D23 mechanism (`apply_hp_value` severs the graph → grad None), then authored a
+byte-exact-derived implementation spec. codex gpt-5.6-sol xHigh implemented against it in two calls
+(constants+P1; integration). Claude reviewed every file line-by-line.
+
+Adversarial cross-model review: codex gpt-5.6-sol xHigh (primary) + a Claude Sonnet-5 cross-model pass
+(Gemini quota-exhausted / flash 503, Fable out of credits — not worked around). Found + fixed: **2 codex
+blockers** (curvature-retry never re-checked stationarity — Sonnet missed this; and the frozen §1
+refinement convergence/STOP gate was absent) + **2 Sonnet minors** (D23 floor provenance; inert prior
+double-count). codex re-review of the fixes = APPROVE. Every finding cross-verified against source.
+
+Result: 6 new files (`bistar_gp/{m2c_freeze,profile_potential,profile_integration}.py` +
+`tests/test_m2c_{freeze_constants,profile_gradient,profile_integration}.py`); full suite **311 passed /
+1 skipped** (+34); rev-5 sha256 unchanged; historical buggy triplet + `prior_sensitivity_study.py`
+untouched; nothing under `runs/` staged. Commit **ef31571**; **Draft PR #10** → `main`; **D41** logged.
+Deferred to the gated v1.18 recompute (disclosed in PR/D41): real u*(η) optimization, curvature gate on
+the real profile, corrected band-mass triplet, v1.18 result manifest, S2 HMC smoke. Next: PR B (S2/S3),
+C (M1/overlap/nugget), D (diagnostics/manifests/umbrella). No compute begun; holdout SEALED.
+
+**Second/third review rounds (same day):** codex reviewed PR #10's actual diff and correctly flagged
+that PR-A shipped the numerical PRIMITIVES without a top-level corrected-profile ORCHESTRATOR (so the
+v1.18 recompute would have had to WRITE orchestration, not just run it), plus two conformance gaps
+(cap-ladder dropped Mauna edges; E1 site order was test-only). Added the hermetic orchestrator
+(`profile_logm_on_grid`, `corrected_profile_band_masses`, `profile_potential_callables`) + S2/S3 fixes.
+A scoped re-review (codex + Sonnet-5) then found 4 orchestrator defects — the High-severity one (both
+models): the curvature §2c retry can re-optimize u*, but the driver kept g_star/warm-start from the
+pre-retry point, silently mis-combining g and K (~7% mass error); plus a fail-closed logm leak, a
+`refine=False` bypass of the mandatory §1 gate, and a set-only (dup-accepting) site check. All fixed;
+codex + Sonnet re-review APPROVE. Commit **45556e5**; full suite **324 passed / 1 skipped**; PR #10 kept
+Draft. Still hermetic — no compute/sampler/Mauna/u*(η)/--execute; historical path unchanged.
+
+**Rounds 4-6 (same day):** R4 — codex found `corrected_profile_band_masses` ran the mandatory nested
+refinement but published the coarse level-0 answer; author interpretation recorded (final converged grid
+authoritative for all reported outputs; matched-resolution δ_hess/δ_tail; all six diagnostic decade
+stages evaluated as a non-fail-closing trace; fail-closed bridge order). Discriminating narrow-profile
+test (0.191 level-0-vs-final shift). R5 — out-of-domain band edge crashed the diagnostic trace (codex) +
+fail-closed docstring over-claim (Sonnet); guarded to recorded/structured STOP; confirmation pass then
+found a residual boundary-exact (edge == decade-cap) crash, fixed by requiring strictly-interior edge
+nodes. R6 — codex found the E1-order contract was still self-certifiable (fallback profile + bridge
+accepted any permutation); hardened: `ProfilePotential.sites_are_authoritative` provenance +
+`profile_potential_callables` fail-closes unless authoritative and `sites_order` equals the E1 order
+exactly; adapter test rebuilt on `E1Potential.sites` + negative tests. R7-R9 (E1-order provenance,
+progressively deeper, each codex-found + fixed): the provenance flag was forgeable (restate named_priors
+order / permutation-as-sites) → the bridge now INDEPENDENTLY re-derives `e1.sites` from the profile's own
+model and requires an exact match; then it trusted the mutable `profile.nuisance_sites` for the operative
+order → derive the nuisance order from `e1.sites` too; then `g_value`/`g_grad` re-read mutable public
+fields per call → made `sites`/`nuisance_sites`/`noise_site`/authority-flag READ-ONLY properties. **S2
+authority path CLOSED after 9 rounds — codex + Sonnet BOTH APPROVE**; only private `_`-state mutation
+remains, agreed out of scope. Commits **966be5d, 45556e5, bd56786, b7f3bed, 8adaaa5, b11166e, 8adaaa5,
+91d7671, b02c4cd, 6eefb9f**; full suite **331 passed / 1 skipped**; rev-5 sha256 unchanged; historical
+path untouched; PR #10 kept Draft throughout. No compute begun; holdout SEALED.
