@@ -3197,8 +3197,8 @@ v1.18 — merge is the author's call.
 
 ## D44: M2c PR-D — §5.3 divergence non-clustering + §3 chain-aware MCSE + the v1.17 algorithm manifest & v1.18 result schema + hermetic umbrella suite — hermetic, no compute — 2026-07-14
 
-> **⚠ Manifest/provenance specifics in the original body below were CORRECTED during review — the two
-> "Update" sections at the end are AUTHORITATIVE for current state.** In particular: `frozen_at_git_sha` is
+> **⚠ Manifest/provenance specifics in the original body below were CORRECTED during review — the
+> "Update" section at the end is AUTHORITATIVE for current state.** In particular: `frozen_at_git_sha` is
 > **`6d39d38`** (the PR-D implementation snapshot), NOT the pre-PR-D base `b3d35b6`; the v1.18 SCHEMA is at
 > **`docs/m2c_freeze/gtoy_profile_result_v1.18.schema.json`** (the bare `…v1.18.json` path is reserved+absent
 > for the future result instance); the MCSE IACT uses the PUBLIC `az.ess(method="identity", relative=False)`;
