@@ -21,12 +21,50 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   sensitivity (never SE); estimator goldens+tolerances; the 5 §6.15 predicates (S2/S3/divergence/
   overlap/nugget); two-manifest schema. Historical buggy triplet 0.76262/0.13752/0.02311 (sum 0.9232)
   = HISTORICAL-only.
-- **NEXT (requires a SEPARATE explicit author `--execute`):** implement the owed NEW code — the S2
-  fixed-metric path, the **M1 Matern builder** (does not exist yet), and the profile functional-gradient
-  path — then the gated deterministic profile recompute → **v1.18** result freeze. **NO compute begun.**
+- **Owed NEW code — ALL THREE now implemented (hermetic, no compute):** the profile functional-gradient
+  path (PR A / D41), the S2 fixed-metric path (PR B / D42), and the **M1 Matérn builder (PR C / D43)**.
+  **NEXT:** PR D (divergence non-clustering + chain-aware MCSE + the two JSON manifests + umbrella suite),
+  then — with a SEPARATE explicit author `--execute` — the gated deterministic profile recompute →
+  **v1.18** result freeze. **NO compute begun.** The ≤0.95 correlation-duplication gate and the 1e-3
+  M1-gate eigenvalue-floor gate remain owed (pinned reference-only in PR C, no executor).
 - **HARD GATES:** no compute/recompute/sampler/Mauna/holdout without `--execute` + clean tree + byte-
   exact hashes + passing tests, then stop-and-report; HMC only via `fit_hmc_e1`; VI+hmc_laplace
   withdrawn; A7 Della on hold (v1.8); holdout SEALED (§6.6).
+
+### PR C — M1 builder + §5.4 overlap + §5.5 nugget-floor DRAFT (branch `feat/d19-m2c-pr-c` off merged main `f1bf977`; D43, 2026-07-13)
+
+- **Scope = the three §6.15 M2c predicates PRs A/B did not cover:** (1) the NEW **M1 constrained
+  short-scale Matérn-3/2 builder** (M0's 7 sites + ls/os ⇒ 9 sites), (2) the **§5.4 covariance-overlap**
+  M1-duplication diagnostic, (3) the **§5.5 report-only nugget-floor** predicate. HERMETIC — synthetic
+  fixtures + algebraic seedless cases only; no sampler, no Mauna/holdout, no `--execute`. 5 NEW modules
+  (`bistar_gp/{m2c_freeze_m1,m1_builder,m1_authority,m1_overlap,m1_nugget_floor}.py`) + 4 test files; the
+  ONLY tracked edit is a 4-symbol export append to `bistar_gp/__init__.py`. `python -m pytest -q` →
+  **404 passed / 1 skipped** (baseline 350/1 + 48 + 6 review-fix tests).
+- **M1 prior (frozen, byte-exact):** outputscale LogNormal(log 2.4e-4, 1.2); lengthscale logit-normal
+  0.1+0.9·sigmoid(z), z~Normal(-1.2528, 1.082), hard support [0.1,1.0] (q10/q50/q90 = 0.16/0.30/0.58),
+  Matérn ν=1.5. `LogitNormalPrior(Prior, LogitNormal)` mirrors gpytorch `LogNormalPrior`; `Interval(0.1,
+  1.0).transform` = 0.1+0.9·sigmoid(raw) bit-exact so constraint↔prior compose (no truncation constant).
+  Composable non-mutating `augment_with_m1_short_scale` appends `short_scale` to ANY Mauna arm; 9-site E1
+  inventory exact; seasonal A10 stamp UNCHANGED.
+- **Distinct-gate discipline:** overlap is the plain centered Frobenius alignment — NO eigen-floor / SPD /
+  curvature rule on A or B_j (distinct from PR-A profile SPD, PR-B S2 λ_min≥1e-6, and the M1-gate 1e-3
+  floor). The 0.95 correlation cap and 1e-3 M1-gate floor are pinned REFERENCE-ONLY, not applied; their
+  gates (≤0.95 duplication, 1e-3 eigen-floor) remain OWED (no executor in PR C).
+- **Adversarial review (codex xHigh primary + Sonnet-5), two fix rounds → BOTH APPROVE:** codex
+  CHANGES-REQUIRED with 1 MAJOR (overlap silently accepted a partial component set → could PASS) + 2 MINOR
+  (OverflowError on huge int weights escaped the wrappers; logit-normal endpoints). Cross-verified vs the
+  freeze: MAJOR + the overflow MINOR fixed (overlap now fails closed on a partial set via a FROZEN
+  fail-safe default `M1_OVERLAP_REQUIRED_COMPONENTS`; wrappers catch OverflowError → UNDETERMINED); the
+  endpoint MINOR does NOT survive cross-verification — the freeze pins "hard support [0.1,1.0]" CLOSED, so
+  endpoints-in-support is freeze-faithful (documented, code unchanged). Sonnet APPROVE both rounds; codex
+  re-reviewed twice (held the line that the fail-closed must be the DEFAULT, not an optional arg) → APPROVE.
+- **Provenance (precise):** no M1/scientific sampler route or chain executed; no Mauna/holdout computation
+  ran. The full suite did execute its pre-existing hermetic tiny-E1 sampler regression tests.
+- **DRAFT PR opened to `main`.** rev-5 sha256 unchanged; `m2c_freeze.py`, `m2c_freeze_s2s3.py`, PR-A/PR-B
+  source, the `e1_potential.py` refactor, the freeze package, and historical `prior_sensitivity_study.py`
+  all byte-identical to `f1bf977`; no `runs/` staged. Public default strategy unchanged; S3 stays M0-only.
+  STOP before PR D (divergence + chain-aware MCSE + two JSON manifests + umbrella suite), any scientific
+  sampler execution, Mauna/holdout, and the v1.18 recompute (still blocked on the PR-D v1.17 manifest).
 
 ### PR B — S2 fixed-metric + S3 reparam READY (PR #11, branch `feat/d19-m2c-pr-b` off merged main `70e3eb3`; D42, 2026-07-13)
 
