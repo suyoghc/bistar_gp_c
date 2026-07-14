@@ -74,11 +74,16 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   `q_overlap`/`nugget_floor_predicate` primitives. Three focused review rounds → codex + Sonnet-5 APPROVE.
 - **Provenance (precise):** no M1/scientific sampler route or chain executed; no Mauna/holdout computation
   ran. The full suite did execute its pre-existing hermetic tiny-E1 sampler regression tests.
-- **DRAFT PR opened to `main`.** rev-5 sha256 unchanged; `m2c_freeze.py`, `m2c_freeze_s2s3.py`, PR-A/PR-B
-  source, the `e1_potential.py` refactor, the freeze package, and historical `prior_sensitivity_study.py`
-  all byte-identical to `f1bf977`; no `runs/` staged. Public default strategy unchanged; S3 stays M0-only.
-  STOP before PR D (divergence + chain-aware MCSE + two JSON manifests + umbrella suite), any scientific
-  sampler execution, Mauna/holdout, and the v1.18 recompute (still blocked on the PR-D v1.17 manifest).
+- **PR #12 flipped Draft → Ready 2026-07-14** after the author (relaying codex) accepted the final
+  threshold-pinning correction and directed the mechanical Ready preflight: HEAD contains current
+  origin/main (`f1bf977`), GitHub MERGEABLE/CLEAN, PR diff = only the intended PR-C code/tests/Notes (no
+  `runs/`), `python -m pytest -q` → 404 passed / 1 skipped, PR body updated. rev-5 sha256 unchanged;
+  `m2c_freeze.py`, `m2c_freeze_s2s3.py`, PR-A/PR-B source, the `e1_potential.py` refactor, the freeze
+  package, and historical `prior_sensitivity_study.py` all byte-identical to `f1bf977`. The TRACKED tree is
+  clean; unrelated local untracked artifacts (pre-existing `runs/` outputs, `.obsidian/`, etc.) remain and
+  were NOT staged. Public default strategy unchanged; S3 stays M0-only. STOP before merge, PR D (divergence
+  + chain-aware MCSE + two JSON manifests + umbrella suite), any scientific sampler execution, Mauna/holdout,
+  and the v1.18 recompute (still blocked on the PR-D v1.17 manifest). Merge is the author's call.
 
 ### PR B — S2 fixed-metric + S3 reparam READY (PR #11, branch `feat/d19-m2c-pr-b` off merged main `70e3eb3`; D42, 2026-07-13)
 

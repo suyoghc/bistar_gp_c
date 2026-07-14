@@ -3181,4 +3181,14 @@ forge" wording overclaimed) — both fixed (correction 5 + the honesty-boundary 
 + Sonnet APPROVE (thresholds pinned + recorded in every report; primitives still configurable; no residual
 overclaim). Provenance unchanged: no M1/scientific sampler route or chain
 executed; no Mauna/holdout computation ran; the full suite did execute its pre-existing hermetic tiny-E1
-sampler regression tests. PR #12 kept Draft; STOP before PR D / v1.18.
+sampler regression tests.
+
+**Update (2026-07-14, PR #12 flipped Draft → Ready).** After codex accepted the final threshold-pinning
+correction, the author directed the mechanical Ready preflight (no further review round): HEAD contains
+current origin/main (`f1bf977`); GitHub reports MERGEABLE/CLEAN; the PR diff is exactly the intended PR-C
+code/tests/Notes (5 new modules + 4 new test files + the 4-symbol `__init__.py` export append + D43/
+SCRATCHPAD) with no `runs/` artifacts; `python -m pytest -q` → 404 passed / 1 skipped; the PR body was
+updated with the threshold-pinning + caller-attestation boundary. Provenance (precise): the TRACKED tree is
+clean; unrelated local untracked artifacts (pre-existing `runs/` outputs, `.obsidian/`, etc.) remain and
+were NOT staged. PR #12 marked Ready. STOP before merge, PR D, scientific computation, Mauna/holdout, or
+v1.18 — merge is the author's call.
