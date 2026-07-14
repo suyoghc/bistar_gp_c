@@ -38,15 +38,17 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   aware `MCSE_strategy` estimator, (3) the IMMUTABLE v1.17 algorithm manifest + manifest==code CI, (4) the
   SEPARATE v1.18 result-manifest SCHEMA (field contract only, NO values), (5) a hermetic umbrella suite.
   4 NEW modules (`bistar_gp/{m2c_freeze_dm,divergence_clustering,mcse_strategy,m2c_manifest}.py`) +
-  `docs/m2c_freeze/{gtoy_profile_freeze_v1.17.json, gtoy_profile_result_v1.18.json}` + 5 test files; ONLY
-  tracked edit = a symbol-export append to `bistar_gp/__init__.py`. `python -m pytest -q` → **439 passed /
-  1 skipped**.
+  `docs/m2c_freeze/{gtoy_profile_freeze_v1.17.json, gtoy_profile_result_v1.18.schema.json}` + 5 test files;
+  the only tracked non-new-file SOURCE edit is a symbol-export append to `bistar_gp/__init__.py` (plus the
+  standard decision-log updates to `Notes/DECISIONS.md` + `Notes/SCRATCHPAD.md`). `python -m pytest -q` →
+  **442 passed / 1 skipped**.
 - **Divergence** (`divergence_clustering.py`): rate ≤0.001; d_max ≤ L_chain=max(2,⌈3D/C⌉); per-chain time
   window w=⌈0.10T⌉, time_max ≤ L_time=max(2,⌈3·(D/C)·w/T⌉) (sliding window = max_a W_c(a)); unique+sorted
   pre-check (dup/missing ⇒ UNDETERMINED); §5.3(c) fixtures exact (L_chain=6/L_time=2/w=200). HONEST SCOPE:
   parameter-band clustering UNEVALUABLE (schema stores indices only) — flagged, not overclaimed.
 - **MCSE** (`mcse_strategy.py`): c_t=exp(-G/τ − M_global), SINGLE global shift over all (c,t,j); IACT via
-  arviz raw autocov `_ess` (τ=N/ESS), τ_int=max over chains+columns; block ℓ=⌈2τ_int⌉; T−ℓ+1<2 ⇒
+  the PUBLIC `az.ess(method="identity", relative=False)` raw-autocov ESS (τ=N/ESS), τ_int=max over
+  chains+columns; block ℓ=⌈2τ_int⌉; T−ℓ+1<2 ⇒
   UNDETERMINED (no row-bootstrap fallback); overlapping non-circular MBB within each chain → re-run
   `soft_transfer`; SD over B=1000 seed 20260712. Does NOT reuse the SIR row bootstrap. Kept separate from
   the 0.02 precision gate / W5 scatter / MCSE_SIR 0.441±0.005.

@@ -3197,6 +3197,13 @@ v1.18 — merge is the author's call.
 
 ## D44: M2c PR-D — §5.3 divergence non-clustering + §3 chain-aware MCSE + the v1.17 algorithm manifest & v1.18 result schema + hermetic umbrella suite — hermetic, no compute — 2026-07-14
 
+> **⚠ Manifest/provenance specifics in the original body below were CORRECTED during review — the two
+> "Update" sections at the end are AUTHORITATIVE for current state.** In particular: `frozen_at_git_sha` is
+> **`6d39d38`** (the PR-D implementation snapshot), NOT the pre-PR-D base `b3d35b6`; the v1.18 SCHEMA is at
+> **`docs/m2c_freeze/gtoy_profile_result_v1.18.schema.json`** (the bare `…v1.18.json` path is reserved+absent
+> for the future result instance); the MCSE IACT uses the PUBLIC `az.ess(method="identity", relative=False)`;
+> and the v1.17/v1.18 hashes are `65381bc7…`. The final full-suite count is **442 passed / 1 skipped**.
+
 **Problem:** prereg v1.17 (rev-5, sha256 `c3e9db66…1ce3f`) froze the FINAL M2c package pieces that PRs
 A/B/C did not implement: the §5.3 divergence non-clustering predicate, the §3 chain-aware `MCSE_strategy`
 estimator, the two-manifest schema (§6 — an IMMUTABLE v1.17 algorithm manifest + a SEPARATE v1.18 result
@@ -3205,8 +3212,9 @@ Mauna/holdout, no `--execute`), must not touch PR-A/B/C frozen source, and must 
 value (blocked on the separately-authorized gated recompute).
 
 **Decision:** Implemented on `feat/d19-m2c-pr-d` off merged `main` (`b3d35b6`, PR #12). Four NEW modules +
-two manifest JSON files + five NEW test files; the ONLY edit to a tracked file is a symbol-export append to
-`bistar_gp/__init__.py`.
+two manifest JSON files + five NEW test files; the only tracked non-new-file SOURCE edit is a symbol-export
+append to `bistar_gp/__init__.py` (the decision-log `Notes/DECISIONS.md` + `Notes/SCRATCHPAD.md` are also
+updated per the standard workflow, as in every D19 PR).
 - **Frozen constants** `bistar_gp/m2c_freeze_dm.py` (sibling; NOT m2c_freeze/_s2s3/_m1), pinned by
   `tests/test_m2c_freeze_dm_constants.py`: DIVERGENCE_RATE_CAP=0.001 (its first real definition — it was
   comment-only in `m2c_freeze.py:62`), DIVERGENCE_CONC_FACTOR=3, DIVERGENCE_MIN_EVENT_FLOOR=2,
