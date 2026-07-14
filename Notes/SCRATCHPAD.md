@@ -58,15 +58,20 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   endpoint MINOR does NOT survive cross-verification — the freeze pins "hard support [0.1,1.0]" CLOSED, so
   endpoints-in-support is freeze-faithful (documented, code unchanged). Sonnet APPROVE both rounds; codex
   re-reviewed twice (held the line that the fail-closed must be the DEFAULT, not an optional arg) → APPROVE.
-- **Production-contract hardening (2026-07-13, author-relayed codex pushback; D43 Update):** four issues,
+- **Production-contract hardening (2026-07-13/14, author-relayed codex pushback; D43 Update):** five issues,
   all fixed in PR-C modules only. (1) `overlap_diagnostic` enforces the EXACT frozen component set + PINS
   the M1 key to `M1_SHORT_SCALE_NAME` (no `m1_name`/`None` bypass). (2) `nugget_floor_report` requires
   complete M1+M0 authorities + explicit predictive-gate bool + strictly-positive noise. (3) authority
-  provenance made NON-FORGEABLE: the scientific wrappers take candidate maps (label→STRICT bool) + weights
-  and call `select_and_normalize_authority`→`resolve_verdict_authority` INTERNALLY (no authority object to
-  forge; `"False"`-string rejected); honest boundary — G-IS/RW-MH facts are caller-attested + PR-D-validated
-  (PR C runs no chains). (4) `augment_with_m1_short_scale` fails closed on a malformed M0 inventory
-  (arm-generic, no hardcoded Mauna names). Two focused review rounds → codex + Sonnet-5 **BOTH APPROVE**.
+  provenance: the scientific wrappers take candidate maps (label→STRICT bool) + weights and call
+  `select_and_normalize_authority`→`resolve_verdict_authority` INTERNALLY, removing the pre-built-authority
+  OBJECT bypass (`"False"`-string/`numpy.bool_` rejected). Honest boundary — NOT "non-forgeable": the
+  qualification booleans stay CALLER-ATTESTED (a caller can assert `{"G-IS": True}` without proof); PR C
+  runs no chains and does not derive/verify G-IS passage or RW-MH crossing — PR D does. (4)
+  `augment_with_m1_short_scale` fails closed on a malformed M0 inventory (arm-generic, no hardcoded Mauna
+  names). (5) frozen decision thresholds PINNED in the scientific wrappers (`overlap_diagnostic` no longer
+  takes `alignment_threshold`/`cap`; `nugget_floor_report` no longer takes `reference`/`flag_threshold`;
+  §7 "Frozen, not open" 0.90/0.05 + 1.9e-4/0.05), recorded in every report; configurability stays on the
+  `q_overlap`/`nugget_floor_predicate` primitives. Three focused review rounds → codex + Sonnet-5 APPROVE.
 - **Provenance (precise):** no M1/scientific sampler route or chain executed; no Mauna/holdout computation
   ran. The full suite did execute its pre-existing hermetic tiny-E1 sampler regression tests.
 - **DRAFT PR opened to `main`.** rev-5 sha256 unchanged; `m2c_freeze.py`, `m2c_freeze_s2s3.py`, PR-A/PR-B

@@ -274,6 +274,28 @@ def test_top_level_overlap_enforces_exact_frozen_component_set():
     assert ok["verdict"] in ("PASS", "STOP") and ok["q_overlap"] is not None
 
 
+def test_overlap_wrapper_pins_frozen_thresholds_and_rejects_overrides():
+    import inspect
+
+    from bistar_gp import m1_overlap
+
+    params = inspect.signature(m1_overlap.overlap_diagnostic).parameters
+    assert "alignment_threshold" not in params and "cap" not in params
+    # The frozen 0.90/0.05 appear in every completed report (PASS/STOP + UNDETERMINED).
+    projector = np.eye(4) - np.ones((4, 4)) / 4.0
+    ok = overlap_diagnostic([_exact_draw(projector)], [0.01], *_auth("G-IS", [1.0]))
+    assert ok["threshold"] == OVERLAP_ALIGNMENT_THRESHOLD == 0.90
+    assert ok["cap"] == Q_OVERLAP_CAP == 0.05
+    und = overlap_diagnostic([{"alias": projector}], [0.01], *_auth("G-IS", [1.0]))
+    assert und["verdict"] == "UNDETERMINED"
+    assert und["threshold"] == 0.90 and und["cap"] == 0.05
+    # A caller cannot flip STOP->PASS by overriding the frozen cap (§7 frozen).
+    with pytest.raises(TypeError):
+        overlap_diagnostic(
+            [_exact_draw(projector)], [0.01], *_auth("G-IS", [1.0]), cap=1.0
+        )
+
+
 def test_one_synthetic_mauna_draw_is_finite_plumbing_only():
     """Wiring/finiteness fixture only; this is not a scientific M1 verdict."""
     x = torch.arange(36, dtype=torch.float64) / 12.0

@@ -99,6 +99,8 @@ def nugget_floor_predicate(
         "flag": flag,
         "coincidence": coincidence,
         "predictive_gate_passes": predictive,
+        "reference": reference,
+        "flag_threshold": flag_threshold,
     }
 
 
@@ -126,8 +128,6 @@ def nugget_floor_report(
     m0_authority_candidates=None,
     m0_authority_weights_by_label=None,
     predictive_gate_passes=None,
-    reference=NUGGET_REFERENCE,
-    flag_threshold=NUGGET_FLAG_THRESHOLD,
 ):
     """SCIENTIFIC §5.5 report: complete inputs + internal precedence selection.
 
@@ -146,9 +146,12 @@ def nugget_floor_report(
         predictive-improvement gate); ``None`` ⇒ UNDETERMINED.
       * every M1/M0 noise variance must be finite and strictly positive (n_i is a
         constrained variance).
-    A noise source may be a 1D array or a sample mapping (single current/legacy
-    site resolved via :func:`resolve_single_noise_site`).  No input failure
-    escapes this wrapper.
+    The frozen ``NUGGET_REFERENCE`` (1.9e-4) and ``NUGGET_FLAG_THRESHOLD`` (0.05)
+    are PINNED here (§7 "Frozen, not open") and cannot be overridden — they are
+    recorded in every completed report; threshold configurability lives only in
+    the ``nugget_floor_predicate`` primitive.  A noise source may be a 1D array or
+    a sample mapping (single current/legacy site resolved via
+    :func:`resolve_single_noise_site`).  No input failure escapes this wrapper.
     """
     m1_authority = None
     try:
@@ -180,8 +183,8 @@ def nugget_floor_report(
             m0_noise_variances=m0_noises,
             normalized_m0_authority=m0_authority,
             predictive_gate_passes=predictive_gate_passes,
-            reference=reference,
-            flag_threshold=flag_threshold,
+            reference=NUGGET_REFERENCE,
+            flag_threshold=NUGGET_FLAG_THRESHOLD,
         )
     except (AuthorityError, NuggetError, TypeError, ValueError, OverflowError) as exc:
         predictive = (
@@ -198,6 +201,8 @@ def nugget_floor_report(
             "flag": "UNDETERMINED",
             "coincidence": None,
             "predictive_gate_passes": predictive,
+            "reference": NUGGET_REFERENCE,
+            "flag_threshold": NUGGET_FLAG_THRESHOLD,
             "error": str(exc),
         }
 

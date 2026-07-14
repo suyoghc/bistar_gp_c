@@ -207,3 +207,22 @@ def test_complete_report_returns_the_full_coincidence_record():
     assert report["coincidence"] is True
     assert report["predictive_gate_passes"] is True
     assert "verdict" not in report
+
+
+def test_nugget_report_pins_frozen_thresholds_and_rejects_overrides():
+    import inspect
+
+    from bistar_gp import m1_nugget_floor
+
+    params = inspect.signature(m1_nugget_floor.nugget_floor_report).parameters
+    assert "reference" not in params and "flag_threshold" not in params
+    # The frozen 1.9e-4/0.05 appear in every completed report (valid + UNDETERMINED).
+    ok = _report([0.5 * NUGGET_REFERENCE, 2.0 * NUGGET_REFERENCE], [2.0, 18.0])
+    assert ok["reference"] == NUGGET_REFERENCE == 1.9e-4
+    assert ok["flag_threshold"] == NUGGET_FLAG_THRESHOLD == 0.05
+    und = _report([0.5 * NUGGET_REFERENCE], [1.0], m0_noise_variances=None)
+    assert und["flag"] == "UNDETERMINED"
+    assert und["reference"] == 1.9e-4 and und["flag_threshold"] == 0.05
+    # A caller cannot flip the flag by overriding the frozen threshold (§7 frozen).
+    with pytest.raises(TypeError):
+        _report([0.5 * NUGGET_REFERENCE], [1.0], flag_threshold=1.0)

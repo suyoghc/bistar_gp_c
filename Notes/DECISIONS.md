@@ -3130,38 +3130,55 @@ PR-C modules only (no frozen file touched; rev-5 sha256 unchanged):
   finite strictly-positive noise (n_i>0, a constrained variance) for both arms; any missing/None/nonpositive
   ⇒ UNDETERMINED (never a valid M1 flag with `None` companions). `nugget_floor_predicate` stays the flexible
   primitive.
-- **(3) Authority provenance — precedence wired non-forgeably + honest boundary.** A first cut added a
+- **(3) Authority provenance — precedence wired structurally + honest boundary.** A first cut added a
   `qualified` flag on `NormalizedAuthority`, but a focused re-review showed the flag was publicly
-  constructible (forgeable), `resolve_verdict_authority` was never on the required path, and truthy
-  non-bool candidates (e.g. the string `"False"`) qualified. FINAL FIX: the scientific wrappers no longer
-  accept an authority object at all — `overlap_diagnostic` and `nugget_floor_report` take
-  `authority_candidates` (label→attested STRICT bool) + `authority_weights_by_label` and call
-  `select_and_normalize_authority` (→ `resolve_verdict_authority`: G-IS-first, else RW-MH; profile-Laplace
-  never; none-usable ⇒ UNDETERMINED) INTERNALLY, so precedence cannot be bypassed and there is nothing to
-  forge; `resolve_verdict_authority` rejects any non-`bool` candidate value. The `qualified` flag and
+  constructible, `resolve_verdict_authority` was never on the required path, and truthy non-bool candidates
+  (e.g. the string `"False"`) qualified. FINAL FIX: the scientific wrappers no longer accept an authority
+  object at all — `overlap_diagnostic` and `nugget_floor_report` take `authority_candidates` (label→attested
+  STRICT bool) + `authority_weights_by_label` and call `select_and_normalize_authority`
+  (→ `resolve_verdict_authority`: G-IS-first, else RW-MH; profile-Laplace never; none-usable ⇒ UNDETERMINED)
+  INTERNALLY, so a caller cannot bypass precedence with a pre-built authority OBJECT (that bypass is gone);
+  `resolve_verdict_authority` rejects any non-`bool` candidate value. The `qualified` flag and
   `require_qualified_authority` were removed. The arithmetic primitives (`q_overlap`,
   `nugget_floor_predicate`, `normalize_authority_weights`) still take a bare `NormalizedAuthority` — that is
-  intended; they are primitives, not the scientific gate. HONESTY (recorded, not overclaimed): PR C is
-  hermetic and runs no chains, so it CANNOT verify that a "G-IS" candidate passed its G-IS check or that an
-  "RW-MH" candidate was crossing-verified — those qualification booleans are CALLER-ATTESTED here and
-  validated only by PR D's real chains. PR C enforces the precedence STRUCTURE + weight/ESS/label contract,
-  not the underlying G-IS/RW-MH facts; stated in `bistar_gp/m1_authority.py`'s module docstring (the earlier
-  "ONLY route" wording was removed as an overclaim).
+  intended; they are primitives, not the scientific gate. HONESTY BOUNDARY (recorded precisely; NOT
+  "non-forgeable"): PR C removes the object bypass and enforces the precedence STRUCTURE + weight/ESS/label
+  contract, but the qualification booleans themselves remain CALLER-ATTESTED — a caller can assert
+  `{"G-IS": True}` without proving it; PR C is hermetic and runs no chains, so it does not and cannot derive
+  or verify G-IS passage / RW-MH crossing. Deriving and validating those booleans from real diagnostics is
+  PR D's responsibility. This exact boundary is stated in `bistar_gp/m1_authority.py`'s module docstring
+  (the earlier "ONLY route" and any "non-forgeable"/"nothing to forge" framing were removed as overclaims).
 - **(4) Augment fail-closed.** `augment_with_m1_short_scale` now rejects a malformed M0 inventory (length
   mismatch, empty, non-string/empty names, duplicate names, pre-existing `short_scale`). Deliberately
   arm-generic — it validates STRUCTURE only and does NOT hardcode {trend,seasonal,medium_term} (that
   exact-set enforcement is the overlap gate's job, correction 1), preserving "augments whichever M0 arm."
+- **(5, final surgical correction) Frozen decision thresholds pinned in the scientific wrappers.** A third
+  focused codex round reproduced one remaining bypass: `overlap_diagnostic` exposed `alignment_threshold`/
+  `cap` and `nugget_floor_report` exposed `reference`/`flag_threshold`, so `cap=1.0` flipped STOP→PASS and
+  `flag_threshold=1.0` flipped the flag — yet §7 freezes 0.90/0.05 and 1.9e-4/0.05 ("Frozen, not open").
+  FIX (same fail-closed distinction as m1_name/component identity): those override params were REMOVED from
+  both scientific wrappers, which now pin `OVERLAP_ALIGNMENT_THRESHOLD`/`Q_OVERLAP_CAP` and
+  `NUGGET_REFERENCE`/`NUGGET_FLAG_THRESHOLD` internally; the frozen values are recorded in every completed
+  report (overlap `threshold`/`cap`; nugget `reference`/`flag_threshold`, added to the report dict).
+  Threshold configurability remains ONLY on the algebraic primitives `q_overlap`/`draw_overlap_omax` and
+  `nugget_floor_predicate`. Discriminating tests assert the wrapper signatures carry no such override
+  (a `cap=`/`flag_threshold=` call raises TypeError) and that the frozen values appear in every report.
 
-`python -m pytest -q` → **402 passed / 1 skipped** (the PR-C test set was reworked toward broader contract
-coverage: exact-set + pinned-M1-name + orthogonal-regression overlap tests, internal-precedence-selection
-+ strict-bool authority tests, report completeness/positivity, augment guards). rev-5 sha256 unchanged; all
-frozen/PR-A/PR-B source byte-identical to `f1bf977`; no `runs/` staged. Focused re-review across two rounds
-(codex flagged and then re-verified the m1_name/forgeable-qualified/strict-bool bypasses; Sonnet-5
-cross-checked): codex + Sonnet-5 **BOTH APPROVE** — first focused round codex CHANGES-REQUIRED (three
-production-contract bypasses: overlap `m1_name` relabel; forgeable `qualified` flag so precedence was
-never on the required path; truthy non-bool candidates like `"False"` qualifying) + a test-vacuity catch
-(same-projector regression); all closed by the wrapper-performs-selection redesign + pinned M1 name +
-strict-bool candidates + orthonormal regression, then codex + Sonnet APPROVE (Sonnet independently
-confirmed `numpy.bool_` is also rejected). Provenance unchanged: no M1/scientific sampler route or chain
+`python -m pytest -q` → **404 passed / 1 skipped** (the PR-C test set was reworked toward broader contract
+coverage: exact-set + pinned-M1-name + orthogonal-regression + frozen-threshold-pin overlap tests,
+internal-precedence-selection + strict-bool authority tests, report completeness/positivity + threshold-pin,
+augment guards). rev-5 sha256 unchanged; all
+frozen/PR-A/PR-B source byte-identical to `f1bf977`; no `runs/` staged. Focused re-review across THREE
+rounds (codex flagged, then re-verified, the successive bypasses; Sonnet-5 cross-checked each): codex +
+Sonnet-5 **BOTH APPROVE**. Round 1 codex CHANGES-REQUIRED (three production-contract bypasses: overlap
+`m1_name` relabel; forgeable `qualified` flag so precedence was never on the required path; truthy non-bool
+candidates like `"False"` qualifying) + a test-vacuity catch (same-projector regression) — all closed by
+the wrapper-performs-selection redesign + pinned M1 name + strict-bool candidates + orthonormal regression.
+Round 2 codex CHANGES-REQUIRED (one remaining bypass: frozen decision thresholds `alignment_threshold`/
+`cap` and `reference`/`flag_threshold` were caller-overridable — `cap=1.0` flipped STOP→PASS,
+`flag_threshold=1.0` flipped the flag) + a doc-honesty correction (the earlier "non-forgeable"/"nothing to
+forge" wording overclaimed) — both fixed (correction 5 + the honesty-boundary rewrite above). Round 3 codex
++ Sonnet APPROVE (thresholds pinned + recorded in every report; primitives still configurable; no residual
+overclaim). Provenance unchanged: no M1/scientific sampler route or chain
 executed; no Mauna/holdout computation ran; the full suite did execute its pre-existing hermetic tiny-E1
 sampler regression tests. PR #12 kept Draft; STOP before PR D / v1.18.

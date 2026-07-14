@@ -235,9 +235,6 @@ def overlap_diagnostic(
     noise_variances,
     authority_candidates,
     authority_weights_by_label,
-    *,
-    alignment_threshold=OVERLAP_ALIGNMENT_THRESHOLD,
-    cap=Q_OVERLAP_CAP,
 ):
     """Scientific M1-overlap gate: exact frozen set + internal precedence selection.
 
@@ -250,7 +247,10 @@ def overlap_diagnostic(
     pre-built authority.  The M1 component key is PINNED to the frozen
     ``M1_SHORT_SCALE_NAME`` (not caller-relabelable), and each draw's
     ``component_matrices`` must be EXACTLY that plus ``M1_OVERLAP_REQUIRED_COMPONENTS``
-    — missing OR extra components fail closed (§5.4(a)/(d)).
+    — missing OR extra components fail closed (§5.4(a)/(d)).  The frozen decision
+    thresholds ``OVERLAP_ALIGNMENT_THRESHOLD`` (0.90) and ``Q_OVERLAP_CAP`` (0.05)
+    are PINNED here (§7 "Frozen, not open") and cannot be overridden — threshold
+    configurability lives only in the ``q_overlap``/``draw_overlap_omax`` primitives.
 
     Verdict encoding of rev-5 §5.4(d) — every failure blocks P-comb+M1-v1
     promotion (M0/other arms continue):
@@ -284,8 +284,8 @@ def overlap_diagnostic(
         report = q_overlap(
             [draw["o_max"] for draw in draw_reports],
             authority,
-            alignment_threshold=alignment_threshold,
-            cap=cap,
+            alignment_threshold=OVERLAP_ALIGNMENT_THRESHOLD,
+            cap=Q_OVERLAP_CAP,
         )
         report["draws"] = draw_reports
         return report
@@ -293,8 +293,8 @@ def overlap_diagnostic(
         return {
             "q_overlap": None,
             "verdict": "UNDETERMINED",
-            "threshold": alignment_threshold,
-            "cap": cap,
+            "threshold": OVERLAP_ALIGNMENT_THRESHOLD,
+            "cap": Q_OVERLAP_CAP,
             "authority": getattr(authority, "label", None),
             "ess": None,
             "draws": None,
