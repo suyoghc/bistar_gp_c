@@ -3268,7 +3268,9 @@ updated per the standard workflow, as in every D19 PR).
   and `frozen_at_git_sha` == the LITERAL pinned base sha; asserts the committed JSON's top-level key set is
   EXACTLY the 10 schema keys (an injected `result_values` is rejected); asserts every reference/predicate
   value equals the imported frozen constant. APPEND-ONLY (§6.16): a revision is a new addendum.
-- **v1.18 result-manifest SCHEMA** `docs/m2c_freeze/gtoy_profile_result_v1.18.json`: the §6 v1.18 JSON-
+- **v1.18 result-manifest SCHEMA** `docs/m2c_freeze/gtoy_profile_result_v1.18.json` [SUPERSEDED → the schema
+  is at `…gtoy_profile_result_v1.18.schema.json`; the bare `…v1.18.json` path is reserved+absent — see the
+  Update below]: the §6 v1.18 JSON-
   SCHEMA field contract ONLY (freeze_version const v1.18, kind, v117_manifest_sha256 [64-hex],
   frozen_at_git_sha, provenance, profile_band_masses/numerical_sensitivity/realized_grids/gate_events) — NO
   result VALUES (produced only by the gated recompute, blocked on --execute). Test: valid Draft-2020-12
