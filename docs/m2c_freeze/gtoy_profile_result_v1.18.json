@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "freeze_version",
+    "kind",
+    "v117_manifest_sha256",
+    "frozen_at_git_sha",
+    "provenance",
+    "profile_band_masses",
+    "numerical_sensitivity",
+    "realized_grids",
+    "gate_events"
+  ],
+  "properties": {
+    "freeze_version": {
+      "const": "v1.18"
+    },
+    "kind": {
+      "const": "m2c-gtoy-profile-result-freeze"
+    },
+    "v117_manifest_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "frozen_at_git_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "profile_band_masses": {
+      "type": "object",
+      "required": [
+        "lo",
+        "mid",
+        "hi",
+        "sum"
+      ]
+    },
+    "numerical_sensitivity": {
+      "type": "object",
+      "required": [
+        "delta_quad",
+        "delta_hess",
+        "delta_tail"
+      ]
+    },
+    "realized_grids": {
+      "type": "object",
+      "required": [
+        "extended",
+        "refined_levels",
+        "band_edges"
+      ]
+    },
+    "gate_events": {
+      "type": "object",
+      "required": [
+        "stop_count",
+        "retry_count",
+        "rcond_fail_count",
+        "undetermined"
+      ]
+    }
+  }
+}

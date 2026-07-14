@@ -21,15 +21,50 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   sensitivity (never SE); estimator goldens+tolerances; the 5 §6.15 predicates (S2/S3/divergence/
   overlap/nugget); two-manifest schema. Historical buggy triplet 0.76262/0.13752/0.02311 (sum 0.9232)
   = HISTORICAL-only.
-- **Owed NEW code — ALL THREE now implemented (hermetic, no compute):** the profile functional-gradient
-  path (PR A / D41), the S2 fixed-metric path (PR B / D42), and the **M1 Matérn builder (PR C / D43)**.
-  **NEXT:** PR D (divergence non-clustering + chain-aware MCSE + the two JSON manifests + umbrella suite),
-  then — with a SEPARATE explicit author `--execute` — the gated deterministic profile recompute →
-  **v1.18** result freeze. **NO compute begun.** The ≤0.95 correlation-duplication gate and the 1e-3
-  M1-gate eigenvalue-floor gate remain owed (pinned reference-only in PR C, no executor).
+- **The entire hermetic M2c package is now implemented (PRs A–D, no compute):** the profile functional-
+  gradient path (PR A / D41), the S2 fixed-metric + S3 reparam paths (PR B / D42), the **M1 Matérn builder
+  + §5.4 overlap + §5.5 nugget (PR C / D43)**, and the **§5.3 divergence + §3 chain-aware MCSE + the v1.17
+  algorithm manifest + the v1.18 result SCHEMA + the umbrella suite (PR D / D44)**. **NEXT:** with a
+  SEPARATE explicit author `--execute`, the gated deterministic profile recompute → the FILLED **v1.18**
+  result manifest (values). **NO compute begun.** Still owed (no executor, pinned reference-only): the ≤0.95
+  correlation-duplication gate + the 1e-3 M1-gate eigenvalue-floor gate (PR C); the v1.18 result VALUES.
 - **HARD GATES:** no compute/recompute/sampler/Mauna/holdout without `--execute` + clean tree + byte-
   exact hashes + passing tests, then stop-and-report; HMC only via `fit_hmc_e1`; VI+hmc_laplace
   withdrawn; A7 Della on hold (v1.8); holdout SEALED (§6.6).
+
+### PR D — divergence + chain-aware MCSE + v1.17 manifest + v1.18 schema + umbrella DRAFT (branch `feat/d19-m2c-pr-d` off merged main `b3d35b6`; D44, 2026-07-14)
+
+- **Scope = the final hermetic M2c pieces:** (1) §5.3 divergence non-clustering predicate, (2) §3 chain-
+  aware `MCSE_strategy` estimator, (3) the IMMUTABLE v1.17 algorithm manifest + manifest==code CI, (4) the
+  SEPARATE v1.18 result-manifest SCHEMA (field contract only, NO values), (5) a hermetic umbrella suite.
+  4 NEW modules (`bistar_gp/{m2c_freeze_dm,divergence_clustering,mcse_strategy,m2c_manifest}.py`) +
+  `docs/m2c_freeze/{gtoy_profile_freeze_v1.17.json, gtoy_profile_result_v1.18.json}` + 5 test files; ONLY
+  tracked edit = a symbol-export append to `bistar_gp/__init__.py`. `python -m pytest -q` → **439 passed /
+  1 skipped**.
+- **Divergence** (`divergence_clustering.py`): rate ≤0.001; d_max ≤ L_chain=max(2,⌈3D/C⌉); per-chain time
+  window w=⌈0.10T⌉, time_max ≤ L_time=max(2,⌈3·(D/C)·w/T⌉) (sliding window = max_a W_c(a)); unique+sorted
+  pre-check (dup/missing ⇒ UNDETERMINED); §5.3(c) fixtures exact (L_chain=6/L_time=2/w=200). HONEST SCOPE:
+  parameter-band clustering UNEVALUABLE (schema stores indices only) — flagged, not overclaimed.
+- **MCSE** (`mcse_strategy.py`): c_t=exp(-G/τ − M_global), SINGLE global shift over all (c,t,j); IACT via
+  arviz raw autocov `_ess` (τ=N/ESS), τ_int=max over chains+columns; block ℓ=⌈2τ_int⌉; T−ℓ+1<2 ⇒
+  UNDETERMINED (no row-bootstrap fallback); overlapping non-circular MBB within each chain → re-run
+  `soft_transfer`; SD over B=1000 seed 20260712. Does NOT reuse the SIR row bootstrap. Kept separate from
+  the 0.02 precision gate / W5 scatter / MCSE_SIR 0.441±0.005.
+- **v1.17 manifest** (`m2c_manifest.py` + JSON): machine-independent algorithm/references/tolerances/
+  predicates from the merged frozen constants; NO profile result; manifest==code CI (deep-equality +
+  live `profile_integration.py` sha256 drift-catch + exact-key-set). `frozen_at_git_sha=b3d35b6` is the
+  pre-PR-D BASE (documented honestly IN the artifact via `provenance.frozen_at_git_sha_meaning`; a committed
+  manifest can't embed its own sha — the real pinning is manifest==code). **v1.18** = SCHEMA only, NO values.
+- **Adversarial review (codex xHigh + Sonnet-5) → BOTH APPROVE.** Algorithm/constants/umbrella/invariants
+  CLEAN in both (Sonnet fuzz-checked the divergence window 20k× + read arviz source confirming `_ess` is raw
+  not bulk). codex CHANGES-REQUIRED with 3 MAJOR manifest-CI findings (frozen_at_git_sha overclaim; CI didn't
+  pin the literal sha; result-separation CI too permissive) — all fixed (honest in-artifact note; literal
+  pin; exact-key-set assertions catching injected `result_values`), then codex + Sonnet APPROVE.
+- **Provenance (precise):** no scientific sampler route or chain executed; the divergence + MCSE estimators
+  ran on hand-built/synthetic deterministic fixtures only, never a real MCMC chain; no Mauna/holdout ran.
+  The full suite did execute its pre-existing hermetic tiny-E1 sampler regression tests.
+- **DRAFT PR to `main`.** rev-5 sha256 unchanged; all merged frozen source byte-identical to `b3d35b6`; no
+  `runs/` staged. STOP before the gated recompute, any v1.18 result VALUES, `--execute`, and merge.
 
 ### PR C — M1 builder + §5.4 overlap + §5.5 nugget-floor DRAFT (branch `feat/d19-m2c-pr-c` off merged main `f1bf977`; D43, 2026-07-13)
 

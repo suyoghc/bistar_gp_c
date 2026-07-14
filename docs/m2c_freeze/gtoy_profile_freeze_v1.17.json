@@ -1,0 +1,464 @@
+{
+  "algorithm": {
+    "curvature_gate": {
+      "center_h": 0.001,
+      "direction_rng": {
+        "coordinate_order": [
+          "ls",
+          "os",
+          "lv"
+        ],
+        "dtype": "float64",
+        "epsilon": 0.001,
+        "generator": "numpy.random.default_rng",
+        "normalization": "unit-L2",
+        "seeds": [
+          200,
+          201,
+          202
+        ]
+      },
+      "directional_tol": 0.001,
+      "h_sweep": [
+        0.0005,
+        0.001,
+        0.002
+      ],
+      "logdet_stability": 0.001,
+      "rcond_min": 1e-08,
+      "retry_policy": {
+        "count": 1,
+        "ftol": 1e-14,
+        "gtol": 1e-10,
+        "maxiter": 1000,
+        "rerun_full_gate": true
+      },
+      "spd_required": true,
+      "stop_on_fail": true,
+      "symmetry": 1e-06,
+      "test": "tests/test_m2c_profile_integration.py::test_curvature_gate_recovers_quadratic_oracle_without_flooring"
+    },
+    "gradient_battery": {
+      "d23_sentinel": {
+        "behavior": "naive data-injection remains disconnected",
+        "min_relative_difference": 0.01
+      },
+      "fd_step": 1e-05,
+      "point_set": {
+        "conditional_optima": "every profile-grid node",
+        "prior_draw_seeds": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107,
+          108,
+          109
+        ],
+        "structures": [
+          "synthetic-toy",
+          "synthetic-mauna-structure"
+        ]
+      },
+      "test": "tests/test_m2c_profile_gradient.py::test_functional_gradient_matches_independent_finite_difference",
+      "tol_abs": 0.0001,
+      "tol_rel": 0.0001
+    },
+    "grid": {
+      "base": {
+        "hi": 1.2,
+        "lo": 0.005,
+        "n": 40
+      },
+      "cap_ladders_diagnostic": {
+        "lower": [
+          0.0001,
+          1e-05,
+          1e-06
+        ],
+        "upper": [
+          10.0,
+          100.0,
+          1000.0
+        ]
+      },
+      "full_domain": {
+        "hi": 10000.0,
+        "lo": 1e-07,
+        "n_nodes": 182,
+        "n_with_toy_edges": 184
+      },
+      "max_nodes": 184,
+      "ratio_expr": "(1.2/0.005)^(1/39)",
+      "ratio_f64": 1.150882688488405,
+      "test": "tests/test_m2c_profile_integration.py::test_p3_grid_geometry_and_nested_refinement"
+    },
+    "optimizer_gate": {
+      "dg_agree": 1e-06,
+      "du_agree": 0.0001,
+      "lbfgsb_controls": {
+        "ftol": 1e-12,
+        "gtol": 1e-08,
+        "maxfun": 5000,
+        "maxiter": 500
+      },
+      "method": "L-BFGS-B",
+      "restart_policy": {
+        "count": 1,
+        "jitter_scale": 0.001,
+        "on": "abnormal termination",
+        "rng_base": 300
+      },
+      "tau_stat": 0.0001,
+      "test": "tests/test_m2c_profile_integration.py::test_optimizer_gate_converges_and_requires_both_starts",
+      "two_start": true
+    },
+    "p3": {
+      "eps_domain": 0.0001,
+      "eps_grid": 0.0001,
+      "l_max": 3,
+      "nested_construction": "retain prior nodes; insert geometric midpoints",
+      "test": "tests/test_m2c_profile_integration.py::test_corrected_profile_band_masses_matches_gaussian_oracle"
+    },
+    "profile_integration_sha256": "20b553f803f3b355aefe4d27fcf15417ed1053bf75f7bb782b5de679dbdf9fc6"
+  },
+  "freeze_version": "v1.17",
+  "frozen_at_git_sha": "b3d35b64035a848faa82b6f246333e95ddfae25a",
+  "historical_provenance": {
+    "buggy_triplet": [
+      0.76262,
+      0.13752,
+      0.02311
+    ],
+    "note": "Historical buggy profile triplet only; not a result, target, or corrected profile value.",
+    "sum": 0.9232
+  },
+  "kind": "m2c-gtoy-profile-algorithm-freeze",
+  "mcse_strategy": {
+    "B": 1000,
+    "block_cap_behavior": "UNDETERMINED when T-block_len+1<2; no IID-row fallback",
+    "block_len_rule": "ceil(2*tau_int)",
+    "estimator": "per-chain non-circular moving-block bootstrap",
+    "iact_series": "each model contribution exp(-G[c,t,j]/tau-M_global), with one M_global=max over all c,t,j; max IACT over chains and models",
+    "seed": 20260712,
+    "test": "tests/test_m2c_mcse_strategy.py::test_known_iact_and_frozen_seed_determinism"
+  },
+  "predicates": [
+    {
+      "failure": "STOP; no identity fallback",
+      "field": "S2 fixed metric",
+      "fixture": "synthetic E1 structures plus seedless quadratic oracle",
+      "formula": "M=H_reg; u=u_MAP+Q diag(lambda^-1/2) z",
+      "name": "s2_mass_convention",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s2_fixed_metric.py::test_seedless_quadratic_oracle_recovers_position_mass_not_inverse",
+      "threshold": {
+        "directional": 0.001,
+        "lambda_min": 1e-06,
+        "n_clipped": 0,
+        "skew": 1e-05,
+        "step_stability": 0.001,
+        "whitening": 1e-08
+      }
+    },
+    {
+      "failure": "STOP for S3; non-seven-site inventories are outside definition",
+      "field": "S3 reparameterization",
+      "fixture": "synthetic M0 Mauna-structure 33-state battery",
+      "formula": "log|det du/dz|=0 and V3(z)=V_E1(u(z))",
+      "name": "s3_jacobian_equivalence",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s3_reparam.py::test_m0_roles_and_33_state_equivalence_battery",
+      "threshold": {
+        "density": 1e-09,
+        "gradient_abs": 0.0001,
+        "gradient_rel": 0.0001,
+        "n_states": 33,
+        "roundtrip": 1e-10,
+        "slogdet": 1e-10
+      }
+    },
+    {
+      "failure": "FAIL; missing or invalid indices are UNDETERMINED",
+      "field": "SamplerDiagnostics.divergence_draws; parameter-band clustering unevaluable",
+      "fixture": "hand-built C=4,T=2000 SamplerDiagnostics",
+      "formula": "rate plus chain and per-chain time-window concentration",
+      "name": "divergence_nonclustering",
+      "tag": "CONFIRMED+PROPOSED-v1.17",
+      "test": "tests/test_m2c_divergence_clustering.py::test_frozen_enumerated_cases",
+      "threshold": {
+        "concentration_factor": 3,
+        "min_event_floor": 2,
+        "rate_cap": 0.001,
+        "time_window_fraction": 0.1
+      }
+    },
+    {
+      "failure": "STOP for M1 promotion; uncomputable inputs are UNDETERMINED",
+      "field": "M1 covariance duplication",
+      "fixture": "seedless algebraic matrices and synthetic structure plumbing",
+      "formula": "q_overlap=sum_i w_i 1{max_j alignment(PK_m1P,PK_jP)>=threshold}",
+      "name": "m1_covariance_overlap",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_m1_overlap.py::test_overlap_wrapper_pins_frozen_thresholds_and_rejects_overrides",
+      "threshold": {
+        "alignment": 0.9,
+        "q_overlap_cap": 0.05
+      }
+    },
+    {
+      "failure": "REPORT-ONLY; missing inputs are UNDETERMINED",
+      "field": "M1 nugget-floor coincidence report",
+      "fixture": "seedless weighted noise-variance draws",
+      "formula": "p_below=sum_i w_i 1{noise_i<reference}; flag iff p_below>0.05",
+      "name": "m1_nugget_floor",
+      "tag": "CONFIRMED+PROPOSED-v1.17",
+      "test": "tests/test_m2c_m1_nugget_floor.py::test_complete_report_returns_the_full_coincidence_record",
+      "threshold": {
+        "flag_probability": 0.05,
+        "noise_reference": 0.00019,
+        "strict": true
+      }
+    },
+    {
+      "failure": "STOP on any optimizer, curvature, tail, or refinement failure",
+      "field": "corrected profile-Laplace integration",
+      "fixture": "analytic synthetic Gaussian/quadratic profile oracles",
+      "formula": "edge-exact normalized band partition after optimizer/curvature/P3 gates",
+      "name": "profile_core",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_profile_integration.py::test_corrected_profile_band_masses_matches_gaussian_oracle",
+      "threshold": {
+        "eps_domain": 0.0001,
+        "eps_grid": 0.0001,
+        "rcond_min": 1e-08,
+        "stationarity": 0.0001
+      }
+    }
+  ],
+  "provenance": {
+    "blas": "accelerate; unknown; unknown",
+    "cpu_count": 14,
+    "frozen_at_git_sha_meaning": "base commit (M2c PRs A+B+C merged, origin/main at PR-D branch-off); the divergence/MCSE algorithm and this manifest are introduced by the PR-D commit that adds this file, so those modules are NOT present at this sha. A committed manifest cannot embed its own commit sha; the manifest is pinned to the live algorithm by the manifest==code CI (frozen constants + the live profile_integration.py sha256), not by this base sha.",
+    "host": "PSY-KGK4G03W1F",
+    "scipy": "1.17.0",
+    "threads": 10,
+    "versions": {
+      "arviz": "0.23.4",
+      "gpytorch": "1.15.1",
+      "numpy": "1.26.4",
+      "pyro": "1.9.1",
+      "python": "3.13.11",
+      "scipy": "1.17.0",
+      "torch": "2.10.0"
+    }
+  },
+  "references": [
+    {
+      "name": "prior_is_toy_elicited_band_masses",
+      "se": [
+        0.004283,
+        0.003838,
+        0.000866
+      ],
+      "source": "docs/prereg-addenda-d19.md:1279-1281",
+      "test": "tests/test_m2c_manifest.py::test_reference_constants_match_frozen_values",
+      "value": [
+        0.76266,
+        0.191078,
+        0.046262
+      ]
+    },
+    {
+      "name": "rw_mh_toy_elicited_pooled_band_masses",
+      "se": [
+        0.023483,
+        0.01765,
+        0.010167
+      ],
+      "source": "docs/prereg-addenda-d19.md:1281-1282",
+      "test": "tests/test_m2c_manifest.py::test_reference_constants_match_frozen_values",
+      "value": [
+        0.815644,
+        0.161078,
+        0.023278
+      ]
+    },
+    {
+      "name": "sir_sin_linear_tau1_probability",
+      "se": 0.005,
+      "source": "docs/prereg-addenda-d19.md:1282-1283",
+      "test": "tests/test_m2c_manifest.py::test_reference_constants_match_frozen_values",
+      "value": 0.441
+    },
+    {
+      "name": "w5_independent_pool_scatter",
+      "source": "docs/m2c-gtoy-profile-PROPOSAL.md:123-125",
+      "test": "tests/test_m2c_manifest.py::test_reference_constants_match_frozen_values",
+      "value": [
+        0.419,
+        0.438,
+        0.431
+      ]
+    }
+  ],
+  "tolerances": [
+    {
+      "name": "profile_eps_domain",
+      "rationale": "final one-sided cap-sensitivity gate",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_profile_integration.py::test_corrected_profile_band_masses_matches_gaussian_oracle",
+      "value": 0.0001
+    },
+    {
+      "name": "profile_eps_grid",
+      "rationale": "successive nested-grid sensitivity gate",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_profile_integration.py::test_corrected_profile_band_masses_matches_gaussian_oracle",
+      "value": 0.0001
+    },
+    {
+      "name": "profile_gradient_abs",
+      "rationale": "frozen v1.4-style gradient envelope",
+      "tag": "CONFIRMED",
+      "test": "tests/test_m2c_profile_gradient.py::test_functional_gradient_matches_independent_finite_difference",
+      "value": 0.0001
+    },
+    {
+      "name": "profile_gradient_rel",
+      "rationale": "frozen v1.4-style gradient envelope",
+      "tag": "CONFIRMED",
+      "test": "tests/test_m2c_profile_gradient.py::test_functional_gradient_matches_independent_finite_difference",
+      "value": 0.0001
+    },
+    {
+      "name": "profile_stationarity",
+      "rationale": "mandatory per-start optimizer stationarity",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_profile_integration.py::test_optimizer_gate_converges_and_requires_both_starts",
+      "value": 0.0001
+    },
+    {
+      "name": "profile_logdet_stability",
+      "rationale": "curvature h-sweep stability",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_profile_integration.py::test_curvature_gate_recovers_quadratic_oracle_without_flooring",
+      "value": 0.001
+    },
+    {
+      "name": "profile_symmetry",
+      "rationale": "pre-symmetrization curvature skew",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_profile_integration.py::test_curvature_gate_recovers_quadratic_oracle_without_flooring",
+      "value": 1e-06
+    },
+    {
+      "name": "profile_directional",
+      "rationale": "directional curvature verification",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_profile_integration.py::test_curvature_gate_recovers_quadratic_oracle_without_flooring",
+      "value": 0.001
+    },
+    {
+      "name": "profile_rcond_min",
+      "rationale": "relative numerical positive-definiteness floor",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_profile_integration.py::test_curvature_gate_stops_after_retry_for_near_singular_spd_oracle",
+      "value": 1e-08
+    },
+    {
+      "name": "s2_fd_step",
+      "rationale": "scaled central finite-difference base step",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s2_fixed_metric.py::test_seedless_quadratic_oracle_recovers_position_mass_not_inverse",
+      "value": 1e-05
+    },
+    {
+      "name": "s2_skew",
+      "rationale": "raw differenced-Hessian skew",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s2_fixed_metric.py::test_seedless_quadratic_oracle_recovers_position_mass_not_inverse",
+      "value": 1e-05
+    },
+    {
+      "name": "s2_step_stability",
+      "rationale": "author-selected J2 step stability",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s2_fixed_metric.py::test_seedless_quadratic_oracle_recovers_position_mass_not_inverse",
+      "value": 0.001
+    },
+    {
+      "name": "s2_directional",
+      "rationale": "directional curvature agreement",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s2_fixed_metric.py::test_seedless_quadratic_oracle_recovers_position_mass_not_inverse",
+      "value": 0.001
+    },
+    {
+      "name": "s2_whitening",
+      "rationale": "both whitening identities",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s2_fixed_metric.py::test_seedless_quadratic_oracle_recovers_position_mass_not_inverse",
+      "value": 1e-08
+    },
+    {
+      "name": "s2_eigenvalue_floor",
+      "rationale": "raw Hessian must already clear the SPD floor",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s2_fixed_metric.py::test_seedless_quadratic_oracle_recovers_position_mass_not_inverse",
+      "value": 1e-06
+    },
+    {
+      "name": "s2_oracle",
+      "rationale": "diag(1,4,9) mass-convention oracle",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s2_fixed_metric.py::test_seedless_quadratic_oracle_recovers_position_mass_not_inverse",
+      "value": 1e-10
+    },
+    {
+      "name": "s3_slogdet",
+      "rationale": "analytic/autodiff log-determinant",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s3_reparam.py::test_m0_roles_and_33_state_equivalence_battery",
+      "value": 1e-10
+    },
+    {
+      "name": "s3_roundtrip",
+      "rationale": "u/theta coordinate round trips",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s3_reparam.py::test_m0_roles_and_33_state_equivalence_battery",
+      "value": 1e-10
+    },
+    {
+      "name": "s3_density",
+      "rationale": "S3/E1 density equivalence",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s3_reparam.py::test_m0_roles_and_33_state_equivalence_battery",
+      "value": 1e-09
+    },
+    {
+      "name": "s3_gradient_abs",
+      "rationale": "gradient chain-rule absolute envelope",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s3_reparam.py::test_m0_roles_and_33_state_equivalence_battery",
+      "value": 0.0001
+    },
+    {
+      "name": "s3_gradient_rel",
+      "rationale": "gradient chain-rule relative envelope",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s3_reparam.py::test_m0_roles_and_33_state_equivalence_battery",
+      "value": 0.0001
+    },
+    {
+      "name": "s3_constrained_bridge",
+      "rationale": "manual constrained map must match E1 transforms",
+      "tag": "PROPOSED-v1.17",
+      "test": "tests/test_m2c_s3_reparam.py::test_m0_roles_and_33_state_equivalence_battery",
+      "value": 1e-10
+    }
+  ]
+}
