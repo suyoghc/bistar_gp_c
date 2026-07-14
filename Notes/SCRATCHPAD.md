@@ -54,9 +54,10 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   predicates from the merged frozen constants; NO profile result; manifest==code CI (deep-equality +
   live `profile_integration.py` sha256 drift-catch + exact-key-set). Two-stage construction:
   `frozen_at_git_sha=6d39d38` is the PR-D IMPLEMENTATION snapshot (COMMIT A — actually contains the algorithm
-  code); the manifest artifact is added in the following commit (a committed manifest can't embed its own
-  sha). **v1.18** = SCHEMA only (at `…v1.18.schema.json`, reserving the bare `…v1.18.json` INSTANCE path per
-  §6), NO values, `v117_manifest_sha256` a `const` pinning the actual v1.17 hash + `additionalProperties:false`.
+  code); the immutable manifest artifact is recorded/finalized against that snapshot in the following commit
+  (a committed manifest can't embed its own sha). **v1.18** = SCHEMA only (at `…v1.18.schema.json`, reserving
+  the bare `…v1.18.json` INSTANCE path per §6), NO values, `v117_manifest_sha256` a `const` pinning the actual
+  v1.17 hash (`65381bc7…`) + `additionalProperties:false`.
 - **Adversarial review (codex xHigh + Sonnet-5) → BOTH APPROVE, then a second focused codex round.** Round 1:
   algorithm/constants/umbrella/invariants CLEAN in both (Sonnet fuzz-checked the divergence window 20k× + read
   arviz source confirming `_ess` is raw not bulk); codex found 3 manifest-CI findings, fixed → both APPROVE.

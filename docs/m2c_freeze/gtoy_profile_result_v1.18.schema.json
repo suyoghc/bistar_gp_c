@@ -50,7 +50,7 @@
       "type": "object"
     },
     "v117_manifest_sha256": {
-      "const": "2c50d61ef7e0f30f69efe9857cb68da64df3a541ee610b65a5edc20862a821d6",
+      "const": "65381bc774e894dd9aaf2207cadd9cfa2f2735dafceff4bb39492086a9e522e2",
       "type": "string"
     }
   },

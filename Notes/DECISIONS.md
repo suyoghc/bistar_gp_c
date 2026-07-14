@@ -3330,14 +3330,25 @@ and imported the private `arviz.stats.diagnostics._ess`. Corrected before merge 
   commit CONTAINS the full algorithm (verified: divergence/mcse/freeze_dm/manifest modules all present at
   `6d39d38`).
 - **COMMIT B (manifest/provenance):** `frozen_at_git_sha` = `6d39d38` (the implementation snapshot that
-  actually contains the algorithm; the manifest artifact is added in the following commit — a committed
-  manifest cannot embed its own sha), meaning corrected to "Exact PR-D implementation snapshot; the immutable
-  manifest artifact was added in the following commit" + a literal-sha CI pin. The v1.18 schema is renamed to
+  actually contains the algorithm; the immutable manifest artifact is RECORDED/finalized against this snapshot
+  in the following commit — a committed manifest cannot embed its own sha), meaning set to "Exact PR-D
+  implementation snapshot; the immutable manifest artifact was recorded (its frozen_at_git_sha finalized
+  against this snapshot) in the following commit" + a literal-sha CI pin. The v1.18 schema is renamed to
   `docs/m2c_freeze/gtoy_profile_result_v1.18.schema.json`, LEAVING the reserved `…v1.18.json` instance path
   ABSENT (CI-asserted). `v117_manifest_sha256` is now a `const` equal to the canonical sha256 of the actual
-  committed v1.17 manifest (`2c50d61e…`), and the schema gains top-level `additionalProperties:false`; a new
+  committed v1.17 manifest (`65381bc7…`), and the schema gains top-level `additionalProperties:false`; a new
   synthetic result-INSTANCE fixture proves a valid instance validates while an injected top-level
   `result_values` and a wrong `v117_manifest_sha256` are both rejected (no numeric constraints invented on the
   nested result values). `python -m pytest -q` → **442 passed / 1 skipped**. rev-5 sha256 unchanged; all
   merged frozen source byte-identical to `b3d35b6`; no `runs/` staged; no scientific computation / recompute /
-  result instance / `--execute` / Mauna/holdout. Re-review: <FOCUSED REVIEW PENDING>.
+  result instance / `--execute` / Mauna/holdout.
+- **COMMIT C (one-word provenance-honesty fix):** both reviewers noted the meaning said the manifest was
+  "added" in the following commit, but git shows the v1.17 JSON was ADDED by `cf1cd1d` and MODIFIED by the
+  following commit — so the wording is now "recorded/finalized" (Sonnet flagged it non-blocking; codex
+  blocking). This edit changes the v1.17 manifest content, so its canonical hash moved `2c50d61e…`→`65381bc7…`
+  and the v1.18 `const` was updated in lockstep — demonstrating the const binding genuinely fails CI if v1.17
+  drifts. Review: Sonnet-5 APPROVE (the 4 substantive corrections RESOLVED with probe-verified evidence —
+  private-vs-public `_ess` bit-identical, algorithm present at `6d39d38`/absent at `b3d35b6`, computed hash
+  match, instance-level jsonschema rejection — and the wording flagged non-blocking); codex APPROVE on the 4
+  and CHANGES-REQUIRED solely on the "added" wording, now fixed exactly as codex prescribed, confirmed on a
+  final focused codex pass → **codex + Sonnet-5 BOTH APPROVE**.

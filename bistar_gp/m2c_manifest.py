@@ -26,15 +26,17 @@ from . import m2c_freeze_s2s3 as s2s3
 # The exact PR-D IMPLEMENTATION snapshot: the commit that CONTAINS the §5.3
 # divergence / §3 MCSE / manifest-builder algorithm code (COMMIT A of the
 # two-stage construction).  A committed manifest cannot embed its own commit sha,
-# so the immutable manifest artifact is added in the FOLLOWING commit (COMMIT B),
-# which references this snapshot.  Checking out this sha reproduces the frozen
-# algorithm; the manifest==code CI additionally pins the manifest to that live
-# code (every frozen constant + the live ``profile_integration.py`` sha256).
+# so the immutable manifest artifact is FINALIZED against this snapshot (its
+# frozen_at_git_sha recorded) in the FOLLOWING commit (COMMIT B).  Checking out
+# this sha reproduces the frozen algorithm; the manifest==code CI additionally
+# pins the manifest to that live code (every frozen constant + the live
+# ``profile_integration.py`` sha256).
 FROZEN_AT_GIT_SHA = "6d39d38ad000583fcbb4e5311efe57ff5e0c1503"
 
 FROZEN_AT_GIT_SHA_MEANING = (
     "Exact PR-D implementation snapshot; the immutable manifest artifact was "
-    "added in the following commit."
+    "recorded (its frozen_at_git_sha finalized against this snapshot) in the "
+    "following commit."
 )
 
 

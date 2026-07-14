@@ -242,7 +242,7 @@
   "provenance": {
     "blas": "accelerate; unknown; unknown",
     "cpu_count": 14,
-    "frozen_at_git_sha_meaning": "Exact PR-D implementation snapshot; the immutable manifest artifact was added in the following commit.",
+    "frozen_at_git_sha_meaning": "Exact PR-D implementation snapshot; the immutable manifest artifact was recorded (its frozen_at_git_sha finalized against this snapshot) in the following commit.",
     "host": "PSY-KGK4G03W1F",
     "scipy": "1.17.0",
     "threads": 10,
