@@ -13,8 +13,8 @@ contribution series only, never a real MCMC chain.
 
 import math
 
+import arviz as az
 import numpy as np
-from arviz.stats.diagnostics import _ess as _arviz_ess
 
 from .bms_star import soft_transfer
 from .m2c_freeze_dm import (
@@ -116,10 +116,14 @@ def _maximum_iact(G, tau):
                 raise MCSEError(
                     f"contribution series ({chain}, {model}) has zero variance"
                 )
-            # ArviZ 0.23.4 _ess is the az.ess-style autocovariance estimator:
-            # Geyer's initial-positive sequence followed by initial-monotone
-            # paired autocorrelations.  One row here is exactly one chain.
-            ess = float(_arviz_ess(series[np.newaxis, :]))
+            # Public ArviZ API: method="identity" applies the raw autocovariance
+            # ESS (Geyer initial-positive then initial-monotone) to the series
+            # WITHOUT rank-normalization (that is the "bulk" method); relative=
+            # False returns the absolute ESS so tau_int = T/ESS.  One row here is
+            # exactly one chain.
+            ess = float(
+                az.ess(series[np.newaxis, :], method="identity", relative=False)
+            )
             if not np.isfinite(ess) or ess <= 0.0:
                 raise MCSEError(
                     f"contribution series ({chain}, {model}) has undefined IACT"

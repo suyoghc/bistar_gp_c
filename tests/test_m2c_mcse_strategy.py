@@ -90,6 +90,30 @@ def test_separate_reporting_fields_are_present_and_uncombined():
     assert "combined" not in report
 
 
+def test_iact_uses_public_arviz_identity_relative_false(monkeypatch):
+    # The IACT must go through the PUBLIC az.ess with method="identity" (raw
+    # autocovariance, NOT rank-normalized bulk) and relative=False (absolute ESS,
+    # so tau_int = T/ESS).  Capture the actual call arguments.
+    import arviz as az
+
+    from bistar_gp import mcse_strategy as m
+
+    calls = []
+    real_ess = az.ess
+
+    def recording_ess(ary, *args, **kwargs):
+        calls.append(kwargs)
+        return real_ess(ary, *args, **kwargs)
+
+    monkeypatch.setattr(m.az, "ess", recording_ess)
+    report = m.mcse_strategy_estimate(_synthetic_g(), 1.0, ("a", "b", "c"), 1)
+    assert report["verdict"] == "DETERMINED"
+    assert calls, "az.ess was never called"
+    for kwargs in calls:
+        assert kwargs.get("method") == "identity"
+        assert kwargs.get("relative") is False
+
+
 def test_mbb_is_discriminated_from_iid_row_bootstrap():
     G = _synthetic_g(n_draws=160)
     mbb = mcse_strategy_estimate(G, 1.0, ("a", "b", "c"), 1)
