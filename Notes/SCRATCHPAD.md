@@ -39,13 +39,16 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 
 - **What:** under a one-shot in-session `--execute`, the reviewed `corrected_profile_band_masses` was called
   EXACTLY ONCE on the real thesis-toy profile over the frozen `[1e-7, 1e4]` domain. It **STOPPED** at node 0
-  (noise = `1e-7`): the curvature gate's raw-Hessian pre-symmetrization symmetry check
-  (`||raw−rawᵀ||_F/max(1,||raw||_F) ≤ 1e-6`) fails marginally (`sym_err ≈ 3.08e-6`) while SPD holds and
-  `rcond ≈ 6.7e-3` is healthy. `stop_index 0`; no band-mass triplet; nothing written under `docs/m2c_freeze/`.
-- **Evidence:** LOCAL, UNTRACKED bundle `runs/m2c_v118_stop_20260714/` (manifest fixity sha256 `ab73576a…`;
-  never staged; left byte-unchanged).
-- **Two independent audits (read-only, author-commissioned; NOT GitHub reviews):** Fable Max = `VALID_STOP`
-  (faithful frozen-algorithm behavior); Codex GPT-5.6-sol = `EXECUTION_NOT_AUDITABLE`.
+  (noise = `1e-7`). The authorized run's own stdout emitted only `RESULT: STOP` + reason
+  `curvature: pre-symmetrization check failed` + `stop_index 0` (`outputs/04`); the magnitudes
+  (`sym_err ≈ 3.08e-6` vs `SYMMETRY_TOL 1e-6`; SPD True; `rcond ≈ 6.7e-3`) are from the POST-STOP EXPLORATORY
+  diagnostic (`outputs/05`), NOT the authorized run. No band-mass triplet; nothing written under
+  `docs/m2c_freeze/`.
+- **Evidence:** LOCAL, UNTRACKED bundle `runs/m2c_v118_stop_20260714/` (manifest fixity sha256 `ab73576a…` =
+  self-digest of `MANIFEST.sha256`, which lists the 13 OTHER bundle files; never staged; left byte-unchanged).
+- **Two independent audits (read-only, author-commissioned; NOT GitHub reviews; author-recorded — the bundle
+  holds only the Fable adjudication REQUEST, no returned verdicts):** Fable Max = `VALID_STOP` (faithful
+  frozen-algorithm behavior); Codex GPT-5.6-sol = `EXECUTION_NOT_AUDITABLE`.
 - **Conservative author disposition (adopted, D45):** UNVALIDATED execution attempt; reported STOP technically
   plausible but not independently auditable, so **no result**. v1.17 one-shot authorization **CONSUMED**; **no
   rerun authorized**; post-STOP node probes exploratory only.

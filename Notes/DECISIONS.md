@@ -3391,14 +3391,22 @@ result and no success manifest**. The disposition, concretely:
 - The record is Notes-only: no source, freeze, schema, manifest, evidence-bundle, or `runs/` file is edited or
   regenerated; no tolerance or algorithm change is decided; nothing is called superseded or validated.
 
-Reported STOP (read from the bundle, not recomputed here): at node 0, noise = `1e-7` (`FULL_DOMAIN_LO`), the
-curvature gate's mandatory raw-Hessian pre-symmetrization symmetry check
+Reported STOP (read from the bundle, not recomputed here). **Provenance split (authorized vs exploratory).** The
+**authorized one-shot run's own stdout emitted ONLY** `RESULT: STOP`, the reason
+`full profile: noise_grid[0]=1e-7: curvature: pre-symmetrization check failed`, and `stop_index 0`
+(`outputs/04_authorized_run_STOP.txt`; the run prints the full-precision float `9.9999999999999995e-08` for
+`1e-7`). It printed **no** symmetry/SPD/rcond magnitudes; the "authoritative" interpretation and the
+"gate_events that WOULD be recorded" lines in that same file are post-hoc editorial annotation, not run output.
+The **numeric characterization** of the STOP (`sym_err ≈ 3.08e-6`, ~3× `SYMMETRY_TOL = 1e-6`; SPD True;
+`rcond ≈ 6.69e-3`, >> `RCOND_MIN 1e-8`; at node 0) appears **only in the POST-STOP EXPLORATORY diagnostic**
+(`outputs/05`, node `1e-7` row), which is exploratory only (limitation 6) and cannot certify the authoritative
+result. What the authorized run establishes is the CAUSE and location: the mandatory raw-Hessian
+pre-symmetrization symmetry check
 (`symmetry_error = ||raw − rawᵀ||_F / max(1, ||raw||_F) ≤ SYMMETRY_TOL = 1e-6`,
-`bistar_gp/profile_integration.py:563-567`) fails marginally (`sym_err ≈ 3.08e-6`, about 3× the tolerance)
-while SPD holds (True) and `rcond ≈ 6.69e-3` is healthy (>> `RCOND_MIN` `1e-8`); the profile fail-closes at
-`stop_index 0` (`profile_integration.py:1108-1113`). The rev-5 §2c retry is authorized only for SPD/rcond
-conditioning, not for a symmetry failure, so no retry fires. No `band_masses`/`logm` were produced and nothing
-was written under `docs/m2c_freeze/`.
+`bistar_gp/profile_integration.py:563-567`) fails at node 0, so the profile fail-closes at `stop_index 0`
+(`profile_integration.py:1108-1113`). The rev-5 §2c retry is authorized only for SPD/rcond conditioning, not a
+symmetry failure, so no retry fires. No `band_masses`/`logm` were produced and nothing was written under
+`docs/m2c_freeze/`.
 
 **Two independent audit verdicts (read-only adjudications commissioned by the author; these are NOT GitHub PR
 reviews):**
@@ -3412,6 +3420,13 @@ reviews):**
   **technically plausible** but the run is **not independently auditable**, so **no result** stands. The two
   verdicts are not merged into a success: the more conservative Codex reading governs the disposition, while
   Fable's point (the STOP is plausible given the frozen path) is recorded, not used to certify a result.
+
+**Provenance of the two verdicts (honesty caveat):** the evidence bundle preserves the Fable adjudication
+REQUEST (`HANDOFF_fable_adjudication.md`), not Fable's returned verdict, and contains no Codex audit response;
+GitHub carries no submitted reviews, comments, or CI runs behind either verdict. The `VALID_STOP` and
+`EXECUTION_NOT_AUDITABLE` labels are therefore **author-recorded outcomes of read-only AI audits**, entered here
+as author inputs, and are NOT independently recoverable artifacts within the scoped bundle. The disposition is
+conservative regardless of the verdicts, so this record does not treat them as bundle-verifiable.
 
 **Recorded limitations of the attempt (each verified against the bundle):**
 1. **Post-hoc capture.** Outputs and environment were captured or transcribed after the fact: every
@@ -3432,10 +3447,16 @@ reviews):**
    aggregates a `gate_events{stop,retry,rcond_fail,undetermined}` object (the only such object in-tree is a
    synthetic all-zero test fixture), which is why the runner needed the wrappers to obtain the counts at all
    (HANDOFF Q4).
-5. **No strictly-typed STOP in the schema.** `gtoy_profile_result_v1.18.schema.json` requires
-   `profile_band_masses{lo,mid,hi,sum}` and `numerical_sensitivity{…}` as present objects with
-   `additionalProperties:false`; a STOP yields `band_masses=None`, so a STOP cannot be encoded as a valid v1.18
-   instance and none was written (fabricating band masses is forbidden) (HANDOFF Q5).
+5. **No unambiguous, strictly-typed STOP representation in the schema.** In
+   `gtoy_profile_result_v1.18.schema.json`, `additionalProperties:false` applies at the TOP level only (line 3);
+   the required `profile_band_masses{lo,mid,hi,sum}` and `numerical_sensitivity{delta_quad,delta_hess,delta_tail}`
+   are `type:object` with the keys required but **no value-type constraints** on them. A literal
+   `profile_band_masses: null` fails validation, but an object carrying the required keys with null/placeholder
+   values would validate syntactically, so there is no clean, strictly-typed way to encode a STOP and none was
+   written (fabricating band masses is forbidden). (The bundle's `HANDOFF_fable_adjudication.md` Q5 states the
+   stronger "a STOP CANNOT be encoded as a valid v1.18 instance"; the syntactically-supportable claim, and the
+   one recorded here, is the weaker "no unambiguous, strictly-typed STOP representation" — the bundle text is not
+   edited.)
 6. **Post-STOP probes are exploratory.** The per-node characterization used hand-picked nodes (`1e-7`, `1e-6`,
    …, `0.02`, …), NOT the frozen P3 grid, and is not preregistered; it can characterize the STOP but cannot
    support interval-wide claims (`outputs/05`).
@@ -3467,8 +3488,10 @@ altered.
 scientific or diagnostic computation ran in this documentation session: no model, profile, optimizer, gradient,
 Hessian, or sampler was executed; only focused read-only git/hash/`ls`/grep checks and file reads. The evidence
 bundle `runs/m2c_v118_stop_20260714/` is **unchanged**: its `MANIFEST.sha256` (bundle fixity digest sha256
-`ab73576a332f94e9cde6cfd55f0012f8a7dbced2c452bd89cd5ca30bc0cdb97e`) enumerates the sha256 of every bundle file
-and was neither altered nor regenerated; the run itself verified frozen rev-5 `c3e9db66…1ce3f` and v1.17
+`ab73576a332f94e9cde6cfd55f0012f8a7dbced2c452bd89cd5ca30bc0cdb97e`) lists the sha256 of every OTHER bundle file
+(its 13 payload files, all of which verify; a manifest cannot list its own digest, so the `ab73576a…` value
+above is that self-digest, computed read-only) and was neither altered nor regenerated; the run itself verified
+frozen rev-5 `c3e9db66…1ce3f` and v1.17
 canonical `65381bc7…e522e2`. rev-5 sha256 unchanged; the freeze package, v1.17 manifest, and v1.18 schema are
 byte-identical; nothing under `runs/` was staged. The reserved v1.18 result-INSTANCE path
 `docs/m2c_freeze/gtoy_profile_result_v1.18.json` remains **ABSENT**. No v1.18 result, no success manifest, no

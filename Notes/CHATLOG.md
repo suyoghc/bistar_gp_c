@@ -602,14 +602,16 @@ path untouched; PR #10 kept Draft throughout. No compute begun; holdout SEALED.
 ## 2026-07-14 — M2c v1.18 recompute STOP: documentation-only record (D45)
 
 Documentation-only session. A single gated v1.18 deterministic profile recompute had been ATTEMPTED
-(one-shot in-session `--execute`) and STOPPED at node 0 (noise = `1e-7`): the frozen curvature gate's
-raw-Hessian pre-symmetrization symmetry check (`||raw−rawᵀ||_F/max(1,||raw||_F) ≤ 1e-6`) fails marginally
-(`sym_err ≈ 3.08e-6`) while SPD holds and `rcond ≈ 6.7e-3` is healthy; `stop_index 0`, no band-mass
-triplet, nothing written under `docs/m2c_freeze/`. Evidence is a LOCAL, UNTRACKED bundle
+(one-shot in-session `--execute`) and STOPPED at node 0 (noise = `1e-7`). The authorized run's own stdout
+emitted only `RESULT: STOP` + reason `curvature: pre-symmetrization check failed` + `stop_index 0`
+(`outputs/04`); the numeric characterization (`sym_err ≈ 3.08e-6` vs `SYMMETRY_TOL 1e-6`; SPD True;
+`rcond ≈ 6.7e-3`) comes from the POST-STOP EXPLORATORY diagnostic (`outputs/05`), not the authorized run.
+No band-mass triplet; nothing written under `docs/m2c_freeze/`. Evidence is a LOCAL, UNTRACKED bundle
 `runs/m2c_v118_stop_20260714/` (manifest fixity sha256 `ab73576a…`), left byte-unchanged.
 
 Verified every claim against the bundle and the frozen source (read-only), then recorded the author
-disposition. Two independent, author-commissioned read-only audits (NOT GitHub PR reviews):
+disposition. Two independent, author-commissioned read-only audits (NOT GitHub PR reviews; author-recorded — the bundle
+preserves only the Fable adjudication REQUEST, no returned verdicts, and GitHub carries no reviews/CI):
 **Fable Max = VALID_STOP** (the STOP is faithful frozen-algorithm behavior); **Codex GPT-5.6-sol =
 EXECUTION_NOT_AUDITABLE**. Adopted the **conservative disposition**: an UNVALIDATED execution attempt
 whose reported STOP is technically plausible but not independently auditable, so **no v1.18 result**
