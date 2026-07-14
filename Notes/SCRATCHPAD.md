@@ -26,11 +26,40 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   + §5.4 overlap + §5.5 nugget (PR C / D43)**, and the **§5.3 divergence + §3 chain-aware MCSE + the v1.17
   algorithm manifest + the v1.18 result SCHEMA + the umbrella suite (PR D / D44)**. **NEXT:** with a
   SEPARATE explicit author `--execute`, the gated deterministic profile recompute → the FILLED **v1.18**
-  result manifest (values). **NO compute begun.** Still owed (no executor, pinned reference-only): the ≤0.95
+  result manifest (values). **UPDATE (D45, 2026-07-14): one recompute was ATTEMPTED under the now-CONSUMED
+  one-shot `--execute` and STOPPED at node 0 (pre-symmetrization symmetry); UNVALIDATED / not independently
+  auditable, no v1.18 result, no rerun authorized; see the v1.18 subsection below.** Still owed (no executor,
+  pinned reference-only): the ≤0.95
   correlation-duplication gate + the 1e-3 M1-gate eigenvalue-floor gate (PR C); the v1.18 result VALUES.
 - **HARD GATES:** no compute/recompute/sampler/Mauna/holdout without `--execute` + clean tree + byte-
   exact hashes + passing tests, then stop-and-report; HMC only via `fit_hmc_e1`; VI+hmc_laplace
   withdrawn; A7 Della on hold (v1.8); holdout SEALED (§6.6).
+
+### v1.18 recompute ATTEMPTED — STOPPED at node 0; UNVALIDATED, no result; v1.17 one-shot CONSUMED; no rerun (D45, 2026-07-14)
+
+- **What:** under a one-shot in-session `--execute`, the reviewed `corrected_profile_band_masses` was called
+  EXACTLY ONCE on the real thesis-toy profile over the frozen `[1e-7, 1e4]` domain. It **STOPPED** at node 0
+  (noise = `1e-7`). The authorized run's own stdout emitted only `RESULT: STOP` + reason
+  `curvature: pre-symmetrization check failed` + `stop_index 0` (`outputs/04`); the magnitudes
+  (`sym_err ≈ 3.08e-6` vs `SYMMETRY_TOL 1e-6`; SPD True; `rcond ≈ 6.7e-3`) are from the POST-STOP EXPLORATORY
+  diagnostic (`outputs/05`), NOT the authorized run. No band-mass triplet; nothing written under
+  `docs/m2c_freeze/`.
+- **Evidence:** LOCAL, UNTRACKED bundle `runs/m2c_v118_stop_20260714/` (manifest fixity sha256 `ab73576a…` =
+  self-digest of `MANIFEST.sha256`, which lists the 13 OTHER bundle files; never staged; left byte-unchanged).
+- **Two independent audits (read-only, author-commissioned; NOT GitHub reviews; author-recorded — the bundle
+  holds only the Fable adjudication REQUEST, no returned verdicts):** Fable Max = `VALID_STOP` (faithful
+  frozen-algorithm behavior); Codex GPT-5.6-sol = `EXECUTION_NOT_AUDITABLE`.
+- **Conservative author disposition (adopted, D45):** UNVALIDATED execution attempt; reported STOP technically
+  plausible but not independently auditable, so **no result**. v1.17 one-shot authorization **CONSUMED**; **no
+  rerun authorized**; post-STOP node probes exploratory only.
+- **Limitations (verified):** post-hoc capture; unreviewed runtime wrappers replaced the frozen module
+  bindings; runner used E1 order (os, ls, lv) vs rev-5 (ls, os, lv); gate events discarded by the orchestrator;
+  schema has no strictly-typed STOP; post-STOP probes hand-picked, not the frozen grid. The order defect does
+  NOT explain the symmetry STOP (the Frobenius symmetry metric is permutation-invariant) but means the complete
+  frozen algorithm was not executed exactly.
+- **Reserved `docs/m2c_freeze/gtoy_profile_result_v1.18.json` stays ABSENT.** Any future recompute is blocked
+  pending a separately-authorized, preregistered, read-only diagnostic protocol plus a fresh `--execute`
+  (HANDOFF Q6). Full record: **D45**.
 
 ### PR D — divergence + chain-aware MCSE + v1.17 manifest + v1.18 schema + umbrella DRAFT (branch `feat/d19-m2c-pr-d` off merged main `b3d35b6`; D44, 2026-07-14)
 
