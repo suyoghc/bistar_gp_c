@@ -3362,3 +3362,120 @@ and imported the private `arviz.stats.diagnostics._ess`. Corrected before merge 
   match, instance-level jsonschema rejection — and the wording flagged non-blocking); codex APPROVE on the 4
   and CHANGES-REQUIRED solely on the "added" wording, now fixed exactly as codex prescribed, confirmed on a
   final focused codex pass → **codex + Sonnet-5 BOTH APPROVE**.
+
+---
+
+## D45: M2c v1.18 recompute — attempted execution STOPPED at node 0; conservative disposition (UNVALIDATED attempt, no result); v1.17 one-shot authorization CONSUMED; no rerun authorized — documentation-only — 2026-07-14
+
+**Problem:** D44 completed the hermetic M2c package and reserved the v1.18 result manifest to be filled ONLY
+by a separately-authorized, gated, deterministic profile recompute (rev-5 §6; D44 Status: "STOP before the
+gated deterministic profile recompute"). On 2026-07-14, under a one-shot in-session `--execute`, a single such
+recompute was attempted: the reviewed orchestrator `corrected_profile_band_masses` was called EXACTLY ONCE on
+the real thesis-toy profile over the frozen full `[1e-7, 1e4]` domain, and it STOPPED at the first node without
+producing a band-mass triplet. Two independent, read-only audits of the attempt reached different verdicts
+(Fable Max: the STOP is a valid frozen-algorithm outcome; Codex GPT-5.6-sol: the execution is not
+independently auditable). An author disposition is needed that neither manufactures a v1.18 result nor edits
+the freeze/evidence, and that settles whether the attempt stands. The evidence is a LOCAL, UNTRACKED bundle at
+`runs/m2c_v118_stop_20260714/` (`runs/` is never staged or committed).
+
+**Decision:** Adopt the conservative disposition. The attempted recompute is recorded as an **UNVALIDATED /
+NOT-INDEPENDENTLY-AUDITABLE execution attempt** whose reported node-0 pre-symmetrization symmetry STOP is
+**technically plausible and consistent with the frozen code path**, but which yields **no v1.18 scientific
+result and no success manifest**. The disposition, concretely:
+- The v1.17 one-shot authorization is **CONSUMED**; no rerun is authorized.
+- No v1.18 result exists; no success manifest may be created; the reserved result-INSTANCE path
+  `docs/m2c_freeze/gtoy_profile_result_v1.18.json` stays **ABSENT** (verified absent; the SCHEMA remains at
+  `docs/m2c_freeze/gtoy_profile_result_v1.18.schema.json`).
+- The post-STOP node probes (`outputs/05_POST-STOP_EXPLORATORY_diagnostic.txt`) are **exploratory only** and
+  cannot support any interval-wide or per-node scientific claim.
+- The record is Notes-only: no source, freeze, schema, manifest, evidence-bundle, or `runs/` file is edited or
+  regenerated; no tolerance or algorithm change is decided; nothing is called superseded or validated.
+
+Reported STOP (read from the bundle, not recomputed here): at node 0, noise = `1e-7` (`FULL_DOMAIN_LO`), the
+curvature gate's mandatory raw-Hessian pre-symmetrization symmetry check
+(`symmetry_error = ||raw − rawᵀ||_F / max(1, ||raw||_F) ≤ SYMMETRY_TOL = 1e-6`,
+`bistar_gp/profile_integration.py:563-567`) fails marginally (`sym_err ≈ 3.08e-6`, about 3× the tolerance)
+while SPD holds (True) and `rcond ≈ 6.69e-3` is healthy (>> `RCOND_MIN` `1e-8`); the profile fail-closes at
+`stop_index 0` (`profile_integration.py:1108-1113`). The rev-5 §2c retry is authorized only for SPD/rcond
+conditioning, not for a symmetry failure, so no retry fires. No `band_masses`/`logm` were produced and nothing
+was written under `docs/m2c_freeze/`.
+
+**Two independent audit verdicts (read-only adjudications commissioned by the author; these are NOT GitHub PR
+reviews):**
+- **Fable Max — `VALID_STOP`:** the STOP is faithful behavior of the v1.17-frozen algorithm on the real toy
+  (the freeze genuinely does not yield a triplet at node 0; the trip is the raw-FD-Hessian symmetry tolerance,
+  not construction, SPD, or rcond).
+- **Codex GPT-5.6-sol — `EXECUTION_NOT_AUDITABLE`:** the execution as performed cannot be independently
+  certified as an exact run of the frozen algorithm (post-hoc capture, unreviewed runtime wrappers over frozen
+  bindings, wrong nuisance order, discarded gate events, no strictly-typed STOP in the schema).
+- **Conservative author disposition (adopted):** an **UNVALIDATED execution attempt**; the reported STOP is
+  **technically plausible** but the run is **not independently auditable**, so **no result** stands. The two
+  verdicts are not merged into a success: the more conservative Codex reading governs the disposition, while
+  Fable's point (the STOP is plausible given the frozen path) is recorded, not used to certify a result.
+
+**Recorded limitations of the attempt (each verified against the bundle):**
+1. **Post-hoc capture.** Outputs and environment were captured or transcribed after the fact: every
+   `outputs/*.txt` is "TRANSCRIBED FROM THE SESSION TOOL-RESULT TRANSCRIPT"; `provenance/environment.txt` is an
+   explicit POST-HOC representative capture, not a run-time snapshot; the baseline pytest raw file was
+   UNAVAILABLE and was NOT rerun; per-command wall-clock stamps were not captured (`provenance/timestamps.txt`).
+2. **Unreviewed runtime wrappers replaced frozen module bindings.** The one-shot runner reassigned the frozen
+   module attributes `pi.optimize_conditional`, `pi.curvature_gate`, `pi._curvature_evaluation` to pass-through
+   observer wrappers (`scripts/run_v118_recompute.py:93-95`). They are pass-through (call the original, return
+   its exact result) and the wrapper-free POST-STOP diagnostic reproduces the same STOP, but the wrappers are
+   themselves unreviewed and unfrozen and DID replace the frozen bindings during the authorized run.
+3. **Wrong nuisance order.** The runner derived `nuisance_order` from `e1.sites` and used **E1 order
+   (os, ls, lv)** = (outputscale, lengthscale, variance) (`run_v118_recompute.py:50-51`; recon `outputs/03`),
+   while rev-5 specifies the fixed curvature/directional coordinate order **(ls, os, lv)** (freeze spec lines
+   130, 459, 529).
+4. **Gate events discarded by the orchestrator.** `profile_logm_on_grid` captures only `u*`/`logdet`/
+   `logdet_by_h` and discards `retry_count`/`rcond`/`restart_count`; `corrected_profile_band_masses` never
+   aggregates a `gate_events{stop,retry,rcond_fail,undetermined}` object (the only such object in-tree is a
+   synthetic all-zero test fixture), which is why the runner needed the wrappers to obtain the counts at all
+   (HANDOFF Q4).
+5. **No strictly-typed STOP in the schema.** `gtoy_profile_result_v1.18.schema.json` requires
+   `profile_band_masses{lo,mid,hi,sum}` and `numerical_sensitivity{…}` as present objects with
+   `additionalProperties:false`; a STOP yields `band_masses=None`, so a STOP cannot be encoded as a valid v1.18
+   instance and none was written (fabricating band masses is forbidden) (HANDOFF Q5).
+6. **Post-STOP probes are exploratory.** The per-node characterization used hand-picked nodes (`1e-7`, `1e-6`,
+   …, `0.02`, …), NOT the frozen P3 grid, and is not preregistered; it can characterize the STOP but cannot
+   support interval-wide claims (`outputs/05`).
+
+**Directional-order defect vs the reported symmetry STOP:** the wrong nuisance order (limitation 3) does **not**
+explain the reported symmetry STOP. The frozen symmetry metric `||raw − rawᵀ||_F / max(1, ||raw||_F)` is
+invariant under a permutation of the nuisance coordinates: a coordinate permutation conjugates the raw Hessian
+to `P·raw·Pᵀ` with `P` a permutation matrix, and the Frobenius norm is invariant under orthogonal conjugation,
+so both `||raw − rawᵀ||_F` and `||raw||_F` are unchanged; swapping os and ls cannot change `symmetry_error` and
+therefore cannot cause or avert the symmetry STOP. The defect does, however, mean the **complete frozen
+algorithm was not executed exactly** (rev-5's directional check and unit-L2 normalization are defined over the
+(ls, os, lv) order), which is why the attempt cannot be certified as an exact frozen-algorithm run even though
+the STOP is plausible.
+
+**Alternatives considered:** (a) accept the STOP as the M2c profile result of record (Fable's VALID_STOP
+reading taken to its conclusion) — rejected: the run is not independently auditable (limitations 1-3), so it
+cannot be certified as an exact frozen-algorithm execution; and §6.8 makes the profile a corroborating
+reference, never a lone verdict, so an unfilled v1.18 does not by itself invalidate M2c. (b) authorize a clean
+rerun now — rejected: no diagnostic protocol is frozen (HANDOFF Q6), a rerun before a preregistered read-only
+protocol would let hand-picked-node exploration become a de-facto result, and no tolerance/algorithm change has
+been decided; out of scope for this documentation session. (c) represent the STOP inside v1.18 — rejected: the
+schema has no unambiguous strictly-typed STOP variant (limitation 5). (d) treat the exploratory post-STOP
+diagnostic as the characterization of record — rejected: hand-picked nodes, not the frozen grid, not
+preregistered (limitation 6). (e) edit or regenerate the evidence bundle to add missing provenance — rejected:
+`runs/` is untracked and immutable by convention; the bundle documents its own gaps honestly and must not be
+altered.
+
+**Result:** Notes-only documentation (this D45 entry plus `Notes/SCRATCHPAD.md` and `Notes/CHATLOG.md`). No
+scientific or diagnostic computation ran in this documentation session: no model, profile, optimizer, gradient,
+Hessian, or sampler was executed; only focused read-only git/hash/`ls`/grep checks and file reads. The evidence
+bundle `runs/m2c_v118_stop_20260714/` is **unchanged**: its `MANIFEST.sha256` (bundle fixity digest sha256
+`ab73576a332f94e9cde6cfd55f0012f8a7dbced2c452bd89cd5ca30bc0cdb97e`) enumerates the sha256 of every bundle file
+and was neither altered nor regenerated; the run itself verified frozen rev-5 `c3e9db66…1ce3f` and v1.17
+canonical `65381bc7…e522e2`. rev-5 sha256 unchanged; the freeze package, v1.17 manifest, and v1.18 schema are
+byte-identical; nothing under `runs/` was staged. The reserved v1.18 result-INSTANCE path
+`docs/m2c_freeze/gtoy_profile_result_v1.18.json` remains **ABSENT**. No v1.18 result, no success manifest, no
+new preregistration version, no tolerance/algorithm decision, no supersession/validation claim, no rerun
+authorization.
+
+**Status:** v1.17 one-shot authorization **CONSUMED**. The v1.18 result manifest remains **UNFILLED** and its
+instance path ABSENT. Any future recompute is blocked pending a separately-authorized, preregistered, read-only
+diagnostic protocol and a fresh explicit `--execute` (HANDOFF Q6); this D45 does NOT grant one. Notes-only
+changes committed on a docs branch; Draft documentation PR opened, held before Ready/merge.

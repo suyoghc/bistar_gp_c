@@ -598,3 +598,34 @@ authority path CLOSED after 9 rounds — codex + Sonnet BOTH APPROVE**; only pri
 remains, agreed out of scope. Commits **966be5d, 45556e5, bd56786, b7f3bed, 8adaaa5, b11166e, 8adaaa5,
 91d7671, b02c4cd, 6eefb9f**; full suite **331 passed / 1 skipped**; rev-5 sha256 unchanged; historical
 path untouched; PR #10 kept Draft throughout. No compute begun; holdout SEALED.
+
+## 2026-07-14 — M2c v1.18 recompute STOP: documentation-only record (D45)
+
+Documentation-only session. A single gated v1.18 deterministic profile recompute had been ATTEMPTED
+(one-shot in-session `--execute`) and STOPPED at node 0 (noise = `1e-7`): the frozen curvature gate's
+raw-Hessian pre-symmetrization symmetry check (`||raw−rawᵀ||_F/max(1,||raw||_F) ≤ 1e-6`) fails marginally
+(`sym_err ≈ 3.08e-6`) while SPD holds and `rcond ≈ 6.7e-3` is healthy; `stop_index 0`, no band-mass
+triplet, nothing written under `docs/m2c_freeze/`. Evidence is a LOCAL, UNTRACKED bundle
+`runs/m2c_v118_stop_20260714/` (manifest fixity sha256 `ab73576a…`), left byte-unchanged.
+
+Verified every claim against the bundle and the frozen source (read-only), then recorded the author
+disposition. Two independent, author-commissioned read-only audits (NOT GitHub PR reviews):
+**Fable Max = VALID_STOP** (the STOP is faithful frozen-algorithm behavior); **Codex GPT-5.6-sol =
+EXECUTION_NOT_AUDITABLE**. Adopted the **conservative disposition**: an UNVALIDATED execution attempt
+whose reported STOP is technically plausible but not independently auditable, so **no v1.18 result**
+stands. The v1.17 one-shot authorization is **CONSUMED**; **no rerun authorized**; post-STOP node probes
+are exploratory only.
+
+Recorded limitations (all verified): post-hoc output/environment capture; unreviewed runtime wrappers
+replaced the frozen module bindings; the runner used E1 order (os, ls, lv) while rev-5 specifies
+(ls, os, lv); the orchestrator discards gate events; the v1.18 schema has no strictly-typed STOP; post-STOP
+probes are hand-picked, not the frozen grid. The directional-order defect does NOT explain the symmetry
+STOP (the Frobenius symmetry metric is permutation-invariant) but means the complete frozen algorithm was
+not executed exactly.
+
+Changes: **Notes-only** — D45 in `Notes/DECISIONS.md`, this log entry, and the `Notes/SCRATCHPAD.md` M2c
+subsection. No source/freeze/schema/manifest/evidence-bundle/`runs/` edit; no scientific or diagnostic
+computation (no model/profile/optimizer/gradient/Hessian/sampler run); no v1.18 result or success manifest;
+reserved `…gtoy_profile_result_v1.18.json` stays ABSENT; rev-5 `c3e9db66…` and v1.17 `65381bc7…` unchanged;
+no new preregistration version; no tolerance/algorithm decision; no rerun authorization; nothing called
+superseded or validated. Committed on a docs branch; Draft documentation PR opened, held before Ready/merge.
