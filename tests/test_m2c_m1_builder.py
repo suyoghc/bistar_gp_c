@@ -207,3 +207,23 @@ def test_augment_is_non_mutating_and_preserves_seasonal_a10_stamp():
     assert seasonal.period_length.item() == MAUNA_FROZEN_PERIOD
     assert not seasonal.raw_period_length.requires_grad
     assert seasonal._a10_frozen_period == MAUNA_FROZEN_PERIOD
+
+
+def test_augment_fails_closed_on_a_malformed_m0_inventory():
+    kernels, names = build_mauna_loa_kernels()
+    # length mismatch
+    with pytest.raises(ValueError, match="length mismatch"):
+        augment_with_m1_short_scale(kernels, names[:-1])
+    # empty inventory
+    with pytest.raises(ValueError, match="empty"):
+        augment_with_m1_short_scale([], [])
+    # non-string / empty name
+    with pytest.raises(ValueError, match="non-empty strings"):
+        augment_with_m1_short_scale(kernels, ["trend", "seasonal", ""])
+    # duplicate names
+    with pytest.raises(ValueError, match="duplicate"):
+        augment_with_m1_short_scale(kernels, ["trend", "trend", "medium_term"])
+    # already-augmented (existing short_scale) — refuse to double-augment
+    augmented_kernels, augmented_names = augment_with_m1_short_scale(kernels, names)
+    with pytest.raises(ValueError, match="already present"):
+        augment_with_m1_short_scale(augmented_kernels, augmented_names)

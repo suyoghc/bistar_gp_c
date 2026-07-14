@@ -8,7 +8,7 @@ from .m1_authority import (
     AuthorityError,
     NormalizedAuthority,
     VALID_VERDICT_AUTHORITIES,
-    normalize_authority_weights,
+    select_and_normalize_authority,
 )
 from .m2c_freeze_m1 import NUGGET_FLAG_THRESHOLD, NUGGET_REFERENCE
 
@@ -109,56 +109,70 @@ def _noise_values(source):
     return source
 
 
+def _require_positive_noise(noise_variances, label):
+    """A constrained noise variance is strictly positive; reject n_i <= 0."""
+    values = np.asarray(noise_variances, dtype=np.float64)
+    if values.size == 0 or not np.all(np.isfinite(values)) or np.any(values <= 0.0):
+        raise NuggetError(f"{label} noise variances must be finite and strictly positive")
+    return values
+
+
 def nugget_floor_report(
     m1_noise_variances,
-    m1_authority_label,
-    m1_authority_weights,
+    m1_authority_candidates,
+    m1_authority_weights_by_label,
     *,
     m0_noise_variances=None,
-    m0_authority_label=None,
-    m0_authority_weights=None,
+    m0_authority_candidates=None,
+    m0_authority_weights_by_label=None,
     predictive_gate_passes=None,
     reference=NUGGET_REFERENCE,
     flag_threshold=NUGGET_FLAG_THRESHOLD,
 ):
-    """Normalize authority inputs once and return a fail-closed report.
+    """SCIENTIFIC §5.5 report: complete inputs + internal precedence selection.
 
-    A noise source may be either a 1D array or a sample mapping, in which case
-    the single current/legacy noise site is resolved first.  No input failure
-    escapes this report wrapper, and UNDETERMINED is never reported as False.
+    Unlike the flexible primitive :func:`nugget_floor_predicate`, the scientific
+    report performs the verdict-authority precedence ITSELF (via
+    ``select_and_normalize_authority``) for BOTH the M1 and the same-arm M0
+    authority — from caller-attested strict-bool candidate maps + per-label
+    weights — so precedence cannot be bypassed with a pre-built authority.  It
+    emits the full §5.5(d) coincidence record only when every input is present
+    and valid, else it fails closed to ``flag="UNDETERMINED"`` (never a valid M1
+    flag with ``None`` companions):
+      * M1 AND same-arm M0 candidates + weights are both REQUIRED (a resolvable,
+        weighted authority for each).
+      * ``m0_noise_variances`` (the same-arm M0 authority's draws) is REQUIRED.
+      * ``predictive_gate_passes`` must be an explicit bool (the separate M1
+        predictive-improvement gate); ``None`` ⇒ UNDETERMINED.
+      * every M1/M0 noise variance must be finite and strictly positive (n_i is a
+        constrained variance).
+    A noise source may be a 1D array or a sample mapping (single current/legacy
+    site resolved via :func:`resolve_single_noise_site`).  No input failure
+    escapes this wrapper.
     """
+    m1_authority = None
     try:
-        m1_authority = normalize_authority_weights(
-            m1_authority_label, m1_authority_weights
+        m1_authority = select_and_normalize_authority(
+            m1_authority_candidates, m1_authority_weights_by_label
         )
-        m1_noises = _noise_values(m1_noise_variances)
+        if (
+            m0_noise_variances is None
+            or m0_authority_candidates is None
+            or m0_authority_weights_by_label is None
+        ):
+            raise NuggetError(
+                "scientific report requires the same-arm M0 noise draws + authority"
+            )
+        m0_authority = select_and_normalize_authority(
+            m0_authority_candidates, m0_authority_weights_by_label
+        )
+        if not isinstance(predictive_gate_passes, bool):
+            raise NuggetError(
+                "scientific report requires an explicit predictive-gate boolean"
+            )
 
-        any_m0 = any(
-            value is not None
-            for value in (
-                m0_noise_variances,
-                m0_authority_label,
-                m0_authority_weights,
-            )
-        )
-        all_m0 = all(
-            value is not None
-            for value in (
-                m0_noise_variances,
-                m0_authority_label,
-                m0_authority_weights,
-            )
-        )
-        if any_m0 and not all_m0:
-            raise NuggetError("all M0 report inputs must be provided together")
-        if all_m0:
-            m0_authority = normalize_authority_weights(
-                m0_authority_label, m0_authority_weights
-            )
-            m0_noises = _noise_values(m0_noise_variances)
-        else:
-            m0_authority = None
-            m0_noises = None
+        m1_noises = _require_positive_noise(_noise_values(m1_noise_variances), "M1")
+        m0_noises = _require_positive_noise(_noise_values(m0_noise_variances), "M0")
 
         return nugget_floor_predicate(
             m1_noises,
@@ -171,11 +185,13 @@ def nugget_floor_report(
         )
     except (AuthorityError, NuggetError, TypeError, ValueError, OverflowError) as exc:
         predictive = (
-            None if predictive_gate_passes is None else bool(predictive_gate_passes)
+            predictive_gate_passes
+            if isinstance(predictive_gate_passes, bool)
+            else None
         )
         return {
             "p_below_M1": None,
-            "authority": m1_authority_label,
+            "authority": getattr(m1_authority, "label", None),
             "ess": None,
             "p_below_M0": None,
             "delta_p": None,

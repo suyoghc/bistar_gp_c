@@ -12,7 +12,7 @@ from .m1_authority import (
     AuthorityError,
     NormalizedAuthority,
     VALID_VERDICT_AUTHORITIES,
-    normalize_authority_weights,
+    select_and_normalize_authority,
 )
 from .m2c_freeze_m1 import (
     M1_OVERLAP_REQUIRED_COMPONENTS,
@@ -20,8 +20,6 @@ from .m2c_freeze_m1 import (
     OVERLAP_ALIGNMENT_THRESHOLD,
     Q_OVERLAP_CAP,
 )
-
-_REQUIRED_DEFAULT = object()  # sentinel: distinguish "use frozen default" from explicit None
 
 
 class OverlapError(RuntimeError):
@@ -209,51 +207,80 @@ def q_overlap(
     }
 
 
+def _require_exact_component_set(component_matrices):
+    """Enforce rev-5 §5.4(a)'s EXACT frozen scientific component set.
+
+    §5.4 fixes j to {trend, seasonal, medium, nugget, rest}; nugget and rest are
+    derived, so each draw's supplied matrices must be EXACTLY the frozen M1
+    component ``M1_SHORT_SCALE_NAME`` plus ``M1_OVERLAP_REQUIRED_COMPONENTS`` — no
+    missing member and no extra component (an unexpected extra would silently
+    change K_rest), and the M1 key cannot be relabelled.  Any deviation fails
+    closed (§5.4(d)).
+    """
+    if not isinstance(component_matrices, Mapping):
+        raise OverlapError("component_matrices must be a name-to-matrix mapping")
+    expected = frozenset(M1_OVERLAP_REQUIRED_COMPONENTS) | {M1_SHORT_SCALE_NAME}
+    actual = frozenset(component_matrices)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        raise OverlapError(
+            "overlap scientific component set must be exactly "
+            f"{sorted(expected)}; missing={missing}, unexpected={extra}"
+        )
+
+
 def overlap_diagnostic(
     per_draw_component_matrices,
     noise_variances,
-    authority_label,
-    authority_weights,
+    authority_candidates,
+    authority_weights_by_label,
     *,
-    m1_name=M1_SHORT_SCALE_NAME,
-    required_components=_REQUIRED_DEFAULT,
     alignment_threshold=OVERLAP_ALIGNMENT_THRESHOLD,
     cap=Q_OVERLAP_CAP,
 ):
-    """Tie draw matrices to one validated authority and a q_overlap report.
+    """Scientific M1-overlap gate: exact frozen set + internal precedence selection.
+
+    This is the SCIENTIFIC wrapper (not the algebraic primitive
+    :func:`draw_overlap_omax`).  It performs the verdict-authority precedence
+    ITSELF: ``authority_candidates`` (label -> attested-qualified strict bool) and
+    ``authority_weights_by_label`` (label -> weights) are resolved via
+    ``select_and_normalize_authority`` (G-IS-first, else RW-MH; profile-Laplace
+    never; rev-5 §5.4(e)/§6.8) — a caller cannot bypass precedence by handing in a
+    pre-built authority.  The M1 component key is PINNED to the frozen
+    ``M1_SHORT_SCALE_NAME`` (not caller-relabelable), and each draw's
+    ``component_matrices`` must be EXACTLY that plus ``M1_OVERLAP_REQUIRED_COMPONENTS``
+    — missing OR extra components fail closed (§5.4(a)/(d)).
 
     Verdict encoding of rev-5 §5.4(d) — every failure blocks P-comb+M1-v1
     promotion (M0/other arms continue):
       * ``STOP``          — a computed ``q_overlap`` that exceeds the 0.05 cap.
       * ``UNDETERMINED``  — any un-computable input: a zero/missing/non-finite
-        matrix, a missing M1 or required non-M1 component, or a missing/invalid
-        authority (§4 authority contract).  §5.4(d) lists these under "STOP for
-        promotion"; the task's own restatement writes "UNDETERMINED/STOP", so
-        the un-computable branch is reported as UNDETERMINED and never as PASS.
-    ``required_components`` is fail-safe BY DEFAULT: when omitted it is the
-    frozen Mauna set ``M1_OVERLAP_REQUIRED_COMPONENTS``
-    (``("trend", "seasonal", "medium_term")``, rev-5 §5.4(a)), so a partial
-    input fails closed rather than silently passing.  A caller using a different
-    M0 arm passes that arm's non-M1 component names; passing ``None`` explicitly
-    disables the completeness check (algebraic/primitive use only).
+        matrix, a wrong component set, or a missing/unusable/invalid authority.
+        §5.4(d) lists these under "STOP for promotion"; the task's restatement
+        writes "UNDETERMINED/STOP", so the un-computable branch is UNDETERMINED
+        and never PASS.
     """
-    if required_components is _REQUIRED_DEFAULT:
-        required_components = M1_OVERLAP_REQUIRED_COMPONENTS
+    authority = None
     try:
+        authority = select_and_normalize_authority(
+            authority_candidates, authority_weights_by_label
+        )
         draws = list(per_draw_component_matrices)
         noises = np.asarray(noise_variances, dtype=np.float64)
         if noises.ndim != 1 or noises.size != len(draws):
             raise OverlapError("noise draw count does not match covariance draws")
-        authority = normalize_authority_weights(authority_label, authority_weights)
-        draw_reports = [
-            draw_overlap_omax(
-                matrices,
-                noise,
-                m1_name=m1_name,
-                required_components=required_components,
+        draw_reports = []
+        for matrices, noise in zip(draws, noises):
+            _require_exact_component_set(matrices)
+            draw_reports.append(
+                draw_overlap_omax(
+                    matrices,
+                    noise,
+                    m1_name=M1_SHORT_SCALE_NAME,
+                    required_components=M1_OVERLAP_REQUIRED_COMPONENTS,
+                )
             )
-            for matrices, noise in zip(draws, noises)
-        ]
         report = q_overlap(
             [draw["o_max"] for draw in draw_reports],
             authority,
@@ -268,7 +295,7 @@ def overlap_diagnostic(
             "verdict": "UNDETERMINED",
             "threshold": alignment_threshold,
             "cap": cap,
-            "authority": authority_label,
+            "authority": getattr(authority, "label", None),
             "ess": None,
             "draws": None,
             "error": str(exc),

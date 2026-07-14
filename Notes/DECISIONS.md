@@ -3110,3 +3110,58 @@ STOP before PR D (divergence non-clustering + chain-aware MCSE + the two JSON ma
 any scientific sampler execution, Mauna/holdout work, and the v1.18 recompute (still blocked on the PR-D
 v1.17 JSON algorithm manifest). Not merged. The ≤0.95 correlation-duplication gate and the 1e-3 M1-gate
 eigenvalue-floor gate remain owed (pinned reference-only in PR C, no executor). PR D follows.
+
+**Update (2026-07-13, focused review round — production-contract hardening; PR #12 kept Draft):** a
+further focused codex review (relayed by the author) raised four production-contract issues on the merged-
+in-progress PR; all cross-verified against the freeze and fixed in the new (uncommitted-then-committed)
+PR-C modules only (no frozen file touched; rev-5 sha256 unchanged):
+- **(1) Overlap exact-set enforcement + pinned M1 name.** `overlap_diagnostic` (the SCIENTIFIC wrapper)
+  previously allowed a permissive `required_components` (incl. `None`-disable) AND a caller-supplied
+  `m1_name`, so completeness was bypassable and M1 was relabelable. Per §5.4(a) the set j is fixed EXACTLY
+  to {trend, seasonal, medium, nugget, rest}. FIX: the wrapper enforces each draw's matrices are EXACTLY
+  `{M1_SHORT_SCALE_NAME} ∪ M1_OVERLAP_REQUIRED_COMPONENTS` (`_require_exact_component_set`) — missing OR
+  extra ⇒ UNDETERMINED (§5.4(d)); the M1 key is PINNED to the frozen `M1_SHORT_SCALE_NAME` (no `m1_name`
+  param on the scientific path); no override/disable. The flexible `draw_overlap_omax` primitive keeps
+  `required_components=None` + a customizable `m1_name`. Regression uses ORTHONORMAL rank-1 directions so a
+  partial set genuinely PASSes in the primitive (O_max=1/√3<0.90) yet is UNDETERMINED in the wrapper; an
+  extra component and an aliased M1 key each ⇒ UNDETERMINED.
+- **(2) Nugget report completeness + positivity.** `nugget_floor_report` (SCIENTIFIC) now requires
+  precedence-qualified M1 AND same-arm M0 authorities, an explicit `predictive_gate_passes` bool, and
+  finite strictly-positive noise (n_i>0, a constrained variance) for both arms; any missing/None/nonpositive
+  ⇒ UNDETERMINED (never a valid M1 flag with `None` companions). `nugget_floor_predicate` stays the flexible
+  primitive.
+- **(3) Authority provenance — precedence wired non-forgeably + honest boundary.** A first cut added a
+  `qualified` flag on `NormalizedAuthority`, but a focused re-review showed the flag was publicly
+  constructible (forgeable), `resolve_verdict_authority` was never on the required path, and truthy
+  non-bool candidates (e.g. the string `"False"`) qualified. FINAL FIX: the scientific wrappers no longer
+  accept an authority object at all — `overlap_diagnostic` and `nugget_floor_report` take
+  `authority_candidates` (label→attested STRICT bool) + `authority_weights_by_label` and call
+  `select_and_normalize_authority` (→ `resolve_verdict_authority`: G-IS-first, else RW-MH; profile-Laplace
+  never; none-usable ⇒ UNDETERMINED) INTERNALLY, so precedence cannot be bypassed and there is nothing to
+  forge; `resolve_verdict_authority` rejects any non-`bool` candidate value. The `qualified` flag and
+  `require_qualified_authority` were removed. The arithmetic primitives (`q_overlap`,
+  `nugget_floor_predicate`, `normalize_authority_weights`) still take a bare `NormalizedAuthority` — that is
+  intended; they are primitives, not the scientific gate. HONESTY (recorded, not overclaimed): PR C is
+  hermetic and runs no chains, so it CANNOT verify that a "G-IS" candidate passed its G-IS check or that an
+  "RW-MH" candidate was crossing-verified — those qualification booleans are CALLER-ATTESTED here and
+  validated only by PR D's real chains. PR C enforces the precedence STRUCTURE + weight/ESS/label contract,
+  not the underlying G-IS/RW-MH facts; stated in `bistar_gp/m1_authority.py`'s module docstring (the earlier
+  "ONLY route" wording was removed as an overclaim).
+- **(4) Augment fail-closed.** `augment_with_m1_short_scale` now rejects a malformed M0 inventory (length
+  mismatch, empty, non-string/empty names, duplicate names, pre-existing `short_scale`). Deliberately
+  arm-generic — it validates STRUCTURE only and does NOT hardcode {trend,seasonal,medium_term} (that
+  exact-set enforcement is the overlap gate's job, correction 1), preserving "augments whichever M0 arm."
+
+`python -m pytest -q` → **402 passed / 1 skipped** (the PR-C test set was reworked toward broader contract
+coverage: exact-set + pinned-M1-name + orthogonal-regression overlap tests, internal-precedence-selection
++ strict-bool authority tests, report completeness/positivity, augment guards). rev-5 sha256 unchanged; all
+frozen/PR-A/PR-B source byte-identical to `f1bf977`; no `runs/` staged. Focused re-review across two rounds
+(codex flagged and then re-verified the m1_name/forgeable-qualified/strict-bool bypasses; Sonnet-5
+cross-checked): codex + Sonnet-5 **BOTH APPROVE** — first focused round codex CHANGES-REQUIRED (three
+production-contract bypasses: overlap `m1_name` relabel; forgeable `qualified` flag so precedence was
+never on the required path; truthy non-bool candidates like `"False"` qualifying) + a test-vacuity catch
+(same-projector regression); all closed by the wrapper-performs-selection redesign + pinned M1 name +
+strict-bool candidates + orthonormal regression, then codex + Sonnet APPROVE (Sonnet independently
+confirmed `numpy.bool_` is also rejected). Provenance unchanged: no M1/scientific sampler route or chain
+executed; no Mauna/holdout computation ran; the full suite did execute its pre-existing hermetic tiny-E1
+sampler regression tests. PR #12 kept Draft; STOP before PR D / v1.18.

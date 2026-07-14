@@ -39,7 +39,7 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   fixtures + algebraic seedless cases only; no sampler, no Mauna/holdout, no `--execute`. 5 NEW modules
   (`bistar_gp/{m2c_freeze_m1,m1_builder,m1_authority,m1_overlap,m1_nugget_floor}.py`) + 4 test files; the
   ONLY tracked edit is a 4-symbol export append to `bistar_gp/__init__.py`. `python -m pytest -q` →
-  **404 passed / 1 skipped** (baseline 350/1 + 48 + 6 review-fix tests).
+  **402 passed / 1 skipped** (baseline 350/1 + PR-C tests).
 - **M1 prior (frozen, byte-exact):** outputscale LogNormal(log 2.4e-4, 1.2); lengthscale logit-normal
   0.1+0.9·sigmoid(z), z~Normal(-1.2528, 1.082), hard support [0.1,1.0] (q10/q50/q90 = 0.16/0.30/0.58),
   Matérn ν=1.5. `LogitNormalPrior(Prior, LogitNormal)` mirrors gpytorch `LogNormalPrior`; `Interval(0.1,
@@ -58,6 +58,15 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   endpoint MINOR does NOT survive cross-verification — the freeze pins "hard support [0.1,1.0]" CLOSED, so
   endpoints-in-support is freeze-faithful (documented, code unchanged). Sonnet APPROVE both rounds; codex
   re-reviewed twice (held the line that the fail-closed must be the DEFAULT, not an optional arg) → APPROVE.
+- **Production-contract hardening (2026-07-13, author-relayed codex pushback; D43 Update):** four issues,
+  all fixed in PR-C modules only. (1) `overlap_diagnostic` enforces the EXACT frozen component set + PINS
+  the M1 key to `M1_SHORT_SCALE_NAME` (no `m1_name`/`None` bypass). (2) `nugget_floor_report` requires
+  complete M1+M0 authorities + explicit predictive-gate bool + strictly-positive noise. (3) authority
+  provenance made NON-FORGEABLE: the scientific wrappers take candidate maps (label→STRICT bool) + weights
+  and call `select_and_normalize_authority`→`resolve_verdict_authority` INTERNALLY (no authority object to
+  forge; `"False"`-string rejected); honest boundary — G-IS/RW-MH facts are caller-attested + PR-D-validated
+  (PR C runs no chains). (4) `augment_with_m1_short_scale` fails closed on a malformed M0 inventory
+  (arm-generic, no hardcoded Mauna names). Two focused review rounds → codex + Sonnet-5 **BOTH APPROVE**.
 - **Provenance (precise):** no M1/scientific sampler route or chain executed; no Mauna/holdout computation
   ran. The full suite did execute its pre-existing hermetic tiny-E1 sampler regression tests.
 - **DRAFT PR opened to `main`.** rev-5 sha256 unchanged; `m2c_freeze.py`, `m2c_freeze_s2s3.py`, PR-A/PR-B

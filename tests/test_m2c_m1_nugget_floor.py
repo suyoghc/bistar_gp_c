@@ -18,6 +18,11 @@ def _predicate(noises, weights, **kwargs):
     return nugget_floor_predicate(noises, authority, **kwargs)
 
 
+def _auth(label, weights):
+    """(candidates, weights_by_label) for one attested authority."""
+    return {label: True}, {label: list(weights)}
+
+
 @pytest.mark.parametrize(
     ("noises", "weights", "expected"),
     [
@@ -116,53 +121,89 @@ def test_zero_or_multiple_selected_noise_sites_fail_closed():
         )
 
 
-@pytest.mark.parametrize(
-    ("label", "weights"),
-    [
-        ("profile-Laplace", [1.0]),
-        ("G-IS", []),
-        ("G-IS", [0.0, 0.0]),
-        ("G-IS", [1.0, -1.0]),
-        ("G-IS", [1.0, np.nan]),
-        ("G-IS", [10 ** 400]),  # Python int too large for float64 -> UNDETERMINED
-    ],
-)
-def test_bad_or_profile_authority_reports_undetermined(label, weights):
-    report = nugget_floor_report(
-        [NUGGET_REFERENCE], label, weights, predictive_gate_passes=True
+def _report(m1_noises, m1_weights, **kwargs):
+    """Complete scientific report: internal precedence selection + explicit gate."""
+    m1_c, m1_w = _auth("G-IS", m1_weights)
+    m0_c, m0_w = _auth("RW-MH", [1.0, 1.0])
+    defaults = dict(
+        m0_noise_variances=[2.0 * NUGGET_REFERENCE, 2.0 * NUGGET_REFERENCE],
+        m0_authority_candidates=m0_c,
+        m0_authority_weights_by_label=m0_w,
+        predictive_gate_passes=True,
     )
-    assert report["flag"] == "UNDETERMINED"
-    assert report["coincidence"] is None
-    assert report["p_below_M1"] is None
-    assert "verdict" not in report
+    defaults.update(kwargs)
+    return nugget_floor_report(m1_noises, m1_c, m1_w, **defaults)
+
+
+def test_unusable_or_bad_authority_reports_undetermined():
+    m1 = [0.5 * NUGGET_REFERENCE, 2.0 * NUGGET_REFERENCE]
+    # No usable M1 candidate (nothing attested) => UNDETERMINED.
+    r_unusable = nugget_floor_report(
+        m1, {"G-IS": False}, {"G-IS": [0.5, 0.5]},
+        m0_noise_variances=m1,
+        m0_authority_candidates={"RW-MH": True},
+        m0_authority_weights_by_label={"RW-MH": [0.5, 0.5]},
+        predictive_gate_passes=True,
+    )
+    assert r_unusable["flag"] == "UNDETERMINED"
+    assert r_unusable["p_below_M1"] is None and r_unusable["coincidence"] is None
+    assert "verdict" not in r_unusable
+    # profile-Laplace can never be selected => UNDETERMINED.
+    r_pl = nugget_floor_report(
+        m1, {"profile-Laplace": True}, {"profile-Laplace": [0.5, 0.5]},
+        m0_noise_variances=m1,
+        m0_authority_candidates={"RW-MH": True},
+        m0_authority_weights_by_label={"RW-MH": [0.5, 0.5]},
+        predictive_gate_passes=True,
+    )
+    assert r_pl["flag"] == "UNDETERMINED"
+    # Bad M1 weights => UNDETERMINED (selection fails closed inside the wrapper).
+    for weights in ([], [0.0, 0.0], [1.0, -1.0], [1.0, np.nan], [10 ** 400]):
+        assert _report(m1, weights)["flag"] == "UNDETERMINED"
+
+
+def test_missing_m0_or_predictive_gate_reports_undetermined():
+    m1 = [0.5 * NUGGET_REFERENCE, 2.0 * NUGGET_REFERENCE]
+    missing_m0 = _report(m1, [0.5, 0.5], m0_noise_variances=None)
+    missing_m0_auth = _report(m1, [0.5, 0.5], m0_authority_candidates=None)
+    missing_gate = _report(m1, [0.5, 0.5], predictive_gate_passes=None)
+    assert missing_m0["flag"] == "UNDETERMINED"
+    assert missing_m0_auth["flag"] == "UNDETERMINED"
+    assert missing_gate["flag"] == "UNDETERMINED"
+
+
+def test_nonpositive_noise_reports_undetermined():
+    m1 = [0.5 * NUGGET_REFERENCE, 2.0 * NUGGET_REFERENCE]
+    zero_m1 = _report([0.0, 2.0 * NUGGET_REFERENCE], [0.5, 0.5])
+    neg_m0 = _report(m1, [0.5, 0.5], m0_noise_variances=[-1e-5, NUGGET_REFERENCE])
+    assert zero_m1["flag"] == "UNDETERMINED"
+    assert neg_m0["flag"] == "UNDETERMINED"
 
 
 def test_bad_noise_site_mapping_reports_undetermined_without_escaping():
-    missing = nugget_floor_report(
-        {"covar_module.kernels.0.outputscale_prior": np.array([1.0])},
-        "G-IS",
-        [1.0],
+    missing = _report(
+        {"covar_module.kernels.0.outputscale_prior": np.array([1.0])}, [1.0]
     )
-    multiple = nugget_floor_report(
+    multiple = _report(
         {
             "likelihood.noise_covar.noise_prior": np.array([NUGGET_REFERENCE]),
             "alternate.noise_covar.noise_prior": np.array([NUGGET_REFERENCE]),
         },
-        "G-IS",
         [1.0],
     )
     assert missing["flag"] == "UNDETERMINED"
     assert multiple["flag"] == "UNDETERMINED"
 
 
-def test_top_level_report_normalizes_once_and_returns_normally():
-    report = nugget_floor_report(
-        [0.5 * NUGGET_REFERENCE, 2.0 * NUGGET_REFERENCE],
-        "RW-MH",
-        [2.0, 18.0],
-        predictive_gate_passes=True,
+def test_complete_report_returns_the_full_coincidence_record():
+    report = _report(
+        [0.5 * NUGGET_REFERENCE, 2.0 * NUGGET_REFERENCE], [2.0, 18.0]
     )
     assert report["p_below_M1"] == pytest.approx(0.10)
     assert report["ess"] == pytest.approx(1.0 / (0.1 ** 2 + 0.9 ** 2))
+    assert report["p_below_M0"] == pytest.approx(0.0)
+    assert report["delta_p"] == pytest.approx(0.10)
     assert report["flag"] is True
     assert report["coincidence"] is True
+    assert report["predictive_gate_passes"] is True
+    assert "verdict" not in report

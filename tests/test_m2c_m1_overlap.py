@@ -11,6 +11,7 @@ from bistar_gp.m1_authority import (
     AuthorityError,
     normalize_authority_weights,
     resolve_verdict_authority,
+    select_and_normalize_authority,
 )
 from bistar_gp.m1_builder import build_mauna_loa_m1_kernels
 from bistar_gp.m1_overlap import (
@@ -23,6 +24,7 @@ from bistar_gp.m1_overlap import (
 from bistar_gp.m2c_freeze_m1 import (
     M1_LENGTHSCALE_MEDIAN,
     M1_OUTPUTSCALE_MEDIAN,
+    M1_OVERLAP_REQUIRED_COMPONENTS,
     M1_SHORT_SCALE_NAME,
     NUGGET_REFERENCE,
     OVERLAP_ALIGNMENT_THRESHOLD,
@@ -32,6 +34,19 @@ from bistar_gp.model import build_model
 
 
 torch.set_default_dtype(torch.float64)
+
+
+def _auth(label="G-IS", weights=(1.0,)):
+    """(candidates, weights_by_label) for one attested authority; spread with *."""
+    return {label: True}, {label: list(weights)}
+
+
+def _exact_draw(projector):
+    """A complete frozen-set component dict (M1 + trend/seasonal/medium_term)."""
+    return {
+        M1_SHORT_SCALE_NAME: projector,
+        **{name: projector for name in M1_OVERLAP_REQUIRED_COMPONENTS},
+    }
 
 
 def _centered_rank_one(vector):
@@ -176,72 +191,87 @@ def test_authority_precedence_and_profile_laplace_exclusion():
         normalize_authority_weights("profile-Laplace", [1.0])
 
 
-def test_top_level_overlap_reports_invalid_authority_as_undetermined():
-    projector = np.eye(3) - np.ones((3, 3)) / 3.0
-    report = overlap_diagnostic(
-        [{M1_SHORT_SCALE_NAME: projector, "other": projector}],
-        [0.01],
-        "profile-Laplace",
-        [1.0],
+def test_select_and_normalize_authority_qualifies_via_precedence():
+    # G-IS attested wins over RW-MH.
+    a = select_and_normalize_authority(
+        {"G-IS": True, "RW-MH": True}, {"G-IS": [1.0, 3.0], "RW-MH": [1.0]}
     )
-    assert report["verdict"] == "UNDETERMINED"
-    assert report["q_overlap"] is None
+    assert a.label == "G-IS" and a.n_draws == 2
+    # RW-MH referee when G-IS is not attested.
+    b = select_and_normalize_authority({"G-IS": False, "RW-MH": True}, {"RW-MH": [2.0, 2.0]})
+    assert b.label == "RW-MH"
+    # Strict-bool candidates: a truthy non-bool (e.g. the string "False") is rejected.
+    with pytest.raises(AuthorityError, match="strict bool"):
+        resolve_verdict_authority({"G-IS": "False"})
+    # No usable candidate / only profile-Laplace / bad or missing weights fail closed.
+    for candidates, weights in [
+        ({"G-IS": False, "RW-MH": False}, {"G-IS": [1.0]}),
+        ({"profile-Laplace": True}, {"profile-Laplace": [1.0]}),
+        ({"G-IS": True}, {"RW-MH": [1.0]}),          # weights missing for resolved label
+        ({"G-IS": True}, {"G-IS": [10 ** 400]}),      # overflow weight
+        ({"G-IS": True}, {"G-IS": [0.0, 0.0]}),       # zero total
+    ]:
+        with pytest.raises(AuthorityError):
+            select_and_normalize_authority(candidates, weights)
 
 
-def test_top_level_overlap_overflow_weight_is_undetermined_not_escaping():
-    # A Python int too large for float64 is a bad weight; the authority contract
-    # requires UNDETERMINED, never an escaping OverflowError.
-    projector = np.eye(3) - np.ones((3, 3)) / 3.0
-    report = overlap_diagnostic(
-        [{M1_SHORT_SCALE_NAME: projector, "other": projector}],
-        [0.01],
-        "G-IS",
-        [10 ** 400],
-    )
-    assert report["verdict"] == "UNDETERMINED"
-    assert report["q_overlap"] is None
-
-
-def test_top_level_overlap_missing_required_component_is_undetermined():
-    # A partial component set must block promotion (§5.4(d)); the top-level
-    # wrapper reports UNDETERMINED rather than passing on incomplete data.
+def test_overlap_selects_authority_internally_and_fails_closed_on_unusable():
     projector = np.eye(4) - np.ones((4, 4)) / 4.0
-    report = overlap_diagnostic(
-        [{M1_SHORT_SCALE_NAME: projector, "trend": projector, "seasonal": projector}],
-        [0.01],
-        "G-IS",
-        [1.0],
-        required_components=("trend", "seasonal", "medium_term"),
-    )
-    assert report["verdict"] == "UNDETERMINED"
-    assert report["q_overlap"] is None
+    draws = [_exact_draw(projector)]
+    # No usable candidate (neither G-IS nor RW-MH attested) => UNDETERMINED.
+    r = overlap_diagnostic(draws, [0.01], {"G-IS": False}, {"G-IS": [1.0]})
+    assert r["verdict"] == "UNDETERMINED" and r["q_overlap"] is None
+    # profile-Laplace can never be selected => UNDETERMINED.
+    r_pl = overlap_diagnostic(draws, [0.01], {"profile-Laplace": True}, {"profile-Laplace": [1.0]})
+    assert r_pl["verdict"] == "UNDETERMINED"
+    # A usable, attested authority on the exact set yields a computed verdict.
+    ok = overlap_diagnostic(draws, [0.01], *_auth("G-IS", [1.0]))
+    assert ok["verdict"] in ("PASS", "STOP") and ok["q_overlap"] is not None
 
 
-def test_top_level_overlap_defaults_to_fail_safe_required_components():
-    # With required_components OMITTED, the frozen Mauna set is enforced by
-    # default, so a partial input cannot silently PASS (§5.4(a)/(d)).
+def test_overlap_pins_the_frozen_m1_name_no_relabel():
+    # codex #1: the scientific wrapper must not let a caller relabel M1.  A dict
+    # keyed by an alias (not the frozen short_scale) is the wrong component set
+    # => UNDETERMINED, never a computed verdict.
     projector = np.eye(4) - np.ones((4, 4)) / 4.0
-    partial = {
-        M1_SHORT_SCALE_NAME: projector,
-        "trend": projector,
-        "seasonal": projector,
-    }  # medium_term absent
-    report = overlap_diagnostic([partial], [0.01], "G-IS", [1.0])
-    assert report["verdict"] == "UNDETERMINED"
-    assert report["q_overlap"] is None
+    aliased = {
+        "alias": projector,
+        **{name: projector for name in M1_OVERLAP_REQUIRED_COMPONENTS},
+    }
+    r = overlap_diagnostic([aliased], [0.01], *_auth("G-IS", [1.0]))
+    assert r["verdict"] == "UNDETERMINED" and r["q_overlap"] is None
 
-    # A complete Mauna component set is accepted under the same default and
-    # yields a computed verdict (not UNDETERMINED).
-    complete = dict(partial, medium_term=projector)
-    ok = overlap_diagnostic([complete], [0.01], "G-IS", [1.0])
-    assert ok["verdict"] in ("PASS", "STOP")
-    assert ok["q_overlap"] is not None
 
-    # Passing None explicitly disables the check (primitive/algebraic use).
-    disabled = overlap_diagnostic(
-        [partial], [0.01], "G-IS", [1.0], required_components=None
-    )
-    assert disabled["verdict"] in ("PASS", "STOP")
+def test_top_level_overlap_enforces_exact_frozen_component_set():
+    # rev-5 §5.4(a) fixes the set exactly; missing OR extra components fail closed
+    # (§5.4(d)).  Use ORTHONORMAL centered rank-1 directions so the partial set
+    # genuinely PASSes in the primitive (O_max from nugget = 1/sqrt(3) < 0.90) yet
+    # is UNDETERMINED in the exact-set wrapper — the real regression codex flagged.
+    u = np.array([1.0, -1.0, 0.0, 0.0]) / np.sqrt(2.0)
+    v = np.array([1.0, 1.0, -2.0, 0.0]) / np.sqrt(6.0)
+    w = np.array([1.0, 1.0, 1.0, -3.0]) / np.sqrt(12.0)
+    U, V, W = np.outer(u, u), np.outer(v, v), np.outer(w, w)
+
+    # Primitive on the partial (missing medium_term) set: PASS.
+    partial_matrices = {M1_SHORT_SCALE_NAME: U, "trend": V, "seasonal": W}
+    prim = draw_overlap_omax(partial_matrices, 1e-8)
+    assert prim["o_max"] < OVERLAP_ALIGNMENT_THRESHOLD  # would PASS on its own
+    assert q_overlap([prim["o_max"]], normalize_authority_weights("G-IS", [1.0]))[
+        "verdict"
+    ] == "PASS"
+    # Scientific wrapper on the same partial set: UNDETERMINED (missing member).
+    r_missing = overlap_diagnostic([partial_matrices], [1e-8], *_auth("G-IS", [1.0]))
+    assert r_missing["verdict"] == "UNDETERMINED" and r_missing["q_overlap"] is None
+
+    # Extra component beyond the frozen set: UNDETERMINED.
+    projector = np.eye(4) - np.ones((4, 4)) / 4.0
+    extra = dict(_exact_draw(projector), spurious=projector)
+    r_extra = overlap_diagnostic([extra], [0.01], *_auth("G-IS", [1.0]))
+    assert r_extra["verdict"] == "UNDETERMINED" and r_extra["q_overlap"] is None
+
+    # The exact frozen set computes a verdict.
+    ok = overlap_diagnostic([_exact_draw(projector)], [0.01], *_auth("G-IS", [1.0]))
+    assert ok["verdict"] in ("PASS", "STOP") and ok["q_overlap"] is not None
 
 
 def test_one_synthetic_mauna_draw_is_finite_plumbing_only():

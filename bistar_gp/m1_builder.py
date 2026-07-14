@@ -89,12 +89,31 @@ def build_m1_matern_component():
 
 
 def augment_with_m1_short_scale(kernel_components, component_names):
-    """Return new component/name lists with the M1 short-scale term appended."""
-    m1 = build_m1_matern_component()
-    return (
-        list(kernel_components) + [m1],
-        list(component_names) + [M1_SHORT_SCALE_NAME],
-    )
+    """Return new component/name lists with the M1 short-scale term appended.
+
+    Fail-closed on a malformed M0 inventory (arm-generic — it validates the
+    STRUCTURE, not a specific Mauna component set; the exact frozen set is the
+    overlap gate's job, not the builder's): the kernel/name lists must be
+    non-empty and equal-length, every name a non-empty string, names unique, and
+    no ``short_scale`` component already present (double-augmentation).
+    """
+    kernels = list(kernel_components)
+    names = list(component_names)
+    if len(kernels) != len(names):
+        raise ValueError(
+            f"kernel/name length mismatch: {len(kernels)} kernels, {len(names)} names"
+        )
+    if not kernels:
+        raise ValueError("empty M0 inventory: nothing to augment")
+    if not all(isinstance(name, str) and name for name in names):
+        raise ValueError("component names must be non-empty strings")
+    if len(set(names)) != len(names):
+        raise ValueError(f"duplicate component names in M0 inventory: {names}")
+    if M1_SHORT_SCALE_NAME in names:
+        raise ValueError(
+            f"component {M1_SHORT_SCALE_NAME!r} already present; refusing to augment twice"
+        )
+    return (kernels + [build_m1_matern_component()], names + [M1_SHORT_SCALE_NAME])
 
 
 def build_mauna_loa_m1_kernels():
