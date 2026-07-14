@@ -20,7 +20,10 @@ from bistar_gp.m2c_manifest import (
 
 ROOT = Path(__file__).resolve().parents[1]
 V117_PATH = ROOT / "docs/m2c_freeze/gtoy_profile_freeze_v1.17.json"
-V118_SCHEMA_PATH = ROOT / "docs/m2c_freeze/gtoy_profile_result_v1.18.json"
+# The SCHEMA lives at *.schema.json; the bare *.json path is RESERVED (rev-5
+# §6 L375) for the post-recompute filled result instance and must stay absent.
+V118_SCHEMA_PATH = ROOT / "docs/m2c_freeze/gtoy_profile_result_v1.18.schema.json"
+V118_RESERVED_INSTANCE_PATH = ROOT / "docs/m2c_freeze/gtoy_profile_result_v1.18.json"
 
 
 # Verbatim rev-5 section 6 v1.17 field contract.
@@ -191,30 +194,29 @@ def test_manifest_machine_independent_portion_matches_code():
         assert committed[key] == rebuilt[key]
 
 
-# The frozen base sha is pinned to a LITERAL here so it cannot silently drift
-# together with the committed JSON (both would have to change to a new value AND
-# still equal this literal, which the assertion forbids).
-_PINNED_BASE_SHA = "b3d35b64035a848faa82b6f246333e95ddfae25a"
+# frozen_at_git_sha is the PR-D IMPLEMENTATION snapshot (Commit A), pinned to a
+# LITERAL here so it cannot silently drift together with the committed JSON.
+_PINNED_IMPL_SHA = "6d39d38ad000583fcbb4e5311efe57ff5e0c1503"
 
 
 def test_frozen_sha_and_profile_integration_hash_are_live_pinned():
     manifest = _committed_v117()
     assert re.fullmatch(r"[0-9a-f]{40}", manifest["frozen_at_git_sha"])
-    assert manifest["frozen_at_git_sha"] == FROZEN_AT_GIT_SHA == _PINNED_BASE_SHA
+    assert manifest["frozen_at_git_sha"] == FROZEN_AT_GIT_SHA == _PINNED_IMPL_SHA
     live = hashlib.sha256(
         (ROOT / "bistar_gp/profile_integration.py").read_bytes()
     ).hexdigest()
     assert manifest["algorithm"]["profile_integration_sha256"] == live
 
 
-def test_frozen_base_sha_is_documented_as_the_pre_pr_d_base_in_the_artifact():
-    # The base sha lacks the PR-D algorithm; the committed artifact must SAY so
-    # (honest provenance), and the manifest is pinned to the live algorithm by
-    # the manifest==code CI, not by this base sha.
+def test_frozen_sha_is_documented_as_the_implementation_snapshot_in_the_artifact():
+    # frozen_at_git_sha names the commit that CONTAINS the algorithm code; the
+    # committed artifact says so, and the manifest artifact is added in the
+    # following commit (a manifest cannot embed its own sha).
     manifest = _committed_v117()
     meaning = manifest["provenance"]["frozen_at_git_sha_meaning"]
-    assert "base commit" in meaning
-    assert "not present at this sha" in meaning.lower() or "NOT present" in meaning
+    assert "implementation snapshot" in meaning.lower()
+    assert "following commit" in meaning.lower()
 
 
 def test_every_manifest_test_node_id_is_well_formed():
@@ -295,7 +297,39 @@ def test_manifest_sha256_is_canonical_and_deterministic():
     assert manifest_sha256(manifest) == hashlib.sha256(canonical).hexdigest()
 
 
-def test_v118_file_is_a_schema_contract_with_no_result_values():
+_V118_SCHEMA = json.loads(V118_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def _valid_v118_instance():
+    """Synthetic (NOT committed) valid v1.18 result instance for schema tests."""
+    return {
+        "freeze_version": "v1.18",
+        "kind": "m2c-gtoy-profile-result-freeze",
+        "v117_manifest_sha256": _V118_SCHEMA["properties"]["v117_manifest_sha256"]["const"],
+        "frozen_at_git_sha": "0" * 40,
+        "provenance": {"note": "synthetic test instance"},
+        "profile_band_masses": {"lo": 0.7, "mid": 0.2, "hi": 0.1, "sum": 1.0},
+        "numerical_sensitivity": {
+            "delta_quad": 1e-4, "delta_hess": 1e-4, "delta_tail": 1e-4
+        },
+        "realized_grids": {
+            "extended": [], "refined_levels": 2, "band_edges": [0.15, 0.30]
+        },
+        "gate_events": {
+            "stop_count": 0, "retry_count": 0, "rcond_fail_count": 0,
+            "undetermined": 0,
+        },
+    }
+
+
+def test_v118_schema_is_at_schema_path_and_reserves_the_result_instance_path():
+    # rev-5 §6 L375 reserves the bare *.json path for the FILLED result instance;
+    # PR D delivers only the schema, at *.schema.json.
+    assert V118_SCHEMA_PATH.name == "gtoy_profile_result_v1.18.schema.json"
+    assert not V118_RESERVED_INSTANCE_PATH.exists()
+
+
+def test_v118_file_is_a_schema_contract_pinning_v117_with_no_result_values():
     schema = json.loads(V118_SCHEMA_PATH.read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
@@ -306,14 +340,22 @@ def test_v118_file_is_a_schema_contract_with_no_result_values():
         "provenance", "profile_band_masses", "numerical_sensitivity",
         "realized_grids", "gate_events",
     }
-    assert schema["properties"]["v117_manifest_sha256"]["pattern"] == "^[0-9a-f]{64}$"
-    # EXACT property key set: an injected result-value property (e.g.
-    # "result_values") in the schema is rejected, not merely the four contracts.
+    # v117_manifest_sha256 is a CONST equal to the canonical hash of the ACTUAL
+    # committed immutable v1.17 manifest — it references THE frozen manifest, not
+    # any 64-hex value (§6 L376).
+    assert schema["properties"]["v117_manifest_sha256"]["const"] == manifest_sha256(
+        _committed_v117()
+    )
+    # Top-level additionalProperties:false so a result INSTANCE cannot smuggle
+    # extra keys (e.g. injected "result_values").
+    assert schema["additionalProperties"] is False
+    # EXACT property key set: an injected result-value property is rejected.
     assert set(schema["properties"]) == {
         "freeze_version", "kind", "v117_manifest_sha256", "frozen_at_git_sha",
         "provenance", "profile_band_masses", "numerical_sensitivity",
         "realized_grids", "gate_events",
     }
+    # No numeric constraints invented on the nested result values themselves.
     for name in (
         "profile_band_masses", "numerical_sensitivity", "realized_grids", "gate_events"
     ):
@@ -322,3 +364,18 @@ def test_v118_file_is_a_schema_contract_with_no_result_values():
         assert "default" not in contract
         assert "examples" not in contract
         assert "properties" not in contract
+
+
+def test_v118_schema_validates_a_valid_instance_and_rejects_injections():
+    schema = json.loads(V118_SCHEMA_PATH.read_text(encoding="utf-8"))
+    validator = Draft202012Validator(schema)
+    # A well-formed result instance validates.
+    validator.validate(_valid_v118_instance())
+    # An injected top-level result payload is rejected (additionalProperties).
+    injected = _valid_v118_instance()
+    injected["result_values"] = {"P_noise_lo": 0.7}
+    assert not validator.is_valid(injected)
+    # A wrong v117_manifest_sha256 is rejected (const binding to the frozen v1.17).
+    wrong = _valid_v118_instance()
+    wrong["v117_manifest_sha256"] = "0" * 64
+    assert not validator.is_valid(wrong)

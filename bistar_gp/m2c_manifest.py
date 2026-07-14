@@ -23,22 +23,18 @@ from . import m2c_freeze_m1 as m1
 from . import m2c_freeze_s2s3 as s2s3
 
 
-# The PR-C merge on origin/main (M2c PRs A+B+C).  This is the BASE commit the
-# PR-D freeze is defined against, NOT a commit that already contains the §5.3
-# divergence / §3 MCSE / manifest algorithm — those (and this manifest) are
-# introduced by the PR-D commit that adds this file, and a committed manifest
-# cannot embed its own (as-yet-unknown) commit sha.  The manifest is pinned to
-# the ACTUAL live algorithm by the manifest==code CI (every frozen constant plus
-# the live ``profile_integration.py`` sha256), never by this base sha alone.
-FROZEN_AT_GIT_SHA = "b3d35b64035a848faa82b6f246333e95ddfae25a"
+# The exact PR-D IMPLEMENTATION snapshot: the commit that CONTAINS the §5.3
+# divergence / §3 MCSE / manifest-builder algorithm code (COMMIT A of the
+# two-stage construction).  A committed manifest cannot embed its own commit sha,
+# so the immutable manifest artifact is added in the FOLLOWING commit (COMMIT B),
+# which references this snapshot.  Checking out this sha reproduces the frozen
+# algorithm; the manifest==code CI additionally pins the manifest to that live
+# code (every frozen constant + the live ``profile_integration.py`` sha256).
+FROZEN_AT_GIT_SHA = "6d39d38ad000583fcbb4e5311efe57ff5e0c1503"
 
 FROZEN_AT_GIT_SHA_MEANING = (
-    "base commit (M2c PRs A+B+C merged, origin/main at PR-D branch-off); the "
-    "divergence/MCSE algorithm and this manifest are introduced by the PR-D "
-    "commit that adds this file, so those modules are NOT present at this sha. "
-    "A committed manifest cannot embed its own commit sha; the manifest is "
-    "pinned to the live algorithm by the manifest==code CI (frozen constants + "
-    "the live profile_integration.py sha256), not by this base sha."
+    "Exact PR-D implementation snapshot; the immutable manifest artifact was "
+    "added in the following commit."
 )
 
 

@@ -126,7 +126,7 @@
     "profile_integration_sha256": "20b553f803f3b355aefe4d27fcf15417ed1053bf75f7bb782b5de679dbdf9fc6"
   },
   "freeze_version": "v1.17",
-  "frozen_at_git_sha": "b3d35b64035a848faa82b6f246333e95ddfae25a",
+  "frozen_at_git_sha": "6d39d38ad000583fcbb4e5311efe57ff5e0c1503",
   "historical_provenance": {
     "buggy_triplet": [
       0.76262,
@@ -242,7 +242,7 @@
   "provenance": {
     "blas": "accelerate; unknown; unknown",
     "cpu_count": 14,
-    "frozen_at_git_sha_meaning": "base commit (M2c PRs A+B+C merged, origin/main at PR-D branch-off); the divergence/MCSE algorithm and this manifest are introduced by the PR-D commit that adds this file, so those modules are NOT present at this sha. A committed manifest cannot embed its own commit sha; the manifest is pinned to the live algorithm by the manifest==code CI (frozen constants + the live profile_integration.py sha256), not by this base sha.",
+    "frozen_at_git_sha_meaning": "Exact PR-D implementation snapshot; the immutable manifest artifact was added in the following commit.",
     "host": "PSY-KGK4G03W1F",
     "scipy": "1.17.0",
     "threads": 10,

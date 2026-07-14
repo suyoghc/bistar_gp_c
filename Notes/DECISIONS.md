@@ -3312,3 +3312,32 @@ M2c package (S2/S3/profile-core/M1/overlap/nugget/divergence/MCSE + the v1.17 al
 result schema + the umbrella). STOP before the gated deterministic profile recompute, any v1.18 result
 VALUES, any scientific sampler execution, Mauna/holdout work, `--execute`, and merge. The v1.18 result
 manifest is filled ONLY by the separately-authorized recompute. Not merged.
+
+**Update (2026-07-14, manifest/provenance corrections — a second focused codex review; PR #13 kept Draft).**
+The first PR-D implementation (commit `cf1cd1d`) was accepted on the algorithm (divergence math, MBB, global
+shift, ddof=0, strict validation, umbrella — all CONFIRMED) but did NOT follow the amended two-stage manifest
+sequencing: it pinned `frozen_at_git_sha` to the pre-PR-D PR-C base `b3d35b6` (a commit that does NOT contain
+the divergence/MCSE/manifest code — documenting that fact does not make it the right snapshot), placed the
+v1.18 SCHEMA at the reserved result-INSTANCE path `docs/m2c_freeze/gtoy_profile_result_v1.18.json` (rev-5 §6
+L375 reserves that bare path for the post-recompute filled result), left `v117_manifest_sha256` a bare 64-hex
+pattern (not pinning the actual v1.17 manifest), lacked `additionalProperties:false` (so a result INSTANCE
+could smuggle keys — the earlier "exact-key-set" test checked the schema DOCUMENT, not instance rejection),
+and imported the private `arviz.stats.diagnostics._ess`. Corrected before merge with two follow-up commits
+(history preserved, no force-push):
+- **COMMIT A (`6d39d38`, exact PR-D implementation snapshot):** MCSE IACT now uses the PUBLIC
+  `az.ess(series[None,:], method="identity", relative=False)` (identical value — raw autocovariance ESS, not
+  rank-normalized bulk; τ_int=T/ESS preserved), with a discriminating test asserting those kwargs. This
+  commit CONTAINS the full algorithm (verified: divergence/mcse/freeze_dm/manifest modules all present at
+  `6d39d38`).
+- **COMMIT B (manifest/provenance):** `frozen_at_git_sha` = `6d39d38` (the implementation snapshot that
+  actually contains the algorithm; the manifest artifact is added in the following commit — a committed
+  manifest cannot embed its own sha), meaning corrected to "Exact PR-D implementation snapshot; the immutable
+  manifest artifact was added in the following commit" + a literal-sha CI pin. The v1.18 schema is renamed to
+  `docs/m2c_freeze/gtoy_profile_result_v1.18.schema.json`, LEAVING the reserved `…v1.18.json` instance path
+  ABSENT (CI-asserted). `v117_manifest_sha256` is now a `const` equal to the canonical sha256 of the actual
+  committed v1.17 manifest (`2c50d61e…`), and the schema gains top-level `additionalProperties:false`; a new
+  synthetic result-INSTANCE fixture proves a valid instance validates while an injected top-level
+  `result_values` and a wrong `v117_manifest_sha256` are both rejected (no numeric constraints invented on the
+  nested result values). `python -m pytest -q` → **442 passed / 1 skipped**. rev-5 sha256 unchanged; all
+  merged frozen source byte-identical to `b3d35b6`; no `runs/` staged; no scientific computation / recompute /
+  result instance / `--execute` / Mauna/holdout. Re-review: <FOCUSED REVIEW PENDING>.

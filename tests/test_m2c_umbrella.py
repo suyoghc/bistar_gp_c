@@ -219,6 +219,6 @@ def test_manifest_and_result_schema_are_consistent_end_to_end():
     Draft202012Validator(V117_SCHEMA).validate(build_v117_manifest())
 
     result_schema = json.loads(
-        (ROOT / "docs/m2c_freeze/gtoy_profile_result_v1.18.json").read_text()
+        (ROOT / "docs/m2c_freeze/gtoy_profile_result_v1.18.schema.json").read_text()
     )
     Draft202012Validator.check_schema(result_schema)

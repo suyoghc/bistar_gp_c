@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "freeze_version": {
+      "const": "v1.18"
+    },
+    "frozen_at_git_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "gate_events": {
+      "required": [
+        "stop_count",
+        "retry_count",
+        "rcond_fail_count",
+        "undetermined"
+      ],
+      "type": "object"
+    },
+    "kind": {
+      "const": "m2c-gtoy-profile-result-freeze"
+    },
+    "numerical_sensitivity": {
+      "required": [
+        "delta_quad",
+        "delta_hess",
+        "delta_tail"
+      ],
+      "type": "object"
+    },
+    "profile_band_masses": {
+      "required": [
+        "lo",
+        "mid",
+        "hi",
+        "sum"
+      ],
+      "type": "object"
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "realized_grids": {
+      "required": [
+        "extended",
+        "refined_levels",
+        "band_edges"
+      ],
+      "type": "object"
+    },
+    "v117_manifest_sha256": {
+      "const": "2c50d61ef7e0f30f69efe9857cb68da64df3a541ee610b65a5edc20862a821d6",
+      "type": "string"
+    }
+  },
+  "required": [
+    "freeze_version",
+    "kind",
+    "v117_manifest_sha256",
+    "frozen_at_git_sha",
+    "provenance",
+    "profile_band_masses",
+    "numerical_sensitivity",
+    "realized_grids",
+    "gate_events"
+  ],
+  "type": "object"
+}
