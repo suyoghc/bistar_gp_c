@@ -32,6 +32,11 @@ from .m1_builder import (
     build_m1_matern_component, augment_with_m1_short_scale,
     build_mauna_loa_m1_kernels, LogitNormalPrior,
 )
+from .divergence_clustering import DivergenceError, divergence_nonclustering
+from .mcse_strategy import MCSEError, mcse_strategy_estimate
+from .m2c_manifest import (
+    build_v117_algorithm_manifest, build_v117_manifest, manifest_sha256,
+)
 
 __all__ = [
     "decompose_additive_gp", "sample_from_component",
@@ -50,4 +55,7 @@ __all__ = [
     "PRIOR_CONFIGS", "ExperimentConfig", "build_kernels_from_config", "build_likelihood_from_config",
     "build_m1_matern_component", "augment_with_m1_short_scale",
     "build_mauna_loa_m1_kernels", "LogitNormalPrior",
+    "DivergenceError", "divergence_nonclustering",
+    "MCSEError", "mcse_strategy_estimate",
+    "build_v117_algorithm_manifest", "build_v117_manifest", "manifest_sha256",
 ]

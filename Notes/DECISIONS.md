@@ -3192,3 +3192,173 @@ updated with the threshold-pinning + caller-attestation boundary. Provenance (pr
 clean; unrelated local untracked artifacts (pre-existing `runs/` outputs, `.obsidian/`, etc.) remain and
 were NOT staged. PR #12 marked Ready. STOP before merge, PR D, scientific computation, Mauna/holdout, or
 v1.18 — merge is the author's call.
+
+---
+
+## D44: M2c PR-D — §5.3 divergence non-clustering + §3 chain-aware MCSE + the v1.17 algorithm manifest & v1.18 result schema + hermetic umbrella suite — hermetic, no compute — 2026-07-14
+
+> **⚠ Manifest/provenance specifics in the original body below were CORRECTED during review — the
+> "Update" section at the end is AUTHORITATIVE for current state.** In particular: `frozen_at_git_sha` is
+> **`6d39d38`** (the PR-D implementation snapshot), NOT the pre-PR-D base `b3d35b6`; the v1.18 SCHEMA is at
+> **`docs/m2c_freeze/gtoy_profile_result_v1.18.schema.json`** (the bare `…v1.18.json` path is reserved+absent
+> for the future result instance); the MCSE IACT uses the PUBLIC `az.ess(method="identity", relative=False)`;
+> and the v1.17/v1.18 hashes are `65381bc7…`. The final full-suite count is **442 passed / 1 skipped**.
+
+**Problem:** prereg v1.17 (rev-5, sha256 `c3e9db66…1ce3f`) froze the FINAL M2c package pieces that PRs
+A/B/C did not implement: the §5.3 divergence non-clustering predicate, the §3 chain-aware `MCSE_strategy`
+estimator, the two-manifest schema (§6 — an IMMUTABLE v1.17 algorithm manifest + a SEPARATE v1.18 result
+manifest), and the P7 umbrella. None existed in code. Must be hermetic (no sampler, no real MCMC chain, no
+Mauna/holdout, no `--execute`), must not touch PR-A/B/C frozen source, and must not fill any v1.18 result
+value (blocked on the separately-authorized gated recompute).
+
+**Decision:** Implemented on `feat/d19-m2c-pr-d` off merged `main` (`b3d35b6`, PR #12). Four NEW modules +
+two manifest JSON files + five NEW test files; the only tracked non-new-file SOURCE edit is a symbol-export
+append to `bistar_gp/__init__.py` (the decision-log `Notes/DECISIONS.md` + `Notes/SCRATCHPAD.md` are also
+updated per the standard workflow, as in every D19 PR).
+- **Frozen constants** `bistar_gp/m2c_freeze_dm.py` (sibling; NOT m2c_freeze/_s2s3/_m1), pinned by
+  `tests/test_m2c_freeze_dm_constants.py`: DIVERGENCE_RATE_CAP=0.001 (its first real definition — it was
+  comment-only in `m2c_freeze.py:62`), DIVERGENCE_CONC_FACTOR=3, DIVERGENCE_MIN_EVENT_FLOOR=2,
+  DIVERGENCE_TIME_WINDOW_FRAC=0.10; MCSE_MBB_B=1000, MCSE_MBB_SEED=20260712, MCSE_BLOCK_LEN_FACTOR=2,
+  MCSE_PRECISION_GATE=0.02; REFERENCE-ONLY MCSE_SIR_REFERENCE=0.441 (±0.005), W5 scatter (0.419,0.438,0.431).
+- **§5.3 divergence** `bistar_gp/divergence_clustering.py`: `divergence_nonclustering(diagnostics)` consumes
+  `SamplerDiagnostics` (n_chains, n_draws, divergence_draws, cross-checked divergence_rate). Pre-check:
+  per-chain UNIQUE SORTED ints in [0,T) (the schema range-checks but not uniqueness,
+  `sampler_diagnostics.py:136`); missing/duplicate/unsorted ⇒ UNDETERMINED (never a false zero/PASS). Gates:
+  rate D/(C·T) ≤ 0.001; d_max ≤ L_chain=max(2,ceil(3D/C)); per-chain time window w=ceil(0.10T), time_max ≤
+  L_time=max(2,ceil(3·(D/C)·w/T)) via an efficient sliding window (= max_a W_c(a), no T×T array). Any gate
+  fail ⇒ FAIL with the failed-gate label; the strategy fails G-B at that scale (§6.10 routing recorded, not
+  self-executed). HONEST SCOPE: the schema stores ONLY per-chain draw INDICES, so parameter-band clustering
+  is UNEVALUABLE without a schema extension — every report carries
+  `parameter_band_clustering="unevaluable-schema-limited"` and does NOT overclaim. Fixtures
+  (`tests/test_m2c_divergence_clustering.py`) = the fully-enumerated §5.3(c) hand-built C=4/T=2000 cases
+  (pass; fail-rate; fail-chain; fail-time-ISOLATING; {0,1,2}-event; duplicate/missing ⇒ UNDETERMINED), with
+  the inclusive-boundary check L_chain=6/L_time=2/w=200.
+- **§3 chain-aware MCSE** `bistar_gp/mcse_strategy.py`: `mcse_strategy_estimate(G_chains(C,T,M), tau,
+  instance_names, reported_col)`. Contribution c_t = exp(-G/tau − M_global), M_global = max over ALL (c,t,j)
+  (SINGLE global shift; NOT a per-draw max_j — the rev-2 math fix). IACT via arviz raw autocovariance ESS
+  (`arviz.stats.diagnostics._ess`, the Geyer initial-monotone-sequence on the RAW series — NOT rank-
+  normalized bulk; τ=N/ESS), τ_int = max over chains AND columns; a constant series ⇒ UNDETERMINED. Block
+  ℓ=ceil(2·τ_int); T−ℓ+1<2 ⇒ UNDETERMINED (a genuine STOP, NOT a silent row-bootstrap fallback). MBB:
+  overlapping NON-circular blocks within each chain, ceil(T/ℓ) blocks truncated to exactly T/chain; re-run
+  `bistar_gp.bms_star.soft_transfer` (global-shift, normalize_per_draw=False) per replicate; MCSE = SD over
+  B=1000 (ddof=0), frozen seed 20260712. Does NOT reuse the ordinary SIR row bootstrap
+  (`prior_sensitivity_study.py:725`) — §3 says it underestimates. Kept SEPARATE from the G-C precision gate
+  (0.02) and the W5 scatter; MCSE_SIR (0.441±0.005) reported distinctly, never combined. Tests
+  (`tests/test_m2c_mcse_strategy.py`): determinism, constant/too-short/non-finite ⇒ UNDETERMINED, global-
+  shift invariance (proves the single global shift), separate-reporting fields, and MBB SD ≥ IID-row-
+  bootstrap SD (the §3 underestimation discriminator).
+- **v1.17 manifest + CI** `bistar_gp/m2c_manifest.py` + `docs/m2c_freeze/gtoy_profile_freeze_v1.17.json`:
+  `build_v117_algorithm_manifest()` assembles the machine-INDEPENDENT algorithm/references/tolerances/
+  predicates portion from the ALREADY-MERGED frozen constants (m2c_freeze/_s2s3/_m1/_dm) — 4 references
+  (prior-IS/RW-MH pooled/SIR/W5, values byte-exact from `docs/prereg-addenda-d19.md:1159/1279-1283`), the
+  algorithm sub-objects (grid/p3/gradient_battery/optimizer_gate/curvature_gate each with ONE `test`),
+  mcse_strategy, 22 tolerances, 6 predicates (S2/S3/divergence/M1-overlap/M1-nugget/profile-core),
+  historical_provenance (buggy triplet 0.76262/0.13752/0.02311 sum 0.9232). `build_v117_manifest()` adds a
+  descriptive freeze-time environment `provenance` (versions/scipy/blas/host/cpu_count/threads — benign
+  reads) + `frozen_at_git_sha`. **Provenance / frozen_at_git_sha (documented honestly, corrected after
+  review):** `frozen_at_git_sha` = `b3d35b6…` is the pre-PR-D BASE commit (M2c A+B+C merged, origin/main at
+  branch-off) — it does NOT contain the §5.3/§3 algorithm or this manifest (those are added by the PR-D
+  commit; a committed manifest cannot embed its own sha). The manifest is pinned to the LIVE algorithm by
+  the manifest==code CI (frozen constants + the live `profile_integration.py` sha256), NOT by this base sha;
+  the committed artifact SAYS so via `provenance.frozen_at_git_sha_meaning`. provenance is DESCRIPTIVE
+  freeze-environment metadata, EXCLUDED from the manifest==code equality. The manifest contains NO profile
+  RESULT. CI `tests/test_m2c_manifest.py`: validates the committed JSON against the §6 v1.17 JSON-Schema
+  (embedded verbatim); deep-equals the algorithm/references/tolerances/predicates portion to
+  `build_v117_algorithm_manifest()`; asserts `profile_integration_sha256` == the LIVE file hash (drift-catch)
+  and `frozen_at_git_sha` == the LITERAL pinned base sha; asserts the committed JSON's top-level key set is
+  EXACTLY the 10 schema keys (an injected `result_values` is rejected); asserts every reference/predicate
+  value equals the imported frozen constant. APPEND-ONLY (§6.16): a revision is a new addendum.
+- **v1.18 result-manifest SCHEMA** `docs/m2c_freeze/gtoy_profile_result_v1.18.json` [SUPERSEDED → the schema
+  is at `…gtoy_profile_result_v1.18.schema.json`; the bare `…v1.18.json` path is reserved+absent — see the
+  Update below]: the §6 v1.18 JSON-
+  SCHEMA field contract ONLY (freeze_version const v1.18, kind, v117_manifest_sha256 [64-hex],
+  frozen_at_git_sha, provenance, profile_band_masses/numerical_sensitivity/realized_grids/gate_events) — NO
+  result VALUES (produced only by the gated recompute, blocked on --execute). Test: valid Draft-2020-12
+  schema, references v1.17 by 64-hex, and carries no concrete values.
+- **Umbrella suite** `tests/test_m2c_umbrella.py`: hermetic wiring/consistency — exercises profile core
+  (PR A), S2+S3 (PR B), M1 builder+overlap+nugget (PR C), divergence+MCSE (PR D), and the manifest schema/
+  code CI on synthetic/deterministic fixtures; asserts wiring/finiteness/fail-closed ONLY, never a
+  scientific verdict; no real chain/Mauna/holdout.
+
+**Adversarial review (codex gpt-5.6-sol xHigh primary + Sonnet-5 cross-model):** the algorithm (divergence,
+MCSE), frozen constants, umbrella, and tree invariants were CLEAN in BOTH reviews (Sonnet fuzz-tested the
+divergence sliding window over 20k cases vs brute force and read arviz source to confirm `_ess` is the raw,
+not rank-normalized, estimator; both confirmed the single global shift, the no-row-bootstrap-fallback, and
+frozen-seed determinism). Sonnet APPROVE. codex CHANGES-REQUIRED with 3 MAJOR findings, ALL on the manifest
+CI/metadata (which Sonnet's pass hadn't adversarially probed), each cross-verified as real and FIXED:
+(1) `frozen_at_git_sha=b3d35b6` was mislabelled "algorithm-complete" though it lacks the PR-D code — fixed
+by removing the claim and adding an honest in-artifact explanation (`provenance.frozen_at_git_sha_meaning`)
++ a comment; the manifest is pinned to the live algorithm by manifest==code, not by this base sha. (2) the CI
+compared the JSON sha only to the imported constant (both could drift together) — fixed by pinning the
+LITERAL base sha. (3) the result-separation CI banned only specific names, so an injected top-level
+`result_values` / a `result_values` schema property would pass — fixed by EXACT-key-set assertions on the
+v1.17 top-level keys and the v1.18 schema properties (all three injection scenarios verified to now FAIL
+the CI). Re-review: **codex + Sonnet-5 BOTH APPROVE** — all 3 manifest findings RESOLVED, no new defect;
+both re-confirmed the injection scenarios now fail the CI, provenance stays excluded from manifest==code, and
+the invariants hold. (Sonnet noted its own first pass under-probed the frozen_at_git_sha overclaim codex
+caught — the cross-model pair caught what neither did alone.)
+
+**Alternatives considered:** (a) put PR-D constants in an existing freeze module — rejected (PR-A/B/C
+immutable; a fourth sibling `m2c_freeze_dm.py` keeps ownership clean). (b) reuse the SIR ordinary row
+bootstrap for MCSE_strategy — rejected (§3: it underestimates MCSE for autocorrelated MCMC rows; the MBB is
+required). (c) fill the v1.18 result manifest now — rejected (values come only from the gated deterministic
+recompute; PR D delivers the SCHEMA). (d) live-capture provenance into the manifest==code equality — rejected
+(machine-specific; provenance is descriptive and excluded, the CI checks constants + the profile-integration
+hash for drift). (e) rank-normalized (bulk) ESS for the IACT — rejected (§3 wants the raw autocovariance of
+c_t; arviz `_ess` is the raw estimator).
+
+**Result:** `python -m pytest -q` → **439 passed / 1 skipped** (baseline 404/1 + 35 new tests, incl. the
+review-hardening manifest tests). rev-5 sha256
+unchanged; `m2c_freeze.py`, `m2c_freeze_s2s3.py`, `m2c_freeze_m1.py`, all PR-A/B/C source, `model.py`,
+`sampler_diagnostics.py`, the freeze package, and historical `experiments/prior_sensitivity_study.py` all
+byte-identical to `b3d35b6`; nothing staged under `runs/`. Public default strategy unchanged. Provenance
+(precise): **No scientific sampler route or chain executed; the divergence and MCSE estimators ran on hand-
+built/synthetic deterministic fixtures only, never a real MCMC chain; no Mauna/holdout computation ran. The
+full suite did execute its pre-existing hermetic tiny-E1 sampler regression tests.** Parameter-band
+divergence clustering is NOT claimed (schema limitation, §5.3).
+
+**Status:** PR D implemented, reviewed, verified; Draft PR opened to `main`. This completes the hermetic
+M2c package (S2/S3/profile-core/M1/overlap/nugget/divergence/MCSE + the v1.17 algorithm manifest + the v1.18
+result schema + the umbrella). STOP before the gated deterministic profile recompute, any v1.18 result
+VALUES, any scientific sampler execution, Mauna/holdout work, `--execute`, and merge. The v1.18 result
+manifest is filled ONLY by the separately-authorized recompute. Not merged.
+
+**Update (2026-07-14, manifest/provenance corrections — a second focused codex review; PR #13 kept Draft).**
+The first PR-D implementation (commit `cf1cd1d`) was accepted on the algorithm (divergence math, MBB, global
+shift, ddof=0, strict validation, umbrella — all CONFIRMED) but did NOT follow the amended two-stage manifest
+sequencing: it pinned `frozen_at_git_sha` to the pre-PR-D PR-C base `b3d35b6` (a commit that does NOT contain
+the divergence/MCSE/manifest code — documenting that fact does not make it the right snapshot), placed the
+v1.18 SCHEMA at the reserved result-INSTANCE path `docs/m2c_freeze/gtoy_profile_result_v1.18.json` (rev-5 §6
+L375 reserves that bare path for the post-recompute filled result), left `v117_manifest_sha256` a bare 64-hex
+pattern (not pinning the actual v1.17 manifest), lacked `additionalProperties:false` (so a result INSTANCE
+could smuggle keys — the earlier "exact-key-set" test checked the schema DOCUMENT, not instance rejection),
+and imported the private `arviz.stats.diagnostics._ess`. Corrected before merge with two follow-up commits
+(history preserved, no force-push):
+- **COMMIT A (`6d39d38`, exact PR-D implementation snapshot):** MCSE IACT now uses the PUBLIC
+  `az.ess(series[None,:], method="identity", relative=False)` (identical value — raw autocovariance ESS, not
+  rank-normalized bulk; τ_int=T/ESS preserved), with a discriminating test asserting those kwargs. This
+  commit CONTAINS the full algorithm (verified: divergence/mcse/freeze_dm/manifest modules all present at
+  `6d39d38`).
+- **COMMIT B (manifest/provenance):** `frozen_at_git_sha` = `6d39d38` (the implementation snapshot that
+  actually contains the algorithm; the immutable manifest artifact is RECORDED/finalized against this snapshot
+  in the following commit — a committed manifest cannot embed its own sha), meaning set to "Exact PR-D
+  implementation snapshot; the immutable manifest artifact was recorded (its frozen_at_git_sha finalized
+  against this snapshot) in the following commit" + a literal-sha CI pin. The v1.18 schema is renamed to
+  `docs/m2c_freeze/gtoy_profile_result_v1.18.schema.json`, LEAVING the reserved `…v1.18.json` instance path
+  ABSENT (CI-asserted). `v117_manifest_sha256` is now a `const` equal to the canonical sha256 of the actual
+  committed v1.17 manifest (`65381bc7…`), and the schema gains top-level `additionalProperties:false`; a new
+  synthetic result-INSTANCE fixture proves a valid instance validates while an injected top-level
+  `result_values` and a wrong `v117_manifest_sha256` are both rejected (no numeric constraints invented on the
+  nested result values). `python -m pytest -q` → **442 passed / 1 skipped**. rev-5 sha256 unchanged; all
+  merged frozen source byte-identical to `b3d35b6`; no `runs/` staged; no scientific computation / recompute /
+  result instance / `--execute` / Mauna/holdout.
+- **COMMIT C (one-word provenance-honesty fix):** both reviewers noted the meaning said the manifest was
+  "added" in the following commit, but git shows the v1.17 JSON was ADDED by `cf1cd1d` and MODIFIED by the
+  following commit — so the wording is now "recorded/finalized" (Sonnet flagged it non-blocking; codex
+  blocking). This edit changes the v1.17 manifest content, so its canonical hash moved `2c50d61e…`→`65381bc7…`
+  and the v1.18 `const` was updated in lockstep — demonstrating the const binding genuinely fails CI if v1.17
+  drifts. Review: Sonnet-5 APPROVE (the 4 substantive corrections RESOLVED with probe-verified evidence —
+  private-vs-public `_ess` bit-identical, algorithm present at `6d39d38`/absent at `b3d35b6`, computed hash
+  match, instance-level jsonschema rejection — and the wording flagged non-blocking); codex APPROVE on the 4
+  and CHANGES-REQUIRED solely on the "added" wording, now fixed exactly as codex prescribed, confirmed on a
+  final focused codex pass → **codex + Sonnet-5 BOTH APPROVE**.
