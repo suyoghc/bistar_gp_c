@@ -3000,3 +3000,195 @@ the bridge. rev-5 sha256 unchanged; `m2c_freeze.py` / PR-A source / historical p
 staged. Provenance (precise): no S2/S3 sampler route or scientific chain executed; no Mauna/holdout
 computation ran; the full suite did execute its pre-existing hermetic tiny-E1 sampler regression tests.
 PR #11 flipped to Ready 2026-07-13 after this fix was accepted.
+
+---
+
+## D43: M2c PR-C — M1 Matérn-3/2 builder + §5.4 covariance-overlap diagnostic + §5.5 report-only nugget-floor — hermetic, no compute — 2026-07-13
+
+**Problem:** v1.17 (rev-5, sha256 `c3e9db66…1ce3f`) freezes three more M2c predicates that PRs A/B did
+not cover, all requiring NEW code the cited sources note does not exist: (1) the **M1 constrained
+short-scale Matérn-3/2 builder** (freeze §5.4 "UNVERIFIED: no production M1 Matérn builder exists"), (2)
+the **§5.4 spectral/covariance-overlap** M1-duplication diagnostic, and (3) the **§5.5 report-only
+nugget-floor** predicate. Must be hermetic (no sampler, no Mauna/holdout, no `--execute`), must not touch
+PR-A/PR-B frozen source, and must not change the public default strategy.
+
+**Decision:** Implemented on `feat/d19-m2c-pr-c` off merged `main` (`f1bf977`, PR #11). Five NEW modules +
+four NEW test files; the ONLY edit to a tracked file is a four-symbol export append to
+`bistar_gp/__init__.py`.
+- **Frozen constants** `bistar_gp/m2c_freeze_m1.py` (NOT `m2c_freeze.py`/`m2c_freeze_s2s3.py`), pinned by
+  `tests/test_m2c_freeze_m1_constants.py`: OVERLAP_ALIGNMENT_THRESHOLD=0.90 (J3 a priori),
+  Q_OVERLAP_CAP=0.05, M1 outputscale LogNormal(log 2.4e-4, 1.2), M1 lengthscale logit-normal
+  z~Normal(-1.2528, 1.082) on hard support [0.1,1.0] (q10/q50/q90 ref 0.16/0.30/0.58), Matérn ν=1.5,
+  NUGGET_REFERENCE=1.9e-4, NUGGET_FLAG_THRESHOLD=0.05, M1_OVERLAP_REQUIRED_COMPONENTS=("trend","seasonal",
+  "medium_term") (the §5.4(a) non-M1 set the overlap gate must see); REFERENCE-ONLY M1_CORRELATION_CAP=0.95 and
+  M1_GATE_EIGENVALUE_FLOOR=1e-3 pinned but NEVER applied (the ≤0.95 duplication gate has no executor here;
+  the 1e-3 M1-gate floor is a SEPARATE gate, not the overlap statistic).
+- **M1 builder** `bistar_gp/m1_builder.py`: a proper `LogitNormalPrior(Prior, LogitNormal)` (pushforward
+  of Normal through sigmoid∘affine; mirrors gpytorch `LogNormalPrior`), `build_m1_matern_component()`
+  (`ScaleKernel(MaternKernel(ν=1.5, lengthscale_constraint=Interval(0.1,1.0),
+  lengthscale_prior=LogitNormalPrior(-1.2528,1.082,0.1,1.0)), outputscale_prior=LogNormalPrior(log 2.4e-4,
+  1.2))`), and a COMPOSABLE non-mutating `augment_with_m1_short_scale(kernels, names)` that appends the
+  semantically-named `short_scale` component to ANY Mauna arm (esp. P-comb), plus
+  `build_mauna_loa_m1_kernels()`. gpytorch's `Interval(0.1,1.0).transform(raw)` equals `0.1+0.9·sigmoid(raw)`
+  bit-exact (verified), so the constraint↔prior compose with no truncation constant. A3 tests
+  (`tests/test_m2c_m1_builder.py`): quadrature normalization≈1.0; hard-support (strictly-outside raises;
+  closed-interval [0.1,1.0] endpoints in support per the freeze, unreachable via the Interval transform);
+  fixed-seed q10/q50/q90≈0.16/0.30/0.58 + analytic 0.1600/0.3000/0.5801; change-of-variables vs
+  Normal(z) (≤1e-9); E1 short_scale round-trip; EXACT nine-site inventory (M0=7 → +2, no period site);
+  augment non-mutating + seasonal A10 stamp (`_a10_frozen_period`, period 1.0, raw grad-frozen) UNCHANGED.
+- **§5.4 overlap** `bistar_gp/m1_overlap.py`: `P=I−(1/n)11ᵀ`; `A=P·K_m1·P`; `B_j=P·K_j·P` for each non-M1
+  named component; `B_nugget=P·(noise·I)·P`; `K_rest = Σ(non-M1 named K_j)+noise·I EXCLUDING M1`, then
+  centered; `O_j=<A,B_j>_F/(‖A‖_F‖B_j‖_F)`; `O_max=max_j`; `q_overlap=Σ w̃_i·1{O_max≥0.90}`; STOP iff
+  `q>0.05` (so q==0.05 PASSES). Centered Frobenius alignment DIRECTLY — NO eigen-floor / SPD projection /
+  curvature rule on A or B_j (distinct from the PR-A/PR-B/M1-gate SPD rules). `noise` used as variance
+  directly. `required_components` fails closed on a missing required non-M1 component (§5.4(a) fixes the
+  set; §5.4(d) "missing matrix ⇒ block"). Fixtures (`tests/test_m2c_m1_overlap.py`): algebraic seedless
+  (A=B⇒1; orthogonal rank-1⇒0; positive-scale invariance; weighted draws straddling 5% incl. q==0.05 PASS;
+  "no single component ≥thr but K_rest does"; missing-M1/zero/non-finite fail-closed) + ONE plumbing
+  integration fixture (synthetic Mauna + M1 at prior medians ls 0.30/os 2.4e-4, checks finite [0,1] only —
+  NOT a scientific verdict).
+- **§5.5 nugget-floor** `bistar_gp/m1_nugget_floor.py`, REPORT-ONLY: `p_below^{M1}=Σ w̃_i·1{n_i<1.9e-4}`
+  STRICT `<`; flag=`p>0.05` STRICT `>`; report-only companions `p_below^{M0}`, `Δp`, coincidence=flag∧
+  predictive-gate; ALWAYS reports p_M1, authority label+ESS, p_M0, Δp, coincidence, predictive-gate bool;
+  NEVER a stop/blocking field. `resolve_single_noise_site` via `select_hmc_sites` (current+legacy);
+  zero/multiple ⇒ fail-closed. Strict-boundary tests (`tests/test_m2c_m1_nugget_floor.py`): n_i==1.9e-4 NOT
+  below (nextafter probe); p==0.05 does NOT flag.
+- **Authority contract** `bistar_gp/m1_authority.py` (shared): weights finite/nonnegative/positive-total,
+  normalized EXACTLY once, ESS=1/Σw̃²; authority = G-IS first else RW-MH referee; `profile-Laplace` MAY NOT
+  issue a verdict (§5.4(e)/§6.8) ⇒ `AuthorityError`; invalid/missing ⇒ UNDETERMINED, never PASS/FALSE.
+
+**Adversarial review (codex gpt-5.6-sol xHigh primary + Sonnet-5 cross-model):** codex CHANGES-REQUIRED
+(1 MAJOR + 2 MINOR), each cross-verified against the freeze; Sonnet APPROVE (1 MINOR, subsumed).
+- **codex MAJOR (CONFIRMED, FIXED over two rounds):** `draw_overlap_omax` silently accepted a partial
+  component dict (missing `medium_term`) and could compute O_max on the incomplete set and PASS — §5.4(a)
+  fixes the set {trend,seasonal,medium,nugget,rest} and §5.4(d) requires a missing matrix to fail closed.
+  Round-1 fix: added `required_components`; any absent required non-M1 component raises `OverlapError`;
+  `overlap_diagnostic` forwards it (→ UNDETERMINED). Codex re-review held the line: an OPTIONAL arg still
+  let the DEFAULT top-level path pass a partial set, so §5.4(d)'s fail-closed must be the DEFAULT. Round-2
+  fix (codex's recommended option): froze `M1_OVERLAP_REQUIRED_COMPONENTS = ("trend","seasonal",
+  "medium_term")` (the build_mauna_loa_kernels() M0 names, shared across arms; pinned) and made
+  `overlap_diagnostic` DEFAULT to it via a sentinel — omitting the arg fails closed, an explicit tuple
+  overrides for another arm, explicit `None` disables (primitive use). Tests: partial-with-arg-OMITTED →
+  UNDETERMINED, complete set → PASS/STOP, explicit None → disabled; plus the round-1 fail-closed tests.
+  This also documents the §5.4(d) verdict encoding (STOP = computed q>cap; UNDETERMINED = any un-computable
+  input) — both block promotion, matching the task's "UNDETERMINED/STOP" restatement — resolving Sonnet's
+  MINOR.
+- **codex MINOR (CONFIRMED, FIXED):** a Python int weight too large for float64 (`10**400`) raised an
+  escaping `OverflowError` from both top-level wrappers; the authority contract requires bad weights ⇒
+  UNDETERMINED. FIX: `normalize_authority_weights` now catches `OverflowError`→`AuthorityError`, and both
+  wrappers' except-clauses include `OverflowError`; new UNDETERMINED tests (overlap + nugget).
+- **codex MINOR (does NOT survive cross-verification — freeze-consistent, documented not changed):** the
+  logit-normal `support.check(0.1)`/`check(1.0)` return True. Cross-check: the freeze pins "hard support
+  **[0.1, 1.0]**" — a CLOSED interval — so endpoints-in-support is freeze-FAITHFUL; the "endpoints must
+  raise" phrasing was the spec's over-strong wording, not a freeze clause (the freeze wins). The endpoints
+  are unreachable anyway (`Interval(0.1,1.0).transform(finite raw)=0.1+0.9·sigmoid(raw)` is strictly
+  interior). A documenting test records the closed support + strict interiority; code unchanged.
+
+**Alternatives considered:** (a) put M1 constants in `m2c_freeze.py`/`m2c_freeze_s2s3.py` — rejected
+(PR-A/PR-B immutable; a third sibling module resolves ownership). (b) hard-code {trend,seasonal,medium_term}
+as the overlap component set — rejected (breaks the "augments whichever M0 arm" genericity; used an
+explicit `required_components` contract with a frozen fail-safe default instead, satisfying §5.4(a)/(d)
+without hardwiring Mauna names into the logic). (c) implement the ≤0.95 posterior-correlation duplication
+gate or the 1e-3 M1-gate eigenvalue floor — rejected (both are frozen but out of PR-C's three-piece scope;
+pinned as reference-only, not applied). (d) apply an eigen-floor/SPD projection to the overlap matrices
+A/B_j — rejected (the overlap statistic is the plain centered Frobenius alignment; none of the three
+distinct SPD/curvature rules cross-applies to it).
+
+**Result:** `python -m pytest -q` → **404 passed / 1 skipped** (baseline 350/1 + 48 codex tests + 6
+review-fix tests across two review rounds). rev-5 sha256 unchanged; `m2c_freeze.py`, `m2c_freeze_s2s3.py`, `profile_potential.py`,
+`profile_integration.py`, `s2_fixed_metric.py`, `s3_reparam.py`, the `e1_potential.py` refactor, the freeze
+package, and the historical `experiments/prior_sensitivity_study.py` all byte-identical to `f1bf977`;
+nothing staged under `runs/`. Public default strategy unchanged; S3 stays M0-only (PR C adds no S3-on-M1
+path). Provenance (precise): **no M1/scientific sampler route or chain executed; no Mauna/holdout
+computation ran. The full suite did execute its pre-existing hermetic tiny-E1 sampler regression tests.**
+**Re-review verdict: codex gpt-5.6-sol xHigh + Sonnet-5 BOTH APPROVE** — codex CHANGES-REQUIRED (1 MAJOR +
+2 MINOR) → after two fix rounds all resolved or cross-verified freeze-consistent, codex + Sonnet APPROVE;
+no new defect; both re-confirmed 404/1, freeze sha256 unchanged, only `__init__.py` tracked-modified.
+
+**Status:** PR C implemented, reviewed (codex + Sonnet-5), fixed, re-verified; Draft PR opened to `main`.
+STOP before PR D (divergence non-clustering + chain-aware MCSE + the two JSON manifests + umbrella suite),
+any scientific sampler execution, Mauna/holdout work, and the v1.18 recompute (still blocked on the PR-D
+v1.17 JSON algorithm manifest). Not merged. The ≤0.95 correlation-duplication gate and the 1e-3 M1-gate
+eigenvalue-floor gate remain owed (pinned reference-only in PR C, no executor). PR D follows.
+
+**Update (2026-07-13, focused review round — production-contract hardening; PR #12 kept Draft):** a
+further focused codex review (relayed by the author) raised four production-contract issues on the merged-
+in-progress PR; all cross-verified against the freeze and fixed in the new (uncommitted-then-committed)
+PR-C modules only (no frozen file touched; rev-5 sha256 unchanged):
+- **(1) Overlap exact-set enforcement + pinned M1 name.** `overlap_diagnostic` (the SCIENTIFIC wrapper)
+  previously allowed a permissive `required_components` (incl. `None`-disable) AND a caller-supplied
+  `m1_name`, so completeness was bypassable and M1 was relabelable. Per §5.4(a) the set j is fixed EXACTLY
+  to {trend, seasonal, medium, nugget, rest}. FIX: the wrapper enforces each draw's matrices are EXACTLY
+  `{M1_SHORT_SCALE_NAME} ∪ M1_OVERLAP_REQUIRED_COMPONENTS` (`_require_exact_component_set`) — missing OR
+  extra ⇒ UNDETERMINED (§5.4(d)); the M1 key is PINNED to the frozen `M1_SHORT_SCALE_NAME` (no `m1_name`
+  param on the scientific path); no override/disable. The flexible `draw_overlap_omax` primitive keeps
+  `required_components=None` + a customizable `m1_name`. Regression uses ORTHONORMAL rank-1 directions so a
+  partial set genuinely PASSes in the primitive (O_max=1/√3<0.90) yet is UNDETERMINED in the wrapper; an
+  extra component and an aliased M1 key each ⇒ UNDETERMINED.
+- **(2) Nugget report completeness + positivity.** `nugget_floor_report` (SCIENTIFIC) now requires
+  precedence-qualified M1 AND same-arm M0 authorities, an explicit `predictive_gate_passes` bool, and
+  finite strictly-positive noise (n_i>0, a constrained variance) for both arms; any missing/None/nonpositive
+  ⇒ UNDETERMINED (never a valid M1 flag with `None` companions). `nugget_floor_predicate` stays the flexible
+  primitive.
+- **(3) Authority provenance — precedence wired structurally + honest boundary.** A first cut added a
+  `qualified` flag on `NormalizedAuthority`, but a focused re-review showed the flag was publicly
+  constructible, `resolve_verdict_authority` was never on the required path, and truthy non-bool candidates
+  (e.g. the string `"False"`) qualified. FINAL FIX: the scientific wrappers no longer accept an authority
+  object at all — `overlap_diagnostic` and `nugget_floor_report` take `authority_candidates` (label→attested
+  STRICT bool) + `authority_weights_by_label` and call `select_and_normalize_authority`
+  (→ `resolve_verdict_authority`: G-IS-first, else RW-MH; profile-Laplace never; none-usable ⇒ UNDETERMINED)
+  INTERNALLY, so a caller cannot bypass precedence with a pre-built authority OBJECT (that bypass is gone);
+  `resolve_verdict_authority` rejects any non-`bool` candidate value. The `qualified` flag and
+  `require_qualified_authority` were removed. The arithmetic primitives (`q_overlap`,
+  `nugget_floor_predicate`, `normalize_authority_weights`) still take a bare `NormalizedAuthority` — that is
+  intended; they are primitives, not the scientific gate. HONESTY BOUNDARY (recorded precisely; NOT
+  "non-forgeable"): PR C removes the object bypass and enforces the precedence STRUCTURE + weight/ESS/label
+  contract, but the qualification booleans themselves remain CALLER-ATTESTED — a caller can assert
+  `{"G-IS": True}` without proving it; PR C is hermetic and runs no chains, so it does not and cannot derive
+  or verify G-IS passage / RW-MH crossing. Deriving and validating those booleans from real diagnostics is
+  PR D's responsibility. This exact boundary is stated in `bistar_gp/m1_authority.py`'s module docstring
+  (the earlier "ONLY route" and any "non-forgeable"/"nothing to forge" framing were removed as overclaims).
+- **(4) Augment fail-closed.** `augment_with_m1_short_scale` now rejects a malformed M0 inventory (length
+  mismatch, empty, non-string/empty names, duplicate names, pre-existing `short_scale`). Deliberately
+  arm-generic — it validates STRUCTURE only and does NOT hardcode {trend,seasonal,medium_term} (that
+  exact-set enforcement is the overlap gate's job, correction 1), preserving "augments whichever M0 arm."
+- **(5, final surgical correction) Frozen decision thresholds pinned in the scientific wrappers.** A third
+  focused codex round reproduced one remaining bypass: `overlap_diagnostic` exposed `alignment_threshold`/
+  `cap` and `nugget_floor_report` exposed `reference`/`flag_threshold`, so `cap=1.0` flipped STOP→PASS and
+  `flag_threshold=1.0` flipped the flag — yet §7 freezes 0.90/0.05 and 1.9e-4/0.05 ("Frozen, not open").
+  FIX (same fail-closed distinction as m1_name/component identity): those override params were REMOVED from
+  both scientific wrappers, which now pin `OVERLAP_ALIGNMENT_THRESHOLD`/`Q_OVERLAP_CAP` and
+  `NUGGET_REFERENCE`/`NUGGET_FLAG_THRESHOLD` internally; the frozen values are recorded in every completed
+  report (overlap `threshold`/`cap`; nugget `reference`/`flag_threshold`, added to the report dict).
+  Threshold configurability remains ONLY on the algebraic primitives `q_overlap`/`draw_overlap_omax` and
+  `nugget_floor_predicate`. Discriminating tests assert the wrapper signatures carry no such override
+  (a `cap=`/`flag_threshold=` call raises TypeError) and that the frozen values appear in every report.
+
+`python -m pytest -q` → **404 passed / 1 skipped** (the PR-C test set was reworked toward broader contract
+coverage: exact-set + pinned-M1-name + orthogonal-regression + frozen-threshold-pin overlap tests,
+internal-precedence-selection + strict-bool authority tests, report completeness/positivity + threshold-pin,
+augment guards). rev-5 sha256 unchanged; all
+frozen/PR-A/PR-B source byte-identical to `f1bf977`; no `runs/` staged. Focused re-review across THREE
+rounds (codex flagged, then re-verified, the successive bypasses; Sonnet-5 cross-checked each): codex +
+Sonnet-5 **BOTH APPROVE**. Round 1 codex CHANGES-REQUIRED (three production-contract bypasses: overlap
+`m1_name` relabel; forgeable `qualified` flag so precedence was never on the required path; truthy non-bool
+candidates like `"False"` qualifying) + a test-vacuity catch (same-projector regression) — all closed by
+the wrapper-performs-selection redesign + pinned M1 name + strict-bool candidates + orthonormal regression.
+Round 2 codex CHANGES-REQUIRED (one remaining bypass: frozen decision thresholds `alignment_threshold`/
+`cap` and `reference`/`flag_threshold` were caller-overridable — `cap=1.0` flipped STOP→PASS,
+`flag_threshold=1.0` flipped the flag) + a doc-honesty correction (the earlier "non-forgeable"/"nothing to
+forge" wording overclaimed) — both fixed (correction 5 + the honesty-boundary rewrite above). Round 3 codex
++ Sonnet APPROVE (thresholds pinned + recorded in every report; primitives still configurable; no residual
+overclaim). Provenance unchanged: no M1/scientific sampler route or chain
+executed; no Mauna/holdout computation ran; the full suite did execute its pre-existing hermetic tiny-E1
+sampler regression tests.
+
+**Update (2026-07-14, PR #12 flipped Draft → Ready).** After codex accepted the final threshold-pinning
+correction, the author directed the mechanical Ready preflight (no further review round): HEAD contains
+current origin/main (`f1bf977`); GitHub reports MERGEABLE/CLEAN; the PR diff is exactly the intended PR-C
+code/tests/Notes (5 new modules + 4 new test files + the 4-symbol `__init__.py` export append + D43/
+SCRATCHPAD) with no `runs/` artifacts; `python -m pytest -q` → 404 passed / 1 skipped; the PR body was
+updated with the threshold-pinning + caller-attestation boundary. Provenance (precise): the TRACKED tree is
+clean; unrelated local untracked artifacts (pre-existing `runs/` outputs, `.obsidian/`, etc.) remain and
+were NOT staged. PR #12 marked Ready. STOP before merge, PR D, scientific computation, Mauna/holdout, or
+v1.18 — merge is the author's call.

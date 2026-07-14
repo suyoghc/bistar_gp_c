@@ -28,6 +28,10 @@ from .mauna_loa_candidates import (
     QuadSinModel, QuadHarmonic2Model, build_mauna_loa_candidates,
 )
 from .config import PRIOR_CONFIGS, ExperimentConfig, build_kernels_from_config, build_likelihood_from_config
+from .m1_builder import (
+    build_m1_matern_component, augment_with_m1_short_scale,
+    build_mauna_loa_m1_kernels, LogitNormalPrior,
+)
 
 __all__ = [
     "decompose_additive_gp", "sample_from_component",
@@ -44,4 +48,6 @@ __all__ = [
     "METRICS",
     "plot_bms_star_results", "plot_G_heatmaps", "plot_candidate_predictions", "print_bms_star_table",
     "PRIOR_CONFIGS", "ExperimentConfig", "build_kernels_from_config", "build_likelihood_from_config",
+    "build_m1_matern_component", "augment_with_m1_short_scale",
+    "build_mauna_loa_m1_kernels", "LogitNormalPrior",
 ]
