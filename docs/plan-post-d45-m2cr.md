@@ -881,13 +881,16 @@ Nothing in this list is decided. Each requires its own future author act.
 
 ## 12. Blocked R1 handoff
 
-**STATUS: BLOCKED. R1 is not authorized by this document.** Do not begin until **both** hold:
+**STATUS: R1 is not authorized by this document.** Both handoff preconditions are now **SATISFIED** (author
+determination, 2026-07-15); satisfying them removes the handoff's own gate and **does not** authorize R1.
+Beginning R1 remains a separate, explicit author act.
 
-1. `Notes/DECISIONS.md` contains the author's confirmed ballot-resolution entry (D46, the closed M2cR ballot of
-   2026-07-15, recorded in the author's own words).
-2. The consolidated plan — **this exact file** — has passed independent review. REVISION 4 held `APPROVE_PLAN`
-   and B14-stack v5 passed its bounded closure check, but review of this conformed artifact as a single whole is
-   an author decision, not an R1 decision.
+1. **SATISFIED.** `Notes/DECISIONS.md` contains the author's confirmed ballot-resolution entry (D46, the closed
+   M2cR ballot of 2026-07-15, recorded in the author's own words), committed in `1241aca`.
+2. **SATISFIED** by author determination of 2026-07-15, on the **layered review record**: (i) REVISION 4's
+   scientific/architectural `APPROVE_PLAN`; (ii) B14-stack v5's bounded technical closure `PASS`; and (iii) the
+   exact conformed durable plan, D46, and this handoff reviewed by **Codex (gpt-5.6-sol, xHigh, read-only)** and
+   **Fable (read-only)**, both returning **APPROVE** after conforming fixes. See the D46 Update of 2026-07-15.
 
 ```
 Execute milestone R1 (taxonomy freeze; documentation and schema design ONLY) of

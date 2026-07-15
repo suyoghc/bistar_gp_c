@@ -3584,3 +3584,34 @@ decision that this entry does not make. No implementation, no schema, no addendu
 scientific, diagnostic, profile, optimizer, gradient, Hessian, MAP, sampler, Mauna, or holdout computation was
 performed at any point. Notes-and-plan-only changes on branch `docs/d46-m2cr-ballot-close` off `origin/main`
 9b786f8; not pushed; no PR opened.
+
+**Update (2026-07-15, author determination — R1 precondition (2) SATISFIED; status-only, no scientific or
+execution change).** The Status paragraph above is **superseded on precondition (2) only**; every other
+statement in D46 stands unchanged.
+
+- **Author determination:** R1 precondition (2) — "the consolidated plan has passed independent review" — is
+  **SATISFIED**, on the **layered review record**, not on any single pass:
+  1. **REVISION 4** received scientific/architectural **`APPROVE_PLAN`**;
+  2. **B14-stack v5** received a bounded technical closure **`PASS`** (all three scoped checks CLOSED);
+  3. the **exact conformed durable plan, this D46 entry, and the §12 handoff** were reviewed by **Codex
+     (gpt-5.6-sol, xHigh, read-only)** and **Fable (read-only)**; both first returned **REVISE**, and both
+     returned **APPROVE** with zero findings after conforming fixes. The shared material finding was REVISION
+     4's own internal contradiction (§3.1 attributing the execution-record schema to R2 while §7 assigned it to
+     R1), corrected conformingly. One Codex fix was **declined on policy grounds** (it proposed removing the
+     ratified v1.17-`const` carve-out, which the committed `gtoy_profile_result_v1.18.schema.json:53` already
+     uses); the rule's wording was narrowed to its cycle-prevention purpose instead, and Codex accepted that on
+     re-review.
+- **Both R1 preconditions are therefore SATISFIED.** That removes the §12 handoff's **own** gate. It does
+  **not** authorize R1: beginning R1 remains a separate, explicit author act, and neither this entry nor the
+  plan grants one.
+- **PLAN HASHES.** `d9e85a417ffbb6cdb049b7166c210c8c5889d4da44bb0bd5260957308a2ff7df` is preserved above as
+  the **historical** hash of the plan as committed in **`1241aca`**. The **new authoritative** hash, after the
+  §12 precondition-(2) status edit made in this follow-up commit, is
+  **`51b8ec602bc955a619432fd1097012efbfa795e4bccb0a2cc7830d07e1aefbf7`**. The plan contains no copy of its own
+  digest, so no artifact implies its own hash.
+- **Scope of this follow-up:** status only. `1241aca` is **not amended**; this is a new commit. The only plan
+  change is the §12 precondition-(2) statement. No ballot disposition, decision table row, protocol, tolerance,
+  threat model, deferred gate, or execution policy is altered. D45 remains permanently an
+  **UNVALIDATED_ATTEMPT**. No implementation, schema, addendum, prereg edit, execution, or scientific,
+  diagnostic, profile, optimizer, gradient, Hessian, MAP, sampler, Mauna, or holdout computation was performed.
+  Not pushed; no PR opened.

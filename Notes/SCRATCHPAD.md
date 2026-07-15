@@ -66,17 +66,25 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 - **BALLOT CLOSED.** Every item of the post-D45 remediation ballot (B1–B18, incl. all B10/B12/B14/B15/B18
   sub-items) is resolved in the author's own words. **Nothing pending.** B11 struck by the plan; the D23
   sentinel needed no vote. Full dispositions: **D46** + plan §9.
-- **DURABLE PLAN MATERIALIZED:** `docs/plan-post-d45-m2cr.md`, sha256 **`d9e85a417ffbb6cdb049b7166c210c8c5889d4da44bb0bd5260957308a2ff7df`**. Previously the plan
+- **DURABLE PLAN MATERIALIZED:** `docs/plan-post-d45-m2cr.md`, **authoritative sha256
+  `51b8ec602bc955a619432fd1097012efbfa795e4bccb0a2cc7830d07e1aefbf7`** (historical
+  `d9e85a41…8a2ff7df` = the plan as committed in `1241aca`, before the §12 precondition-(2) status edit).
+  Previously the plan
   existed **only in conversation**, so every ballot disposition and handoff instruction cited section numbers
   with no durable referent — the same not-independently-auditable defect D45 records. The file is now the
   citable artifact: architecture, artifact graph, contracts, diagnostic protocol, total decision table,
   milestones R0–R6, all dispositions, B14-stack v5 in full, corrections C-a…C-j, deferred gates, and the blocked
   R1 handoff, under stable anchors. Conformed only: where the ballot changed REVISION 4's wording, only the
   final rule appears, with provenance noting what it supersedes.
-- **R1 REMAINS UNAUTHORIZED**, blocked on both its own preconditions. (1) is now satisfied — D46 records the
-  ballot. **(2) is NOT: independent review of the exact conformed artifact `docs/plan-post-d45-m2cr.md` has not
-  been decided or performed, and that is an author call.** REVISION 4 held `APPROVE_PLAN` and B14-stack v5
-  passed a bounded closure check, but the conformed whole has not been reviewed as one artifact.
+- **BOTH R1 PRECONDITIONS NOW SATISFIED (author determination, 2026-07-15; D46 Update).** (1) D46 records the
+  ballot. (2) **SATISFIED on the layered review record:** REVISION 4's scientific/architectural `APPROVE_PLAN`;
+  B14-stack v5's bounded technical closure `PASS`; and the exact conformed plan + D46 + §12 handoff reviewed by
+  **Codex (gpt-5.6-sol, xHigh)** and **Fable**, both read-only, both **APPROVE** after conforming fixes (both
+  opened at REVISE; the shared material finding was REVISION 4's own §3.1-vs-§7 schema-authorship
+  contradiction).
+- **R1 IS STILL NOT AUTHORIZED.** Satisfying the preconditions removes the §12 handoff's own gate; it does not
+  grant R1. Beginning R1 remains a separate explicit author act. Nothing here authorizes implementation,
+  schemas, addenda, tests, execution, or any scientific computation.
 - **Headline reversals worth remembering:** the proposed `python -I` snapshot is **disqualified** (`-I` implies
   `-E`, so `PYTHONHASHSEED` is ignored and the seed never takes effect while `os.environ` still reads `"0"`);
   the `.venv` is **not** the scientific environment (it holds only `pip`; the stack is the Miniconda base);
