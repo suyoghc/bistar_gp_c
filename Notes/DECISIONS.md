@@ -3502,3 +3502,85 @@ authorization.
 instance path ABSENT. Any future recompute is blocked pending a separately-authorized, preregistered, read-only
 diagnostic protocol and a fresh explicit `--execute` (HANDOFF Q6); this D45 does NOT grant one. Notes-only
 changes committed on a docs branch; Draft documentation PR opened, held before Ready/merge.
+
+## D46: M2cR post-D45 remediation — author ballot CLOSED (every item resolved); conversation-only plan MATERIALIZED as a durable conformed artifact; R1 NOT authorized — documentation-only — 2026-07-15
+
+**Problem:** D45 left the M2c arc blocked: the v1.18 recompute attempt was recorded UNVALIDATED / not
+independently auditable, the one-shot authorization CONSUMED, and any future recompute gated behind a
+"separately-authorized, preregistered, read-only diagnostic protocol and a fresh explicit `--execute`" that did
+not yet exist. A remediation plan (REVISION 4) was drafted and reached Codex `APPROVE_PLAN`, carrying an author
+ballot (B1–B18) that nothing could proceed past until resolved **in the author's own words**. Two problems had
+to be solved together: (1) the ballot was unresolved, so R1 was blocked by its own precondition; and (2) the
+plan itself existed **only in conversation** — no repository file — so every ballot disposition, prereg
+addendum, and handoff instruction would have cited section numbers with no durable referent. Recording the
+ballot alone would have reproduced D45's exact defect (a decision record whose structural citations are not
+independently auditable) in the artifact meant to close it out.
+
+**Decision:** Close the ballot and materialize the plan, implementing nothing.
+
+- **`docs/plan-post-d45-m2cr.md`** is created as the durable, citable, **author-ratified conformed plan**:
+  sha256 **`d9e85a417ffbb6cdb049b7166c210c8c5889d4da44bb0bd5260957308a2ff7df`**. It carries the complete architecture, artifact graph, contracts, diagnostic
+  protocol, total decision table, milestones R0–R6, every final ballot disposition, B14-stack v5 in full, the
+  conforming corrections C-a…C-j, the deferred gates, and the blocked R1 handoff, under stable section anchors.
+  Where the ballot changed REVISION 4's wording, **only the final conformed rule appears**, with concise
+  provenance recording what it supersedes. Its status line states: author-ratified plan, no implementation or
+  execution authorized.
+- **Ballot CLOSED**, every item resolved in the author's own words; none pending. Summary (full text at
+  plan §9; not duplicated here):
+  - **RATIFIED:** B1 canonical named axes with an exactly-one-site-per-role-or-STOP map, computation in E1
+    storage order, persistence canonical. B2 five-status taxonomy, per-kind standing, precedence, spawn-boundary
+    mechanism; rev-5 §6 superseded for future records only. B3 sequential addendum numbers, run records outside
+    the P4 sequence. B4 the pre-committed row-8 branch (raw asymmetry demoted to reported diagnostic, still
+    measured; battery and all symmetrized gates stay blocking; `tol(h)=C·h²` NOT authorized). B5 (a) defer
+    row-7 estimator amendments. B6 battery at every accepted real conditional optimum (v1.17 §2a NOT
+    superseded). B7 (a) full verdict closure, ~1,481 nodes, necessary but **not sufficient** for amendment. B8
+    `M2cR` branding (editorial). B9 terminal record committed with its run's evidence. B10 ceilings 8 h/8 h as
+    **safety ceilings, not predictions**; grace SIGTERM/30 s/SIGKILL; JSONL event ledger with consumption
+    **derived** from a payload-start event. B12(a)–(i) incl. the extended (c) UNDEFINED rule, report-only
+    MAP-noise, the four-point purity smoke test, and the five-component continuation rule. B13 (a) v2 gates as
+    independent reimplementations, frozen code/manifest/CI untouched. B14-host identical-host-plus-lock.
+    B14-stack **as v5 in full**. B15(i) committed evidence directory; B15(iii) overflow is INFRA_FAILURE, never
+    truncation. B16 the decision table as conformed to B12(c). B17 quantiles **excluded**. B18 + sub the
+    effective chain incl. `environment_freeze_manifest_sha256`.
+  - **REJECTED:** the proposed spawn-consumption rule. Consumption is keyed to a hash-bound
+    `payload_started.json`, not `spawned.json`; pre-payload attestation failures commit an INFRA_FAILURE record
+    **without** consuming the scientific authorization, because no scientific evaluation occurred.
+  - **DEFERRED (not decided):** B15(ii) exact evidence ceilings, to R2 measurement and a **versioned
+    pre-execution addendum before R4**, with completeness never weakened to fit.
+  - **STRUCK by the plan:** B11 (dissolved into B3 and the D45 invariant). **No vote taken or needed:** the D23
+    sentinel (committed form unchanged).
+- **FUTURE AUTHOR GATES (plan §11), none granted here:** the B15(ii) pre-execution ceilings addendum before R4;
+  **separate author ratification at R5 of any row-8 amendment**, even if row 8 fires; a separate future ballot
+  for any row-7 estimator amendment; the R2 payload-boundary enforceability proof; the R2 manifest-size report;
+  freeze-time interpreter re-attestation; **fresh explicit authorization for every future `--execute`**; and a
+  future schema/protocol/authorization route for quantiles.
+- **D45 remains permanently an UNVALIDATED_ATTEMPT.** It is never retroactively validated or reclassified. The
+  new consumption rule is **prospective**: D45 stays a historical CONSUMED ledger entry and is not re-adjudicated
+  under it. The v1.18 label and result-instance path stay permanently unused.
+- **This step materializes a previously conversation-only plan and performs NO R1 implementation.** No prereg
+  addendum, no schema, no ledger, no code, no test, no frozen artifact, and nothing under `runs/` or
+  `experiments/` was created or modified. Three files changed: the new plan, this entry, and `SCRATCHPAD`.
+
+**Alternatives considered:** (a) Record the ballot in Notes only, leaving the plan in conversation — rejected:
+D46's own citations to the artifact graph (plan §3.1), the effective chain (§5.2), and the decision table
+(§6.3), plus every C-a…C-j correction, would dangle, reproducing D45's not-independently-auditable defect in
+the closing artifact. (b) Fold the plan into `docs/prereg-addenda-d19.md`
+— rejected: the addenda file is prereg content that R1 is scoped to append to under review; the plan is a design
+spec, and per repo convention longer specs live as dated `docs/` files that `DECISIONS.md` links rather than
+duplicates. (c) Begin R1 in the same step — rejected: R1 is a separate authorization with its own review gate.
+(d) Accept the plan's proposed `python -I` snapshot — rejected on evidence: `-I` implies `-E`, so
+`PYTHONHASHSEED` is ignored and the seed never takes effect while `os.environ` still reads `"0"`, a false-pass;
+v5 replaces it with `-S -s -P -B -X pycache_prefix` plus a sanitized exact environment. (e) Keep
+`OPENBLAS_NUM_THREADS` and drop `MKL_NUM_THREADS` as "inert" — rejected on measurement: `MKL_NUM_THREADS=2`
+drove torch intra-op to 2 via ATen precedence even with no MKL runtime, while OPENBLAS was genuinely inert.
+(f) Claim "exactly 10 threads" — rejected as an overclaim: inter-op is a separate pool, `VECLIB_MAXIMUM_THREADS`
+is a maximum, and OpenMP may supply fewer even with dynamic adjustment off; the claim is now
+requested/configured-per-facility, with empirical repeatability as the bit-reproducibility gate.
+
+**Status:** Ballot **CLOSED**; plan **MATERIALIZED** at `docs/plan-post-d45-m2cr.md`
+(sha256 `d9e85a417ffbb6cdb049b7166c210c8c5889d4da44bb0bd5260957308a2ff7df`). **R1 remains NOT AUTHORIZED** and is blocked on both of its own preconditions: this
+D46 entry now satisfies (1); precondition (2), independent review of the exact conformed artifact, is an author
+decision that this entry does not make. No implementation, no schema, no addendum, no execution, and no
+scientific, diagnostic, profile, optimizer, gradient, Hessian, MAP, sampler, Mauna, or holdout computation was
+performed at any point. Notes-and-plan-only changes on branch `docs/d46-m2cr-ballot-close` off `origin/main`
+9b786f8; not pushed; no PR opened.

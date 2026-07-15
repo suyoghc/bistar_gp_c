@@ -61,6 +61,35 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   pending a separately-authorized, preregistered, read-only diagnostic protocol plus a fresh `--execute`
   (HANDOFF Q6). Full record: **D45**.
 
+### M2cR remediation — BALLOT CLOSED; durable plan MATERIALIZED; R1 NOT authorized (branch `docs/d46-m2cr-ballot-close` off `origin/main` 9b786f8; D46, 2026-07-15)
+
+- **BALLOT CLOSED.** Every item of the post-D45 remediation ballot (B1–B18, incl. all B10/B12/B14/B15/B18
+  sub-items) is resolved in the author's own words. **Nothing pending.** B11 struck by the plan; the D23
+  sentinel needed no vote. Full dispositions: **D46** + plan §9.
+- **DURABLE PLAN MATERIALIZED:** `docs/plan-post-d45-m2cr.md`, sha256 **`d9e85a417ffbb6cdb049b7166c210c8c5889d4da44bb0bd5260957308a2ff7df`**. Previously the plan
+  existed **only in conversation**, so every ballot disposition and handoff instruction cited section numbers
+  with no durable referent — the same not-independently-auditable defect D45 records. The file is now the
+  citable artifact: architecture, artifact graph, contracts, diagnostic protocol, total decision table,
+  milestones R0–R6, all dispositions, B14-stack v5 in full, corrections C-a…C-j, deferred gates, and the blocked
+  R1 handoff, under stable anchors. Conformed only: where the ballot changed REVISION 4's wording, only the
+  final rule appears, with provenance noting what it supersedes.
+- **R1 REMAINS UNAUTHORIZED**, blocked on both its own preconditions. (1) is now satisfied — D46 records the
+  ballot. **(2) is NOT: independent review of the exact conformed artifact `docs/plan-post-d45-m2cr.md` has not
+  been decided or performed, and that is an author call.** REVISION 4 held `APPROVE_PLAN` and B14-stack v5
+  passed a bounded closure check, but the conformed whole has not been reviewed as one artifact.
+- **Headline reversals worth remembering:** the proposed `python -I` snapshot is **disqualified** (`-I` implies
+  `-E`, so `PYTHONHASHSEED` is ignored and the seed never takes effect while `os.environ` still reads `"0"`);
+  the `.venv` is **not** the scientific environment (it holds only `pip`; the stack is the Miniconda base);
+  `MKL_NUM_THREADS` is **operative** via ATen precedence with no MKL runtime while `OPENBLAS_NUM_THREADS` is
+  inert; `os.environ` **desynchronizes** from libc; dist-info RECORD is **not** a completeness manifest and lists
+  `.pyc` with blank hashes; consumption is keyed to a hash-bound `payload_started.json`, **not** `spawned.json`.
+- **NEXT (author's call, none granted):** decide whether the conformed plan gets its independent review; then R1
+  (documentation + schema only, no executable tests) as a separate authorization. Deferred/gated downstream:
+  the B15(ii) pre-execution ceilings addendum before R4; separate R5 ratification of any row-8 amendment; a
+  future ballot for any row-7 estimator amendment; fresh `--execute` for every execution.
+- **D45 is untouched and permanently UNVALIDATED_ATTEMPT.** The new consumption rule is prospective; D45 stays a
+  historical CONSUMED entry. The v1.18 label and result-instance path stay permanently unused.
+
 ### PR D — divergence + chain-aware MCSE + v1.17 manifest + v1.18 schema + umbrella DRAFT (branch `feat/d19-m2c-pr-d` off merged main `b3d35b6`; D44, 2026-07-14)
 
 - **Scope = the final hermetic M2c pieces:** (1) §5.3 divergence non-clustering predicate, (2) §3 chain-
