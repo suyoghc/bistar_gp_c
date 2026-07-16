@@ -1,0 +1,2283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json",
+  "title": "M2cR execution record (terminal record), schema_version 1",
+  "description": "Layer-4 terminal record for an M2cR execution. Frozen by prereg addendum v1.19 (milestone R1) under the author-ratified plan docs/plan-post-d45-m2cr.md. Scientific standing is a function of (record_kind, status): a result-kind COMPLETED record is a scientific result; a diagnostic-kind COMPLETED record is protocol completion only and carries not_a_result: true; ALGORITHM_STOP is reachable only by result-kind runs; ABORTED_BUDGET is an interruption, never a scientific STOP; INFRA_FAILURE and NOT_STARTED are non-scientific. This schema pins the v1.17 canonical hash as a const, which is acyclic because v1.17 references no schema; it embeds no hash of any manifest that references it, and no record carries its own digest. The R3 diagnostic-record schema is a separate artifact and is neither defined nor stubbed here.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/branch_completed"
+    },
+    {
+      "$ref": "#/$defs/branch_algorithm_stop"
+    },
+    {
+      "$ref": "#/$defs/branch_aborted_budget"
+    },
+    {
+      "$ref": "#/$defs/branch_infra_failure"
+    },
+    {
+      "$ref": "#/$defs/branch_not_started"
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "git_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "authorization_id": {
+      "type": "string",
+      "pattern": "^m2cr-auth-[0-9]{8}-[0-9]{2}$",
+      "description": "Opaque id string naming a grant in the authorization ledger. Deliberately an id, never a ledger digest: the ledger records terminal-record digests, so citing the ledger by hash here would close a cycle."
+    },
+    "launch_attempt_id": {
+      "type": "string",
+      "pattern": "^m2cr-launch-[0-9]{8}-[0-9]{2}$",
+      "description": "Required top-level field on every record branch, naming the launch attempt that produced this record. Deliberately NOT a member of the chain object: ballot B18 enumerates the chain's members exhaustively and the launch attempt is not among them, so this field is carried at the record's top level instead, where it remains hash-bound to the record because the ledger cites terminal records by digest (terminal_outcome / pre_payload_terminal_outcome), and that digest covers every top-level field. Author decision 2026-07-15, resolving the R1 stop question, option (c)."
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{2,63}$",
+      "description": "Names the committed evidence directory docs/m2c_evidence/<run_id>/."
+    },
+    "nonfinite_sentinel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "_nonfinite"
+      ],
+      "properties": {
+        "_nonfinite": {
+          "type": "string",
+          "enum": [
+            "-inf",
+            "+inf",
+            "nan"
+          ]
+        }
+      },
+      "description": "Frozen sentinel. Canonical serialization uses allow_nan=False, so raw nonfinite literals are rejected everywhere; nonfinite values are carried only as this closed object."
+    },
+    "number_or_nonfinite": {
+      "oneOf": [
+        {
+          "type": "number"
+        },
+        {
+          "$ref": "#/$defs/nonfinite_sentinel"
+        }
+      ],
+      "description": "Element-level rule: every numeric element of a v2 optimizer/curvature record is a JSON number or a frozen sentinel."
+    },
+    "vector_or_nonfinite": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/number_or_nonfinite"
+      }
+    },
+    "matrix_or_nonfinite": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/vector_or_nonfinite"
+      }
+    },
+    "finite_number": {
+      "type": "number",
+      "description": "Scientific summary fields are plain finite JSON numbers; a COMPLETED result cannot carry nonfinite summary values by construction."
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "chain_diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v117_canonical_sha256",
+        "infrastructure_manifest_sha256",
+        "environment_freeze_manifest_sha256",
+        "protocol_manifest_sha256",
+        "execution_commit",
+        "authorization_id"
+      ],
+      "properties": {
+        "v117_canonical_sha256": {
+          "const": "65381bc774e894dd9aaf2207cadd9cfa2f2735dafceff4bb39492086a9e522e2"
+        },
+        "infrastructure_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "environment_freeze_manifest_sha256": {
+          "$ref": "#/$defs/sha256",
+          "description": "The single digest of the R2 aggregating environment-freeze manifest, which pins the exact frozen child-environment mapping, the complete importable-artifact manifest, the interpreter pin, and the pre-boundary attestation set. Binds the record to the STATIC freeze. Per-launch realized environment attestations are Layer-2 evidence covered by RAW_MANIFEST.sha256 and are never this member."
+        },
+        "protocol_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "execution_commit": {
+          "$ref": "#/$defs/git_commit"
+        },
+        "authorization_id": {
+          "$ref": "#/$defs/authorization_id"
+        }
+      },
+      "description": "The B18-ratified effective chain, enumerated EXACTLY as ballot B18 ratifies it and as prereg addendum v1.19 §8 restates it: no member is added here. The launch-attempt id is a top-level record field, not a chain member; it is bound to the record because the record is hashed as a whole. The authorization is cited by ID STRING, never by ledger digest, so no cycle is formed."
+    },
+    "chain_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v117_canonical_sha256",
+        "infrastructure_manifest_sha256",
+        "environment_freeze_manifest_sha256",
+        "protocol_manifest_sha256",
+        "diagnostic_record_sha256",
+        "amendment_manifest",
+        "execution_commit",
+        "authorization_id"
+      ],
+      "properties": {
+        "v117_canonical_sha256": {
+          "const": "65381bc774e894dd9aaf2207cadd9cfa2f2735dafceff4bb39492086a9e522e2"
+        },
+        "infrastructure_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "environment_freeze_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "protocol_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "diagnostic_record_sha256": {
+          "$ref": "#/$defs/sha256",
+          "description": "sha256 of the R3 DIAGNOSTIC-RECORD INSTANCE governed by m2c_diagnostic_record.schema_v1.json (authored in R3, not here). Author determination of 2026-07-15: this follows the plan's literal terminology at §5.1/§5.2 and preserves the R3 -> R5/R6 dependency. It is NOT the diagnostic-kind terminal record. No separate terminal-record hash is added, because no ratified requirement demands one."
+        },
+        "amendment_manifest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "const": "none"
+            }
+          ],
+          "description": "The amendment-manifest hash, or the explicit string \"none\" when no amendment was ratified. Only decision-table row 8 can ever authorize an amendment, and it additionally requires separate author ratification at R5."
+        },
+        "execution_commit": {
+          "$ref": "#/$defs/git_commit"
+        },
+        "authorization_id": {
+          "$ref": "#/$defs/authorization_id"
+        }
+      },
+      "description": "The B18-ratified effective chain, enumerated EXACTLY as ballot B18 ratifies it and as prereg addendum v1.19 §8 restates it: no member is added here. The launch-attempt id is a top-level record field, not a chain member; it is bound to the record because the record is hashed as a whole. The authorization is cited by ID STRING, never by ledger digest, so no cycle is formed."
+    },
+    "stage_record": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "stage_id",
+            "stage_class",
+            "status",
+            "nodes_evaluated"
+          ],
+          "properties": {
+            "stage_id": {
+              "type": "string",
+              "enum": [
+                "cap_1e-6",
+                "cap_1e-5",
+                "cap_1e-4",
+                "cap_1e1",
+                "cap_1e2",
+                "cap_1e3"
+              ]
+            },
+            "stage_class": {
+              "const": "diagnostic"
+            },
+            "status": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "COMPLETED",
+                    "NOT_REACHED"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "stopped_at_node"
+                  ],
+                  "properties": {
+                    "stopped_at_node": {
+                      "$ref": "#/$defs/count"
+                    }
+                  }
+                }
+              ],
+              "description": "No fabricated aggregate: the superseded rev-5 'undetermined' count is replaced by these explicit statuses."
+            },
+            "nodes_evaluated": {
+              "$ref": "#/$defs/count"
+            },
+            "nodes_total": {
+              "$ref": "#/$defs/count",
+              "description": "Present only where the grid was materialized; absent otherwise."
+            }
+          },
+          "description": "A diagnostic cap stage. Frozen rev-5 records the six earlier decade stages DIAGNOSTICALLY only, never used for the pass/fail verdict, so stage_class is bound to diagnostic and a cap stage cannot be classified as a verdict stage."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "stage_id",
+            "stage_class",
+            "status",
+            "nodes_evaluated"
+          ],
+          "properties": {
+            "stage_id": {
+              "type": "string",
+              "enum": [
+                "level0",
+                "refine_1",
+                "refine_2",
+                "refine_3",
+                "upper_pullback",
+                "lower_pullback"
+              ]
+            },
+            "stage_class": {
+              "const": "verdict"
+            },
+            "status": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "COMPLETED",
+                    "NOT_REACHED"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "stopped_at_node"
+                  ],
+                  "properties": {
+                    "stopped_at_node": {
+                      "$ref": "#/$defs/count"
+                    }
+                  }
+                }
+              ],
+              "description": "No fabricated aggregate: the superseded rev-5 'undetermined' count is replaced by these explicit statuses."
+            },
+            "nodes_evaluated": {
+              "$ref": "#/$defs/count"
+            },
+            "nodes_total": {
+              "$ref": "#/$defs/count",
+              "description": "Present only where the grid was materialized; absent otherwise."
+            }
+          },
+          "description": "A verdict stage: the level-0 grid, its nested refinements, and the two pullback grids."
+        }
+      ],
+      "description": "Per-stage record. stage_id and stage_class are bound to each other so the frozen rev-5 diagnostic-only status of the cap stages cannot be misrepresented. No fabricated aggregate: the superseded 'undetermined' count is replaced by explicit statuses."
+    },
+    "aggregate_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "restart_count",
+        "retry_count",
+        "retry_failure_count",
+        "rcond_fail_count",
+        "symmetry_fail_count",
+        "battery_fail_count"
+      ],
+      "properties": {
+        "restart_count": {
+          "$ref": "#/$defs/count"
+        },
+        "retry_count": {
+          "$ref": "#/$defs/count"
+        },
+        "retry_failure_count": {
+          "$ref": "#/$defs/count"
+        },
+        "rcond_fail_count": {
+          "$ref": "#/$defs/count"
+        },
+        "symmetry_fail_count": {
+          "$ref": "#/$defs/count"
+        },
+        "battery_fail_count": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "aggregates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verdict_class",
+        "diagnostic_class"
+      ],
+      "properties": {
+        "verdict_class": {
+          "$ref": "#/$defs/aggregate_block"
+        },
+        "diagnostic_class": {
+          "$ref": "#/$defs/aggregate_block"
+        }
+      },
+      "description": "Well-defined sums only, split by verdict class versus diagnostic class."
+    },
+    "node_evidence_digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_index",
+        "record_sha256"
+      ],
+      "properties": {
+        "node_index": {
+          "$ref": "#/$defs/count"
+        },
+        "record_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "node_evidence_digests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node_evidence_digest"
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_manifest_sha256",
+        "node_evidence_digests",
+        "event_stream_balanced"
+      ],
+      "properties": {
+        "raw_manifest_sha256": {
+          "$ref": "#/$defs/sha256",
+          "description": "Layer-3 RAW_MANIFEST.sha256, taken over all Layer-2 files excluding itself and this terminal record."
+        },
+        "node_evidence_digests": {
+          "$ref": "#/$defs/node_evidence_digests"
+        },
+        "event_stream_balanced": {
+          "type": "boolean",
+          "description": "The ABORTED_BUDGET and INFRA_FAILURE branches admit an unbalanced partial stream, carried by digest, so a crash preserves in-flight attempt evidence up to the last flushed line."
+        }
+      },
+      "description": "Evidence block for the non-COMPLETED branches. COMPLETED uses evidence_completed, which forces a balanced stream."
+    },
+    "evidence_balanced": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_manifest_sha256",
+        "node_evidence_digests",
+        "event_stream_balanced"
+      ],
+      "properties": {
+        "raw_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "node_evidence_digests": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/node_evidence_digests"
+            }
+          ],
+          "minItems": 1
+        },
+        "event_stream_balanced": {
+          "const": true,
+          "description": "Frozen true. An unbalanced stream is admissible only under ABORTED_BUDGET or INFRA_FAILURE; on a protocol exit it is a capture fault."
+        }
+      },
+      "description": "Evidence block for protocol-exit records that must close their event stream (ALGORITHM_STOP). A STOP occurred at a node, so at least one per-node evidence digest exists."
+    },
+    "evidence_completed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_manifest_sha256",
+        "node_evidence_digests",
+        "event_stream_balanced"
+      ],
+      "properties": {
+        "raw_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "node_evidence_digests": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/node_evidence_digests"
+            }
+          ],
+          "minItems": 1
+        },
+        "event_stream_balanced": {
+          "const": true,
+          "description": "Frozen true: a COMPLETED payload REQUIRES a balanced event stream. An unbalanced stream is admissible only under ABORTED_BUDGET or INFRA_FAILURE, never under COMPLETED."
+        }
+      },
+      "description": "Evidence block for COMPLETED records only. A COMPLETED record cannot claim completion over an unbalanced stream or an empty per-node evidence set."
+    },
+    "stop_stage": {
+      "type": "string",
+      "enum": [
+        "optimizer",
+        "gradient_battery",
+        "curvature",
+        "refinement",
+        "upper_pullback",
+        "lower_pullback",
+        "tail",
+        "edge_interiority"
+      ],
+      "description": "Budget and infrastructure never appear in this enum."
+    },
+    "stop_observed_values": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "symmetry_error": {
+          "$ref": "#/$defs/number_or_nonfinite"
+        },
+        "rcond": {
+          "$ref": "#/$defs/number_or_nonfinite"
+        },
+        "logdet": {
+          "$ref": "#/$defs/number_or_nonfinite"
+        },
+        "logdet_stability_error": {
+          "$ref": "#/$defs/number_or_nonfinite"
+        },
+        "grad_inf_norm": {
+          "$ref": "#/$defs/number_or_nonfinite"
+        },
+        "objective": {
+          "$ref": "#/$defs/number_or_nonfinite"
+        },
+        "eigenvalues": {
+          "$ref": "#/$defs/vector_or_nonfinite"
+        },
+        "raw_hessian": {
+          "$ref": "#/$defs/matrix_or_nonfinite"
+        },
+        "symmetrized_hessian": {
+          "$ref": "#/$defs/matrix_or_nonfinite"
+        },
+        "gradient": {
+          "$ref": "#/$defs/vector_or_nonfinite"
+        },
+        "u": {
+          "$ref": "#/$defs/vector_or_nonfinite"
+        },
+        "directional_second_differences": {
+          "$ref": "#/$defs/vector_or_nonfinite"
+        },
+        "directional_errors": {
+          "$ref": "#/$defs/vector_or_nonfinite"
+        },
+        "battery_reference": {
+          "$ref": "#/$defs/vector_or_nonfinite"
+        },
+        "battery_actual": {
+          "$ref": "#/$defs/vector_or_nonfinite"
+        },
+        "battery_error": {
+          "$ref": "#/$defs/vector_or_nonfinite"
+        }
+      },
+      "description": "Observed values at the stopping gate. Every element is a JSON number or a frozen sentinel: the frozen code can legitimately emit -inf (slogdet sign 0), +inf (grad_inf_norm), and nan (rcond at a zero maximum eigenvalue), and those must be representable rather than silently dropped."
+    },
+    "stop_info": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage",
+        "reason",
+        "node_index",
+        "observed"
+      ],
+      "properties": {
+        "stage": {
+          "$ref": "#/$defs/stop_stage"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "node_index": {
+          "$ref": "#/$defs/count"
+        },
+        "observed": {
+          "$ref": "#/$defs/stop_observed_values"
+        }
+      }
+    },
+    "band_masses": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lo",
+        "mid",
+        "hi",
+        "sum"
+      ],
+      "properties": {
+        "lo": {
+          "$ref": "#/$defs/finite_number"
+        },
+        "mid": {
+          "$ref": "#/$defs/finite_number"
+        },
+        "hi": {
+          "$ref": "#/$defs/finite_number"
+        },
+        "sum": {
+          "$ref": "#/$defs/finite_number",
+          "description": "The audit tool checks bit-exactly that sum equals the float64 sum of lo, mid, and hi. An identity, not a tolerance."
+        }
+      }
+    },
+    "per_band_sensitivity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lo",
+        "mid",
+        "hi"
+      ],
+      "properties": {
+        "lo": {
+          "$ref": "#/$defs/finite_number"
+        },
+        "mid": {
+          "$ref": "#/$defs/finite_number"
+        },
+        "hi": {
+          "$ref": "#/$defs/finite_number"
+        }
+      }
+    },
+    "realized_grid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage_id",
+        "n_nodes",
+        "min_noise",
+        "max_noise"
+      ],
+      "properties": {
+        "stage_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "n_nodes": {
+          "$ref": "#/$defs/count"
+        },
+        "min_noise": {
+          "$ref": "#/$defs/finite_number"
+        },
+        "max_noise": {
+          "$ref": "#/$defs/finite_number"
+        }
+      }
+    },
+    "result_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_band_masses",
+        "numerical_sensitivity",
+        "realized_grids"
+      ],
+      "properties": {
+        "profile_band_masses": {
+          "$ref": "#/$defs/band_masses"
+        },
+        "numerical_sensitivity": {
+          "$ref": "#/$defs/per_band_sensitivity"
+        },
+        "realized_grids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/realized_grid"
+          },
+          "minItems": 1
+        }
+      },
+      "description": "Quantiles are excluded from the result contract (ballot B17). A quantile is not finite by construction, and an unreachable level could not serialize under allow_nan=False. Quantiles may be added only through a future schema version, protocol, and authorization."
+    },
+    "interruption_info": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ceiling_hours",
+        "signal_sequence",
+        "grace_seconds",
+        "sigkill_issued"
+      ],
+      "properties": {
+        "ceiling_hours": {
+          "$ref": "#/$defs/finite_number",
+          "description": "The wall-clock safety ceiling in force for this run. A safety ceiling, not a validated runtime prediction and not a scientific threshold."
+        },
+        "signal_sequence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "SIGTERM",
+              "SIGKILL"
+            ]
+          },
+          "minItems": 1
+        },
+        "grace_seconds": {
+          "const": 30
+        },
+        "sigkill_issued": {
+          "type": "boolean"
+        }
+      }
+    },
+    "infra_fault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fault_class",
+        "detail",
+        "reconstructed"
+      ],
+      "properties": {
+        "fault_class": {
+          "type": "string",
+          "enum": [
+            "capture_fault",
+            "attestation_fault",
+            "environment_fault",
+            "child_death",
+            "missing_postcheck",
+            "evidence_overflow",
+            "schema_invalid_payload",
+            "other"
+          ],
+          "description": "evidence_overflow is an INFRA_FAILURE, never truncation."
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reconstructed": {
+          "type": "boolean",
+          "description": "True only when a reconciliation mode assembled this envelope late after parent death. Raw content was runtime-captured; only envelope assembly is late."
+        },
+        "payload_started": {
+          "type": "boolean",
+          "description": "Whether payload_started.json existed. Determines whether this INFRA_FAILURE consumed the scientific authorization: consumption is derived from the payload-start event, never asserted here."
+        }
+      }
+    },
+    "not_started_info": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prelaunch_sha256",
+        "reason"
+      ],
+      "properties": {
+        "prelaunch_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "No confirmed spawn: spawned.json never appeared. NOT_STARTED consumes no authorization."
+    },
+    "branch_completed": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "record_kind",
+            "status",
+            "run_id",
+            "launch_attempt_id",
+            "chain",
+            "result_payload",
+            "stages",
+            "aggregates",
+            "evidence"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "record_kind": {
+              "const": "result"
+            },
+            "status": {
+              "const": "COMPLETED"
+            },
+            "run_id": {
+              "$ref": "#/$defs/run_id"
+            },
+            "launch_attempt_id": {
+              "$ref": "#/$defs/launch_attempt_id"
+            },
+            "chain": {
+              "$ref": "#/$defs/chain_result"
+            },
+            "result_payload": {
+              "$ref": "#/$defs/result_payload"
+            },
+            "stages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/stage_record"
+              },
+              "minItems": 1
+            },
+            "aggregates": {
+              "$ref": "#/$defs/aggregates"
+            },
+            "evidence": {
+              "$ref": "#/$defs/evidence_completed"
+            }
+          },
+          "description": "Result-kind COMPLETED: a scientific result. Requires a balanced event stream and non-empty stage, realized-grid, and per-node evidence sets."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "record_kind",
+            "status",
+            "not_a_result",
+            "run_id",
+            "launch_attempt_id",
+            "chain",
+            "stages",
+            "aggregates",
+            "evidence"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "record_kind": {
+              "const": "diagnostic"
+            },
+            "status": {
+              "const": "COMPLETED"
+            },
+            "not_a_result": {
+              "const": true
+            },
+            "run_id": {
+              "$ref": "#/$defs/run_id"
+            },
+            "launch_attempt_id": {
+              "$ref": "#/$defs/launch_attempt_id"
+            },
+            "chain": {
+              "$ref": "#/$defs/chain_diagnostic"
+            },
+            "stages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/stage_record"
+              },
+              "minItems": 1
+            },
+            "aggregates": {
+              "$ref": "#/$defs/aggregates"
+            },
+            "evidence": {
+              "$ref": "#/$defs/evidence_completed"
+            }
+          },
+          "description": "Diagnostic-kind COMPLETED: protocol completion only, never a scientific result. Carries no result_payload. Requires a balanced event stream and non-empty stage and per-node evidence sets."
+        }
+      ]
+    },
+    "branch_algorithm_stop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "record_kind",
+        "status",
+        "run_id",
+        "launch_attempt_id",
+        "chain",
+        "stop",
+        "stages",
+        "aggregates",
+        "evidence"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "record_kind": {
+          "const": "result",
+          "description": "ALGORITHM_STOP is reachable only by result-kind runs. The diagnostic probe loop has no verdict gates, so a diagnostic-kind run can never produce this status."
+        },
+        "status": {
+          "const": "ALGORITHM_STOP"
+        },
+        "run_id": {
+          "$ref": "#/$defs/run_id"
+        },
+        "launch_attempt_id": {
+          "$ref": "#/$defs/launch_attempt_id"
+        },
+        "chain": {
+          "$ref": "#/$defs/chain_result"
+        },
+        "stop": {
+          "$ref": "#/$defs/stop_info"
+        },
+        "stages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stage_record"
+          },
+          "minItems": 1
+        },
+        "aggregates": {
+          "$ref": "#/$defs/aggregates"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence_balanced"
+        }
+      },
+      "description": "A clean protocol-exit STOP closes its event stream. An unbalanced stream is admissible only under ABORTED_BUDGET or INFRA_FAILURE; an unbalanced stream on a protocol exit is a capture fault and routes to INFRA_FAILURE by precedence rule 3."
+    },
+    "branch_aborted_budget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "record_kind",
+            "status",
+            "run_id",
+            "launch_attempt_id",
+            "chain",
+            "interruption",
+            "stages",
+            "aggregates",
+            "evidence"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "record_kind": {
+              "const": "result"
+            },
+            "status": {
+              "const": "ABORTED_BUDGET"
+            },
+            "run_id": {
+              "$ref": "#/$defs/run_id"
+            },
+            "launch_attempt_id": {
+              "$ref": "#/$defs/launch_attempt_id"
+            },
+            "chain": {
+              "$ref": "#/$defs/chain_result"
+            },
+            "interruption": {
+              "$ref": "#/$defs/interruption_info"
+            },
+            "stages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/stage_record"
+              }
+            },
+            "aggregates": {
+              "$ref": "#/$defs/aggregates"
+            },
+            "evidence": {
+              "$ref": "#/$defs/evidence"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "record_kind",
+            "status",
+            "not_a_result",
+            "run_id",
+            "launch_attempt_id",
+            "chain",
+            "interruption",
+            "stages",
+            "aggregates",
+            "evidence"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "record_kind": {
+              "const": "diagnostic"
+            },
+            "status": {
+              "const": "ABORTED_BUDGET"
+            },
+            "not_a_result": {
+              "const": true
+            },
+            "run_id": {
+              "$ref": "#/$defs/run_id"
+            },
+            "launch_attempt_id": {
+              "$ref": "#/$defs/launch_attempt_id"
+            },
+            "chain": {
+              "$ref": "#/$defs/chain_diagnostic"
+            },
+            "interruption": {
+              "$ref": "#/$defs/interruption_info"
+            },
+            "stages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/stage_record"
+              }
+            },
+            "aggregates": {
+              "$ref": "#/$defs/aggregates"
+            },
+            "evidence": {
+              "$ref": "#/$defs/evidence"
+            }
+          }
+        }
+      ],
+      "description": "ABORTED_BUDGET is an interruption, never a scientific STOP, and yields no scientific conclusion. It admits an unbalanced partial event stream."
+    },
+    "branch_infra_failure": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "record_kind",
+            "status",
+            "run_id",
+            "launch_attempt_id",
+            "chain",
+            "fault",
+            "evidence"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "record_kind": {
+              "const": "result"
+            },
+            "status": {
+              "const": "INFRA_FAILURE"
+            },
+            "run_id": {
+              "$ref": "#/$defs/run_id"
+            },
+            "launch_attempt_id": {
+              "$ref": "#/$defs/launch_attempt_id"
+            },
+            "chain": {
+              "$ref": "#/$defs/chain_result"
+            },
+            "fault": {
+              "$ref": "#/$defs/infra_fault"
+            },
+            "stages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/stage_record"
+              }
+            },
+            "aggregates": {
+              "$ref": "#/$defs/aggregates"
+            },
+            "evidence": {
+              "$ref": "#/$defs/evidence"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "record_kind",
+            "status",
+            "not_a_result",
+            "run_id",
+            "launch_attempt_id",
+            "chain",
+            "fault",
+            "evidence"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "record_kind": {
+              "const": "diagnostic"
+            },
+            "status": {
+              "const": "INFRA_FAILURE"
+            },
+            "not_a_result": {
+              "const": true
+            },
+            "run_id": {
+              "$ref": "#/$defs/run_id"
+            },
+            "launch_attempt_id": {
+              "$ref": "#/$defs/launch_attempt_id"
+            },
+            "chain": {
+              "$ref": "#/$defs/chain_diagnostic"
+            },
+            "fault": {
+              "$ref": "#/$defs/infra_fault"
+            },
+            "stages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/stage_record"
+              }
+            },
+            "aggregates": {
+              "$ref": "#/$defs/aggregates"
+            },
+            "evidence": {
+              "$ref": "#/$defs/evidence"
+            }
+          }
+        }
+      ],
+      "description": "Non-scientific. A capture, attestation, or environment fault voids certification even if the child also exited with a protocol code."
+    },
+    "branch_not_started": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "record_kind",
+            "status",
+            "run_id",
+            "launch_attempt_id",
+            "chain",
+            "not_started"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "record_kind": {
+              "const": "result"
+            },
+            "status": {
+              "const": "NOT_STARTED"
+            },
+            "run_id": {
+              "$ref": "#/$defs/run_id"
+            },
+            "launch_attempt_id": {
+              "$ref": "#/$defs/launch_attempt_id"
+            },
+            "chain": {
+              "$ref": "#/$defs/chain_result"
+            },
+            "not_started": {
+              "$ref": "#/$defs/not_started_info"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "record_kind",
+            "status",
+            "not_a_result",
+            "run_id",
+            "launch_attempt_id",
+            "chain",
+            "not_started"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "record_kind": {
+              "const": "diagnostic"
+            },
+            "status": {
+              "const": "NOT_STARTED"
+            },
+            "not_a_result": {
+              "const": true
+            },
+            "run_id": {
+              "$ref": "#/$defs/run_id"
+            },
+            "launch_attempt_id": {
+              "$ref": "#/$defs/launch_attempt_id"
+            },
+            "chain": {
+              "$ref": "#/$defs/chain_diagnostic"
+            },
+            "not_started": {
+              "$ref": "#/$defs/not_started_info"
+            }
+          }
+        }
+      ],
+      "description": "Non-scientific. No confirmed spawn; consumes no authorization."
+    },
+    "persisted_axis_order": {
+      "const": [
+        "ls",
+        "os",
+        "lv"
+      ],
+      "description": "Canonical named axes. Ballot B1: all persisted vectors, matrices, Hessian axes, optimizer traces, and comparison points are written in canonical named axes; matrices are conjugated by the role permutation. Computation stays in E1 storage order."
+    },
+    "computation_storage_order": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "The three E1 site names in their COMPUTATION (storage) order, preserving the frozen source/storage provenance. It does NOT change persisted array order, which is always canonical (ls, os, lv). Replaces the ambiguous frozen field name nuisance_order. R2 must test the permutation and matrix conjugation in both directions. Entries are distinct site names.",
+      "uniqueItems": true
+    },
+    "canonical_vector3": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/number_or_nonfinite"
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "Three elements in canonical (ls, os, lv) order."
+    },
+    "canonical_matrix3": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/canonical_vector3"
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "3x3 in canonical (ls, os, lv) axes, conjugated by the role permutation."
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "ls",
+        "os",
+        "lv"
+      ]
+    },
+    "warm_start_identity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "mode_u"
+            }
+          },
+          "description": "The MAP mode."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "stage_id",
+            "node_index"
+          ],
+          "properties": {
+            "kind": {
+              "const": "accepted_node"
+            },
+            "stage_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "node_index": {
+              "$ref": "#/$defs/count"
+            }
+          },
+          "description": "A specific accepted optimum, named by stage and node."
+        }
+      ],
+      "description": "Tagged identity: never an opaque string or hash, so the trajectory is reconstructable without self-hashes or external inference."
+    },
+    "warm_start_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "vector",
+        "selection_reason"
+      ],
+      "properties": {
+        "identity": {
+          "$ref": "#/$defs/warm_start_identity"
+        },
+        "vector": {
+          "$ref": "#/$defs/canonical_vector3"
+        },
+        "selection_reason": {
+          "type": "string",
+          "enum": [
+            "initial_mode_u",
+            "accepted_current_node",
+            "carried_last_accepted_node",
+            "carried_mode_u"
+          ]
+        }
+      }
+    },
+    "jitter_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rng_seed",
+        "jitter_scale",
+        "base_start",
+        "jitter_vector",
+        "resulting_start"
+      ],
+      "properties": {
+        "rng_seed": {
+          "type": "integer",
+          "enum": [
+            300,
+            301
+          ],
+          "description": "Frozen: RESTART_RNG_BASE (300) + START index, where index enumerates (warm=0, mode=1) at profile_integration.py:438. Exactly {300, 301} are realizable."
+        },
+        "jitter_scale": {
+          "const": 0.001,
+          "description": "Frozen RESTART_JITTER_SCALE."
+        },
+        "base_start": {
+          "$ref": "#/$defs/canonical_vector3"
+        },
+        "jitter_vector": {
+          "$ref": "#/$defs/canonical_vector3"
+        },
+        "resulting_start": {
+          "$ref": "#/$defs/canonical_vector3"
+        }
+      },
+      "description": "Provenance only, not a new optimizer decision. jitter_vector is the APPLIED offset (scale * draw), so resulting_start == base_start + jitter_vector elementwise; R2 must test that invariant."
+    },
+    "two_start_optimizer_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "starts",
+        "u_star",
+        "g_star",
+        "grad_inf_norm",
+        "both_success",
+        "agree",
+        "agree_g",
+        "agree_u",
+        "restart_count",
+        "stop",
+        "reason"
+      ],
+      "properties": {
+        "starts": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/optimizer_start"
+                }
+              ],
+              "properties": {
+                "label": {
+                  "const": "warm"
+                }
+              }
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/optimizer_start"
+                }
+              ],
+              "properties": {
+                "label": {
+                  "const": "mode"
+                }
+              }
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Exactly the two frozen starts in frozen order (warm, mode) per profile_integration.py:438. Ballot B12(i)'s 'both optimizer attempts' is preserved a fortiori: each start additionally carries every call it issued."
+        },
+        "u_star": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/canonical_vector3"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null when no finite record exists."
+        },
+        "g_star": {
+          "$ref": "#/$defs/number_or_nonfinite",
+          "description": "NaN when no finite record exists (profile_integration.py:520-523)."
+        },
+        "grad_inf_norm": {
+          "$ref": "#/$defs/number_or_nonfinite"
+        },
+        "both_success": {
+          "type": "boolean"
+        },
+        "agree": {
+          "type": "boolean"
+        },
+        "agree_g": {
+          "type": "boolean"
+        },
+        "agree_u": {
+          "type": "boolean"
+        },
+        "restart_count": {
+          "$ref": "#/$defs/count",
+          "description": "Frozen: incremented once per start whose original attempt failed. Equals the number of starts carrying a restart attempt; R2 must test that invariant."
+        },
+        "stop": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "description": "The frozen two-start gate's return, with per-start per-attempt evidence the frozen gate discards (H-d)."
+    },
+    "logdet_by_h": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "h",
+            "logdet"
+          ],
+          "properties": {
+            "h": {
+              "const": 0.0005
+            },
+            "logdet": {
+              "$ref": "#/$defs/number_or_nonfinite"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "h",
+            "logdet"
+          ],
+          "properties": {
+            "h": {
+              "const": 0.001
+            },
+            "logdet": {
+              "$ref": "#/$defs/number_or_nonfinite"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "h",
+            "logdet"
+          ],
+          "properties": {
+            "h": {
+              "const": 0.002
+            },
+            "logdet": {
+              "$ref": "#/$defs/number_or_nonfinite"
+            }
+          }
+        }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "Fixed-order array ordered exactly by frozen HESS_H_SWEEP = (5e-4, 1e-3, 2e-3). Not an object with float-string keys. Missing, duplicate, extra, or reordered entries are rejected. logdet is -inf when slogdet sign is 0 (profile_integration.py:559)."
+    },
+    "directional_records": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "seed",
+            "direction",
+            "second_difference",
+            "error"
+          ],
+          "properties": {
+            "seed": {
+              "const": 200
+            },
+            "direction": {
+              "$ref": "#/$defs/canonical_vector3"
+            },
+            "second_difference": {
+              "$ref": "#/$defs/number_or_nonfinite"
+            },
+            "error": {
+              "$ref": "#/$defs/number_or_nonfinite"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "seed",
+            "direction",
+            "second_difference",
+            "error"
+          ],
+          "properties": {
+            "seed": {
+              "const": 201
+            },
+            "direction": {
+              "$ref": "#/$defs/canonical_vector3"
+            },
+            "second_difference": {
+              "$ref": "#/$defs/number_or_nonfinite"
+            },
+            "error": {
+              "$ref": "#/$defs/number_or_nonfinite"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "seed",
+            "direction",
+            "second_difference",
+            "error"
+          ],
+          "properties": {
+            "seed": {
+              "const": 202
+            },
+            "direction": {
+              "$ref": "#/$defs/canonical_vector3"
+            },
+            "second_difference": {
+              "$ref": "#/$defs/number_or_nonfinite"
+            },
+            "error": {
+              "$ref": "#/$defs/number_or_nonfinite"
+            }
+          }
+        }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "Fixed-order array ordered exactly by frozen DIRECTION_RNG_SEEDS = (200, 201, 202). Not an object with integer-string keys. Missing, duplicate, extra, or reordered seeds are rejected. direction is the realized canonical-axis unit vector actually used."
+    },
+    "battery_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scale",
+        "pass",
+        "coordinates"
+      ],
+      "properties": {
+        "scale": {
+          "$ref": "#/$defs/number_or_nonfinite",
+          "description": "Aggregate frozen scale = max(1, max over sites of |FD| max)."
+        },
+        "pass": {
+          "type": "boolean",
+          "description": "Equals the conjunction of the three coordinate passes. R2 must test this invariant."
+        },
+        "coordinates": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "fd_step",
+                "reference_value",
+                "functional_value",
+                "absolute_error",
+                "threshold",
+                "pass"
+              ],
+              "properties": {
+                "role": {
+                  "const": "ls"
+                },
+                "fd_step": {
+                  "$ref": "#/$defs/number_or_nonfinite",
+                  "description": "Realized step from the frozen rule FD_STEP_GRAD * max(1, |u_j|)."
+                },
+                "reference_value": {
+                  "$ref": "#/$defs/number_or_nonfinite"
+                },
+                "functional_value": {
+                  "$ref": "#/$defs/number_or_nonfinite"
+                },
+                "absolute_error": {
+                  "$ref": "#/$defs/number_or_nonfinite"
+                },
+                "threshold": {
+                  "$ref": "#/$defs/number_or_nonfinite",
+                  "description": "Frozen envelope TOL_GRAD_ABS + TOL_GRAD_REL * scale."
+                },
+                "pass": {
+                  "type": "boolean"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "fd_step",
+                "reference_value",
+                "functional_value",
+                "absolute_error",
+                "threshold",
+                "pass"
+              ],
+              "properties": {
+                "role": {
+                  "const": "os"
+                },
+                "fd_step": {
+                  "$ref": "#/$defs/number_or_nonfinite",
+                  "description": "Realized step from the frozen rule FD_STEP_GRAD * max(1, |u_j|)."
+                },
+                "reference_value": {
+                  "$ref": "#/$defs/number_or_nonfinite"
+                },
+                "functional_value": {
+                  "$ref": "#/$defs/number_or_nonfinite"
+                },
+                "absolute_error": {
+                  "$ref": "#/$defs/number_or_nonfinite"
+                },
+                "threshold": {
+                  "$ref": "#/$defs/number_or_nonfinite",
+                  "description": "Frozen envelope TOL_GRAD_ABS + TOL_GRAD_REL * scale."
+                },
+                "pass": {
+                  "type": "boolean"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "fd_step",
+                "reference_value",
+                "functional_value",
+                "absolute_error",
+                "threshold",
+                "pass"
+              ],
+              "properties": {
+                "role": {
+                  "const": "lv"
+                },
+                "fd_step": {
+                  "$ref": "#/$defs/number_or_nonfinite",
+                  "description": "Realized step from the frozen rule FD_STEP_GRAD * max(1, |u_j|)."
+                },
+                "reference_value": {
+                  "$ref": "#/$defs/number_or_nonfinite"
+                },
+                "functional_value": {
+                  "$ref": "#/$defs/number_or_nonfinite"
+                },
+                "absolute_error": {
+                  "$ref": "#/$defs/number_or_nonfinite"
+                },
+                "threshold": {
+                  "$ref": "#/$defs/number_or_nonfinite",
+                  "description": "Frozen envelope TOL_GRAD_ABS + TOL_GRAD_REL * scale."
+                },
+                "pass": {
+                  "type": "boolean"
+                }
+              }
+            }
+          ],
+          "items": false,
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Fixed canonical order exactly (ls, os, lv)."
+        }
+      },
+      "description": "Independent fresh-model central-FD battery at an accepted optimum. A gross-defect detector, not a precision-gradient claim."
+    },
+    "curvature_evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "u_star",
+        "raw_hessian",
+        "K",
+        "eigenvalues",
+        "logdet",
+        "logdet_by_h",
+        "logdet_stability_error",
+        "logdet_stable",
+        "rcond",
+        "spd",
+        "conditioning_ok",
+        "stationary",
+        "grad_inf_norm",
+        "symmetry_error",
+        "symmetry_ok",
+        "directional_records",
+        "directional_ok",
+        "stop",
+        "reason"
+      ],
+      "properties": {
+        "u_star": {
+          "$ref": "#/$defs/canonical_vector3",
+          "description": "The point this evaluation was taken at. For a fallback evaluation this is the pre-retry optimum."
+        },
+        "raw_hessian": {
+          "$ref": "#/$defs/canonical_matrix3",
+          "description": "The RAW pre-symmetrization matrix at HESS_H_CENTER, which the frozen gate discards."
+        },
+        "K": {
+          "$ref": "#/$defs/canonical_matrix3",
+          "description": "The symmetrized curvature 0.5*(raw + raw.T) actually used."
+        },
+        "eigenvalues": {
+          "$ref": "#/$defs/canonical_vector3"
+        },
+        "logdet": {
+          "$ref": "#/$defs/number_or_nonfinite",
+          "description": "Center logdet; -inf when slogdet sign is 0."
+        },
+        "logdet_by_h": {
+          "$ref": "#/$defs/logdet_by_h"
+        },
+        "logdet_stability_error": {
+          "$ref": "#/$defs/number_or_nonfinite",
+          "description": "+inf when the center logdet is non-finite (profile_integration.py:577-581)."
+        },
+        "logdet_stable": {
+          "type": "boolean"
+        },
+        "rcond": {
+          "$ref": "#/$defs/number_or_nonfinite",
+          "description": "NaN when the maximum eigenvalue is zero (profile_integration.py:634)."
+        },
+        "spd": {
+          "type": "boolean"
+        },
+        "conditioning_ok": {
+          "type": "boolean"
+        },
+        "stationary": {
+          "type": "boolean"
+        },
+        "grad_inf_norm": {
+          "$ref": "#/$defs/number_or_nonfinite"
+        },
+        "symmetry_error": {
+          "$ref": "#/$defs/number_or_nonfinite"
+        },
+        "symmetry_ok": {
+          "type": "boolean",
+          "description": "The frozen raw-symmetry check against SYMMETRY_TOL. Row 8 of the decision table can demote this to a reported diagnostic; it remains measured and retained either way."
+        },
+        "directional_records": {
+          "$ref": "#/$defs/directional_records"
+        },
+        "directional_ok": {
+          "type": "boolean"
+        },
+        "stop": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "description": "One complete curvature evaluation, recorded in full whether pre-retry, post-retry, or a fallback evaluation."
+    },
+    "retry": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/retry_not_fired"
+        },
+        {
+          "$ref": "#/$defs/retry_fired"
+        }
+      ],
+      "description": "Tagged union. Frozen semantics: the gate rejects status != 0 and success == False alike (profile_integration.py:724)."
+    },
+    "curvature_record": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "retry",
+            "pre_retry"
+          ],
+          "properties": {
+            "retry": {
+              "$ref": "#/$defs/retry_not_fired"
+            },
+            "pre_retry": {
+              "$ref": "#/$defs/curvature_evaluation"
+            }
+          },
+          "description": "No retry fired: the single evaluation at the two-start-accepted optimum is FINAL. A post_retry evaluation is not representable here."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "retry",
+            "pre_retry",
+            "post_retry"
+          ],
+          "properties": {
+            "retry": {
+              "$ref": "#/$defs/retry_fired"
+            },
+            "pre_retry": {
+              "$ref": "#/$defs/curvature_evaluation"
+            },
+            "post_retry": {
+              "$ref": "#/$defs/curvature_evaluation",
+              "description": "Recorded in full, including when it evaluates the fallback point."
+            }
+          },
+          "description": "A retry fired: both evaluations are recorded in full. post_retry is required and cannot appear without a fired retry."
+        }
+      ],
+      "description": "Pre- and post-retry evaluations plus tagged retry telemetry. The FINAL evaluation is the single one when no retry fired, or the post-retry one at a positively accepted point."
+    },
+    "per_node_record": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_index",
+            "noise",
+            "persisted_axis_order",
+            "computation_storage_order",
+            "incoming_warm_start",
+            "outgoing_warm_start",
+            "optimizer",
+            "accepted",
+            "selected_optimum",
+            "battery",
+            "curvature"
+          ],
+          "properties": {
+            "node_index": {
+              "$ref": "#/$defs/count"
+            },
+            "noise": {
+              "$ref": "#/$defs/finite_number"
+            },
+            "persisted_axis_order": {
+              "$ref": "#/$defs/persisted_axis_order"
+            },
+            "computation_storage_order": {
+              "$ref": "#/$defs/computation_storage_order"
+            },
+            "incoming_warm_start": {
+              "$ref": "#/$defs/warm_start_ref"
+            },
+            "outgoing_warm_start": {
+              "$ref": "#/$defs/warm_start_ref"
+            },
+            "optimizer": {
+              "$ref": "#/$defs/two_start_optimizer_record"
+            },
+            "accepted": {
+              "const": true
+            },
+            "selected_optimum": {
+              "$ref": "#/$defs/canonical_vector3"
+            },
+            "battery": {
+              "$ref": "#/$defs/battery_record"
+            },
+            "curvature": {
+              "$ref": "#/$defs/curvature_record"
+            }
+          },
+          "description": "Accepted node. Per B12(i) the battery and the record-only curvature evaluation run at accepted optima ONLY, so both are required here. The outgoing warm-start identity points at this node."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_index",
+            "noise",
+            "persisted_axis_order",
+            "computation_storage_order",
+            "incoming_warm_start",
+            "outgoing_warm_start",
+            "optimizer",
+            "accepted",
+            "selected_optimum"
+          ],
+          "properties": {
+            "node_index": {
+              "$ref": "#/$defs/count"
+            },
+            "noise": {
+              "$ref": "#/$defs/finite_number"
+            },
+            "persisted_axis_order": {
+              "$ref": "#/$defs/persisted_axis_order"
+            },
+            "computation_storage_order": {
+              "$ref": "#/$defs/computation_storage_order"
+            },
+            "incoming_warm_start": {
+              "$ref": "#/$defs/warm_start_ref"
+            },
+            "outgoing_warm_start": {
+              "$ref": "#/$defs/warm_start_ref"
+            },
+            "optimizer": {
+              "$ref": "#/$defs/two_start_optimizer_record"
+            },
+            "accepted": {
+              "const": false
+            },
+            "selected_optimum": {
+              "type": "null"
+            }
+          },
+          "description": "Optimizer-gate failure. No battery and no curvature: B12(i) runs them at accepted optima only. selected_optimum is null and the outgoing warm start equals the incoming one."
+        }
+      ],
+      "description": "Layer-2 per-node record, addressable by JSON Pointer #/$defs/per_node_record so R2 can validate Layer-2 files directly against this frozen contract. Layer 4 carries only its digest, never the record itself. Battery and curvature outcomes never alter continuation (B12(i))."
+    },
+    "retry_not_fired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fired"
+      ],
+      "properties": {
+        "fired": {
+          "const": false
+        }
+      },
+      "description": "No retry fired: the pre-retry evaluation passed SPD/rcond conditioning."
+    },
+    "retry_fired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fired",
+        "trigger",
+        "telemetry",
+        "conjuncts",
+        "positively_accepted",
+        "fallback_fired"
+      ],
+      "properties": {
+        "fired": {
+          "const": true
+        },
+        "trigger": {
+          "type": "string",
+          "enum": [
+            "spd_or_rcond_conditioning_failure"
+          ],
+          "description": "Frozen: a retry fires ONLY on SPD/rcond conditioning failure. Per rev-5 §2c the other diagnostics are mandatory but do not independently authorize a retry."
+        },
+        "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "reported_success",
+            "message",
+            "candidate_vector",
+            "candidate_finite",
+            "required_shape",
+            "observed_shape",
+            "objective",
+            "gradient",
+            "stationarity_norm"
+          ],
+          "properties": {
+            "status": {
+              "type": "integer"
+            },
+            "reported_success": {
+              "type": "boolean"
+            },
+            "message": {
+              "type": "string"
+            },
+            "candidate_vector": {
+              "$ref": "#/$defs/vector_or_nonfinite",
+              "description": "The retry optimizer's RAW output, at whatever shape it came back. Deliberately length-free: the frozen gate defends against a wrong-shaped return (profile_integration.py:720-722) and plan §3.2 requires v2 to record the malformed output itself. observed_shape is the shape authority; nested shapes are flattened in call order. Nonfinite elements use the frozen sentinels."
+            },
+            "candidate_finite": {
+              "type": "boolean"
+            },
+            "required_shape": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "minItems": 0,
+              "description": "Explicit shape metadata. minItems 0 so a scalar (0-d) return stays representable. observed_shape is authoritative for candidate_vector."
+            },
+            "observed_shape": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "minItems": 0,
+              "description": "Explicit shape metadata. minItems 0 so a scalar (0-d) return stays representable. observed_shape is authoritative for candidate_vector."
+            },
+            "objective": {
+              "$ref": "#/$defs/number_or_nonfinite"
+            },
+            "gradient": {
+              "$ref": "#/$defs/canonical_vector3"
+            },
+            "stationarity_norm": {
+              "$ref": "#/$defs/number_or_nonfinite"
+            }
+          },
+          "description": "Complete retry-optimizer telemetry. A wrong-shaped candidate is recorded through observed_shape rather than an arbitrary repr."
+        },
+        "conjuncts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status_zero",
+            "reported_success",
+            "output_shape_and_finite",
+            "objective_finite",
+            "gradient_shape_and_finite",
+            "stationarity_within_bound"
+          ],
+          "properties": {
+            "status_zero": {
+              "type": "boolean"
+            },
+            "reported_success": {
+              "type": "boolean"
+            },
+            "output_shape_and_finite": {
+              "type": "boolean"
+            },
+            "objective_finite": {
+              "type": "boolean"
+            },
+            "gradient_shape_and_finite": {
+              "type": "boolean"
+            },
+            "stationarity_within_bound": {
+              "type": "boolean"
+            }
+          },
+          "description": "Every conjunct of the positive retry-acceptance predicate, each an explicit boolean. Any conjunct false makes the retry a RETRY FAILURE, which decision-table row 4 routes ahead of every Hessian or amendment diagnosis."
+        },
+        "positively_accepted": {
+          "type": "boolean",
+          "description": "The conjunction of all six conjuncts."
+        },
+        "fallback_fired": {
+          "type": "boolean",
+          "description": "True when the retry returned a wrong-shaped or non-finite vector and the frozen gate re-evaluated at the pre-retry optimum (profile_integration.py:720-722)."
+        },
+        "fallback_target": {
+          "type": "string",
+          "enum": [
+            "pre_retry_optimum"
+          ]
+        }
+      },
+      "description": "A retry fired. Both the malformed output and the fallback evaluation are recorded.",
+      "if": {
+        "properties": {
+          "fallback_fired": {
+            "const": true
+          }
+        },
+        "required": [
+          "fallback_fired"
+        ]
+      },
+      "then": {
+        "required": [
+          "fallback_target"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "fallback_target"
+          ]
+        }
+      }
+    },
+    "optimizer_attempt_original": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "is_jittered_restart",
+        "start",
+        "u",
+        "g",
+        "gradient",
+        "grad_inf_norm",
+        "status",
+        "reported_success",
+        "finite",
+        "stationary",
+        "accepted",
+        "message"
+      ],
+      "properties": {
+        "is_jittered_restart": {
+          "const": false
+        },
+        "start": {
+          "$ref": "#/$defs/canonical_vector3"
+        },
+        "u": {
+          "$ref": "#/$defs/canonical_vector3",
+          "description": "The raw output vector, recorded even when the finiteness check fails (profile_integration.py:458, :476-487)."
+        },
+        "g": {
+          "$ref": "#/$defs/number_or_nonfinite"
+        },
+        "gradient": {
+          "$ref": "#/$defs/canonical_vector3"
+        },
+        "grad_inf_norm": {
+          "$ref": "#/$defs/number_or_nonfinite",
+          "description": "+inf when the attempt is non-finite (profile_integration.py:471)."
+        },
+        "status": {
+          "type": "integer"
+        },
+        "reported_success": {
+          "type": "boolean"
+        },
+        "finite": {
+          "type": "boolean"
+        },
+        "stationary": {
+          "type": "boolean"
+        },
+        "accepted": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "description": "The ORIGINAL minimize() call for this start. The frozen gate overwrites this result when it fails and the restart fires (profile_integration.py:446-456), discarding exactly this telemetry; v2 exposes it (diagnosis H-d)."
+    },
+    "optimizer_attempt_restart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "is_jittered_restart",
+        "start",
+        "u",
+        "g",
+        "gradient",
+        "grad_inf_norm",
+        "status",
+        "reported_success",
+        "finite",
+        "stationary",
+        "accepted",
+        "message",
+        "jitter"
+      ],
+      "properties": {
+        "is_jittered_restart": {
+          "const": true
+        },
+        "jitter": {
+          "$ref": "#/$defs/jitter_provenance"
+        },
+        "start": {
+          "$ref": "#/$defs/canonical_vector3"
+        },
+        "u": {
+          "$ref": "#/$defs/canonical_vector3",
+          "description": "The raw output vector, recorded even when the finiteness check fails (profile_integration.py:458, :476-487)."
+        },
+        "g": {
+          "$ref": "#/$defs/number_or_nonfinite"
+        },
+        "gradient": {
+          "$ref": "#/$defs/canonical_vector3"
+        },
+        "grad_inf_norm": {
+          "$ref": "#/$defs/number_or_nonfinite",
+          "description": "+inf when the attempt is non-finite (profile_integration.py:471)."
+        },
+        "status": {
+          "type": "integer"
+        },
+        "reported_success": {
+          "type": "boolean"
+        },
+        "finite": {
+          "type": "boolean"
+        },
+        "stationary": {
+          "type": "boolean"
+        },
+        "accepted": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "description": "The jittered restart call, present only when the original attempt returned a non-zero SciPy status. Its jitter provenance is required."
+    },
+    "optimizer_start": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "attempts"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "enum": [
+            "warm",
+            "mode"
+          ]
+        },
+        "attempts": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/optimizer_attempt_original"
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/optimizer_attempt_restart"
+          },
+          "minItems": 1,
+          "maxItems": 2,
+          "description": "Attempts for THIS start, in call order: element 0 is always the original call; element 1 is the jittered restart and is present if and only if the original returned a non-zero status. Never more than two: the frozen gate restarts at most once."
+        }
+      },
+      "description": "One start of the frozen two-start gate, with every minimize() call it issued."
+    }
+  }
+}

@@ -1347,3 +1347,337 @@ relaxation. It authorizes **NO** compute, recompute, sampler run, VI, `hmc_lapla
 the 60-month **holdout stays SEALED (§6.6)**. HMC remains available only via `fit_hmc_e1`. The A7
 Della vehicle stays on hold (v1.8). Any v1.18 computation requires a separate explicit author
 `--execute` authorization.
+
+## v1.19 — M2cR taxonomy freeze: acyclic artifact graph, five-status terminal taxonomy + precedence, environment-freeze manifest, evidence-retention policy (ceilings DEFERRED), B14-stack v5 execution snapshot, authorization ledger + payload-start consumption, and the labeling rule (author ballot, milestone R1) — 2026-07-15
+
+**Prereg anchor:** v1.17 (the M2c algorithm freeze, unchanged and untouched by this addendum), §6.15
+M2c predicates, §7 A1, and the D45/D46 chain. Provenance: the author closed the post-D45 **M2cR**
+remediation ballot on 2026-07-15, resolving every item B1-B18 in their own words (**D46**), and
+separately determined both R1 preconditions SATISFIED on the layered review record (**D46 Update**).
+The complete conformed plan governing this addendum is `docs/plan-post-d45-m2cr.md`, pinned at
+
+```
+sha256 51b8ec602bc955a619432fd1097012efbfa795e4bccb0a2cc7830d07e1aefbf7
+```
+
+The pinned plan governs on any detail. This addendum is milestone **R1** (taxonomy freeze;
+documentation and schema design only). No pilot, posterior, Mauna, or holdout access exists or is
+authorized. **D45 remains permanently an UNVALIDATED_ATTEMPT** and is never retroactively validated
+or reclassified.
+
+**Numbering (B3).** This is **v1.19**, not v1.18. Two facts fix it. (i) **v1.18 is permanently
+unused**: it was pre-reserved by v1.17 for the post-compute RESULT freeze, and the D45 disposition
+makes both the label and the reserved instance path `docs/m2c_freeze/gtoy_profile_result_v1.18.json`
+permanently unused, so the number is burned and the gap at v1.18 is mandated rather than created
+here. (ii) v1.16 remains what v1.17 recorded: the M2bR run/protocol label, never an addendum. So the
+addenda sequence is v1.15 → v1.17 → **v1.19**. Ballot **B3** ratifies the general rule prospectively:
+addendum numbers are assigned **strictly sequentially at ratification time and never reserved in
+advance** — precisely so that a conditional amendment which never happens leaves no gap, the defect
+v1.18 now exhibits. Schema files carry their own content-kind name and integer `schema_version`. Run
+records are named by **kind plus authorization id** and stay **outside** the P4 numeric sequence; the
+v1.16 precedent of a run occupying a sequence number is **not** repeated.
+
+**1. Acyclic artifact graph and write order (plan §3.1).** Hash edges point strictly from
+higher-numbered to lower-numbered layers. **No artifact contains or implies its own digest. No schema
+embeds a hash of any manifest that references it** — the rule prevents cycles, and does not forbid
+every manifest digest: schemas may embed the **v1.17 canonical hash** as a `const`, which creates no
+cycle because v1.17 references none of them (the pattern the committed
+`gtoy_profile_result_v1.18.schema.json` already uses).
+
+- **Layer 0 (frozen content).** **R1 authors** the execution-record schema and the authorization-ledger
+  schema plus its JSONL instance. **R2 authors** the v2-gate module(s), the capture driver and
+  bootstrap, the dependency lock, and the **v5 environment-freeze artifacts** (§5 below). **R3 authors**
+  the diagnostic-record schema and the protocol parameter document.
+- **Layer 1a (R2).** The INFRASTRUCTURE manifest pins sha256 of every R2 Layer-0 artifact, including
+  the aggregating environment-freeze manifest, **and additionally pins the R1-authored schemas** (a
+  downward edge: R1 precedes R2 and neither schema references the manifest). It does not and cannot
+  pin the R3 diagnostic schema.
+- **Layer 1b (R3).** The PROTOCOL manifest pins the diagnostic-record schema hash and the frozen
+  protocol parameter set, and references the Layer-1a hash.
+- **Layer 2 (runtime).** Raw evidence: stdout, stderr, `events.jsonl`, per-node records, payload JSON,
+  import inventory, `prelaunch.json`, `spawned.json`, `payload_started.json`, per-launch realized
+  environment attestations, pytest output where applicable.
+- **Layer 3 (runtime).** `RAW_MANIFEST.sha256` over all Layer-2 files, **excluding itself and the
+  terminal record**.
+- **Layer 4 (runtime).** The terminal record, referencing the Layer-1a/1b hashes, the Layer-2 per-file
+  digests, and the Layer-3 digest.
+- **Layer 5.** The git commit and the D-entry quote the Layer-4 record's sha256.
+
+**Ledger acyclicity.** The ledger records terminal-record **digests**, while a terminal record's chain
+records the authorization by **id string**, never by ledger digest. Record names the grant; ledger
+hashes the record. No cycle.
+
+**Frozen write order.** Layer 2 closed, then Layer 3, then Layer 4, each via write-temp, fsync, atomic
+rename; commit afterward.
+
+**2. Aggregating environment-freeze manifest (gives `environment_freeze_manifest_sha256` a referent).**
+R2 authors a single **environment-freeze manifest** that pins by sha256 the complete v5 freeze set: the
+exact frozen child-environment mapping; the complete importable-artifact manifest; the interpreter pin
+(version string plus resolved-target sha256); and the pre-boundary attestation set. It carries the one
+digest that every diagnostic and result terminal record cites as `environment_freeze_manifest_sha256`
+(§7 below). Per-launch **realized** environment attestations are Layer-2 evidence covered by
+`RAW_MANIFEST.sha256` and are **not** this static member: a per-launch value differs every run and
+could never identify which freeze was used.
+
+**3. Terminal-state taxonomy, per-kind standing, precedence, spawn boundary (plan §4.3; ballot B2).**
+Status enum **{COMPLETED, ALGORITHM_STOP, ABORTED_BUDGET, INFRA_FAILURE, NOT_STARTED}**; one record
+schema with a closed `oneOf` branch per status. **Scientific standing is a function of (record kind,
+status):** a result-kind COMPLETED record is a scientific result; a diagnostic-kind COMPLETED record is
+protocol completion only, carrying `not_a_result: true` as a `const`; **ALGORITHM_STOP is reachable
+only by result-kind runs**; ABORTED_BUDGET is an interruption, **never a scientific STOP**;
+INFRA_FAILURE and NOT_STARTED are non-scientific.
+
+**Frozen precedence (first match wins).** (1) No confirmed spawn yields NOT_STARTED. (2) A
+parent-initiated budget kill yields ABORTED_BUDGET, even if capture faults follow the kill. (3) Any
+capture, attestation, or environment fault during the run yields INFRA_FAILURE, even if the child also
+exited with a protocol code (a capture fault voids certification). (4) A child protocol exit with a
+schema-valid payload yields COMPLETED or ALGORITHM_STOP per exit code plus payload validation. (5)
+Anything else yields INFRA_FAILURE.
+
+**Spawn-boundary mechanism.** The parent writes `prelaunch.json` before fork; the child bootstrap's
+first act is a hello message on the pipe; on receipt the parent atomically writes `spawned.json`. On
+child death the parent still assembles an INFRA_FAILURE terminal record over whatever raw evidence
+exists. If the parent dies, a reconciliation mode later assembles an INFRA_FAILURE record explicitly
+flagged `reconstructed: true`. Nothing vanishes and no state is silently reclassified. The
+ALGORITHM_STOP branch's `stop.stage` enum is limited to **{optimizer, gradient_battery, curvature,
+refinement, upper_pullback, lower_pullback, tail, edge_interiority}**; budget and infrastructure never
+appear in it.
+
+**4. Evidence retention and overflow; ALL numeric ceilings DEFERRED (plan §4.4; ballots B9, B15).**
+All certification evidence becomes **committed repository content** at `docs/m2c_evidence/<run_id>/`.
+The **authoritative terminal record is committed in the same directory** as that run's evidence and
+raw manifest; each run is a **self-contained committed directory**. Local-untracked retention is
+**ineligible**; no external store is selected. **Overflow is `INFRA_FAILURE`, never truncation** —
+truncated evidence is indistinguishable from complete evidence after the fact. `runs/` remains scratch
+and carries **no certification weight**; the D45 bundle stays immutable where it is.
+
+**Deferral (B15(ii)), frozen here as a deferral.** **This addendum sets no numeric evidence-size
+ceiling of any kind.** R2 measures the canonical evidence representation, may use **deterministic
+chunking**, and proposes **separate** ceilings for attestation manifests, event streams, stdout/stderr,
+and the complete bundle. R2 can measure the importable-artifact manifest exactly (a filesystem walk)
+and per-event byte size exactly (hermetic runs), and the node count is known; the complete-bundle
+ceiling is therefore **derived** from measured components rather than observed from a real run, and
+the later addendum must say derived where it derives. Those exact ceilings are frozen in a **separate
+versioned pre-execution addendum, before R4**. **Completeness is never weakened to fit a ceiling.**
+
+**5. Execution snapshot and environment — B14-host and B14-stack v5, exactly as ratified (plan §4.5).**
+This supersedes nothing in v1.17 and creates no new scientific rule; it governs how a future
+authorized execution is snapshotted and attested.
+
+- **Host (B14-host).** The host is recorded and bit-reproducibility claims are scoped to **identical
+  host plus lock**. No hostname hard-pinning.
+- **Launch.** The **Miniconda base** interpreter at
+  `/opt/homebrew/Caskroom/miniconda/base/bin/python3.13`, invoked by **absolute resolved path**, never
+  via `PATH` lookup, never via `.venv/bin/python`; `.venv` excluded entirely (it holds only `pip`). The
+  resolved target's sha256 is pinned and **re-attested at freeze time**. Flags
+  **`-S -s -P -B -X pycache_prefix=<verified-empty run-local dir>`**. **`-I` and `-E` are prohibited**:
+  `-I` implies `-E`, which makes CPython ignore `PYTHONHASHSEED`, so the seed never takes effect while
+  `os.environ` still reads `"0"` — a false-pass. Spawn is direct with `shell=False`; CWD is pinned to
+  the detached worktree root and asserted.
+- **Pre-boundary attestation.** Actual sha256 of **every source and native artifact executed before the
+  audit boundary**, including the bootstrap closure, pre-boundary `lib-dynload` extensions, the native
+  runtimes, `/usr/lib/dyld`, and the active arm64e dyld shared cache (main file plus all declared
+  subcaches). The empty `pycache_prefix` **alone is insufficient**: compiling from source only helps if
+  the source is integrity-bound. Residual, stated honestly: trust in pre-verification execution and
+  kernel/dyld mapping — **not** a claim that on-disk bytes are unhashable.
+- **Bytecode.** Fail if any imported module uses `SourcelessFileLoader`; reject orphan/legacy `.pyc`
+  candidates at every launch; do **not** require deleting normal `.pyc`. `-B` prevents standard
+  import-cache **writes** only; the empty-prefix postcondition is a **consistency check**, not proof
+  that `-B` held or that no `.pyc` was read.
+- **Path.** `sys.path[:]` **replaced entirely** with exactly four roots (worktree root; base
+  `lib/python3.13`; base `lib-dynload`; base `site-packages`), because `-S` startup leaves a
+  nonexistent `python313.zip` entry. `.pth`-derived finder paths excluded. Complete canonical equality
+  asserted; the canonical worktree root is **permitted at index 0** (it is the pinned CWD); only `""`,
+  relative/CWD-derived spellings, and extra aliases are rejected.
+- **Environment — staged, exact, dual-view.** *Stage A* (before native imports): exact equality against
+  the frozen parent-supplied mapping in **both** `os.environ` **and raw C `environ`** (via
+  `_NSGetEnviron`, duplicate keys rejected). Frozen mapping: `PYTHONHASHSEED=0`; `OMP_NUM_THREADS=10`;
+  `OMP_DYNAMIC=FALSE`; **`MKL_NUM_THREADS=10`** (operative via ATen precedence even with no MKL
+  runtime); `VECLIB_MAXIMUM_THREADS=10`; `LC_ALL=C`; `TZ=UTC`; run-local `HOME`/`TMPDIR`/XDG (realized
+  values recorded, integrity-bound per launch); minimal `PATH`. **`OPENBLAS_NUM_THREADS` is dropped as
+  empirically inert.** Under `LC_ALL=C`, `LC_CTYPE` is **not** injected — expect its absence; record
+  `sys.flags.utf8_mode == 1`. *Stage B* (after the frozen native stack imports and thread controls
+  initialize, before payload): accept **only** two explicitly frozen native-runtime deltas — the
+  validated `__CF_USER_TEXT_ENCODING` value and exactly one PID-bound `__KMP_REGISTERED_LIB_*` entry
+  satisfying a frozen name/value rule; **any other delta is INFRA_FAILURE**. Persist and authenticate
+  **separate** post-initialization baselines per view; the two views are **not** required to equal each
+  other. *Stage C* (immediately before normal exit): compare each view to **its own** baseline; drift
+  or a **missing** postcheck is INFRA_FAILURE.
+- **Threads.** **Requested/configured value 10 for each controlled facility.** **No process-wide
+  ceiling and no exact physical-worker count are claimed.** Torch intra-op **and inter-op** explicitly
+  set to 10 before any parallel work, **failing closed** otherwise. Dynamic threading disabled where
+  supported. Backend identity **attested as Accelerate**; a backend change fails closed and requires a
+  new environment freeze. **Empirical repeatability is the bit-reproducibility gate**, scoped to what
+  it establishes.
+- **Completeness.** A **complete frozen importable-artifact manifest** across the four roots (path,
+  type, sha256 for source modules, extension modules, legacy/sourceless bytecode candidates, importable
+  archives). Reject any **added, removed, or changed** importable artifact **before imports and after
+  execution**. Every executed module's **resolved origin and loader class** must match a frozen entry;
+  recording import names is **insufficient**. Built-in, frozen, and namespace-package modules are
+  classified explicitly. The dependency lock is retained **only as a supplementary check**: dist-info
+  RECORD proves listed files' bytes, is **not a completeness manifest**, and does **not cover `.pyc`**.
+- **Effect proofs.** Explicit `if not cond: raise SystemExit(...)`; **never** Python `assert` (stripped
+  by `-O`); **never** `exit(...)` (site-installed, absent under `-S`). Assert `optimize == 0`;
+  `hash_randomization == 0` **plus** a build-pinned **bound** `sentinel.__hash__()` value; `safe_path`;
+  `no_user_site == 1`; `dont_write_bytecode == 1`; `no_site == 1`; expected `isolated == 0` and
+  `ignore_environment == 0`; canonical `sys.pycache_prefix` equality; and an **audit canary** verified
+  immediately after `sys.addaudithook`.
+- **Post-execution re-attestation.** Repeat **every** pre-run class; compare raw C `environ` **and**
+  `os.environ` (they desynchronize); re-enumerate loaded native images; recheck `sys.path`. Drift or a
+  missing postcheck is INFRA_FAILURE. **Parent-side rehashing preferred.**
+- **Frozen threat model.** **In scope:** accidental source or environment drift; stale bytecode;
+  ordinary native/Python environment mutation; crashes; incomplete capture. **Out of scope, disclosed
+  as residuals, never blockers:** malicious same-user mutation-and-restore; kernel compromise; hostile
+  dyld/loader behavior; payload code deliberately defeating attestation.
+
+**6. Authorization ledger and consumption semantics (plan §4.3; ballot B10).** A committed,
+**append-only** ledger records every grant **and every launch attempt**. Its **canonical form is
+schema-validated JSONL**; any `authorizations.md` rendering is **not authoritative**. Append-only
+**events**, never a mutable grant row: `authorization_granted`; `launch_attempt_started`;
+`pre_payload_terminal_outcome`; `payload_started` (carrying the `payload_started.json` digest);
+`terminal_outcome` (carrying evidence and terminal-record digests); `authorization_consumed`, **derived
+only from a valid payload-start event** and never a freely typed mutable status. Corrections append
+**superseding events** rather than rewriting history. Audit CI validates event ordering, unique ids,
+legal state transitions, agreement with committed attempt evidence and terminal records, and the
+consumption rule.
+
+**Consumption rule (B10).** `spawned.json` is **process-launch provenance only and does not consume**.
+A distinct, **hash-bound** `payload_started.json` is emitted only after all pre-scientific attestations
+pass and immediately before the first scientific/model evaluation. **The scientific authorization is
+consumed if and only if `payload_started.json` exists.** Once payload starts, **every** terminal
+outcome consumes — ALGORITHM_STOP, ABORTED_BUDGET, INFRA_FAILURE, crash, or missing postcheck. A
+**pre-payload** infrastructure or attestation failure must still produce and commit an INFRA_FAILURE
+record and launch-attempt evidence, but **does not consume**, because no scientific evaluation
+occurred. Any relaunch requires **explicit author confirmation and a new launch-attempt id**; never
+automatic. Any code, protocol, environment-freeze, or payload change requires the corresponding new
+frozen provenance before relaunch. **D45 is recorded as a historical consumed authorization and is not
+reinterpreted under this prospective rule.**
+
+**Grace policy.** At the wall-clock ceiling the parent issues SIGTERM, waits 30 seconds, then SIGKILL
+if the child has not exited. A parent budget termination remains ABORTED_BUDGET under precedence rule
+(2). The parent assembles the terminal record from already-flushed evidence.
+
+**7. Payload-start boundary — a hard R2 obligation (plan §4.3).** R2 must provide a **fail-closed,
+hermetically tested** definition proving that: all pre-scientific attestations complete before the
+marker; the marker is **atomically and durably** emitted and **hash-bound to the authorization id,
+launch-attempt id, exact execution commit, and frozen artifact chain**; **no data generation, MAP
+construction, model evaluation, diagnostic evaluation, or result payload can occur before the marker**;
+the first scientific operation follows the marker **without another unrecorded phase**; **missing,
+malformed, late, or mismatched markers fail closed**; and the ordering tests use **spies/fakes and
+remain hermetic, with no scientific computation**. R1 freezes the requirement; R2 owes the proof.
+
+**8. Effective-chain provenance (plan §5.2; ballot B18 + sub).** Every terminal record carries a
+`chain` object whose members are **exactly** B18's ratified enumeration, extended by nothing: the v1.17
+canonical hash; the infrastructure-manifest hash; the protocol-manifest hash (diagnostic and result
+runs); **`environment_freeze_manifest_sha256`** (every diagnostic and result run), binding the record to
+the **static** environment freeze of §2/§5 rather than relying only on transitive coverage; the
+diagnostic-record sha256 (result runs); the amendment-manifest hash or an explicit `"none"` (result
+runs); the exact execution commit; and the authorization **id string**. The audit CI verifies each member
+against the committed artifacts.
+
+**`diagnostic_record_sha256` referent, pinned (author determination, 2026-07-15).** It is the sha256 of
+the **R3 diagnostic-record INSTANCE** governed by `m2c_diagnostic_record.schema_v1.json` (§5.1; authored
+in R3), **not** the diagnostic-kind terminal record. This follows the plan's literal terminology and
+preserves the R3-to-R5/R6 dependency. **No separate terminal-record hash is added**, because no ratified
+requirement demands one; whether a result record should additionally cite the diagnostic-kind terminal
+record is **flagged for a later author decision** and is not decided here.
+
+**Launch-attempt binding, outside the chain (author determination, 2026-07-15).** `launch_attempt_id` is
+a **required top-level field of every terminal record**, deliberately **not** a chain member: B18's chain
+enumeration is ratified and is **not silently extended**. Binding is preserved regardless, because the
+record is hashed as a whole and the ledger cites terminal records by digest, so the digest covers the
+top-level field. Under §6 a single grant may carry several launch attempts, so recording which attempt
+produced a record is necessary; doing it outside the chain keeps B18 intact.
+
+The chain's members are **exactly** that enumeration. `launch_attempt_id` is deliberately **not**
+among them (author decision, 2026-07-15, resolving the R1 stop question, option (c)): every terminal
+record instead carries `launch_attempt_id` as a **required top-level field** on every branch, where it
+remains hash-bound to the record because the ledger cites terminal records by digest and that digest
+covers every top-level field. The binding therefore holds **without silently extending the ratified
+chain**. The diagnostic-record member is the SHA-256 of the **diagnostic-record instance governed by
+`m2c_diagnostic_record.schema_v1.json`**, the R3-authored artifact §5.1 names (author decision,
+2026-07-15, following the plan's literal terminology and preserving the R3-to-R5/R6 dependency); it is
+never the digest of a terminal record. The diagnostic-kind terminal record is a distinct artifact,
+cited by digest in the ledger's `terminal_outcome` event, and admitting it as a chain member would
+require a separate author decision; no ratified requirement presently demands one.
+
+**9. The Layer-2 v2 per-node record contract (author determinations, 2026-07-15).** **R1 owns and freezes the
+complete contract; R2 owns the v2-gate implementation that emits those records and the non-self-certifying
+completeness tests comparing emitted fields against this contract.** Reconciled with §1: **Layer 2 continues to
+store the full raw per-node records; Layer 4 continues to carry only their digests** and never embeds a per-node
+record. The contract is a set of closed reusable `$defs` inside the single execution-record schema, **directly
+addressable by JSON Pointer** (`#/$defs/per_node_record`, `#/$defs/two_start_optimizer_record`,
+`#/$defs/battery_record`, `#/$defs/curvature_record`, `#/$defs/curvature_evaluation`, `#/$defs/retry`) so R2 can
+validate Layer-2 files against them. **No additional schema file is created.** The frozen nonfinite sentinel rule
+applies recursively to every numeric scalar in these definitions; scientific summary fields (§8's result payload)
+remain finite-only. R1 freezes the contract only: **no emitters, gates, serializers, or completeness walkers**.
+
+- **Serialization, not science.** These determinations fix representation. They alter **no** scientific formula,
+  frozen gate, continuation rule, retry behavior, or verdict logic.
+- **Optimizer starts versus attempts (diagnosis H-d).** The frozen gate iterates **two starts** in frozen order
+  `(warm, mode)` (`profile_integration.py:438`), and each start issues an original `minimize()` call plus, if
+  that call returns a non-zero status, a **jittered restart that overwrites the original result**
+  (`:446-456`) — discarding exactly the failed first call's telemetry. Accordingly the contract records
+  `starts` as a fixed-order two-element array, and **each start carries every call it issued**: element 0 is
+  always the original, element 1 is the jittered restart and is present if and only if the original failed,
+  never more than two (the frozen gate restarts at most once). This is what §3.2 requires — "`attempts` **per
+  start**", with the equivalence obligation demanding "v2 **additionally exposing the attempts the frozen gates
+  discard**" — and it is what recovers the H-d evidence. Ballot **B12(i)**'s "preserve … both optimizer
+  attempts" is a floor, satisfied a fortiori. The restart attempt's **jitter provenance is structurally
+  required**, and the frozen RNG seed is `RESTART_RNG_BASE + START index`, so exactly `{300, 301}` are
+  realizable.
+- **`logdet_by_h`** is a fixed-order **array** of closed `{h, logdet}` records ordered exactly by frozen
+  `HESS_H_SWEEP = (5e-4, 1e-3, 2e-3)` — never an object with float-string keys. `h` is a finite plain number
+  fixed to its sweep value; `logdet` takes the numeric-or-sentinel form. Missing, duplicate, extra, off-sweep, or
+  reordered entries are rejected.
+- **Directional evidence** is a fixed-order **array** of closed `{seed, direction, second_difference, error}`
+  records ordered exactly by frozen `DIRECTION_RNG_SEEDS = (200, 201, 202)` — never integer-string map keys.
+  `direction` is the realized canonical-axis vector actually used. Missing, duplicate, extra, or reordered seeds
+  are rejected.
+- **Warm-start identity** is a **closed tagged object**, never an opaque string or hash: exactly
+  `{"kind":"mode_u"}` or `{"kind":"accepted_node","stage_id":…,"node_index":…}`. Every per-node record carries
+  both `incoming_warm_start` and `outgoing_warm_start`, each with the tagged identity, the realized warm-start
+  vector in canonical axes, and a `selection_reason` distinguishing initial `mode_u`, accepted current node,
+  carried last accepted node, and carried `mode_u`. An accepted node's outgoing identity points at that node; on
+  optimizer failure the outgoing identity and vector equal the incoming ones. **This makes the complete
+  continuation trajectory reconstructable without self-hashes or external inference** (ballot B12(i)).
+- **Retry telemetry** is a **closed tagged union**: `{"fired": false}`, or a `fired: true` branch carrying the
+  frozen trigger (SPD/rcond conditioning failure only), the complete retry-optimizer telemetry (status, reported
+  success, message, candidate vector, objective, gradient, stationarity), **every positive-acceptance conjunct as
+  an explicit boolean**, required and observed shapes, candidate finiteness, whether the fallback fired, and the
+  fallback target (`pre_retry_optimum`). Wrong-shaped and nonfinite candidates stay representable via explicit
+  observed-shape metadata and the frozen sentinels; **no arbitrary Python repr is serialized**. The post-retry
+  evaluation is recorded in full, including when it evaluates the fallback point, and **cannot appear without a
+  fired retry**.
+- **Battery record** carries the aggregate frozen `scale`, the aggregate `pass`, and a fixed canonical-order
+  array for `ls`, `os`, `lv`; per coordinate: role, the realized FD step from the frozen rule, reference value,
+  functional value, absolute error, the frozen threshold, and pass. The aggregate pass equals the conjunction of
+  the three coordinate passes; **R2 must test that invariant**.
+- **Jitter provenance** records the frozen RNG seed (`RESTART_RNG_BASE + index`), the frozen jitter scale, the
+  base start vector, the realized jitter vector (the applied offset), and the resulting start vector, all in
+  canonical axes. **R2 must test the invariant** that the resulting vector equals base plus jitter. This is
+  provenance, **not a new optimizer decision**.
+- **Axis order.** All persisted numerical vectors, gradients, directions, Hessians, eigenvector-indexed material,
+  starts, optima, and comparison points use **canonical `(ls, os, lv)`** axes, with matrices conjugated
+  accordingly (ballot B1). The ambiguous persisted field name `nuisance_order` is **not used**. Records instead
+  carry `persisted_axis_order`, a `const` of `["ls","os","lv"]`, and `computation_storage_order`, the three E1
+  site names in their computation order — preserving the frozen source/storage provenance **without** changing
+  persisted array order. **R2 must test the permutation and matrix conjugation in both directions.**
+
+**Artifacts frozen by this addendum.** `docs/m2c_freeze/m2c_execution_record.schema_v1.json` (Draft
+2020-12; closed `oneOf` per status; per-kind standing; the §8 chain; the §9 Layer-2 v2 per-node record contract;
+element-level nonfinite sentinels; strict finite JSON; `additionalProperties: false` throughout; **no
+quantiles**),
+`docs/m2c_freeze/m2c_authorization_ledger.schema_v1.json`, and
+`docs/m2c_freeze/m2c_authorization_ledger.jsonl` (initialized with the D45 historical consumed entry).
+The **R3 diagnostic-record schema is not authored or stubbed here.**
+
+**What this addendum does NOT change or authorize.** It changes **no v1.17 value, tolerance, gate,
+reference, predicate, or algorithm**; no §6.7 gate value, arm, or candidate set; no M2bR or M2c frozen
+artifact (`gtoy_profile_freeze_v1.17.json`, `gtoy_profile_result_v1.18.schema.json`, the rev-5 package,
+drivers, committed D-entries); no §6.5/§6.6 relaxation. It sets **no numeric evidence ceiling** (§4).
+It authorizes **NO** compute, recompute, diagnostic, profile, optimizer, gradient, Hessian, curvature,
+MAP, sampler, VI, `hmc_laplace`, or Mauna access, and **no `--execute`**; the 60-month **holdout stays
+SEALED (§6.6)**. **R2 is not begun and is not authorized.** The reserved v1.18 result-instance path
+stays **ABSENT** and the **v1.18 label stays permanently unused**. Every future execution requires its
+own fresh explicit author authorization, recorded in the §6 ledger.
