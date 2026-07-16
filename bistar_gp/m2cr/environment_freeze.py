@@ -377,14 +377,22 @@ def build_preboundary_attestation_set(
     main = cache_dir / _DYLD_CACHE_BASENAME
     if not main.is_file():
         raise FileNotFoundError(main)
-    pattern = re.compile(rf"^{re.escape(_DYLD_CACHE_BASENAME)}\.(\d+)$")
-    subcaches_with_index: list[tuple[int, Path]] = []
+    # Declared subcaches carry a two-digit ordinal and, on current macOS, an
+    # optional role suffix (dylddata, dyldreadonly, dyldlinkedit).  All twelve
+    # numbered files are declared subcaches of the main arm64e cache; the
+    # bare-numeric-only spelling would see just four of them.
+    pattern = re.compile(
+        rf"^{re.escape(_DYLD_CACHE_BASENAME)}\.(\d+)(?:\.[a-z]+)?$"
+    )
+    subcaches_with_index: list[tuple[int, str, Path]] = []
     for candidate in cache_dir.iterdir():
         match = pattern.fullmatch(candidate.name)
         if match and candidate.is_file():
-            subcaches_with_index.append((int(match.group(1)), candidate))
+            subcaches_with_index.append(
+                (int(match.group(1)), candidate.name, candidate)
+            )
     subcaches = [
-        path for _, path in sorted(subcaches_with_index, key=lambda item: item[0])
+        path for _, _, path in sorted(subcaches_with_index, key=lambda item: item[:2])
     ]
     if include_hashes and len(subcaches) != declared_subcache_count:
         raise ValueError(
