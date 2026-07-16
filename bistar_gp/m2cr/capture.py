@@ -696,12 +696,17 @@ def _validated_node_records(
 
 
 def _raw_files(run_dir: Path) -> list[Path]:
+    # Plan §3.1 excludes exactly the ROOT RAW_MANIFEST.sha256 and the ROOT
+    # terminal record — not every nested file that happens to share the
+    # basename (external audit round-2 F7). Exclusion is therefore by exact
+    # relative path, so e.g. nodes/terminal_record.json stays covered.
     excluded = {RAW_MANIFEST_NAME, TERMINAL_RECORD_NAME}
     return sorted(
         (
             path
             for path in run_dir.rglob("*")
-            if path.is_file() and path.name not in excluded
+            if path.is_file()
+            and path.relative_to(run_dir).as_posix() not in excluded
         ),
         key=lambda path: path.relative_to(run_dir).as_posix(),
     )
@@ -1020,6 +1025,13 @@ if os.path.realpath(getattr(module, "__file__", "")) != os.path.realpath(
     bootstrap_path
 ):
     raise SystemExit("closure probe imported an unexpected bootstrap origin")
+# main() imports these project modules BEFORE installing the audit hook
+# (scan_pyc_candidates -> environment_freeze -> serialization, at
+# bootstrap.py:1127 which precedes sys.addaudithook at :1168), so a faithful
+# pre-boundary closure must include them (external audit round-2 F1). Import
+# them here so sys.modules reflects the real pre-hook closure, not just the
+# bootstrap module's own top-level imports.
+importlib.import_module("bistar_gp.m2cr.environment_freeze")
 closure = []
 for name, loaded in sorted(sys.modules.items()):
     if loaded is None:
@@ -1245,10 +1257,13 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     events_path = run_dir / "events.jsonl"
     pipe = parent_event_pipe(events_path)
     pipe.start()
-    atomic_write_canonical_json(bootstrap_config_path, template)
 
-    stdout_handle = open(run_dir / "stdout.txt", "wb")
-    stderr_handle = open(run_dir / "stderr.txt", "wb")
+    # The post-prelaunch setup (bootstrap-config write, stdout/stderr opens)
+    # is inside the supervised try so an ordinary failure there sets
+    # spawn_error and still assembles a terminal record, rather than escaping
+    # capture_run and leaving nothing (external audit round-2 F4b).
+    stdout_handle: Any = None
+    stderr_handle: Any = None
     process: subprocess.Popen[Any] | None = None
     spawn_error: BaseException | None = None
     capture_fault: str | None = None
@@ -1258,6 +1273,9 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     spawn_thread: threading.Thread | None = None
     spawn_confirm_errors: list[BaseException] = []
     try:
+        atomic_write_canonical_json(bootstrap_config_path, template)
+        stdout_handle = open(run_dir / "stdout.txt", "wb")
+        stderr_handle = open(run_dir / "stderr.txt", "wb")
         argv = [
             os.fspath(Path(config.interpreter_path).resolve()),
             *_expanded_flags(config.interpreter_flags, local["PYCACHE_PREFIX"]),
@@ -1334,6 +1352,8 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
             ("stdout", stdout_handle),
             ("stderr", stderr_handle),
         ):
+            if handle is None:
+                continue
             try:
                 handle.flush()
                 os.fsync(handle.fileno())
@@ -1342,6 +1362,11 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                     capture_fault = f"{label} durability flush failed: {exc}"
             finally:
                 handle.close()
+
+    # A durability failure inside the event-pump thread must void
+    # certification (external audit round-2 F4a); it is read after join().
+    if pipe.pump_error is not None and capture_fault is None:
+        capture_fault = f"event-stream pump failed: {pipe.pump_error}"
 
     if spawn_confirm_errors and capture_fault is None:
         capture_fault = (
@@ -1793,6 +1818,28 @@ def launch_config_from_freeze(
     bootstrap_path = Path(worktree_root) / "bistar_gp/m2cr/bootstrap.py"
     if not bootstrap_path.is_file():
         raise ValueError(f"derived bootstrap is missing: {bootstrap_path}")
+
+    # Bind the caller-supplied chain to the artifacts actually authenticated
+    # here, so a launch cannot pair correct frozen files with an unrelated
+    # chain (external audit round-2 F2). The static members are required to
+    # equal the authenticated digests, and the authorization id must be
+    # consistent between the config and the chain. (The execution_commit and
+    # the prospective-grant/consumption checks are resolved by the R4 launch
+    # against a real ledger and worktree HEAD, which do not exist in R2.)
+    if not isinstance(chain, Mapping):
+        raise ValueError("chain must be a mapping")
+    actual_infra_sha = sha256_file(infrastructure_path)
+    chain_bindings = {
+        "environment_freeze_manifest_sha256": actual_freeze_sha,
+        "infrastructure_manifest_sha256": actual_infra_sha,
+        "authorization_id": authorization_id,
+    }
+    for member, expected in chain_bindings.items():
+        if chain.get(member) != expected:
+            raise ValueError(
+                f"chain {member} does not match the authenticated artifact: "
+                f"expected {expected}, chain carries {chain.get(member)}"
+            )
 
     template = _load_bootstrap_template(
         Path(bootstrap_template_path).resolve(strict=True)

@@ -533,11 +533,14 @@ def _audit_raw_manifest(
                 previous = relpath
                 entries.append((digest, relpath))
             else:
+                # Exclude only the ROOT two files by exact relative path, not
+                # every nested file sharing a basename (external audit F7).
                 excluded = {_RAW_MANIFEST_NAME, _TERMINAL_RECORD_NAME}
                 actual = {
                     path.relative_to(run_dir).as_posix()
                     for path in run_dir.rglob("*")
-                    if path.is_file() and path.name not in excluded
+                    if path.is_file()
+                    and path.relative_to(run_dir).as_posix() not in excluded
                 }
                 listed = {relpath for _, relpath in entries}
                 for relpath in sorted(actual - listed):
@@ -885,7 +888,13 @@ def _ledger_authorization_state(ledger_jsonl: str) -> dict[str, Any]:
             grants[authorization_id] = event
         elif kind == "historical_authorization_record":
             historical.add(authorization_id)
-        elif kind == "authorization_consumed":
+        elif kind in ("payload_started", "authorization_consumed"):
+            # Plan §4.3: the scientific authorization is consumed iff
+            # payload_started exists, so the consumed set flips at
+            # payload_started, not only at the later derived
+            # authorization_consumed line — otherwise verify_chain's
+            # require_unconsumed check would authorize a relaunch in the crash
+            # window between the two (external audit round-2 F5).
             consumed.add(authorization_id)
     return {"grants": grants, "historical": historical, "consumed": consumed}
 

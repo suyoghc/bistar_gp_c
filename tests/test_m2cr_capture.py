@@ -861,6 +861,19 @@ def _freeze_fixture(tmp_path: Path) -> dict[str, Path]:
     }
 
 
+
+def _bound_chain(env_freeze_path, infrastructure_path):
+    """A chain whose static members match the authenticated artifacts, as
+    launch_config_from_freeze now requires (external audit round-2 F2)."""
+
+    return {
+        **CHAIN,
+        "environment_freeze_manifest_sha256": sha256_file(env_freeze_path),
+        "infrastructure_manifest_sha256": sha256_file(infrastructure_path),
+        "authorization_id": AUTHORIZATION_ID,
+    }
+
+
 def test_launch_config_from_freeze_derives_all_pins(tmp_path: Path) -> None:
     """FIX C11: hermetic derivation from tmp freeze artifacts."""
 
@@ -873,7 +886,7 @@ def test_launch_config_from_freeze_derives_all_pins(tmp_path: Path) -> None:
         authorization_id=AUTHORIZATION_ID,
         launch_attempt_id=LAUNCH_ATTEMPT_ID,
         record_kind="diagnostic",
-        chain=dict(CHAIN),
+        chain=_bound_chain(fixture["freeze"], fixture["infrastructure"]),
         bootstrap_template_path=fixture["template"],
         worktree_root=fixture["worktree"],
     )
@@ -891,7 +904,7 @@ def test_launch_config_from_freeze_derives_all_pins(tmp_path: Path) -> None:
     assert config.wall_clock_ceiling_hours == WALL_CLOCK_CEILING_HOURS == 8.0
     assert config.run_id == "m2cr-derived-test"
     assert config.record_kind == "diagnostic"
-    assert config.chain == CHAIN
+    assert config.chain == _bound_chain(fixture["freeze"], fixture["infrastructure"])
     materialized = json.loads(
         (fixture["run_dir"] / BOOTSTRAP_CONFIG_NAME).read_text()
     )
@@ -974,9 +987,9 @@ def test_committed_freeze_artifacts_derive_the_ratified_pins(
         authorization_id=AUTHORIZATION_ID,
         launch_attempt_id=LAUNCH_ATTEMPT_ID,
         record_kind="diagnostic",
-        chain=dict(CHAIN),
+        chain=_bound_chain(_COMMITTED_FREEZE, _COMMITTED_INFRASTRUCTURE),
         bootstrap_template_path=template_path,
-            worktree_root=REPOSITORY_ROOT,
+        worktree_root=REPOSITORY_ROOT,
     )
     assert config.interpreter_path == MINICONDA_PYTHON
     assert tuple(config.interpreter_flags) == FROZEN_INTERPRETER_FLAGS
@@ -997,3 +1010,49 @@ def test_committed_freeze_artifacts_derive_the_ratified_pins(
         "XDG_STATE_HOME",
     ]
     assert config.wall_clock_ceiling_hours == 8.0
+
+
+def test_launch_config_rejects_a_chain_unbound_to_the_authenticated_artifacts(
+    tmp_path: Path,
+) -> None:
+    """External audit round-2 F2: the chain's static members and authorization
+    id must equal the authenticated artifacts, not free-floating values."""
+
+    fixture = _freeze_fixture(tmp_path)
+    good = _bound_chain(fixture["freeze"], fixture["infrastructure"])
+    for member in (
+        "environment_freeze_manifest_sha256",
+        "infrastructure_manifest_sha256",
+        "authorization_id",
+    ):
+        bad = dict(good)
+        bad[member] = "0" * 64 if member != "authorization_id" else "m2cr-auth-20000101-99"
+        with pytest.raises(ValueError, match="does not match the authenticated"):
+            launch_config_from_freeze(
+                fixture["freeze"],
+                fixture["infrastructure"],
+                run_dir=fixture["run_dir"],
+                run_id="m2cr-derived-test",
+                authorization_id=AUTHORIZATION_ID,
+                launch_attempt_id=LAUNCH_ATTEMPT_ID,
+                record_kind="diagnostic",
+                chain=bad,
+                bootstrap_template_path=fixture["template"],
+                worktree_root=fixture["worktree"],
+            )
+
+
+def test_raw_files_excludes_only_the_root_two_by_relpath(tmp_path: Path) -> None:
+    """External audit round-2 F7: a nested file sharing a root artifact's
+    basename stays covered by Layer 3."""
+
+    from bistar_gp.m2cr.capture import _raw_files
+
+    (tmp_path / RAW_MANIFEST_NAME).write_text("m")
+    (tmp_path / TERMINAL_RECORD_NAME).write_text("t")
+    (tmp_path / "nodes").mkdir()
+    (tmp_path / "nodes" / TERMINAL_RECORD_NAME).write_text("nested")
+    (tmp_path / "events.jsonl").write_text("e")
+    got = {p.relative_to(tmp_path).as_posix() for p in _raw_files(tmp_path)}
+    assert "nodes/terminal_record.json" in got
+    assert RAW_MANIFEST_NAME not in got and TERMINAL_RECORD_NAME not in got

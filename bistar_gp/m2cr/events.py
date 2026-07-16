@@ -205,6 +205,11 @@ class parent_event_pipe:
         self.hello_event = threading.Event()
         self.hello_payload: dict[str, Any] | None = None
         self._thread: threading.Thread | None = None
+        # A durability failure inside the reader thread (write/flush/fsync)
+        # must reach the parent, or a truncated stream could still be
+        # certified COMPLETED (plan §4.3 "nothing vanishes"; external audit
+        # round-2 F4). The parent reads pump_error after join().
+        self.pump_error: BaseException | None = None
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._pump, daemon=True)
@@ -221,20 +226,28 @@ class parent_event_pipe:
             self._thread.join(timeout)
 
     def _pump(self) -> None:
-        with open(self._events_path, "a", encoding="utf-8") as sink:
-            with os.fdopen(self.read_fd, "r", encoding="utf-8", errors="replace") as source:
-                for line in source:
-                    line = line.rstrip("\n")
-                    if not line:
-                        continue
-                    sink.write(line + "\n")
-                    sink.flush()
-                    os.fsync(sink.fileno())
-                    if self.hello_payload is None:
-                        try:
-                            obj = json.loads(line)
-                        except json.JSONDecodeError:
-                            obj = None
-                        if isinstance(obj, dict) and obj.get("event") == "HELLO":
-                            self.hello_payload = obj
-                            self.hello_event.set()
+        try:
+            with open(self._events_path, "a", encoding="utf-8") as sink:
+                with os.fdopen(
+                    self.read_fd, "r", encoding="utf-8", errors="replace"
+                ) as source:
+                    for line in source:
+                        line = line.rstrip("\n")
+                        if not line:
+                            continue
+                        sink.write(line + "\n")
+                        sink.flush()
+                        os.fsync(sink.fileno())
+                        if self.hello_payload is None:
+                            try:
+                                obj = json.loads(line)
+                            except json.JSONDecodeError:
+                                obj = None
+                            if isinstance(obj, dict) and obj.get("event") == "HELLO":
+                                self.hello_payload = obj
+                                self.hello_event.set()
+        except BaseException as exc:  # surfaced to the parent after join()
+            self.pump_error = exc
+            # Unblock a parent waiting on HELLO so it does not hang on a dead
+            # pump; it will read pump_error and classify INFRA_FAILURE.
+            self.hello_event.set()

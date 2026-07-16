@@ -1026,3 +1026,20 @@ def test_committed_preboundary_closure_is_complete():
     )
     assert report["ok"], report["errors"]
     assert report["committed_count"] > 50
+
+
+def test_verify_chain_treats_payload_started_as_consumed():
+    """External audit round-2 F5: verify_chain(require_unconsumed) must reject
+    a grant already consumed by a payload_started, not only by the later
+    authorization_consumed line."""
+
+    from bistar_gp.m2cr.audit import _ledger_authorization_state
+
+    commit = _commit()
+    events = _valid_events()  # grant -> launch -> payload -> terminal -> consumed
+    # Prefix ending at payload_started (the crash window).
+    prefix = _jsonl(events[:3])
+    state = _ledger_authorization_state(prefix)
+    assert AUTH in state["consumed"], (
+        "payload_started must consume the authorization for verify_chain"
+    )

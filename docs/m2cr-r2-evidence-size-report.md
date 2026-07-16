@@ -37,7 +37,11 @@ dotted-stem source-backed caches, and the corrected walker reports zero true orp
 the frozen base. Second, the manifest header records the absolute path of the freeze-time detached
 worktree, which is temporary by construction: any future authorized launch runs from its own fresh
 detached worktree at its own frozen commit and therefore regenerates the freeze (new provenance per
-plan §4.3); a launch against a stale header fails closed on the missing path, never open.
+plan §4.3). The freeze-time worktree path in the header is **informational and exempt** from the
+launch-time physical-path check (plan §4.5.1 pins the CWD to the run's own worktree); the worktree
+root's identity and hashes are re-walked against the launch worktree by `(root_id, relpath, sha256)`,
+so a content-matching per-launch worktree is accepted and a content mismatch fails closed. The
+three host-global roots keep exact physical-path equality.
 
 ## Measured exemplars — per-node records and event stream (hermetic)
 

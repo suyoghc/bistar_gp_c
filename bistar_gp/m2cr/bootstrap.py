@@ -45,6 +45,18 @@ _KMP_VALUE_RE = re.compile(r"^0x[0-9a-fA-F]+-[cC][aA][fF][eE][0-9a-fA-F]{4}-.+$"
 _CF_VALUE_RE = re.compile(r"^0x[0-9a-fA-F]+:0x[0-9a-fA-F]+:0x[0-9a-fA-F]+$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _MANIFEST_ROOT_IDS = ("worktree", "stdlib", "lib-dynload", "site-packages")
+
+# The frozen native stack (plan §4.5.6): the only modules the bootstrap may
+# import BEFORE the payload-start marker. Restricting native_stack_modules to
+# this allowlist keeps a malformed template from smuggling the payload or a
+# scientific bistar_gp module into the pre-marker import path (external audit
+# round-2 F3). No bistar_gp.* module is admissible here — the frozen R2
+# modules are installed by _install_project_namespace, and any scientific
+# module (model, fit, profile_integration, e1_potential, …) must execute only
+# after the marker, through the payload boundary.
+_ALLOWED_NATIVE_STACK = frozenset(
+    {"torch", "numpy", "scipy", "gpytorch", "linear_operator"}
+)
 _MANIFEST_ENTRY_FIELDS = {"root", "relpath", "artifact_type", "sha256", "size"}
 _ARTIFACT_TYPES = {
     "source",
@@ -973,22 +985,22 @@ def _write_node_records(run_dir: Path, result: dict[str, Any]) -> list[dict[str,
 
 
 def _hashed_worktree_opens(
-    recorded: set[str], worktree_root: str
+    recorded: set[str], worktree_root: str, load_hashes: dict[str, str]
 ) -> dict[str, Any]:
-    """Hash every recorded 'open' target under the worktree; record the rest.
+    """Report worktree opens, preferring their LOAD-time hashes.
 
-    Plan §4.5.10: every worktree file loaded is hashed at exit. A target that
-    resolved under the worktree but is now missing or unhashable is not
-    silently dropped (plan §4.3: nothing vanishes); it is surfaced in
-    ``unresolved`` so an auditor sees the gap. It is not treated as a hard
-    fault because the read-audit hook fires before the open attempt, so a
-    probe-open of a nonexistent path and a genuine write-then-rename both land
-    here legitimately; a fail-closed rule would misfire on those (external
-    audit F7, recorded residual).
+    Plan §4.5.10: every worktree file loaded is hashed. ``load_hashes`` holds
+    the digest captured by the audit hook at the moment each worktree file was
+    opened, so a file read and then deleted or renamed during cleanup is still
+    hashed here rather than lost (external audit round-2 F6). An open target
+    that was never load-hashed and is now absent lands in ``unresolved``
+    (§4.3 nothing vanishes); that set is only ever populated by paths that
+    were never successfully read as a worktree file (e.g. a probe-open of a
+    nonexistent path), never by a genuine load.
     """
 
     root_real = os.path.realpath(worktree_root)
-    by_realpath: dict[str, str] = {}
+    by_realpath: dict[str, str] = dict(load_hashes)
     unresolved: set[str] = set()
     for raw in recorded:
         try:
@@ -1003,12 +1015,12 @@ def _hashed_worktree_opens(
             continue
         if common != root_real:
             continue
-        if not os.path.isfile(real):
-            unresolved.add(real)
-            continue
-        try:
-            by_realpath[real] = _sha256_file(real)
-        except OSError:
+        if os.path.isfile(real):
+            try:
+                by_realpath[real] = _sha256_file(real)
+            except OSError:
+                unresolved.add(real)
+        else:
             unresolved.add(real)
     return {
         "hashed": [
@@ -1144,11 +1156,16 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
 
     import_events: list[tuple[str, Any]] = []
     worktree_opens: set[str] = set()
+    worktree_load_hashes: dict[str, str] = {}
+    worktree_root_real = os.path.realpath(roots[0])
     canary_token = f"m2cr-audit-{os.getpid()}"
     canary_seen = False
+    hashing_in_progress = False
 
     def audit_hook(event: str, args: tuple[Any, ...]) -> None:
-        nonlocal canary_seen
+        nonlocal canary_seen, hashing_in_progress
+        if hashing_in_progress:
+            return
         if event == "import":
             module = args[0] if args else None
             filename = args[1] if len(args) > 1 else None
@@ -1158,8 +1175,29 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
             target = args[0]
             if isinstance(target, (str, bytes, os.PathLike)):
                 try:
-                    worktree_opens.add(os.fsdecode(target))
+                    raw = os.fsdecode(target)
                 except (TypeError, ValueError):
+                    return
+                worktree_opens.add(raw)
+                # Plan §4.5.10: hash a worktree file at LOAD time, not at exit,
+                # so a payload that reads a worktree data file and then deletes
+                # or renames it during cleanup cannot erase the evidence
+                # (external audit round-2 F6). The _hashing guard blocks the
+                # re-entrant 'open' the hash itself would trigger.
+                try:
+                    real = os.path.realpath(raw)
+                    if (
+                        real not in worktree_load_hashes
+                        and os.path.commonpath((worktree_root_real, real))
+                        == worktree_root_real
+                        and os.path.isfile(real)
+                    ):
+                        hashing_in_progress = True
+                        try:
+                            worktree_load_hashes[real] = _sha256_file(real)
+                        finally:
+                            hashing_in_progress = False
+                except (OSError, ValueError):
                     pass
         elif event == "m2cr.canary" and args and args[0] == canary_token:
             canary_seen = True
@@ -1187,6 +1225,20 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
     ):
         raise SystemExit(
             "attestation_fault: native_stack_modules must be a string list"
+        )
+    # Fail closed on any module outside the frozen native-stack allowlist: a
+    # bistar_gp.* module or the payload smuggled here would execute before the
+    # marker, violating the §4.3 boundary (external audit round-2 F3). The
+    # top-level module name is what matters (a submodule imports its package).
+    disallowed = [
+        name
+        for name in native_modules
+        if name.split(".", 1)[0] not in _ALLOWED_NATIVE_STACK
+    ]
+    if disallowed:
+        raise SystemExit(
+            "attestation_fault: native_stack_modules outside the frozen "
+            f"allowlist: {disallowed}"
         )
     loaded_native: dict[str, ModuleType] = {}
     for module_name in native_modules:
@@ -1363,7 +1415,9 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
     profile_check = _profile_integration_check(config)
     inventory_document = {
         "modules": inventory,
-        "worktree_opens": _hashed_worktree_opens(set(worktree_opens), roots[0]),
+        "worktree_opens": _hashed_worktree_opens(
+            set(worktree_opens), roots[0], dict(worktree_load_hashes)
+        ),
         "profile_integration_check": profile_check,
     }
     inventory_digest = _atomic_write_json(
