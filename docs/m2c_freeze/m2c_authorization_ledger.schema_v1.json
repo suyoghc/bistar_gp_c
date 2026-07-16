@@ -1,0 +1,723 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_authorization_ledger.schema_v1.json",
+  "title": "M2cR authorization ledger event, schema_version 1",
+  "description": "Validates ONE line of the canonical append-only ledger docs/m2c_freeze/m2c_authorization_ledger.jsonl. The canonical ledger is schema-validated JSONL; any authorizations.md rendering is NOT authoritative. Frozen by prereg addendum v1.19 (milestone R1). The ledger is an append-only EVENT log, never a mutable grant row: corrections append superseding events rather than rewriting history. Consumption is DERIVED from a valid payload_started event and is never a freely typed mutable status; the authorization_consumed event therefore carries no boolean, only the payload-start reference it is derived from. SCOPE LIMIT, stated honestly: this is a LINE schema. It constrains the SHAPE of each event, including the shape of a consumption event's derived_from reference. It cannot resolve cross-line references, so it cannot by itself establish that a referenced payload_started event exists or matches. Valid derivation additionally requires the mandatory R2 stream audit, which resolves derived_from against the real event stream and rejects any consumption event lacking a genuine matching payload_started event for the same authorization and launch attempt. Acyclicity: ledger events cite terminal records by DIGEST, while a terminal record's chain cites its authorization by ID STRING, never by ledger digest.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/historical_authorization_record"
+    },
+    {
+      "$ref": "#/$defs/authorization_granted"
+    },
+    {
+      "$ref": "#/$defs/launch_attempt_started"
+    },
+    {
+      "$ref": "#/$defs/pre_payload_terminal_outcome"
+    },
+    {
+      "$ref": "#/$defs/payload_started"
+    },
+    {
+      "$ref": "#/$defs/terminal_outcome"
+    },
+    {
+      "$ref": "#/$defs/authorization_consumed"
+    },
+    {
+      "$ref": "#/$defs/superseding_correction"
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "git_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^m2cr-ev-[0-9]{6}$"
+    },
+    "authorization_id": {
+      "type": "string",
+      "pattern": "^m2cr-auth-[0-9]{8}-[0-9]{2}$"
+    },
+    "launch_attempt_id": {
+      "type": "string",
+      "pattern": "^m2cr-launch-[0-9]{8}-[0-9]{2}$"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "record_kind": {
+      "type": "string",
+      "enum": [
+        "result",
+        "diagnostic"
+      ]
+    },
+    "terminal_status": {
+      "type": "string",
+      "enum": [
+        "COMPLETED",
+        "ALGORITHM_STOP",
+        "ABORTED_BUDGET",
+        "INFRA_FAILURE",
+        "NOT_STARTED"
+      ]
+    },
+    "historical_note": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Present only on historical entries predating the prospective consumption rule. Its presence marks the entry as recorded by fiat rather than adjudicated under the payload-start predicate."
+    },
+    "historical_authorization_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event",
+        "event_id",
+        "authorization_id",
+        "date",
+        "disposition",
+        "adjudicated_under_prospective_rule",
+        "basis",
+        "attempt_outcome",
+        "scientific_result",
+        "evidence_location"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "event": {
+          "const": "historical_authorization_record"
+        },
+        "event_id": {
+          "$ref": "#/$defs/event_id"
+        },
+        "authorization_id": {
+          "$ref": "#/$defs/authorization_id"
+        },
+        "date": {
+          "$ref": "#/$defs/date"
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "CONSUMED"
+          ],
+          "description": "Recorded by author fiat as part of the originating D-entry disposition."
+        },
+        "adjudicated_under_prospective_rule": {
+          "const": false,
+          "description": "Frozen false. This grant predates payload_started.json and therefore CANNOT be adjudicated under the prospective payload-start predicate. Recording it here neither validates nor reinterprets it; the audit CI must exclude historical records from prospective consumption derivation."
+        },
+        "basis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attempt_outcome": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scientific_result": {
+          "const": false,
+          "description": "Frozen false: the historical attempt produced no scientific result."
+        },
+        "evidence_location": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_carries_certification_weight": {
+          "const": false,
+          "description": "runs/ carries no certification weight."
+        },
+        "historical_note": {
+          "$ref": "#/$defs/historical_note"
+        }
+      },
+      "description": "A grant that predates the prospective consumption rule, recorded for completeness of the ledger. It is fenced off from the payload-start derivation by construction: there is no payload_started_sha256 to derive from, and adjudicated_under_prospective_rule is frozen false."
+    },
+    "authorization_granted": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "event",
+            "event_id",
+            "authorization_id",
+            "date",
+            "scope",
+            "frozen_chain"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "event": {
+              "const": "authorization_granted"
+            },
+            "event_id": {
+              "$ref": "#/$defs/event_id"
+            },
+            "authorization_id": {
+              "$ref": "#/$defs/authorization_id"
+            },
+            "date": {
+              "$ref": "#/$defs/date"
+            },
+            "scope": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "milestone",
+                "record_kind",
+                "one_shot"
+              ],
+              "properties": {
+                "milestone": {
+                  "const": "R4"
+                },
+                "record_kind": {
+                  "const": "diagnostic"
+                },
+                "one_shot": {
+                  "type": "boolean"
+                }
+              },
+              "description": "R4 is diagnostic execution. The milestone and the record kind are bound to each other; an R4 grant for a result-kind run is not representable."
+            },
+            "frozen_chain": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "v117_canonical_sha256",
+                "infrastructure_manifest_sha256",
+                "protocol_manifest_sha256",
+                "environment_freeze_manifest_sha256",
+                "execution_commit"
+              ],
+              "properties": {
+                "v117_canonical_sha256": {
+                  "const": "65381bc774e894dd9aaf2207cadd9cfa2f2735dafceff4bb39492086a9e522e2"
+                },
+                "infrastructure_manifest_sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "protocol_manifest_sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "environment_freeze_manifest_sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "execution_commit": {
+                  "$ref": "#/$defs/git_commit"
+                }
+              },
+              "description": "The exact frozen commit and artifact chain applicable to a diagnostic grant. A diagnostic grant carries no diagnostic_record_sha256 (this run produces it) and no amendment member."
+            },
+            "historical_note": {
+              "$ref": "#/$defs/historical_note"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "event",
+            "event_id",
+            "authorization_id",
+            "date",
+            "scope",
+            "frozen_chain"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "event": {
+              "const": "authorization_granted"
+            },
+            "event_id": {
+              "$ref": "#/$defs/event_id"
+            },
+            "authorization_id": {
+              "$ref": "#/$defs/authorization_id"
+            },
+            "date": {
+              "$ref": "#/$defs/date"
+            },
+            "scope": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "milestone",
+                "record_kind",
+                "one_shot"
+              ],
+              "properties": {
+                "milestone": {
+                  "const": "R6"
+                },
+                "record_kind": {
+                  "const": "result"
+                },
+                "one_shot": {
+                  "type": "boolean"
+                }
+              },
+              "description": "R6 is result execution, reachable only through R5."
+            },
+            "frozen_chain": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "v117_canonical_sha256",
+                "infrastructure_manifest_sha256",
+                "protocol_manifest_sha256",
+                "environment_freeze_manifest_sha256",
+                "diagnostic_record_sha256",
+                "amendment_manifest",
+                "execution_commit"
+              ],
+              "properties": {
+                "v117_canonical_sha256": {
+                  "const": "65381bc774e894dd9aaf2207cadd9cfa2f2735dafceff4bb39492086a9e522e2"
+                },
+                "infrastructure_manifest_sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "protocol_manifest_sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "environment_freeze_manifest_sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "diagnostic_record_sha256": {
+                  "$ref": "#/$defs/sha256",
+                  "description": "The SHA-256 of the diagnostic-record instance governed by m2c_diagnostic_record.schema_v1.json (the R3-authored artifact plan §5.1 names), the same member the result record's chain carries. Never the digest of a terminal record."
+                },
+                "amendment_manifest": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/sha256"
+                    },
+                    {
+                      "const": "none"
+                    }
+                  ]
+                },
+                "execution_commit": {
+                  "$ref": "#/$defs/git_commit"
+                }
+              },
+              "description": "The exact frozen commit and artifact chain applicable to a result grant, including the diagnostic record it rests on and the amendment manifest or an explicit \"none\"."
+            },
+            "historical_note": {
+              "$ref": "#/$defs/historical_note"
+            }
+          }
+        }
+      ],
+      "description": "A prospective grant. Closed into R4-diagnostic and R6-result variants: the milestone and record kind are bound to each other, and each variant requires the complete effective chain applicable to it."
+    },
+    "launch_attempt_started": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event",
+        "event_id",
+        "authorization_id",
+        "launch_attempt_id",
+        "date"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "event": {
+          "const": "launch_attempt_started"
+        },
+        "event_id": {
+          "$ref": "#/$defs/event_id"
+        },
+        "authorization_id": {
+          "$ref": "#/$defs/authorization_id"
+        },
+        "launch_attempt_id": {
+          "$ref": "#/$defs/launch_attempt_id"
+        },
+        "date": {
+          "$ref": "#/$defs/date"
+        },
+        "prelaunch_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "spawned_sha256": {
+          "$ref": "#/$defs/sha256",
+          "description": "Process-launch provenance only. Its presence does NOT consume the scientific authorization."
+        },
+        "historical_note": {
+          "$ref": "#/$defs/historical_note"
+        }
+      }
+    },
+    "pre_payload_terminal_outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event",
+        "event_id",
+        "authorization_id",
+        "launch_attempt_id",
+        "date",
+        "status",
+        "terminal_record_sha256",
+        "consumes"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "event": {
+          "const": "pre_payload_terminal_outcome"
+        },
+        "event_id": {
+          "$ref": "#/$defs/event_id"
+        },
+        "authorization_id": {
+          "$ref": "#/$defs/authorization_id"
+        },
+        "launch_attempt_id": {
+          "$ref": "#/$defs/launch_attempt_id"
+        },
+        "date": {
+          "$ref": "#/$defs/date"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "INFRA_FAILURE",
+            "NOT_STARTED"
+          ],
+          "description": "A pre-payload outcome can only be non-scientific: no scientific evaluation occurred."
+        },
+        "terminal_record_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "consumes": {
+          "const": false,
+          "description": "Frozen: a pre-payload failure commits its INFRA_FAILURE record and launch-attempt evidence but does NOT consume the scientific authorization. Any relaunch requires explicit author confirmation and a new launch_attempt_id, and any code, protocol, environment-freeze, or payload change requires new frozen provenance first."
+        },
+        "historical_note": {
+          "$ref": "#/$defs/historical_note"
+        }
+      }
+    },
+    "payload_started": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event",
+        "event_id",
+        "authorization_id",
+        "launch_attempt_id",
+        "date",
+        "payload_started_sha256",
+        "bound_to"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "event": {
+          "const": "payload_started"
+        },
+        "event_id": {
+          "$ref": "#/$defs/event_id"
+        },
+        "authorization_id": {
+          "$ref": "#/$defs/authorization_id"
+        },
+        "launch_attempt_id": {
+          "$ref": "#/$defs/launch_attempt_id"
+        },
+        "date": {
+          "$ref": "#/$defs/date"
+        },
+        "payload_started_sha256": {
+          "$ref": "#/$defs/sha256",
+          "description": "Digest of payload_started.json, emitted atomically and durably only after all pre-scientific attestations pass and immediately before the first scientific/model evaluation. This is the sole event from which consumption may be derived."
+        },
+        "bound_to": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "authorization_id",
+            "launch_attempt_id",
+            "execution_commit",
+            "environment_freeze_manifest_sha256"
+          ],
+          "properties": {
+            "authorization_id": {
+              "$ref": "#/$defs/authorization_id"
+            },
+            "launch_attempt_id": {
+              "$ref": "#/$defs/launch_attempt_id"
+            },
+            "execution_commit": {
+              "$ref": "#/$defs/git_commit"
+            },
+            "environment_freeze_manifest_sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "description": "The marker is hash-bound to the authorization id, launch-attempt id, exact execution commit, and frozen artifact chain. Missing, malformed, late, or mismatched markers fail closed. R2 owes a fail-closed, hermetically tested proof of this ordering, using spies and fakes with no scientific computation."
+        },
+        "historical_note": {
+          "$ref": "#/$defs/historical_note"
+        }
+      }
+    },
+    "terminal_outcome": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "event",
+            "event_id",
+            "authorization_id",
+            "launch_attempt_id",
+            "date",
+            "record_kind",
+            "status",
+            "terminal_record_sha256",
+            "raw_manifest_sha256"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "event": {
+              "const": "terminal_outcome"
+            },
+            "event_id": {
+              "$ref": "#/$defs/event_id"
+            },
+            "authorization_id": {
+              "$ref": "#/$defs/authorization_id"
+            },
+            "launch_attempt_id": {
+              "$ref": "#/$defs/launch_attempt_id"
+            },
+            "date": {
+              "$ref": "#/$defs/date"
+            },
+            "record_kind": {
+              "const": "result"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "COMPLETED",
+                "ALGORITHM_STOP",
+                "ABORTED_BUDGET",
+                "INFRA_FAILURE"
+              ],
+              "description": "Result-kind runs may reach ALGORITHM_STOP. NOT_STARTED is excluded: it means no confirmed spawn and has its own pre_payload_terminal_outcome channel."
+            },
+            "terminal_record_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "raw_manifest_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "evidence_dir": {
+              "type": "string",
+              "pattern": "^docs/m2c_evidence/[a-z0-9][a-z0-9_-]{2,63}/$"
+            },
+            "historical_note": {
+              "$ref": "#/$defs/historical_note"
+            }
+          },
+          "description": "A post-payload-start terminal outcome. Once payload has started, EVERY terminal outcome consumes: COMPLETED, ALGORITHM_STOP, ABORTED_BUDGET, INFRA_FAILURE, crash, or missing postcheck."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "event",
+            "event_id",
+            "authorization_id",
+            "launch_attempt_id",
+            "date",
+            "record_kind",
+            "status",
+            "terminal_record_sha256",
+            "raw_manifest_sha256"
+          ],
+          "properties": {
+            "schema_version": {
+              "const": 1
+            },
+            "event": {
+              "const": "terminal_outcome"
+            },
+            "event_id": {
+              "$ref": "#/$defs/event_id"
+            },
+            "authorization_id": {
+              "$ref": "#/$defs/authorization_id"
+            },
+            "launch_attempt_id": {
+              "$ref": "#/$defs/launch_attempt_id"
+            },
+            "date": {
+              "$ref": "#/$defs/date"
+            },
+            "record_kind": {
+              "const": "diagnostic"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "COMPLETED",
+                "ABORTED_BUDGET",
+                "INFRA_FAILURE"
+              ],
+              "description": "ALGORITHM_STOP is excluded: ratified B2 makes it reachable only by result-kind runs, because the diagnostic probe loop has no verdict gates. NOT_STARTED is excluded as above."
+            },
+            "terminal_record_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "raw_manifest_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "evidence_dir": {
+              "type": "string",
+              "pattern": "^docs/m2c_evidence/[a-z0-9][a-z0-9_-]{2,63}/$"
+            },
+            "historical_note": {
+              "$ref": "#/$defs/historical_note"
+            }
+          },
+          "description": "A post-payload-start terminal outcome. Once payload has started, EVERY terminal outcome consumes: COMPLETED, ALGORITHM_STOP, ABORTED_BUDGET, INFRA_FAILURE, crash, or missing postcheck."
+        }
+      ],
+      "description": "A post-payload-start terminal outcome, split by record kind so the ratified result-kind-only reachability of ALGORITHM_STOP holds in the ledger as well as in the execution record. Once payload has started, EVERY terminal outcome consumes."
+    },
+    "authorization_consumed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event",
+        "event_id",
+        "authorization_id",
+        "launch_attempt_id",
+        "date",
+        "derived_from"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "event": {
+          "const": "authorization_consumed"
+        },
+        "event_id": {
+          "$ref": "#/$defs/event_id"
+        },
+        "authorization_id": {
+          "$ref": "#/$defs/authorization_id"
+        },
+        "launch_attempt_id": {
+          "$ref": "#/$defs/launch_attempt_id"
+        },
+        "date": {
+          "$ref": "#/$defs/date"
+        },
+        "derived_from": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "event",
+            "event_id",
+            "payload_started_sha256"
+          ],
+          "properties": {
+            "event": {
+              "const": "payload_started"
+            },
+            "event_id": {
+              "$ref": "#/$defs/event_id"
+            },
+            "payload_started_sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "description": "Consumption is DERIVED only from a valid payload-start event. There is deliberately no boolean status field to type. This line schema constrains the SHAPE of the reference only; establishing that the referenced payload_started event actually exists and matches is the mandatory R2 stream audit's job, which recomputes consumption from the event stream and rejects any authorization_consumed event whose derived_from does not resolve to a real, matching payload_started event for the same authorization and launch attempt. Shape validity here is necessary, not sufficient."
+        },
+        "historical_note": {
+          "$ref": "#/$defs/historical_note"
+        }
+      }
+    },
+    "superseding_correction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event",
+        "event_id",
+        "date",
+        "supersedes_event_id",
+        "reason",
+        "correction"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "event": {
+          "const": "superseding_correction"
+        },
+        "event_id": {
+          "$ref": "#/$defs/event_id"
+        },
+        "date": {
+          "$ref": "#/$defs/date"
+        },
+        "supersedes_event_id": {
+          "$ref": "#/$defs/event_id"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "correction": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "Corrections append superseding events rather than rewriting history. The superseded event stays in the log."
+    }
+  }
+}

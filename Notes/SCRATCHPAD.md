@@ -61,7 +61,7 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   pending a separately-authorized, preregistered, read-only diagnostic protocol plus a fresh `--execute`
   (HANDOFF Q6). Full record: **D45**.
 
-### M2cR remediation — BALLOT CLOSED; durable plan MATERIALIZED; R1 NOT authorized (branch `docs/d46-m2cr-ballot-close` off `origin/main` 9b786f8; D46, 2026-07-15)
+### M2cR remediation — BALLOT CLOSED; durable plan MATERIALIZED; R1 EXECUTED (taxonomy freeze); R2 + all execution UNAUTHORIZED (branch `docs/d46-m2cr-ballot-close` off `origin/main` 9b786f8; D46 + D47, 2026-07-15)
 
 - **BALLOT CLOSED.** Every item of the post-D45 remediation ballot (B1–B18, incl. all B10/B12/B14/B15/B18
   sub-items) is resolved in the author's own words. **Nothing pending.** B11 struck by the plan; the D23
@@ -82,19 +82,52 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   **Codex (gpt-5.6-sol, xHigh)** and **Fable**, both read-only, both **APPROVE** after conforming fixes (both
   opened at REVISE; the shared material finding was REVISION 4's own §3.1-vs-§7 schema-authorship
   contradiction).
-- **R1 IS STILL NOT AUTHORIZED.** Satisfying the preconditions removes the §12 handoff's own gate; it does not
-  grant R1. Beginning R1 remains a separate explicit author act. Nothing here authorizes implementation,
-  schemas, addenda, tests, execution, or any scientific computation.
+- **R1 EXECUTED (D47, 2026-07-15)** — documentation and schema only, on explicit author authorization; its
+  artifacts are frozen in the commit that carries D47, and the **Draft PR follows that commit**. Artifacts:
+  prereg addendum **`v1.19`** (not v1.18: that label is permanently burned by the D45
+  invariant, so the gap is mandated, not created; v1.16 was always the M2bR run label, never an addendum —
+  sequence v1.15 → v1.17 → **v1.19**); `docs/m2c_freeze/m2c_execution_record.schema_v1.json`;
+  `docs/m2c_freeze/m2c_authorization_ledger.schema_v1.json` + `…_ledger.jsonl` (JSONL authoritative; no
+  Markdown rendering added). The addendum contains **no numeric evidence ceiling** — all deferred to R2 plus a
+  versioned pre-execution addendum before R4.
+- **Two design points worth remembering.** (1) Consumption has **no boolean to type**:
+  `authorization_consumed` requires a `derived_from` reference to a `payload_started` event, and
+  `pre_payload_terminal_outcome.consumes` is frozen `false`. **Scope limit, stated honestly:** the line schema
+  constrains the reference **shape** only — it cannot resolve cross-line references, so the mandatory **R2 stream
+  audit** must resolve `derived_from` against the real event stream. Shape validity is necessary, not
+  sufficient. (2) D45 could not be expressed through the prospective predicate at all (it predates
+  `payload_started.json`), so it is fenced as a `historical_authorization_record` with
+  `adjudicated_under_prospective_rule` frozen **false** — recorded, never reinterpreted.
+- **Two author decisions (2026-07-15) resolved the R1 stop questions.** (1) `launch_attempt_id` is NOT a B18
+  chain member (option (c)): both chain `$defs` are B18-exact, and every record branch requires it **top-level**
+  instead, where the ledger's record digests bind it without extending the ratified chain. (2)
+  `diagnostic_record_sha256` names the SHA-256 of the **diagnostic-record instance governed by
+  `m2c_diagnostic_record.schema_v1.json`** (R3-authored; plan §5.1's literal terminology), never a
+  terminal-record digest; no additional terminal-record hash member added — flagged as a future author decision
+  if ever wanted. Addendum §8, both schemas, and all validation fixtures aligned.
+- **Verification (permitted set only, re-run after the author decisions):** v1.17 canonical hash verified
+  `65381bc7…` **exact**, by replicating the frozen canonicalization stdlib-only **without importing
+  `bistar_gp`**; rev-5 `c3e9db66…` exact; plan byte-frozen at `51b8ec60…` exact; v1.18 instance ABSENT;
+  `origin/main` 9b786f8 an ancestor of HEAD. Hand-written instances: original suite 6 valid / 12 rejected
+  (execution record), 9 valid (incl. the committed D45 line) / 8 rejected (ledger); consolidated adversarial
+  battery **78/78 probes as expected** (incl. the option-(c) cases, rev-5 cap conformance both directions,
+  ALGORITHM_STOP-unbalanced rejected, terminal_outcome-NOT_STARTED rejected); regression suite for the six
+  Codex findings passes; `allow_nan=False` rejects raw `NaN`; every `const` digest is v1.17 only. **The test
+  suite was NOT run** — prohibited in R1; the recorded 442 passed / 1 skipped baseline stands.
+- **R2 AND ALL EXECUTION REMAIN UNAUTHORIZED.** A Draft PR **follows the R1 commit** and must **not** be marked
+  Ready or merged; R1 stops there. No `--execute` exists.
+  **NEXT (author's call, none granted):** review + merge the R1 PR; then R2 (hermetic infrastructure; full suite
+  runs there; still no real-model evaluation), which owes the payload-boundary proof, the evidence-size
+  measurement feeding the pre-R4 ceilings addendum, and the environment-freeze manifest.
 - **Headline reversals worth remembering:** the proposed `python -I` snapshot is **disqualified** (`-I` implies
   `-E`, so `PYTHONHASHSEED` is ignored and the seed never takes effect while `os.environ` still reads `"0"`);
   the `.venv` is **not** the scientific environment (it holds only `pip`; the stack is the Miniconda base);
   `MKL_NUM_THREADS` is **operative** via ATen precedence with no MKL runtime while `OPENBLAS_NUM_THREADS` is
   inert; `os.environ` **desynchronizes** from libc; dist-info RECORD is **not** a completeness manifest and lists
   `.pyc` with blank hashes; consumption is keyed to a hash-bound `payload_started.json`, **not** `spawned.json`.
-- **NEXT (author's call, none granted):** decide whether the conformed plan gets its independent review; then R1
-  (documentation + schema only, no executable tests) as a separate authorization. Deferred/gated downstream:
-  the B15(ii) pre-execution ceilings addendum before R4; separate R5 ratification of any row-8 amendment; a
-  future ballot for any row-7 estimator amendment; fresh `--execute` for every execution.
+- **Deferred/gated downstream (none granted):** the B15(ii) pre-execution ceilings addendum before R4; separate
+  R5 ratification of any row-8 amendment; a future ballot for any row-7 estimator amendment; fresh `--execute`
+  for every execution.
 - **D45 is untouched and permanently UNVALIDATED_ATTEMPT.** The new consumption rule is prospective; D45 stays a
   historical CONSUMED entry. The v1.18 label and result-instance path stay permanently unused.
 

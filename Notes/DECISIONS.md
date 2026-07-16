@@ -3615,3 +3615,198 @@ statement in D46 stands unchanged.
   **UNVALIDATED_ATTEMPT**. No implementation, schema, addendum, prereg edit, execution, or scientific,
   diagnostic, profile, optimizer, gradient, Hessian, MAP, sampler, Mauna, or holdout computation was performed.
   Not pushed; no PR opened.
+
+## D47: M2cR milestone R1 — taxonomy freeze: prereg addendum v1.19, execution-record schema, canonical JSONL authorization ledger; documentation/schema only; R2 and all execution remain UNAUTHORIZED — 2026-07-15
+
+**Problem:** D46 closed the M2cR ballot and materialized the conformed plan
+(`docs/plan-post-d45-m2cr.md`, authoritative sha256 `51b8ec60…e1aefbf7`); its Update recorded the author
+determination that both R1 preconditions are SATISFIED on the layered review record. The ratified taxonomy,
+artifact graph, environment snapshot, retention policy, consumption semantics, and labeling rule existed only as
+plan text: nothing was preregistered, and the record schema and authorization ledger the whole arc depends on
+did not exist. R1 is the milestone that freezes those as durable artifacts, under a hard prohibition on any
+executable test or scientific computation.
+
+**Decision:** Execute R1 exactly — documentation and schema design only, on explicit author authorization.
+
+- **Prereg addendum `v1.19`** appended to `docs/prereg-addenda-d19.md`, freezing: the acyclic artifact graph and
+  write order (with R1/R2/R3 Layer-0 authorship and the ledger-acyclicity rule); the expanded Layer-0 v5
+  environment-freeze artifacts; the **aggregating environment-freeze manifest** that gives
+  `environment_freeze_manifest_sha256` a concrete referent; the five terminal statuses, per-kind standing,
+  precedence table, and spawn-boundary mechanism; the committed evidence-retention policy and overflow
+  semantics; the **explicit deferral of every numeric evidence ceiling** to R2 measurement/derivation plus a
+  separate versioned pre-execution addendum before R4; B14-host and B14-stack v5 exactly as ratified; the
+  authorization ledger and B10 consumption semantics; the enforceable `payload_started.json` boundary as a hard
+  R2 obligation; and the B3 labeling rule. **The addendum contains no numeric evidence-size ceiling of any kind**
+  (verified by inspection).
+- **Numbering (B3): `v1.19`, not v1.18.** Two facts fix it. v1.18 was pre-reserved by v1.17 for the post-compute
+  RESULT freeze, and D45 makes both that label and the reserved instance path permanently unused, so the number
+  is **burned** and the gap at v1.18 is mandated rather than created here. v1.16 remains the M2bR run/protocol
+  label, never an addendum (v1.17's own numbering note). Sequence: v1.15 → v1.17 → **v1.19**. This is exactly the
+  defect B3 exists to prevent prospectively — a pre-reserved number for a conditional artifact that never
+  happens leaves a gap — and it is also the **v1.16 precedent** B3 cited when ratifying that run records stay
+  outside the P4 sequence.
+- **`docs/m2c_freeze/m2c_execution_record.schema_v1.json`** created: Draft 2020-12; five closed `oneOf` branches
+  (COMPLETED / ALGORITHM_STOP / ABORTED_BUDGET / INFRA_FAILURE / NOT_STARTED); per-kind standing with
+  diagnostic-kind `not_a_result: true` as a `const`; **ALGORITHM_STOP structurally reachable only by result-kind
+  runs**; the B18 chain including `environment_freeze_manifest_sha256`; frozen element-level nonfinite sentinels
+  wherever the frozen code can legitimately emit `-inf`/`+inf`/`nan`; scientific summary fields constrained to
+  plain finite numbers; `additionalProperties: false` on every nested object; **no quantiles**; the superseded
+  `undetermined` stage status replaced by explicit statuses. The v1.17 canonical hash appears as a `const`, which
+  is acyclic because v1.17 references no schema. **The R3 diagnostic-record schema is not authored or stubbed.**
+- **Two author decisions (2026-07-15) resolved the R1 stop questions.** (i) `launch_attempt_id` is **not** a
+  member of the B18 chain (stop question 1, option (c)): both chain `$defs` carry exactly the B18 enumeration,
+  and every record branch instead requires `launch_attempt_id` as a **top-level field**, where it stays
+  hash-bound to the record because the ledger cites terminal records by digest and that digest covers every
+  top-level field — the binding holds without silently extending the ratified chain. (ii)
+  `diagnostic_record_sha256` names the SHA-256 of the **diagnostic-record instance governed by
+  `m2c_diagnostic_record.schema_v1.json`**, the R3-authored artifact plan §5.1 names (stop question 2, following
+  the plan's literal terminology and preserving the R3-to-R5/R6 dependency), never the digest of a terminal
+  record; the diagnostic-kind terminal record stays cited by digest in the ledger's `terminal_outcome` event.
+  **No additional terminal-record hash member was added to the chain**: no ratified requirement demands one, and
+  admitting one is flagged as requiring a future author decision. Addendum §8, both schemas, and every
+  hand-written validation fixture were aligned to these decisions.
+- **Canonical authorization ledger** created: `docs/m2c_freeze/m2c_authorization_ledger.schema_v1.json` plus
+  `docs/m2c_freeze/m2c_authorization_ledger.jsonl`. JSONL is authoritative; no Markdown rendering was added
+  (it would have been non-authoritative and is not currently useful). Append-only events: grant, launch-attempt
+  start, pre-payload terminal outcome, payload start, terminal outcome, consumption, superseding correction.
+  Grants are closed into **R4-diagnostic** and **R6-result** variants, each binding the complete effective chain
+  applicable to it, so a milestone/kind mismatch or a partially-specified chain is not representable.
+  **Consumption has no boolean status to type**: `authorization_consumed` requires a `derived_from` block
+  referencing a `payload_started` event, and `pre_payload_terminal_outcome.consumes` is frozen `false`. **Scope
+  limit, stated honestly:** this is a *line* schema. It constrains the **shape** of the reference; it cannot
+  resolve cross-line references, so it cannot by itself establish that the referenced payload-start event exists
+  or matches. Valid derivation additionally requires the mandatory **R2 stream audit**, which resolves
+  `derived_from` against the real event stream. Shape validity is necessary, not sufficient.
+- **Two author determinations taken during R1 review (2026-07-15), both flagged rather than assumed.** (1)
+  **`launch_attempt_id` stays OUT of the B18 chain.** An earlier draft added it as a chain member, silently
+  extending a **ratified** ballot item; the reviewer caught it. It is now a **required top-level record field**
+  on all nine branches, so the binding survives (the record is hashed as a whole and the ledger cites records by
+  digest) while B18's enumeration is untouched. The schema now **rejects** a record that smuggles it into the
+  chain. (2) **`diagnostic_record_sha256` names the R3 diagnostic-record INSTANCE** governed by
+  `m2c_diagnostic_record.schema_v1.json`, not the diagnostic-kind terminal record — the plan's literal
+  terminology (§5.1/§5.2), preserving the R3-to-R5/R6 dependency. **No separate terminal-record hash was added**,
+  since no ratified requirement demands one; whether a result record should additionally cite the diagnostic-kind
+  terminal record is **flagged for a later author decision**, not decided here.
+- **R1 owns the Layer-2 v2 per-node record contract (author scope decision, option (a)).** R1 freezes the
+  contract; **R2** owns the v2-gate implementation that emits those records and the non-self-certifying
+  completeness tests comparing emitted fields against it. Reconciled with the artifact graph: **Layer 2 still
+  stores the full raw per-node records; Layer 4 still carries only their digests.** The contract is closed
+  reusable `$defs` inside the single execution-record schema, **JSON-Pointer addressable**
+  (`#/$defs/per_node_record`, `…/two_start_optimizer_record`, `…/battery_record`, `…/curvature_record`,
+  `…/curvature_evaluation`, `…/retry`) so R2 validates Layer-2 files directly against it. **No second schema
+  file.** Sentinels apply recursively to every numeric scalar there; summary fields stay finite-only. **No
+  emitters, gates, serializers, or completeness walkers were written.**
+- **Seven serialization questions the contract could not answer were escalated, not guessed.** Deriving the
+  contract from the frozen source resolved most of it verbatim, but seven points had no frozen referent. Rather
+  than invent semantics into a preregistration, they were put to the author and decided (2026-07-15), then
+  implemented: `logdet_by_h` as a fixed-order array ordered by frozen `HESS_H_SWEEP`, not float-string keys;
+  directional evidence as a fixed-order array ordered by frozen `DIRECTION_RNG_SEEDS`, not integer-string keys;
+  warm-start identity as a **closed tagged object** (`mode_u` / `accepted_node`) with realized vector and
+  `selection_reason`, making the B12(i) trajectory reconstructable without self-hashes; retry telemetry as a
+  **closed tagged union** carrying every acceptance conjunct as an explicit boolean plus explicit observed-shape
+  metadata, so malformed candidates are representable without a Python repr; the battery record with aggregate
+  `scale`/`pass` and a fixed `(ls, os, lv)` array; jitter provenance recording seed, scale, base, applied offset,
+  and result; and axis order fixed to canonical `(ls, os, lv)` persistence with `persisted_axis_order` +
+  `computation_storage_order` replacing the ambiguous `nuisance_order`. All are **serialization decisions only**:
+  no scientific formula, frozen gate, continuation rule, retry behavior, or verdict logic changed.
+- **A second draft defect caught in review: the contract could not hold the very evidence it exists for.** An
+  earlier draft recorded `attempts` as a flat two-element array, conflating the frozen gate's **two starts**
+  with its **calls**. But the frozen loop runs two starts `(warm, mode)` and each start may issue a jittered
+  restart that **overwrites** the original result (`profile_integration.py:438`, `:446-456`) — and that
+  discarded first call is **diagnosis H-d**, the exact defect the v2 optimizer exists to cure. Plan §3.2
+  requires "`attempts` **per start**" and its equivalence obligation requires "v2 **additionally exposing the
+  attempts the frozen gates discard**"; the draft made them unrepresentable. Corrected to fixed-order `starts`,
+  each carrying every call it issued (original at index 0, restart at index 1 iff the original failed, never
+  more than two), with jitter provenance structurally required on the restart. B12(i)'s "preserve … both
+  optimizer attempts" is a floor and is satisfied a fortiori. The two reviewers **disagreed** here — one read
+  B12(i) as capping attempts at two and would have kept the flat array; the other called for the restructure.
+  The plan's own equivalence sentence is decisive, so the restructure was applied as conforming and the
+  disagreement is recorded here rather than buried.
+- **A conformance defect against FROZEN rev-5, caught in review and corrected.** An earlier draft of the stage
+  enum froze `cap_1e-3/cap_1e-2/cap_1e-1` as the lower diagnostic cap stages. Rev-5 (pinned `c3e9db66…`, and
+  untouchable) states them as **upper caps 10/100/1000; lower caps 1e-4/1e-5/1e-6**. The draft therefore named
+  three stages the algorithm never evaluates while making the three real ones unrepresentable — and `cap_1e-1`
+  (0.1) falls **inside** the reportable band region (edges 0.15/0.30). A conforming run's stage records would
+  have failed validation and routed to INFRA_FAILURE. Corrected to `cap_1e-6/cap_1e-5/cap_1e-4` plus the upper
+  trio, with conformance cases pinning the enum to rev-5 in **both** directions. This changed no scientific
+  decision; it corrected a misstatement of one.
+- **D45 recorded without reinterpretation.** The prospective predicate requires `payload_started.json`, which
+  D45 predates and cannot have, so D45 **cannot** be expressed through it. Rather than bend the predicate, a
+  distinct `historical_authorization_record` event fences it: `adjudicated_under_prospective_rule` is frozen
+  **`false`**, `scientific_result` is frozen **`false`**, and the audit CI must exclude historical records from
+  prospective consumption derivation. D45 stays permanently an **UNVALIDATED_ATTEMPT**; its evidence at
+  `runs/m2c_v118_stop_20260714/` is recorded as carrying **no certification weight**.
+- **Verification performed (permitted set only).** All four §12 preconditions verified, in §12's own
+  enumeration: (1) the confirmed **D46 ballot-resolution entry present** in `Notes/DECISIONS.md`; (2)
+  `origin/main` = 9b786f8 and an ancestor of HEAD (no rebase needed); (3) the v1.18 result instance **ABSENT**;
+  (4) the rev-5 **and** v1.17 hashes verify unchanged — rev-5 = `c3e9db66…87d1ce3f` exact match, and the
+  **v1.17 canonical hash verified `65381bc7…a9e522e2` exact** by
+  replicating the frozen canonicalization (`sort_keys=True, separators=(",",":")`, sha256 over the whole file)
+  with **stdlib only, without importing `bistar_gp`**. Both schemas check as valid Draft 2020-12. Hand-written
+  instances, all re-run after the two author decisions: the original suite accepts **6 valid execution records
+  and rejects 12 invalid** (including diagnostic ALGORITHM_STOP, missing/false `not_a_result`, quantiles,
+  unknown fields, the malformed sentinel `{"_nonfinite":"infinity"}`, a sentinel in a finite-only position, a
+  wrong v1.17 const, a missing `environment_freeze_manifest_sha256`, an extra chain property, `stop.stage =
+  budget`, and the superseded `undetermined` status) and accepts **9 valid ledger events (including the
+  committed D45 line) while rejecting 8 invalid** (including `consumes: true` pre-payload, consumption without
+  `derived_from`, a freely typed `consumed` boolean, consumption derived from a non-payload-start event, and a
+  historical record claiming prospective adjudication or a scientific result). The consolidated adversarial
+  battery runs **78 probes, all behaving as expected**, now including the option-(c) cases (`launch_attempt_id`
+  smuggled into either chain rejected; records missing top-level `launch_attempt_id` rejected; wrong-pattern
+  top-level id rejected), the rev-5 cap-stage conformance cases in both directions (all six frozen caps
+  representable, `cap_1e-1/-2/-3` rejected), ALGORITHM_STOP with an unbalanced stream rejected, and
+  `terminal_outcome` claiming NOT_STARTED rejected. The regression suite for the six earlier Codex findings
+  passes. Canonical serialization rejects a raw `NaN` literal under `allow_nan=False`. Static acyclicity: every
+  `const` digest in both schemas is the v1.17 canonical hash and nothing else. A third hand-written suite covers
+  the §9 v2 per-node contract with **65 further checks** across all seven decisions: fixed-order sweep/seed
+  arrays rejecting reordered, missing, duplicate, extra, and off-sweep entries and both map forms; tagged
+  warm-start identities rejecting opaque strings and digests; the retry union rejecting telemetry on a non-fired
+  retry, a missing conjunct, an unfrozen trigger, and a missing observed shape, while accepting a
+  status-0/success-False retry and a malformed wrong-shaped candidate with its fallback; battery order and
+  completeness; jitter provenance against the frozen seed base and scale; canonical axis order rejecting storage
+  order and the legacy `nuisance_order`; B12(i) enforcement (accepted nodes require battery and curvature,
+  failed nodes may carry neither); and a post-retry evaluation being unrepresentable without a fired retry.
+  **116 checks pass in total** (36 + 65 + 15). Layer-2 fragments were validated through their JSON Pointers
+  exactly as R2 will address them.
+- **Review (both reviewers APPROVE the same corrected tree; zero findings).** **Codex gpt-5.6-sol, xHigh,
+  read-only** and **Fable, read-only**, each fresh and independent, both opened at **REVISE** and both closed at
+  **APPROVE** after conforming fixes. Every finding was cross-verified against source before acting; no fix
+  changed a scientific decision, execution policy, deferred value, or ratified ballot item, and the two
+  questions that would have (`launch_attempt_id` in the chain; the `diagnostic_record_sha256` referent) plus the
+  seven serialization gaps were **escalated to the author, not guessed**. What review caught, in order of
+  seriousness: (1) the **rev-5 cap-enum conformance defect** — an invented lower trio `cap_1e-3/-2/-1` in place
+  of the frozen `1e-6/-5/-4`, with `cap_1e-1` falling inside the reportable band region; (2) the **starts-vs-
+  attempts conflation** that made diagnosis H-d's discarded first call unrepresentable, on which the reviewers
+  initially **disagreed** and which plan §3.2's equivalence obligation settled; (3) a **wrong-shaped retry
+  candidate** being unrepresentable, contradicting §3.2 and this addendum's own §9 promise; (4) cap stages being
+  classifiable as verdict stages against rev-5's diagnostic-only status; (5) the ledger admitting a diagnostic
+  ALGORITHM_STOP against ratified B2; (6) COMPLETED/ALGORITHM_STOP validating over an unbalanced event stream;
+  (7) prose-only iff constraints; and (8) **false completion, commit, and PR claims in an earlier draft of this
+  very entry**. Fable's final pass ran 146 independent adversarial probes and **withdrew its own premise** on the
+  starts/attempts question after re-reading the frozen text. Both reviewers independently recomputed the v1.17
+  canonical hash and confirmed D46 byte-preserved.
+
+**Alternatives considered:** (a) Number the addendum v1.18 — rejected: the v1.18 label is permanently unused by
+the D45 standing invariant, so the number is burned; taking it would violate an invariant that is not a ballot
+item. (b) Express D45's consumption through the prospective `authorization_consumed` event — rejected: it
+requires a `payload_started.json` digest that D45 cannot have, so recording it that way would have meant
+inventing a marker or loosening the predicate, i.e. retroactively adjudicating D45 under a rule postdating it.
+The fenced historical event records the fact without reinterpretation. (c) Add a `consumed: true` field to the
+ledger for convenience — rejected: B10 ratifies consumption as **derived**, and a typed boolean is exactly the
+mutable assertion the event model exists to prevent. (d) Add a human-readable `authorizations.md` — declined as
+not currently useful; permitted later only if clearly labeled non-authoritative. (e) Stub the R3
+diagnostic-record schema so the chain's `protocol_manifest_sha256` had a local referent — rejected: §12 assigns
+that schema to R3, and stubbing it would be a placeholder, which the authorization forbids.
+
+**Status:** R1's scoped artifacts are **frozen in this commit** on branch `docs/d46-m2cr-ballot-close`;
+documentation and schema only. A **Draft PR against `main` follows this commit**, and R1 stops there: **it must
+not be marked Ready or merged**. Both reviewers approved the corrected artifacts before this commit; the
+verdicts and every applied correction are recorded in the Review bullet above. **R2 is not begun and is not
+authorized. No `--execute` exists or is granted.** The package test suite was **not run** (bare `pytest` and
+`python -m pytest` both prohibited in R1); the recorded 442 passed / 1 skipped baseline stands unchanged and
+**unverified by this milestone**. No package source, existing test, experiment, frozen v1.17/v1.18/rev-5
+artifact, durable plan, or anything under `runs/` was edited. No scientific, diagnostic, profile, optimizer,
+gradient, Hessian, curvature, MAP, sampler, toy-model, Mauna, or holdout computation was performed at any point.
+D46 and its hashes are preserved unchanged; `1241aca` and `d84c5fb` are unamended. The reserved v1.18
+result-instance path remains **ABSENT** and the **v1.18 label stays permanently unused**. Every future execution
+requires its own fresh explicit author authorization, recorded in the v1.19 ledger.
