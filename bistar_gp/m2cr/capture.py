@@ -1694,6 +1694,7 @@ def launch_config_from_freeze(
     record_kind: str,
     chain: Mapping[str, Any],
     bootstrap_template_path: str | os.PathLike[str],
+    worktree_root: str | os.PathLike[str],
     waiter: Callable[[subprocess.Popen[Any], float], Any] | None = None,
 ) -> LaunchConfig:
     """Derive a :class:`LaunchConfig` from the frozen artifacts (plan §3.1/§4.5).
@@ -1767,7 +1768,15 @@ def launch_config_from_freeze(
     }
 
     roots = _read_manifest_v2_header(manifest_path)
-    worktree_root = roots["worktree"]
+    # The worktree root is per-launch by definition (plan §4.5.1 pins the
+    # CWD to the run's own fresh detached worktree); the manifest header
+    # documents the freeze-time walk root, and the manifest's worktree
+    # ENTRIES stay content-verified against the launch worktree by the
+    # bootstrap's pre-import re-walk, which compares (root id, relpath,
+    # sha256) independent of the physical path. Only the three host-global
+    # roots derive from the header.
+    worktree_root = os.fspath(Path(worktree_root).resolve(strict=True))
+    roots = {**roots, "worktree": worktree_root}
     bootstrap_path = Path(worktree_root) / "bistar_gp/m2cr/bootstrap.py"
     if not bootstrap_path.is_file():
         raise ValueError(f"derived bootstrap is missing: {bootstrap_path}")
