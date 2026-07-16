@@ -1723,7 +1723,16 @@ def launch_config_from_freeze(
             f"{actual_freeze_sha}"
         )
     freeze = _read_json_object(freeze_path)
+    # Repo-contained pins are stored repo-relative (audit A9 contract); they
+    # resolve against the repository root discovered from the manifest, never
+    # against the manifest's own directory.
     base = freeze_path.parent
+    probe = freeze_path.parent
+    while probe != probe.parent:
+        if (probe / ".git").exists():
+            base = probe
+            break
+        probe = probe.parent
     interpreter_pin_path = _pinned_artifact(freeze, "interpreter_pin", base)
     env_mapping_path = _pinned_artifact(freeze, "child_env_mapping", base)
     manifest_path = _pinned_artifact(freeze, "importable_artifact_manifest", base)
