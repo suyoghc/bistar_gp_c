@@ -39,15 +39,25 @@ worktree, which is temporary by construction: any future authorized launch runs 
 detached worktree at its own frozen commit and therefore regenerates the freeze (new provenance per
 plan §4.3); a launch against a stale header fails closed on the missing path, never open.
 
-## Measured — per-node records and event stream (hermetic)
+## Measured exemplars — per-node records and event stream (hermetic)
+
+These are **measured exemplars**, not proven upper bounds. Each byte figure is the canonical
+serialization of a specific rigged-oracle run, reproduced deterministically by
+`tests/test_m2cr_measure.py::test_evidence_size_report_figures_reproduce` under the hermetic
+harness; they are exemplars because one field is not length-bounded: the optimizer/retry `message`
+is schema-typed `{"type": "string"}`
+(a SciPy termination message), so a pathological minimizer could enlarge a record without changing
+its structural path. R2a freezes ceilings with headroom precisely so the unbounded `message` cannot
+collide with a limit; the derivations below therefore price a **structural worst case** (both starts
+restarted, retry fired), not a proven maximum over all string content.
 
 | Item | Bytes | Basis |
 |---|---|---|
-| Accepted node, no restart, no retry | 3,179 | measured |
-| Failed node (optimizer gate failure) | 1,613 | measured |
-| Worst-case accepted node: both starts restarted AND retry fired | 5,894 | measured |
-| Write-ahead events, clean node (9 events, full curvature payloads) | 3,029 | measured |
-| Write-ahead events, worst-case node (17 events) | 6,088 | measured |
+| Accepted node, no restart, no retry | 3,179 | measured exemplar |
+| Failed node (optimizer gate failure) | 1,613 | measured exemplar |
+| Structural worst case: both starts restarted AND retry fired | 5,894 | measured exemplar |
+| Write-ahead events, clean node (9 events, full curvature payloads) | 3,029 | measured exemplar |
+| Write-ahead events, worst-case node (17 events) | 6,088 | measured exemplar |
 
 ## Derived — full-closure projections
 
@@ -56,18 +66,21 @@ projection as a parameter with that default, not a constant.
 
 | Quantity | Bytes | Derivation (labeled derived) |
 |---|---|---|
-| Per-node records, all nodes at the worst-case variant | 8,729,014 | derived: 5,894 × 1,481 |
-| Event stream, all nodes at the worst-case variant | 9,016,328 | derived: 6,088 × 1,481 |
+| Per-node records, all nodes at the structural worst case | 8,729,014 | derived: 5,894 × 1,481 |
+| Event stream, all nodes at the structural worst case | 9,016,328 | derived: 6,088 × 1,481 |
 | Fixed freeze artifacts | 8,808,764 | measured (sum above) |
 | Complete bundle, evidence classes with measured bases | 26,554,106 | derived: fixed total + both per-node products |
 
-The projection prices every node at the worst measured variant, so it bounds any realistic run from
-above for those classes. Runtime envelope files (prelaunch, spawned, marker, attestations,
-inventory, `RAW_MANIFEST.sha256`, terminal record) measure a few kilobytes each in hermetic capture
-runs and enter `derive_bundle_projection` as explicit fixed classes. stdout/stderr have no hermetic
-measurement basis; the measurement API represents them only as a caller-supplied allowance labeled
-as such, never as a measured claim, and the R2a addendum should set that allowance on structural
-grounds.
+The projection prices every node at the structural worst-case exemplar (both starts restarted, retry
+fired). It is **not** a proven upper bound over all runs, because the `message` string is unbounded
+(external audit F8); R2a sets each ceiling with headroom over these figures so an enlarged `message`
+cannot collide with a limit, and if any future measurement exceeds a figure the resolution is a
+larger ceiling, never reduced completeness. Runtime envelope files (prelaunch, spawned, marker,
+attestations, inventory, `RAW_MANIFEST.sha256`, terminal record) measure a few kilobytes each in
+hermetic capture runs and enter `derive_bundle_projection` as explicit fixed classes. stdout/stderr
+have no hermetic measurement basis; the measurement API represents them only as a caller-supplied
+allowance labeled as such, never as a measured claim, and the R2a addendum should set that allowance
+on structural grounds.
 
 ## Proposed per-class ceilings — NOT FROZEN, no force
 

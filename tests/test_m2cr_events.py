@@ -52,10 +52,10 @@ def test_balanced_stream_verdict():
 def test_point_events_do_not_require_closers():
     buffer = io.StringIO()
     sink = ev.EventSink(buffer)
-    sink.emit("ATTEMPT_BEGIN", start_label="warm")
+    sink.emit("ATTEMPT_BEGIN", start_label="warm", attempt_index=0)
     sink.emit("EVAL_RESULT")
     sink.emit("RETRY_BEGIN")
-    sink.emit("ATTEMPT_END", start_label="warm")
+    sink.emit("ATTEMPT_END", start_label="warm", attempt_index=0)
     assert ev.check_stream_balance(buffer.getvalue().splitlines())["balanced"]
 
 
@@ -91,9 +91,9 @@ def test_seq_gaps_and_malformed_lines_are_unbalanced():
 def test_control_lines_join_seq_but_not_bracketing():
     lines = [
         '{"seq":0,"event":"HELLO","pid":1}',
-        '{"seq":1,"event":"STAGE_BEGIN"}',
+        '{"seq":1,"event":"STAGE_BEGIN","stage_id":"level0"}',
         '{"seq":2,"event":"PAYLOAD_STARTED"}',
-        '{"seq":3,"event":"STAGE_END"}',
+        '{"seq":3,"event":"STAGE_END","stage_id":"level0"}',
     ]
     assert ev.check_stream_balance(lines)["balanced"]
 
@@ -167,3 +167,19 @@ def test_closer_identity_must_match_opener():
     verdict_missing = ev.check_stream_balance(closer_without_identity)
     assert not verdict_missing["balanced"]
     assert "omits identity field" in verdict_missing["reason"]
+
+
+def test_bracket_opener_must_carry_its_identity(monkeypatch):
+    """External audit F5(a): an anonymous bracket opener cannot balance."""
+
+    for lines in (
+        ['{"seq":0,"event":"STAGE_BEGIN"}', '{"seq":1,"event":"STAGE_END"}'],
+        ['{"seq":0,"event":"NODE_BEGIN"}', '{"seq":1,"event":"NODE_END"}'],
+        [
+            '{"seq":0,"event":"ATTEMPT_BEGIN","start_label":"warm"}',
+            '{"seq":1,"event":"ATTEMPT_END","start_label":"warm"}',
+        ],
+    ):
+        verdict = ev.check_stream_balance(lines)
+        assert not verdict["balanced"]
+        assert "omits required identity" in verdict["reason"]

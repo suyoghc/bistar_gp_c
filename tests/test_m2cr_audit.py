@@ -753,6 +753,12 @@ def _valid_freeze_artifacts(base: Path) -> dict[str, Path]:
     _write_file(cache_dir / "dyld_shared_cache_arm64e", b"main")
     _write_file(cache_dir / "dyld_shared_cache_arm64e.1", b"one")
     closure = _write_file(artifact_dir / "bootstrap.py", b"bootstrap")
+    # A COMPLETE closure carries stdlib-origin entries (external audit F1); a
+    # fake lib/python3.* path stands in for the ~73 real stdlib modules.
+    stdlib_closure = _write_file(
+        artifact_dir / "lib" / "python3.13" / "json" / "__init__.py",
+        b"stdlib",
+    )
     attestation_path = artifact_dir / "preboundary_attestation_set.json"
     atomic_write_canonical_json(
         attestation_path,
@@ -760,7 +766,7 @@ def _valid_freeze_artifacts(base: Path) -> dict[str, Path]:
             interpreter,
             dyld_path=dyld,
             dyld_cache_dir=cache_dir,
-            bootstrap_closure_paths=[closure],
+            bootstrap_closure_paths=[closure, stdlib_closure],
             declared_subcache_count=1,
         ),
     )
@@ -850,6 +856,14 @@ def test_freeze_semantics_reject_fixture_or_inconsistent_attestation_set(
     atomic_write_canonical_json(paths["preboundary_attestation_set"], attestation)
     _assert_reason(_freeze_report(tmp_path, paths), "bootstrap closure is empty")
 
+    # External audit F1: a closure carrying only the bootstrap file (no
+    # stdlib-origin entry) is structurally incomplete and rejected.
+    attestation["bootstrap_closure"] = [
+        {"path": "/somewhere/bistar_gp/m2cr/bootstrap.py", "sha256": "0" * 64}
+    ]
+    atomic_write_canonical_json(paths["preboundary_attestation_set"], attestation)
+    _assert_reason(_freeze_report(tmp_path, paths), "no stdlib-origin entry")
+
 
 def test_freeze_semantics_reject_wrong_or_missing_manifest_header(tmp_path: Path):
     paths = _valid_freeze_artifacts(tmp_path)
@@ -923,3 +937,70 @@ def test_band_mass_identity_uses_documented_association_order():
         {"lo": lo, "mid": mid, "hi": hi, "sum": right_associated}
     )
     assert "left-to-right" in band_masses_sum_identity.__doc__
+
+
+def test_verify_preboundary_closure_complete_rejects_incomplete_set(tmp_path: Path):
+    """External audit F1: a closure missing enumerated origins is rejected;
+    the full enumeration passes. Spawns the pinned interpreter import-only."""
+
+    from bistar_gp.m2cr.audit import verify_preboundary_closure_complete
+    from bistar_gp.m2cr.capture import enumerate_bootstrap_closure
+
+    interpreter = "/opt/homebrew/Caskroom/miniconda/base/bin/python3.13"
+    repo_root = Path(__file__).resolve().parents[1]
+    bootstrap = repo_root / "bistar_gp/m2cr/bootstrap.py"
+    enumerated = enumerate_bootstrap_closure(interpreter, bootstrap, repo_root)
+    assert len(enumerated) > 10  # the real closure is dozens of modules
+
+    def _attestation(origins):
+        return {
+            "kind": "m2cr_preboundary_attestation_set",
+            "schema_version": 1,
+            "bootstrap_closure": [
+                {"path": origin, "sha256": "0" * 64} for origin in origins
+            ],
+        }
+
+    full = tmp_path / "full.json"
+    atomic_write_canonical_json(
+        full, _attestation([entry["origin"] for entry in enumerated])
+    )
+    ok = verify_preboundary_closure_complete(full, interpreter, bootstrap, repo_root)
+    assert ok["ok"], ok["errors"]
+    assert ok["committed_count"] >= ok["enumerated_count"]
+
+    # Only the bootstrap itself: the committed set from the current defect.
+    partial = tmp_path / "partial.json"
+    atomic_write_canonical_json(partial, _attestation([os.fspath(bootstrap)]))
+    bad = verify_preboundary_closure_complete(
+        partial, interpreter, bootstrap, repo_root
+    )
+    assert not bad["ok"]
+    assert "omits" in bad["errors"][0]
+
+
+def test_one_shot_relaunch_after_payload_started_fails():
+    """External audit F6: a one-shot grant is consumed at payload_started, so
+    a second launch attempt after it — even before the derived consumed line —
+    fails, not only after authorization_consumed."""
+
+    events = _valid_events()  # grant(one_shot) -> launch1 -> payload -> terminal -> consumed1
+    relaunch = {
+        "schema_version": 1,
+        "event": "launch_attempt_started",
+        "event_id": "m2cr-ev-000007",
+        "authorization_id": AUTH,
+        "launch_attempt_id": LAUNCH_2,
+        "date": DATE,
+    }
+    # Insert the second launch BEFORE the derived authorization_consumed line
+    # (index 4), so only the payload_started at index 2 has consumed the grant.
+    events = events[:4] + [relaunch] + events[4:]
+    # Fix the monotone event-id ordering after insertion.
+    for i, ev in enumerate(events, start=2):
+        ev["event_id"] = f"m2cr-ev-{i:06d}"
+    events[-1]["derived_from"]["event_id"] = events[2]["event_id"]
+    _assert_reason(
+        validate_ledger(_jsonl(events)),
+        "after one-shot authorization",
+    )

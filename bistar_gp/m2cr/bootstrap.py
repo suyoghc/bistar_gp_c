@@ -679,6 +679,31 @@ def _verify_importable_artifact_manifest(
     }
 
 
+def _header_roots_fault(
+    header_roots: dict[str, Any], four_roots: list[str]
+) -> str | None:
+    """Validate the manifest header root set against the launch four_roots.
+
+    The three host-global roots (stdlib, lib-dynload, site-packages) are
+    frozen absolute paths and require exact physical-path equality. The
+    worktree root is per-launch (plan §4.5.1 pins the CWD to the run's OWN
+    fresh detached worktree); the header only documents the freeze-time walk
+    root, and the worktree's content is verified by the (root_id, relpath,
+    sha256) re-walk, independent of physical path. Requiring physical-path
+    equality on the worktree would reject every legitimate fresh-worktree
+    launch (external audit F2), so it is exempted here.
+    """
+
+    if set(header_roots) != set(_MANIFEST_ROOT_IDS):
+        return "manifest header roots must name exactly the four frozen root ids"
+    for position, root_id in enumerate(_MANIFEST_ROOT_IDS):
+        if root_id == "worktree":
+            continue
+        if os.path.realpath(header_roots[root_id]) != four_roots[position]:
+            return "manifest header roots do not match four_roots"
+    return None
+
+
 def _install_project_namespace(worktree_root: str) -> None:
     """Expose the R2 modules without executing the scientific package initializer."""
 
@@ -949,16 +974,22 @@ def _write_node_records(run_dir: Path, result: dict[str, Any]) -> list[dict[str,
 
 def _hashed_worktree_opens(
     recorded: set[str], worktree_root: str
-) -> list[dict[str, str]]:
-    """Hash every recorded 'open' target still present under the worktree.
+) -> dict[str, Any]:
+    """Hash every recorded 'open' target under the worktree; record the rest.
 
-    Plan §4.5.10: every worktree file loaded is hashed at exit. Targets that
-    resolve outside the worktree root or no longer exist (e.g. renamed
-    atomic-write temporaries) carry no loadable bytes and are skipped.
+    Plan §4.5.10: every worktree file loaded is hashed at exit. A target that
+    resolved under the worktree but is now missing or unhashable is not
+    silently dropped (plan §4.3: nothing vanishes); it is surfaced in
+    ``unresolved`` so an auditor sees the gap. It is not treated as a hard
+    fault because the read-audit hook fires before the open attempt, so a
+    probe-open of a nonexistent path and a genuine write-then-rename both land
+    here legitimately; a fail-closed rule would misfire on those (external
+    audit F7, recorded residual).
     """
 
     root_real = os.path.realpath(worktree_root)
     by_realpath: dict[str, str] = {}
+    unresolved: set[str] = set()
     for raw in recorded:
         try:
             real = os.path.realpath(raw)
@@ -970,16 +1001,22 @@ def _hashed_worktree_opens(
             common = os.path.commonpath((root_real, real))
         except ValueError:
             continue
-        if common != root_real or not os.path.isfile(real):
+        if common != root_real:
+            continue
+        if not os.path.isfile(real):
+            unresolved.add(real)
             continue
         try:
             by_realpath[real] = _sha256_file(real)
         except OSError:
-            continue
-    return [
-        {"path": path, "sha256": digest}
-        for path, digest in sorted(by_realpath.items())
-    ]
+            unresolved.add(real)
+    return {
+        "hashed": [
+            {"path": path, "sha256": digest}
+            for path, digest in sorted(by_realpath.items())
+        ],
+        "unresolved": sorted(unresolved),
+    }
 
 
 def _profile_integration_check(config: dict[str, Any]) -> dict[str, Any] | None:
@@ -1052,18 +1089,9 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
             _load_importable_artifact_manifest(manifest_path)
         )
         if manifest_header is not None:
-            header_roots = manifest_header["roots"]
-            if set(header_roots) != set(_MANIFEST_ROOT_IDS):
-                raise SystemExit(
-                    "attestation_fault: manifest header roots must name exactly "
-                    "the four frozen root ids"
-                )
-            for position, root_id in enumerate(_MANIFEST_ROOT_IDS):
-                if os.path.realpath(header_roots[root_id]) != roots[position]:
-                    raise SystemExit(
-                        "attestation_fault: manifest header roots do not match "
-                        "four_roots"
-                    )
+            fault = _header_roots_fault(manifest_header["roots"], roots)
+            if fault is not None:
+                raise SystemExit(f"attestation_fault: {fault}")
 
     run_dir, paths = _attestation_paths(config)
     proof_digest = _atomic_write_json(paths["effect_proofs"], proofs)

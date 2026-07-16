@@ -16,6 +16,7 @@ import bistar_gp.m2cr.bootstrap as bootstrap_module
 import bistar_gp.m2cr.environment_freeze as environment_freeze
 from bistar_gp.m2cr.bootstrap import (
     _encode_nonfinite,
+    _header_roots_fault,
     _inventory,
     _load_importable_artifact_manifest,
     _verify_importable_artifact_manifest,
@@ -1005,7 +1006,7 @@ def test_worktree_opens_are_hashed_into_the_inventory_attestation(
     completed, run_dir, _ = _launch_bootstrap(tmp_path, mode="open_worktree")
     assert completed.returncode == 0, completed.stderr.decode()
     document = json.loads((run_dir / "import_inventory.json").read_text())
-    opens = {item["path"]: item["sha256"] for item in document["worktree_opens"]}
+    opens = {item["path"]: item["sha256"] for item in document["worktree_opens"]["hashed"]}
     data_path = os.path.realpath(run_dir.parent / "payload_data.txt")
     assert opens[data_path] == hashlib.sha256(
         b"frozen worktree bytes\n"
@@ -1056,3 +1057,36 @@ def test_stage_c_compares_against_persisted_authenticated_baselines(
     assert not (run_dir / "stage_c.json").exists()
     failure = json.loads((run_dir / "bootstrap_failure.json").read_text())
     assert failure["fault_class"] == "attestation_fault"
+
+
+def test_header_roots_fault_exempts_the_per_launch_worktree(tmp_path: Path) -> None:
+    """External audit F2: the worktree header path is per-launch and exempt
+    from physical-path equality; the three host-global roots are not."""
+
+    launch_roots = [
+        os.fspath(tmp_path / "fresh-worktree"),
+        "/opt/base/lib/python3.13",
+        "/opt/base/lib/python3.13/lib-dynload",
+        "/opt/base/lib/python3.13/site-packages",
+    ]
+    # Header worktree is the freeze-time temp path, DIFFERENT from the launch
+    # worktree, but the three host-global roots match: no fault.
+    header = {
+        "worktree": "/tmp/freeze-time-worktree",
+        "stdlib": "/opt/base/lib/python3.13",
+        "lib-dynload": "/opt/base/lib/python3.13/lib-dynload",
+        "site-packages": "/opt/base/lib/python3.13/site-packages",
+    }
+    assert _header_roots_fault(header, launch_roots) is None
+
+    # A mismatched host-global root still faults.
+    wrong = dict(header, stdlib="/opt/other/lib/python3.13")
+    assert _header_roots_fault(wrong, launch_roots) == (
+        "manifest header roots do not match four_roots"
+    )
+
+    # A missing root id faults.
+    incomplete = {k: v for k, v in header.items() if k != "site-packages"}
+    assert "name exactly the four frozen root ids" in _header_roots_fault(
+        incomplete, launch_roots
+    )

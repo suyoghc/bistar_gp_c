@@ -146,3 +146,69 @@ def test_bundle_projection_node_count_is_caller_parameterized():
 
 def test_measure_module_exports_no_size_limit_constant():
     assert not [name for name in vars(measure) if "CEILING" in name.upper()]
+
+
+def test_evidence_size_report_figures_reproduce():
+    """External audit F8: the report's measured-exemplar byte figures are
+    reproducible from committed code, not free-floating numbers."""
+
+    import io
+    import numpy as np
+    from scipy.optimize import OptimizeResult
+    import bistar_gp.m2cr.gates_v2 as gates
+    from bistar_gp.m2cr.events import EventSink
+    from bistar_gp.m2cr.records import (
+        build_two_start_optimizer_record,
+        build_curvature_record,
+        build_battery_record,
+        build_warm_start_ref,
+        build_per_node_record,
+    )
+    from bistar_gp.m2cr.coordinates import storage_to_canonical_permutation
+    from bistar_gp.m2cr.serialization import canonical_bytes
+    from bistar_gp.m2c_freeze import TOL_GRAD_ABS, TOL_GRAD_REL
+
+    storage = ("S.outputscale", "S.base_kernel.lengthscale", "S.kernels.1.variance")
+    perm = storage_to_canonical_permutation(storage)
+
+    def quad(diag):
+        A = np.diag(np.asarray(diag, dtype=np.float64))
+        return (
+            lambda u: -0.5 * float(np.asarray(u) @ A @ np.asarray(u)),
+            lambda u: -(A @ np.asarray(u, dtype=np.float64)),
+        )
+
+    g, gr = quad([1.0, 4.0, 9.0])
+    battery = build_battery_record(
+        [
+            {"role": r, "fd_step": 1e-5, "reference_value": v,
+             "functional_value": v, "absolute_error": 0.0,
+             "threshold": TOL_GRAD_ABS + TOL_GRAD_REL * 1.0, "pass": True}
+            for r, v in zip(("ls", "os", "lv"), (0.1, -0.2, 0.05))
+        ]
+    )
+    ref_in = build_warm_start_ref({"kind": "mode_u"}, [0.0, 0.0, 0.0], "initial_mode_u")
+    ref_out = build_warm_start_ref(
+        {"kind": "accepted_node", "stage_id": "level0", "node_index": 0},
+        [0.0, 0.0, 0.0],
+        "accepted_current_node",
+    )
+
+    # Clean accepted node (no restart, no retry).
+    opt = gates.optimize_conditional_v2(
+        lambda u: -g(u), lambda u: -gr(u), np.ones(3), -np.ones(3), perm=perm
+    )
+    cur = gates.curvature_gate_v2(g, gr, np.zeros(3), storage, perm=perm)
+    clean = build_per_node_record(
+        0, 0.1, storage, ref_in, ref_out,
+        build_two_start_optimizer_record(opt, perm), True, [0.0, 0.0, 0.0],
+        battery, build_curvature_record(cur, perm), stage_id="level0",
+    )
+    assert len(canonical_bytes(clean)) == 3179  # report figure
+
+    failed_opt = build_two_start_optimizer_record(opt, perm)
+    failed = build_per_node_record(
+        1, 0.2, storage, ref_in, ref_in, failed_opt, False, None,
+        stage_id="level0",
+    )
+    assert len(canonical_bytes(failed)) == 1613  # report figure

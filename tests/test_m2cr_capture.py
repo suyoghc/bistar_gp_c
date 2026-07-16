@@ -112,7 +112,9 @@ def _failed_node_record() -> dict[str, object]:
     }
 
 
-def _payload_source(mode: str, marker_path: Path) -> str:
+def _payload_source(
+    mode: str, marker_path: Path, extra_code: str = ""
+) -> str:
     if mode == "spin":
         body = """
     context.emit("STAGE_BEGIN", stage_id="level0")
@@ -152,6 +154,7 @@ def _payload_source(mode: str, marker_path: Path) -> str:
     context.emit("NODE_END", node_index=0)
     {end}
     {marker_mutation}
+    {extra_code}
     return {{
         "status": "COMPLETED",
         "stages": {stages},
@@ -192,6 +195,7 @@ def _make_launch(
     waiter=None,
     bad_interpreter: bool = False,
     wrong_environment: bool = False,
+    extra_payload_code: str = "",
 ) -> LaunchConfig:
     worktree = tmp_path / "worktree"
     run_dir = tmp_path / "run"
@@ -202,7 +206,10 @@ def _make_launch(
     )
     payload_path = worktree / "fake_payload.py"
     payload_path.write_text(
-        _payload_source(mode, run_dir / "payload_started.json"), encoding="utf-8"
+        _payload_source(
+            mode, run_dir / "payload_started.json", extra_payload_code
+        ),
+        encoding="utf-8",
     )
     extra_roots = [
         tmp_path / "stdlib",
@@ -676,6 +683,34 @@ def test_preboundary_attestation_set_verifies_before_spawn(tmp_path: Path) -> No
     )
     record = capture_run(config)
     assert record["status"] == "COMPLETED"
+    validate_terminal_record(record)
+
+
+def test_preboundary_mutation_during_run_forces_infra_at_post_exit(
+    tmp_path: Path,
+) -> None:
+    """External audit F3: a pre-boundary file valid at spawn but mutated
+    during execution is caught by parent-side post-exit re-attestation
+    (§4.5.11), forcing INFRA_FAILURE rather than yielding COMPLETED."""
+
+    attestation_path, closure_file = _preboundary_attestation_document(
+        tmp_path, tampered=False
+    )
+    # The payload appends to the pinned closure member while it runs, so the
+    # pre-spawn check passes but the post-exit re-attestation fails.
+    config = dataclasses.replace(
+        _make_launch(
+            tmp_path,
+            extra_payload_code=(
+                f"open({os.fspath(closure_file)!r}, 'ab').write(b'drift\\n')"
+            ),
+        ),
+        preboundary_attestation_set=os.fspath(attestation_path),
+        preboundary_skip=("interpreter", "dyld"),
+    )
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert "post-exit pre-boundary re-attestation" in record["fault"]["detail"]
     validate_terminal_record(record)
 
 

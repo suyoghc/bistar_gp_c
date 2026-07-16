@@ -564,6 +564,7 @@ def _emit_curvature_result(
     phase: str,
     node_index: int | None,
     perm: Sequence[int] | None,
+    retry_verdict: dict[str, Any] | None = None,
 ) -> None:
     if event_sink is None:
         return
@@ -611,6 +612,11 @@ def _emit_curvature_result(
         directional_ok=evaluation["directional_ok"],
         stop=evaluation["stop"],
         reason=evaluation["reason"],
+        # The post-retry event carries the FINALIZED verdict: the retry
+        # optimizer's own failure can override stop to True after the
+        # curvature evaluation, so the durable channel must reflect that plus
+        # the acceptance summary (plan §3.2, external audit F4).
+        **({"retry_verdict": retry_verdict} if retry_verdict is not None else {}),
     )
 
 
@@ -686,13 +692,10 @@ def curvature_gate_v2(
     post_retry, evaluated_point = _curvature_evaluation_v2(
         g, grad, retried_optimum, order
     )
-    _emit_curvature_result(
-        event_sink,
-        post_retry,
-        phase="post_retry",
-        node_index=node_index,
-        perm=perm,
-    )
+    # The post-retry EVAL_RESULT is emitted only AFTER the retry-optimizer
+    # stop-override and acceptance conjuncts are computed, so the durable
+    # channel never records a stop verdict the return record then contradicts
+    # (external audit F4).
     retry_success = int(retry.status) == 0 and bool(
         getattr(retry, "success", True)
     )
@@ -751,4 +754,17 @@ def curvature_gate_v2(
         "post_retry": post_retry,
     }
     evaluation["retry_evidence"] = retry_evidence
+    _emit_curvature_result(
+        event_sink,
+        post_retry,
+        phase="post_retry",
+        node_index=node_index,
+        perm=perm,
+        retry_verdict={
+            "retry_optimizer_status": int(retry.status),
+            "retry_optimizer_success": retry_success,
+            "positively_accepted": retry_evidence["positively_accepted"],
+            "fallback_fired": fallback_fired,
+        },
+    )
     return evaluation

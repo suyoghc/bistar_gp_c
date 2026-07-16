@@ -206,16 +206,28 @@ def test_curvature_event_retry_shape(monkeypatch):
 
     monkeypatch.setattr(gates, "minimize", fake_retry)
     g, grad = _quadratic(3, diagonal=[1.0, 4.0, -2.0])
-    gates.curvature_gate_v2(
+    result = gates.curvature_gate_v2(
         g, grad, np.zeros(3), ("a", "b", "c"), event_sink=sink, node_index=4
     )
-    lines = buffer.getvalue().splitlines()
-    assert check_stream_balance(lines)["balanced"] is True
-    assert [json.loads(line)["event"] for line in lines] == [
+    lines = [json.loads(line) for line in buffer.getvalue().splitlines()]
+    assert check_stream_balance(buffer.getvalue().splitlines())["balanced"] is True
+    assert [line["event"] for line in lines] == [
         "EVAL_RESULT",
         "RETRY_BEGIN",
         "EVAL_RESULT",
     ]
+    # External audit F4: the post-retry durable event carries the FINALIZED
+    # verdict (post the retry-optimizer stop override) and the retry summary,
+    # so the durability channel can never contradict the returned record.
+    post = lines[2]
+    assert post["phase"] == "post_retry"
+    assert post["stop"] == result["stop"]
+    assert post["retry_verdict"] == {
+        "retry_optimizer_status": 0,
+        "retry_optimizer_success": False,
+        "positively_accepted": False,
+        "fallback_fired": False,
+    }
 
 
 def test_event_vectors_are_canonical_but_gate_returns_stay_storage_order(

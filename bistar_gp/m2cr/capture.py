@@ -1361,6 +1361,19 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                 )
         except OSError as exc:
             capture_fault = f"post-exit source re-attestation failed: {exc}"
+        # Plan §4.5.11: repeat every pre-run static class at exit, parent-side.
+        # The pre-boundary set (interpreter, dyld family, and the FULL bootstrap
+        # closure) is re-verified here so an ordinary mutation to any of those
+        # during execution forces INFRA_FAILURE rather than yielding COMPLETED
+        # (external audit F3). The child re-walks the importable-artifact
+        # manifest at Stage C; together they cover §4.5.11's classes.
+        if capture_fault is None and config.preboundary_attestation_set is not None:
+            try:
+                verify_preboundary_attestation_set(
+                    config.preboundary_attestation_set, skip=config.preboundary_skip
+                )
+            except ValueError as exc:
+                capture_fault = f"post-exit pre-boundary re-attestation failed: {exc}"
 
     spawned = (run_dir / "spawned.json").is_file()
     balance = _event_balance(events_path)

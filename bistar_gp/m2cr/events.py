@@ -92,6 +92,15 @@ class EventSink:
 # reconstruction).
 _IDENTITY_FIELDS = ("stage_id", "node_index", "start_label", "attempt_index")
 
+# The identity every bracket OPENER must carry, so an anonymous bracket from
+# a truncated or buggy emitter cannot balance and certify a COMPLETED stream
+# (plan §3.2/§5.3). A closer then has to repeat exactly these.
+_REQUIRED_OPENER_IDENTITY = {
+    "STAGE_BEGIN": ("stage_id",),
+    "NODE_BEGIN": ("node_index",),
+    "ATTEMPT_BEGIN": ("start_label", "attempt_index"),
+}
+
 
 def check_stream_balance(lines: Iterable[str]) -> dict[str, Any]:
     """Classify an event stream as balanced or not, with the exact reason.
@@ -131,6 +140,13 @@ def check_stream_balance(lines: Iterable[str]) -> dict[str, Any]:
         if event not in GATE_EVENT_TYPES:
             return _unbalanced(f"line {line_number}: unknown event {event!r}")
         if event in _OPEN_FOR:
+            required = _REQUIRED_OPENER_IDENTITY.get(event, ())
+            missing = [field for field in required if field not in obj]
+            if missing:
+                return _unbalanced(
+                    f"line {line_number}: {event} omits required identity "
+                    f"field(s) {missing}"
+                )
             identity = {
                 field: obj[field] for field in _IDENTITY_FIELDS if field in obj
             }

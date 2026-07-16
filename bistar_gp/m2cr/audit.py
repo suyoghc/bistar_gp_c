@@ -14,6 +14,7 @@ import os
 import re
 import struct
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ __all__ = [
     "verify_infrastructure_manifest",
     "band_masses_sum_identity",
     "verify_environment_freeze",
+    "verify_preboundary_closure_complete",
 ]
 
 
@@ -260,6 +262,13 @@ def validate_ledger(jsonl_text: str) -> dict[str, Any]:
                         f"line {line_number}: duplicate payload_started for {launch_id}"
                     )
                 state["payload_event"] = event
+                # Plan §4.3: the scientific authorization is consumed iff
+                # payload_started exists, so one-shot state flips HERE, not at
+                # the later derived authorization_consumed line — otherwise a
+                # relaunch between the two would pass the one-shot gate
+                # (external audit F6).
+                if isinstance(authorization_id, str):
+                    consumed_authorizations.add(authorization_id)
                 bound = event.get("bound_to")
                 if isinstance(bound, dict):
                     if bound.get("authorization_id") != authorization_id:
@@ -1408,6 +1417,25 @@ def _freeze_semantic_failures(name: str, artifact_path: Path) -> list[str]:
             failures.append(
                 "preboundary_attestation_set bootstrap closure is empty"
             )
+        else:
+            # The bootstrap provably imports stdlib modules (json, hashlib,
+            # importlib, ...) before the audit boundary, so a COMPLETE closure
+            # per plan §4.5.2 must carry stdlib-origin entries, not just the
+            # bootstrap file itself. A single-entry closure fails here
+            # structurally, without needing to re-enumerate (external audit
+            # F1); verify_preboundary_closure_complete does the exhaustive
+            # re-enumeration check.
+            paths = [
+                entry.get("path", "")
+                for entry in closure
+                if isinstance(entry, Mapping)
+            ]
+            if not any("lib/python3." in path for path in paths):
+                failures.append(
+                    "preboundary_attestation_set bootstrap closure carries no "
+                    "stdlib-origin entry; it cannot be the complete pre-boundary "
+                    "closure required by plan §4.5.2"
+                )
     elif name == "importable_artifact_manifest":
         try:
             header = read_manifest_header(artifact_path)
@@ -1483,3 +1511,65 @@ def verify_environment_freeze(
         for failure in failures:
             errors.append(f"semantic:{name}: {failure}")
     return {"ok": not errors, "errors": errors, "checks": checks}
+
+
+def verify_preboundary_closure_complete(
+    attestation_set_path: str | os.PathLike[str],
+    interpreter_path: str | os.PathLike[str],
+    bootstrap_path: str | os.PathLike[str],
+    worktree_root: str | os.PathLike[str],
+) -> dict[str, Any]:
+    """Prove the committed pre-boundary closure is complete (plan §4.5.2).
+
+    Re-enumerates the bootstrap's import-only closure independently (via
+    ``capture.enumerate_bootstrap_closure``) and requires every enumerated
+    file origin to be pinned in the committed attestation set. An artifact
+    that lists only ``bootstrap.py`` while the real closure imports 70+
+    stdlib/native modules fails here (external audit F1). This spawns the
+    pinned interpreter import-only; it performs no scientific computation.
+    """
+
+    from bistar_gp.m2cr.capture import enumerate_bootstrap_closure
+
+    errors: list[str] = []
+    root_real = os.path.realpath(worktree_root)
+
+    def normalize(path: str) -> str:
+        # Worktree-rooted origins are per-launch (the freeze regenerates at
+        # each launch's own worktree, plan §4.3), so they are keyed by their
+        # worktree-relative suffix; host-global stdlib/native origins keep
+        # their absolute realpath. This lets one committed freeze verify
+        # complete against an enumeration run from a different worktree.
+        real = os.path.realpath(path)
+        try:
+            common = os.path.commonpath((root_real, real))
+        except ValueError:
+            return real
+        return os.path.relpath(real, root_real) if common == root_real else real
+
+    artifact = json.loads(
+        Path(attestation_set_path).resolve(strict=True).read_text(encoding="utf-8")
+    )
+    closure = artifact.get("bootstrap_closure")
+    committed = {
+        normalize(entry["path"])
+        for entry in closure
+        if isinstance(entry, Mapping) and isinstance(entry.get("path"), str)
+    } if isinstance(closure, list) else set()
+
+    enumerated = enumerate_bootstrap_closure(
+        interpreter_path, bootstrap_path, worktree_root
+    )
+    origins = {normalize(entry["origin"]) for entry in enumerated}
+    missing = sorted(origins - committed)
+    if missing:
+        errors.append(
+            "committed pre-boundary closure omits "
+            f"{len(missing)} enumerated origin(s); first: {missing[0]}"
+        )
+    return {
+        "ok": not errors,
+        "errors": errors,
+        "enumerated_count": len(origins),
+        "committed_count": len(committed),
+    }
