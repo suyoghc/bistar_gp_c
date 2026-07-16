@@ -4120,3 +4120,49 @@ external Codex verdict at this new head (`35d01fb`) is the remaining reviewer in
 handed to the author. **The final review gate remains OPEN until that verdict is adjudicated.** PR
 #16 stays Draft; R2a, R3, Ready, merge, and every execution remain separate author acts. Protected
 files, the ledger (single D45 line), the v1.18 absence, and the rev-5/v1.17 hashes are unchanged.
+
+**Update 4 (2026-07-16, second external Codex audit adjudicated; deeper remediation round).** The
+author ran the external Codex GPT-5.6-sol xHigh audit at head 77f6dea and returned **REVISE, 9
+findings.** Each was verified against source with a discriminating probe — **all 9
+CONFIRMED_CONFORMING_DEFECT, zero false alarms**; this round reached deeper into the
+attestation/provenance machinery than any prior reviewer:
+
+- **F1 BLOCKER** — the closure enumeration probe imported only the bootstrap module, but main() runs
+  `scan_pyc_candidates` -> `environment_freeze` -> `serialization` **before** `sys.addaudithook`
+  (bootstrap.py:1127 precedes :1168), so the committed "full 74-entry closure" omitted those two
+  pre-boundary project modules. Fixed: the probe imports the pre-hook project closure; the committed
+  pre-boundary set regenerates to **76 entries** (now includes environment_freeze.py + serialization.py).
+- **F2 BLOCKER** — `launch_config_from_freeze` copied the caller's chain verbatim, never binding its
+  static members or authorization id to the artifacts it authenticated. Fixed: it now requires
+  `environment_freeze_manifest_sha256` and `infrastructure_manifest_sha256` to equal the
+  authenticated digests and `authorization_id` to be consistent (execution-commit resolution and the
+  prospective-grant/consumption checks are R4-launch obligations against a real ledger/HEAD, recorded).
+- **F3 BLOCKER** — `native_stack_modules` was caller-arbitrary and `__import__`'d before the marker,
+  so a template naming the payload or a scientific bistar_gp module executed it pre-marker (§4.3). Fixed:
+  restricted to a frozen native-stack allowlist (torch/numpy/scipy/gpytorch/linear_operator) that
+  excludes every bistar_gp module and the payload.
+- **F4 MAJOR** — the event-pump thread swallowed durability failures, and the post-prelaunch setup sat
+  outside the supervised try (a failure escaped with no terminal record). Fixed: the pump surfaces
+  `pump_error` to the parent (voiding certification), and the setup is inside the supervised try.
+- **F5 MAJOR** — `verify_chain`'s `_ledger_authorization_state` consumed only at
+  `authorization_consumed`, so `require_unconsumed` passed in the crash window after
+  `payload_started`. Fixed: consumption flips at `payload_started` (matching the round-1
+  `validate_ledger` fix).
+- **F6 MAJOR** — worktree opens were hashed at exit, so a read-then-deleted worktree data file escaped
+  unhashed yet COMPLETED. Fixed: the audit hook hashes each worktree file at **load time**, so a later
+  delete cannot erase the evidence.
+- **F7 MINOR** — Layer 3 excluded `RAW_MANIFEST.sha256`/`terminal_record.json` by basename,
+  omitting nested files of the same name; now excluded by exact relative path.
+- **F8/F9 MINOR** — the report's stale pre-boundary size (3,032 -> 15,400) and totals (fixed
+  8,821,133; bundle 26,566,475), and its worktree-header-policy wording (which contradicted the F2
+  exemption), are corrected; a new CI test asserts the report's fixed-artifact total equals the
+  committed artifacts' actual sizes.
+
+Tally: **9 CONFIRMED_CONFORMING_DEFECT (3 BLOCKER, 3 MAJOR, 3 MINOR); 0 FALSE_ALARM, 0
+AUTHOR_DECISION_REQUIRED, 0 DUPLICATE, 0 OUT_OF_SCOPE, 0 INSUFFICIENT_EVIDENCE.** Every fix carries a
+discriminating regression test; the two doc findings carry CI teeth. Fixes in commits 9b6e68e,
+bd42e85, abf7f77, plus the map-count follow-up; full suite **707 passed, 2 skipped, exit 0**. Because
+these fixes again changed cross-cutting contracts (chain binding, the native allowlist, load-time
+worktree hashing, pump-error propagation, the closure probe), the review gate re-opens for a fresh
+exact-head round. Protected files, the ledger (single D45 line), the v1.18 absence, and the
+rev-5/v1.17 hashes are unchanged. **Gate state: OPEN.** PR #16 stays Draft.
