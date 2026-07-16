@@ -4027,3 +4027,60 @@ language only — everything else in D48 stands).**
   attention `cf5c08c..340a73d`) has been handed to the author, who will run it and return the
   verdict for adjudication. **The final review gate remains OPEN until that verdict is adjudicated.**
   PR #16 stays Draft; R2a, R3, Ready, merge, and every execution remain separate author acts.
+
+**Update 2 (2026-07-16, external Codex audit adjudicated; R2 remediation round).** The author ran the
+external Codex GPT-5.6-sol xHigh read-only audit prompt against head `bf8b98a` and returned its
+verdict: **REVISE, 9 findings.** Each was independently verified against source with a discriminating
+probe before any change (reviewer verdicts are not evidence); adjudication under the ratified
+taxonomy:
+
+- **F1 (BLOCKER) CONFIRMED_CONFORMING_DEFECT.** The committed pre-boundary attestation set's
+  `bootstrap_closure` held one entry (`bootstrap.py`) while the real closure is 74 file-backed
+  modules (plan §4.5.2 "the final bootstrap's full closure"); freeze semantic validation only
+  required nonempty. Fixed: the semantic check now rejects a closure carrying no stdlib-origin
+  entry, a new `audit.verify_preboundary_closure_complete` re-enumerates the closure and requires
+  every enumerated origin pinned (bistar_gp modules keyed by package-relative path so one committed
+  freeze verifies across launch worktrees), and the committed set was regenerated with all 74
+  entries.
+- **F2 (MAJOR) CONFIRMED.** The bootstrap required physical-path equality of the manifest header's
+  worktree root against the launch `four_roots`, so any fresh detached worktree exited before
+  payload — defeating the round-2 `worktree_root` parameterization that Opus round-3 had APPROVED
+  on the belief only relpath+sha256 were compared. This physical-path gate was the one all three
+  internal reviewers missed. Fixed: the worktree root is exempt from physical-path equality (its
+  content is verified by the re-walk); the three host-global roots keep exact equality.
+- **F3 (MAJOR) CONFIRMED (partial).** Parent post-exit re-attestation rehashed only bootstrap and
+  payload; the static pre-boundary classes (§4.5.11) were not repeated at exit. Fixed: the parent
+  re-runs the full pre-boundary verification post-exit, forcing INFRA_FAILURE on drift during
+  execution.
+- **F4 (MAJOR) CONFIRMED.** The post-retry curvature `EVAL_RESULT` was emitted before the
+  retry-optimizer stop override, so the durability channel could hold `stop:false` while the return
+  record held `stop:true`. Fixed: the event is emitted after the finalized verdict and carries the
+  retry verdict summary.
+- **F5 SPLIT.** (a) CONFIRMED — bracket openers must now carry their identity fields, so an
+  anonymous bracket cannot balance. (b) OUT_OF_SCOPE — an event-thin COMPLETED requires the payload
+  to bypass its own gates' emission (§4.5.13 payload-defeats-attestation); node records plus
+  recomputed aggregates remain the COMPLETED certification authority, and the stream is a durability
+  channel, not the authority.
+- **F6 (MAJOR) CONFIRMED.** One-shot consumption was marked only at the derived
+  `authorization_consumed` line, so a relaunch between `payload_started` and that line passed. Fixed:
+  consumption is marked at `payload_started` (the §4.3 semantic point).
+- **F7 (MAJOR) CONFIRMED (narrow).** Unresolved worktree-open targets were silently dropped
+  (§4.5.10). Fixed: they are recorded explicitly (§4.3 nothing vanishes); a strict fail-close is
+  declined because the read-audit hook fires pre-attempt and would misfire on probe/write opens
+  (recorded residual).
+- **F8 (MINOR) CONFIRMED.** The evidence-size report's "bounds any realistic run from above" was an
+  overclaim (the `message` string is schema-unbounded). Fixed: figures relabeled measured exemplars
+  / structural worst case, with a committed reproduction test.
+- **F9 (MINOR) CONFIRMED.** The implementation-map suite count was stale. Fixed to 702.
+
+Tally: **9 findings — 8 CONFIRMED_CONFORMING_DEFECT (1 BLOCKER, 5 MAJOR, 2 MINOR) plus F5 split into
+one CONFIRMED sub and one OUT_OF_SCOPE sub; 0 FALSE_ALARM, 0 AUTHOR_DECISION_REQUIRED, 0 DUPLICATE, 0
+INSUFFICIENT_EVIDENCE.** Every confirmed fix carries a discriminating regression test. The external
+audit did what three internal rounds had not: it found a launch-time contradiction (F2) and an
+incomplete frozen artifact (F1) that the hermetic suite had not exercised. Fixes span commits
+`92aea4a`, `3631f58`, `8056f07`, `512d9fe`; artifacts regenerated at the fix head; full suite **702
+passed, 2 skipped, exit 0**. Because the fixes changed cross-cutting contracts (event balance,
+curvature durability, header verification, ledger consumption, a new closure-completeness audit), a
+fresh exact-head re-review round is required before the gate can close; the review gate therefore
+remains **OPEN**. PR #16 stays Draft. Protected files, the ledger (single D45 line), the v1.18
+absence, and the rev-5/v1.17 hashes are unchanged.
