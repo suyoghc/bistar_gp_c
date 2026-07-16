@@ -3974,3 +3974,56 @@ fix a cosmetic test indent, rejected as pure churn; recorded instead.
 and held there. **R2 stops here.** Marking Ready, merging, R2a (the evidence-ceilings addendum),
 R3, and every `--execute` are separate future author acts; nothing here grants any of them. D45
 remains permanently an UNVALIDATED_ATTEMPT.
+
+**Update (2026-07-16, author decisions + exact-head gate round; supersedes this entry's gate-state
+language only — everything else in D48 stands).**
+
+- **Author decision, recorded verbatim in substance (author message of 2026-07-16):** the author
+  explicitly RATIFIES the repository-authoritative rev-5 SHA-256
+  `c3e9db66e189b2a8cad19bf11b5c4acc6518d4b6d2597ae93b0f700587d1ce3f` for R2, accepts that the
+  different hash in the launch prompt was a transcription splice, and ratifies continuing under the
+  authoritative plan and repository artifact. This is an author decision, not an orchestrator
+  inference; the gate-time adjudication in the main entry is thereby confirmed by the author.
+- **Gate-state correction.** The main entry's headline language ("three-reviewer gate passed")
+  overclaimed and contradicted its own outstanding-item record; the author flagged the
+  contradiction. The accurate distinction: **implementation is COMPLETE; the final review gate is
+  OPEN.** What has passed is every internal review round; what remains is the external Codex
+  verdict below.
+- **Exact-head gate round (author-directed), at head a96a0eb.** Opus 4.8 in a fresh read-only
+  context returned **APPROVE** with two MINOR test-hardening findings and one NOTE, after
+  recomputing all 24 manifest pins, the v1.17/plan/rev-5 digests, the interpreter pin, verifying
+  every protected file byte-identical, executing the audit tooling end-to-end, and running the full
+  suite (694 passed, 2 skipped). GLM 5.2 in a fresh independent context covered the complete final
+  diff in seven usable chunks plus the post-round-2 delta and final-tree integration (reasoning
+  disabled remains the only configuration that emits; oversized chunks degenerated and were
+  discarded and re-run smaller). GLM adjudication: one CONFIRMED_CONFORMING_DEFECT — the
+  dependency-lock walk labeled its root `site_packages` against the frozen `site-packages`
+  vocabulary — plus roughly forty findings classified FALSE_ALARM or OUT_OF_SCOPE, each dismissal
+  carrying a discriminating citation (the conjugation claim fails against the identity
+  `(P M P^T)_ij = M_perm[i],perm[j]` and the hardcoded-expectation tests; the precedence claims fail
+  against the verified if/elif order at capture.py; the boundary-guard claim fails against §4.5.8's
+  own uncaught-exception rule; the hook-ordering claim fails against the observed line order;
+  `bound_to` is schema-required; reviewer vote counts were treated as no evidence throughout).
+  GLM's integration chunk independently confirmed pin-chain consistency, acyclicity, and the size
+  report's arithmetic.
+- **Fix commits `1cdb08a` + `340a73d`:** the root-id correction; a regression test that
+  `PayloadBoundary.mark()` refuses with zero registered attestations (Opus MINOR); the effect-proof
+  aggregation test pinning the exact frozen nine-name check set with `pycache_prefix` asserted
+  separately (Opus MINOR); the cosmetic kwarg indent; and regeneration of the four dependent
+  committed artifacts. Suite after: **695 passed, 2 skipped, exit 0.**
+- **Focused delta re-reviews at head 340a73d:** Opus **APPROVE** (all 12 code pins, 6 artifact
+  pins, 2 R1-schema pins, and 4 aggregating members recomputed against the tree; one LOW cosmetic —
+  the indent shift misaligned the second call site, accepted as recorded whitespace with zero
+  functional or artifact impact; one INFORMATIONAL — the lock never serializes root-id strings, so
+  the vocabulary fix is sound but artifact-inert, its effect visible only through the aggregate
+  extension digest). GLM delta: all four fixes verified clean; its single finding was an
+  evidence-visibility request about the lock's root-id inventory, resolved by direct verification
+  (zero occurrences of either spelling in the artifact; structure is count + aggregate digest).
+- **VERIFIED GATE STATE at branch head:** implementation complete; both internal reviewers
+  (Opus 4.8, GLM 5.2) have delivered exact-head reports and delta re-reviews with every finding
+  adjudicated; **zero unresolved CONFIRMED_CONFORMING_DEFECT and zero
+  CONFIRMED_AUTHOR_DECISION_REQUIRED items**; the third reviewer's verdict is pending: a
+  self-contained external Codex GPT-5.6-sol xHigh read-only audit prompt (full PR, particular
+  attention `cf5c08c..340a73d`) has been handed to the author, who will run it and return the
+  verdict for adjudication. **The final review gate remains OPEN until that verdict is adjudicated.**
+  PR #16 stays Draft; R2a, R3, Ready, merge, and every execution remain separate author acts.

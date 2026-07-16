@@ -2,7 +2,7 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## M2cR R2 COMPLETE (D48, 2026-07-16) — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR open, HARD STOP
+## M2cR R2 — IMPLEMENTATION COMPLETE; FINAL REVIEW GATE OPEN (D48 + Update, 2026-07-16) — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR #16, HARD STOP
 
 - **Shipped (hermetic, plan §8 R2 exactly):** `bistar_gp/m2cr/` (12 modules) + 16 test files; v2 gates
   byte-equivalent with full attempt/retry evidence; write-ahead events; capture driver + B14-stack v5
@@ -10,12 +10,15 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   `docs/m2c_freeze/m2cr_*` (importable manifest v2: 39,955 entries / 8,743,897 B / 0 orphans);
   audit tooling; B15(ii) measurement report (NO ceilings; proposals non-binding). Suite: baseline
   442 passed/1 skipped; final **694 passed/2 skipped**, exit 0.
-- **Review gate:** 3 blinded reviewers round 1 (codex gpt-5.6-sol xHigh, Opus 4.8, GLM 5.2/OpenRouter);
-  48 findings adjudicated, 27 confirmed + fixed; Opus full-tree round 2 + GLM deltas; Opus focused
-  round-3 delta = **APPROVE**. Zero unresolved confirmed defects; zero pending author decisions.
-- **OUTSTANDING (author to commission before merge):** codex DELTA re-review of the fix commits —
-  the codex account hit its weekly usage cap mid-milestone (resets 2026-07-23); its full round-1
-  report was delivered and adjudicated. PR stays Draft either way.
+- **Review gate (OPEN):** round 1 (3 blinded reviewers, 48 findings, 27 confirmed+fixed); Opus
+  round 2 + GLM deltas; Opus round-3 delta APPROVE; author-directed EXACT-HEAD round at a96a0eb
+  (Opus APPROVE; GLM full-coverage chunks; 1 confirmed defect fixed at 1cdb08a/340a73d); delta
+  re-reviews at 340a73d both clean (Opus APPROVE). Suite now 695 passed/2 skipped. Zero unresolved
+  confirmed defects; zero pending author decisions. Author RATIFIED rev-5 c3e9db66…d1ce3f (D48
+  Update).
+- **GATE CLOSES WHEN:** the external Codex GPT-5.6-sol xHigh audit (self-contained prompt handed to
+  the author; full PR, attention cf5c08c..340a73d) returns its verdict and it is adjudicated. Until
+  then the gate is OPEN and PR #16 stays Draft.
 - **Prompt-hash note:** the R2 authorization prompt's rev-5 hash was a splice (suffix = D46 historical
   plan hash); the plan is consistent at §1 and §12 with the true `c3e9db66…d1ce3f`, which the file
   matches. Gate intent held. See D48.
