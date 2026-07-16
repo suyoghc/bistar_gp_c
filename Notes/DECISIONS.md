@@ -3810,3 +3810,167 @@ gradient, Hessian, curvature, MAP, sampler, toy-model, Mauna, or holdout computa
 D46 and its hashes are preserved unchanged; `1241aca` and `d84c5fb` are unamended. The reserved v1.18
 result-instance path remains **ABSENT** and the **v1.18 label stays permanently unused**. Every future execution
 requires its own fresh explicit author authorization, recorded in the v1.19 ledger.
+
+## D48: M2cR milestone R2 — hermetic infrastructure: v2 gates with complete attempt/retry evidence, write-ahead events, capture driver + B14-stack v5 bootstrap, payload-start boundary, freeze/manifest/audit tooling, B15(ii) measurement; three-reviewer gate passed; R2a/R3 and all execution remain UNAUTHORIZED — 2026-07-16
+
+**Problem:** R1 (D47) froze the taxonomy, the execution-record schema with the Layer-2 v2 per-node
+contract, and the authorization ledger, but none of the machinery existed: the frozen orchestrator
+still discards attempt/retry evidence on its accept paths (diagnoses C-a/H-d), there was no capture
+or bootstrap infrastructure, no payload-start boundary, no environment freeze, and no audit tooling.
+Plan §8 defines milestone R2 as the hermetic implementation of exactly that set, under a fresh
+explicit author authorization received 2026-07-16.
+
+**Decision:** Execute R2 exactly, on branch `feat/d19-m2cr-r2-infrastructure` off `origin/main`
+9f9f9ad, as eight commits ending at the review head; documentation of the run below is exhaustive
+because the milestone's own standard demands independent auditability.
+
+- **Startup gate (all passed, recorded before any edit).** PR #15 MERGED (2026-07-16T07:48:40Z);
+  574bf2e an ancestor of origin/main; plan sha256 `51b8ec60…aefbf7` exact; v1.17 canonical hash
+  `65381bc7…e522e2` reproduced by stdlib replication and later re-reproduced through the new
+  serializer and by two reviewers independently; the reserved v1.18 result instance ABSENT; tracked
+  tree clean. Baseline `python -m pytest -q` under the Miniconda base interpreter (3.13.11):
+  **442 passed, 1 skipped, 52.43 s**, matching the R1-recorded baseline exactly.
+- **A provenance correction on the authorization prompt itself.** The R2 prompt instructed
+  verification of a rev-5 sha256 ending `…0957308a2ff7df`. The committed rev-5 file hashes to
+  `c3e9db66e189b2a8cad19bf11b5c4acc6518d4b6d2597ae93b0f700587d1ce3f`, the value the plan cites at
+  BOTH §1:33 and §12:904 and every prior record confirms; the prompt's value appears nowhere in the
+  repository and its suffix coincides with the D46 historical plan hash `d9e85a41…2ff7df`, so the
+  prompt inherited a splice. The gate's intent (rev-5 unchanged since D40) HOLDS and was verified
+  against the true digest. This session initially misdiagnosed the splice as living inside plan §12
+  and wrote that into the implementation map; round-2 review (Opus) disproved the misreading by
+  direct recomputation, and the map was corrected. The plan needed and received no edit.
+- **Deliverables (plan §8 R2 enumeration, all hermetic).** New subpackage `bistar_gp/m2cr/` (twelve
+  modules) plus sixteen `tests/test_m2cr_*.py` files, ~11,600 lines added in total, all pure
+  additions: the branch delta against origin/main contains zero modifications or deletions of
+  existing paths. (1) `optimize_conditional_v2` / `curvature_gate_v2` as reimplementations importing
+  frozen constants from `m2c_freeze` only, byte-equivalent verdicts proven by a differential suite
+  (bit-identical floats via uint64 views, identical reason strings) over the synthetic oracles plus
+  rigged fakes for every §3.2 path: restart success/failure, status-0/success-False on optimizer and
+  retry, nonfinite vectors, split agree_g/agree_u disagreement, indefinite and near-singular retries,
+  malformed-output fallback, nonstationary retry; a stateful sequence-recording fake proves v2
+  preserves the frozen oracle-call prefix exactly and takes discarded-original telemetry only
+  afterward. (2) The write-ahead event stream (parent-owned pipe, per-line flush, the eight frozen
+  event types, identity-aware bracket balance, full curvature payloads and raw SciPy fields durable
+  at bracket close) with crash-preservation tests. (3) Layer-2 record builders emitting the R1
+  `$defs` contract in canonical (ls, os, lv) axes (eigenvalues stay spectral), validated through the
+  frozen JSON Pointers, with the v1.19 §9 mandated invariants tested: battery conjunction both
+  directions, persisted jitter identity, both-direction permutation/conjugation against hardcoded
+  expectations, accepted-node outgoing self-pointing, failed-node identity+vector carry-forward.
+  (4) The §5.4 nonfinite completeness test: an independent schema walker and an emitted-field walker
+  whose inventories must match exactly in both directions, every sentinel kind forced, hand-written
+  golden serializations fixed as literals, and the four mandated negative cases. (5) The capture
+  driver: frozen five-status precedence (first match wins), SIGTERM/30 s/SIGKILL grace with an
+  injectable waiter, reconciliation mode flagged reconstructed, fresh-run-dir and containment
+  enforcement, pre-spawn chain/id validation, Layer 2-3-4 write order with strict RAW_MANIFEST,
+  per-node evidence validated against the frozen pointer and aggregates recomputed exactly, marker
+  re-verification child- and parent-side, and a last-resort schema-valid terminal envelope that
+  declares its placeholder digest. (6) The stdlib-first bootstrap implementing B14-stack v5: HELLO
+  literally first (event fd on argv), §4.5.8 effect proofs with the bound sentinel hash, four-root
+  sys.path replacement, staged dual-view environment attestation with the frozen Stage-B two-delta
+  rule and persisted authenticated baselines re-read at Stage C, shared dotted-stem-safe pyc
+  classification, SourcelessFileLoader rejection, audit canary, manifest completeness re-walks
+  before imports and after payload, per-module resolved origin + loader-class binding, worktree
+  open-tracking, the explicit profile_integration v1.17 hash comparison, torch build-marker and
+  thread-count readback machinery behind fakes, and loaded-image enumeration. (7) The fail-closed
+  hash-bound `payload_started.json` boundary with the spy-ordered enforceability proof (attestations
+  complete, marker written, payload entered, nothing between). (8) The environment-freeze generators
+  and seven committed artifacts under `docs/m2c_freeze/m2cr_*`: importable-artifact manifest format
+  v2 (roots header, per-entry loader; 8,743,897 bytes; 39,955 entries = 39,389 source + 564
+  extension + 2 archives + 0 orphan bytecode), interpreter pin (version string + resolved sha256,
+  re-attested), child-env mapping with the concrete frozen PATH, pre-boundary attestation set (dyld
+  main cache plus its twelve declared subcaches), dependency lock with the RECORD caveats, the
+  aggregating environment-freeze manifest whose file sha256 realizes the B18-sub chain member, and
+  the INFRASTRUCTURE manifest pinning all twelve code files, six artifacts, and both R1 schemas with
+  repo-relative pins; manifest==tree and freeze-derivation CI run unconditionally. (9) Audit
+  tooling: ledger validation (ordering, uniqueness, grant-scope binding, one-shot consumption,
+  attempt closure, consumption derived only from payload-start, D45 excluded from prospective
+  derivation), evidence-layout audit with strict Layer-3 parsing and full rehashing over both
+  terminal kinds, kind-exact chain verification requiring prospective grants and explicit
+  expectations, semantic freeze-artifact validation, and the bit-exact left-to-right band-mass sum
+  identity. (10) B15(ii) measurement: worst-case per-node record 5,894 B, worst-case per-node events
+  6,088 B, clean variants 3,179/3,029 B, failed node 1,613 B; derived at the B7 node parameter
+  (1,481): records 8,729,014 B, events 9,016,328 B, fixed artifacts 8,808,764 B, measured-class
+  bundle 26,554,106 B; report at `docs/m2cr-r2-evidence-size-report.md` labels every derived figure
+  with its formula, sets NO ceiling, and proposes non-binding per-class values for the future R2a
+  author addendum. The implementation map `docs/plan-m2cr-r2-implementation-map.md` carries the
+  requirement/artifact/test matrix and the protected-file list.
+- **Orchestration provenance.** Sole orchestrator: this Fable 5 Max session. Implementation workers:
+  three concurrent codex gpt-5.6-sol xHigh subagents (sandboxed workspace-write; the unsandboxed
+  mode was declined by the permission layer and not used), one per subsystem, with the shared core
+  (serialization, coordinates, events) authored by the orchestrator first; every diff personally
+  inspected before integration. Three focused codex checkpoint reviews (read-only, one per
+  subsystem) returned 21 findings; 19 confirmed and fixed by three codex fix workers, 2 adjudicated
+  false alarms with recorded rationale (candidate_vector stays RAW per the frozen schema field text,
+  the general B1 sentence notwithstanding; torch import at test collection is recorded baseline
+  behavior and the proposed remedy would have edited protected `bistar_gp/__init__.py`). Freeze
+  artifacts were generated from fresh detached worktrees at their exact code commits; a dyld
+  subcache-discovery defect (role-suffixed names) and a nested-root double-count were caught by the
+  orchestrator during generation and fixed before commit.
+- **Final review gate (three reviewers, blinded, read-only, same head per round).** Round 1 at
+  cf5c08c: codex gpt-5.6-sol xHigh (23 findings, REVISE), Opus 4.8 via a fresh internal agent (10
+  findings, REVISE, with extensive independent recomputation), and GLM 5.2 through OpenRouter.
+  The GLM procurement record, stated honestly: at reasoning effort high it consumed every completion
+  budget tried (16k/45k/60k, whole and chunked) entirely on private reasoning with zero emitted
+  review across five attempts, and at medium one chunk finished with output still confined to the
+  reasoning channel; the working configuration was reasoning disabled over subsystem-scoped chunks,
+  which produced its reports (15 findings across chunks; two degenerated tails discarded). All 48
+  round-1 findings were adjudicated one by one: 27 confirmed (including two empirically verified
+  root-cause defects: the dotted-stem pyc misclassification that had poisoned the first committed
+  manifest with 12 false orphans and would have failed a real launch on 59 caches, found convergently
+  by codex and Opus; and the child event writer crashing on nonfinite values), the rest false alarms
+  or duplicates, each dismissal carrying its controlling-text or source citation (notably: the
+  NOT_STARTED race disproven by the joined spawn thread, GLM's getattr and RETRY_END claims disproven
+  against source and the frozen event enumeration, and stream write-temp/rename rejected because it
+  would contradict §3.2's write-ahead semantics). Fixes were applied by the orchestrator plus two
+  internal Claude agents after the codex account hit its weekly usage cap mid-round (reset
+  2026-07-23); the cap is why codex could not participate in later rounds. Round 2: Opus full-tree
+  re-review (REVISE: four MINORs, all fixed, including the arithmetic and provenance-note corrections
+  above and the closer-identity fail-open it flagged convergently with GLM; its report also
+  disclosed that two of its own subagents had violated read-only and "edited" four files, which
+  adjudication showed were exactly this session's own uncommitted round-2 fixes, misattributed) and
+  GLM delta chunks (one APPROVE, three REVISE contributing three confirmed items: closer-identity
+  strictness, the pre-payload raw-manifest audit gap, and the effective thread-count readback).
+  Round 3, after the final fixes and one novel unreviewed change (worktree_root became a required
+  per-launch parameter of launch_config_from_freeze once the committed-derivation test exposed the
+  header over-freeze): a focused Opus delta review returned **APPROVE** with one cosmetic indent
+  nit (tests/test_m2cr_capture.py:893, accepted as-is), after recomputing all twelve code pins, both
+  aggregating members, verifying every remedy fail-closed, and confirming plan §4.5.1/§4.5.4 freeze
+  the permitted-root set and content but not the launch worktree path. Gate state: reports from all
+  three named reviewers exist and every finding is adjudicated; zero unresolved confirmed defects;
+  zero pending author decisions; the only outstanding item is the codex DELTA re-review of the fix
+  commits, impossible before its quota reset and expressly left for the author to commission while
+  the PR stays Draft.
+- **Recorded non-blocking notes** (disclosed, no action): the scan-versus-walker symlink-descent
+  asymmetry (the authoritative manifest re-walk covers it); the child-side optional-manifest default
+  (the production derivation path always injects it); repo-root discovery error wording; the
+  fresh-run-dir fixed blocker list; the bootstrap header kind-check asymmetry; the R1 schema's
+  eigenvalue field description saying canonical order while the spectrum is order-invariant (a
+  protected R1 artifact; records correctly persist spectral order); and the manifest header's
+  worktree path documenting the freeze-time temporary worktree (fail-closed by construction, and any
+  future launch regenerates its freeze per §4.3).
+- **Final state.** `python -m pytest -q` on the review head: **694 passed, 2 skipped** (the
+  pre-existing Mauna-baseline skip and the opt-in real-root walk), exit 0, ~50 s; the suite's
+  pre-existing hermetic tiny-E1 sampler regressions ran unchanged as part of it. No scientific,
+  diagnostic, profile, optimizer-on-model, gradient-on-model, Hessian-on-model, MAP, sampler, VI,
+  toy-model, Mauna, or holdout computation was performed at any point: every gate execution ran on
+  synthetic or rigged oracles and every child ran fake payloads. Frozen sources, both R1 schemas,
+  the ledger (still its single D45 line), v1.17, the v1.18 schema, rev-5, the plan, and the prereg
+  are byte-identical to origin/main; nothing under `runs/` was staged; the v1.18 result-instance
+  path remains ABSENT and the label permanently unused.
+
+**Alternatives considered:** (a) Wrapping the frozen gates instead of reimplementing, rejected by
+ratified B13 (wrappers were the D45 defect class). (b) Treating the §12 handoff's prompt-inherited
+hash as a gate failure and stopping, rejected: the plan's own §1 invariant, the full git history,
+and R1's recorded exact-match verification establish the intended invariant, which holds; stopping
+would have elevated a prompt transcription slip over the governing artifacts. (c) Halting the
+milestone when the codex usage cap struck mid-fix-round, rejected in favor of completing fixes with
+internal agents and recording the codex delta re-review as outstanding: the cap is external, the
+round-1 codex report was already delivered and adjudicated, and the Draft PR boundary leaves the
+author free to commission the delta before any merge. (d) Running GLM at a lower effort silently,
+rejected: the degradation path is recorded verbatim above. (e) Regenerating manifests once more to
+fix a cosmetic test indent, rejected as pure churn; recorded instead.
+
+**Status:** R2 COMPLETE on branch `feat/d19-m2cr-r2-infrastructure`; Draft PR opened against `main`
+and held there. **R2 stops here.** Marking Ready, merging, R2a (the evidence-ceilings addendum),
+R3, and every `--execute` are separate future author acts; nothing here grants any of them. D45
+remains permanently an UNVALIDATED_ATTEMPT.

@@ -2,6 +2,28 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
+## M2cR R2 COMPLETE (D48, 2026-07-16) — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR open, HARD STOP
+
+- **Shipped (hermetic, plan §8 R2 exactly):** `bistar_gp/m2cr/` (12 modules) + 16 test files; v2 gates
+  byte-equivalent with full attempt/retry evidence; write-ahead events; capture driver + B14-stack v5
+  bootstrap; fail-closed `payload_started.json` boundary; 7 committed freeze artifacts under
+  `docs/m2c_freeze/m2cr_*` (importable manifest v2: 39,955 entries / 8,743,897 B / 0 orphans);
+  audit tooling; B15(ii) measurement report (NO ceilings; proposals non-binding). Suite: baseline
+  442 passed/1 skipped; final **694 passed/2 skipped**, exit 0.
+- **Review gate:** 3 blinded reviewers round 1 (codex gpt-5.6-sol xHigh, Opus 4.8, GLM 5.2/OpenRouter);
+  48 findings adjudicated, 27 confirmed + fixed; Opus full-tree round 2 + GLM deltas; Opus focused
+  round-3 delta = **APPROVE**. Zero unresolved confirmed defects; zero pending author decisions.
+- **OUTSTANDING (author to commission before merge):** codex DELTA re-review of the fix commits —
+  the codex account hit its weekly usage cap mid-milestone (resets 2026-07-23); its full round-1
+  report was delivered and adjudicated. PR stays Draft either way.
+- **Prompt-hash note:** the R2 authorization prompt's rev-5 hash was a splice (suffix = D46 historical
+  plan hash); the plan is consistent at §1 and §12 with the true `c3e9db66…d1ce3f`, which the file
+  matches. Gate intent held. See D48.
+- **NEXT (each a separate author act; none authorized):** R2a versioned pre-execution addendum freezing
+  per-class evidence ceilings from the D48 measurements; then R3 (diagnostic protocol freeze, §6
+  verbatim, diagnostic-record schema, PROTOCOL manifest, classifier goldens); R4 execution needs a
+  fresh grant in the v1.19 ledger + freeze regeneration at its own worktree/commit.
+
 ## M2c — v1.17 ALGORITHM FREEZE RATIFIED (branch `feat/d19-m2c` off main fcc3ce4; D40, 2026-07-13). STOPPED before compute.
 
 - **Two ratified deliverables (committed):** `docs/m2c-gtoy-profile-PROPOSAL.md` (D39 architecture,
