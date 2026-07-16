@@ -204,19 +204,29 @@ def optimize_conditional_v2(
                 # (plan §3.2: the stream is the durability channel); only the
                 # oracle-derived telemetry is deferred, to preserve the
                 # frozen oracle-call prefix.
+                u_flat = np.asarray(result.x, dtype=np.float64).reshape(-1)
+                # The event declares canonical axis order, so a well-shaped
+                # vector is permuted like every other vector payload; a
+                # wrong-shaped rigged result stays raw with a null order.
+                well_shaped = perm is not None and u_flat.size == len(perm)
                 event_sink.emit(
                     "ATTEMPT_END",
                     start_label=label,
                     attempt_index=0,
                     is_jittered_restart=False,
                     node_index=node_index,
-                    persisted_axis_order=_event_axis_order(perm),
+                    persisted_axis_order=(
+                        _event_axis_order(perm) if well_shaped or perm is None
+                        else None
+                    ),
                     status=int(result.status),
                     scipy_success=bool(getattr(result, "success", True)),
                     message=str(result.message),
-                    u_raw=np.asarray(result.x, dtype=np.float64)
-                    .reshape(-1)
-                    .tolist(),
+                    u_raw=(
+                        _event_vector(u_flat, perm)
+                        if well_shaped
+                        else u_flat.tolist()
+                    ),
                     telemetry_deferred=True,
                 )
             rng_seed = RESTART_RNG_BASE + index

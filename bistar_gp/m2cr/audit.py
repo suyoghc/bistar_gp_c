@@ -783,9 +783,13 @@ def verify_ledger_against_evidence(
                 checks,
                 errors,
             )
-            _audit_raw_manifest(
-                attempt, f"raw_manifest_audit:{launch_id}", checks, errors
-            )
+        # A pre-payload failure still commits complete Layer-2/3 evidence
+        # (plan §4.3), so the strict Layer-3 audit covers both terminal
+        # kinds; only the ledger digest cross-check is terminal_outcome's,
+        # whose event carries raw_manifest_sha256.
+        _audit_raw_manifest(
+            attempt, f"raw_manifest_audit:{launch_id}", checks, errors
+        )
         if raw_terminal is None:
             continue
         try:

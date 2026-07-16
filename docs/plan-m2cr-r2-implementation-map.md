@@ -55,10 +55,12 @@ schema-conformance tests because prereg v1.19 §9 assigns those invariants to R2
 
 ## Known provenance note
 
-The plan carries two spellings of the rev-5 sha256: §1 pins
-`c3e9db66e189b2a8cad19bf11b5c4acc6518d4b6d2597ae93b0f700587d1ce3f`, which the committed file matches
-byte-exactly and which every prior record (prereg v1.17, D40–D47, R1's own precondition check) confirms;
-§12's handoff block prints `c3e9db66e189b2a8cad19bf11b5c4acc6518d4da44bb0bd5260957308a2ff7df`, whose
-suffix coincides with the D46 historical plan hash and which matches no artifact. The §12 value is a
-transcription splice, the file is unchanged since D40, and the plan is not edited to fix it (it is
-protected). Recorded here and in D48 so no future gate treats the §12 string as an expected value.
+The R2 authorization prompt instructed verification of a rev-5 sha256 ending `…0957308a2ff7df`. The
+committed rev-5 file and the plan agree at both citation sites (§1 line 33 and §12 line 904) on the
+true digest `c3e9db66e189b2a8cad19bf11b5c4acc6518d4b6d2597ae93b0f700587d1ce3f`, which the file
+matches byte-exactly and every prior record (prereg v1.17, D40-D47, R1's precondition check)
+confirms; the prompt's value appears nowhere in the repository, and its suffix coincides with the
+D46 historical plan hash `d9e85a41…0957308a2ff7df`, so the authorization prompt inherited a splice.
+An earlier revision of this note wrongly located that splice inside the plan's §12; round-2 review
+caught the misstatement, and the plan needs no correction anywhere. The startup gate's intent
+(rev-5 unchanged since D40 ratification) holds and was verified against the true digest.

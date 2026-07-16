@@ -143,11 +143,19 @@ def check_stream_balance(lines: Iterable[str]) -> dict[str, Any]:
                 )
             _, opener_identity = stack.pop()
             for field, opener_value in opener_identity.items():
-                if obj.get(field, opener_value) != opener_value:
+                if field not in obj:
+                    # A closer must repeat every identity field its opener
+                    # carried; silence here would let a malformed closer
+                    # certify a COMPLETED stream (plan §3.2).
+                    return _unbalanced(
+                        f"line {line_number}: {event} omits identity field "
+                        f"{field} carried by its opener"
+                    )
+                if obj[field] != opener_value:
                     return _unbalanced(
                         f"line {line_number}: {event} identity mismatch on "
                         f"{field}: opener {opener_value!r} vs closer "
-                        f"{obj.get(field)!r}"
+                        f"{obj[field]!r}"
                     )
         # Point events need no bracket handling.
     if not saw_any:

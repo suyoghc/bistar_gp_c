@@ -1128,7 +1128,14 @@ def _last_resort_terminal_record(
         evidence, Mapping
     ) else None
     if not isinstance(digest, str) or _SHA256_RE.fullmatch(digest) is None:
+        # The schema requires a digest-shaped member, so the placeholder is
+        # the all-zero string; the detail declares it so no reader can take
+        # it for a real Layer-3 digest.
         digest = "0" * 64
+        text = (
+            "last-resort envelope; raw-manifest digest unavailable, "
+            "all-zero placeholder substituted. " + text
+        )[:_LAST_RESORT_DETAIL_LIMIT]
     node_evidence: list[dict[str, Any]] = []
     raw_nodes = (
         evidence.get("node_evidence_digests")

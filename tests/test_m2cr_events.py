@@ -162,5 +162,8 @@ def test_closer_identity_must_match_opener():
         '{"seq":0,"event":"NODE_BEGIN","node_index":3}',
         '{"seq":1,"event":"NODE_END"}',
     ]
-    # A closer that omits the identity field repeats the opener implicitly.
-    assert ev.check_stream_balance(closer_without_identity)["balanced"]
+    # A closer must repeat every identity field its opener carried; a silent
+    # omission would let a malformed closer certify a COMPLETED stream.
+    verdict_missing = ev.check_stream_balance(closer_without_identity)
+    assert not verdict_missing["balanced"]
+    assert "omits identity field" in verdict_missing["reason"]

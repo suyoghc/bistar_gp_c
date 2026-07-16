@@ -56,10 +56,10 @@ projection as a parameter with that default, not a constant.
 
 | Quantity | Bytes | Derivation (labeled derived) |
 |---|---|---|
-| Per-node records, all nodes at the worst-case variant | 8,728,214 | derived: 5,894 × 1,481 |
+| Per-node records, all nodes at the worst-case variant | 8,729,014 | derived: 5,894 × 1,481 |
 | Event stream, all nodes at the worst-case variant | 9,016,328 | derived: 6,088 × 1,481 |
 | Fixed freeze artifacts | 8,808,764 | measured (sum above) |
-| Complete bundle, evidence classes with measured bases | 26,553,306 | derived: fixed total + both per-node products |
+| Complete bundle, evidence classes with measured bases | 26,554,106 | derived: fixed total + both per-node products |
 
 The projection prices every node at the worst measured variant, so it bounds any realistic run from
 above for those classes. Runtime envelope files (prelaunch, spawned, marker, attestations,

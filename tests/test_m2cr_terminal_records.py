@@ -311,6 +311,7 @@ def test_last_resort_record_survives_empty_detail_and_evidence() -> None:
         payload_started=False,
     )
     validate_terminal_record(record)
-    assert record["fault"]["detail"] == "terminal assembly failed"
+    assert record["fault"]["detail"].endswith("terminal assembly failed")
+    assert record["fault"]["detail"].startswith("last-resort envelope")
     assert record["evidence"]["node_evidence_digests"] == []
     assert record["evidence"]["event_stream_balanced"] is False
