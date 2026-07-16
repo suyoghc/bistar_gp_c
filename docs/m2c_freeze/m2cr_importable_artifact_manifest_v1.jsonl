@@ -39835,7 +39835,7 @@
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2c_manifest.py","root":"worktree","sha256":"fbadacb53e9e6e2d90354bdfa078c9c8591fe359ca74219dfd0a2a464391655f","size":19872}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/__init__.py","root":"worktree","sha256":"948ab3fd86a7b60ab0b64321b05372c59c00794b4eb0562e18731ae05ecd9ddc","size":783}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/audit.py","root":"worktree","sha256":"bc14d69999624d6c9a31fafac4688b2a15659bc5cca12ee1fe55383ac7961ab6","size":64541}
-{"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/bootstrap.py","root":"worktree","sha256":"495e5e09dd5c8ae87964357157369e513463c43d2807a6a7f07179402a7ff45b","size":61170}
+{"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/bootstrap.py","root":"worktree","sha256":"f1bc11643491319a702692f71b9ff9f529c2c1a9f55f4d33b7308784dbefc9eb","size":61950}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/capture.py","root":"worktree","sha256":"da6451cc94e6493b21e37e48eadebb2b92606463ce6aa0f419f41620aa8f6d11","size":73483}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/coordinates.py","root":"worktree","sha256":"0601451912d77fe83a9b21a101475aebb49ffe4c1e5c39fba6e18b3958d8551b","size":5676}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/environment_freeze.py","root":"worktree","sha256":"e9f75f310e0b91c1645cb3634e38271625e80985f507bbfba92cfa8a2f77aa26","size":33435}
@@ -39931,11 +39931,11 @@
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2c_s3_reparam.py","root":"worktree","sha256":"3500d94c2b1bfae119604595f2c663340c30641d8a3a2bd476dabfa44795b74b","size":15563}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2c_umbrella.py","root":"worktree","sha256":"e9cc27e1f708c83a7b42421cf9449600e713e308e05b6f954acd80ec081c24ac","size":7671}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_audit.py","root":"worktree","sha256":"3367aa1f1dd7f0e11b72ceefc989ada17077c396a368564dd3ed5b1ff6b652ca","size":35698}
-{"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_bootstrap.py","root":"worktree","sha256":"038409f90334ae3a3d601d59446d22e0df0149ac72164a14f342abebdf53fcd5","size":41168}
-{"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_capture.py","root":"worktree","sha256":"45c868ae0ac880cd627b42ac2739351576f8df2b0c44d8bb1d1da8e044da6484","size":38615}
+{"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_bootstrap.py","root":"worktree","sha256":"d5877fc6d9c7e60871822b10eafc6ef04a2cd69a56cb313ff41379d2646c6065","size":41765}
+{"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_capture.py","root":"worktree","sha256":"370894840e0cbf20f729b1252ece5b4a5ead9905588c513e14292478194add37","size":40750}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_coordinates.py","root":"worktree","sha256":"10af87d34e1728386e6c6e0fd649074479a7547c7859f6a900abaa3b9b933418","size":3996}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_environment_freeze.py","root":"worktree","sha256":"c4d1b3e1e136fa218dbd02902280c8d383d8cd87886f5fff20e77e6038ba7fdc","size":19288}
-{"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_events.py","root":"worktree","sha256":"43ba2e059eec093da3ba39acb4b523aa8c1bfbfc63619441820167967f032fc6","size":6760}
+{"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_events.py","root":"worktree","sha256":"0d6b29d47ffa56ee28aebd159b3a7b283df5288efc11a99a5469ae533290d8af","size":7458}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_gates_v2.py","root":"worktree","sha256":"3795804415f71887b176714cf6a4c4c2d5deda385cd20eead448b226b87085f9","size":10762}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_gates_v2_equivalence.py","root":"worktree","sha256":"77dacec67bddd24ad865a2723bf78a57b09d8c4332b9ccdab9e29271948ca179","size":11228}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_infrastructure_manifest.py","root":"worktree","sha256":"5baeeb38391c29715b4a9d5435db7ed41df228ab3d53883083ac57152db0e167","size":8224}
