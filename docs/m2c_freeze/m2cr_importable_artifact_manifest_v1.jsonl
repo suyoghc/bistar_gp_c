@@ -39834,13 +39834,13 @@
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2c_freeze_s2s3.py","root":"worktree","sha256":"df22e15c59be3c3687cd2e146b3e2f6207e776038ad4f8c57267b40c4b2da022","size":1227}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2c_manifest.py","root":"worktree","sha256":"fbadacb53e9e6e2d90354bdfa078c9c8591fe359ca74219dfd0a2a464391655f","size":19872}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/__init__.py","root":"worktree","sha256":"948ab3fd86a7b60ab0b64321b05372c59c00794b4eb0562e18731ae05ecd9ddc","size":783}
-{"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/audit.py","root":"worktree","sha256":"21b921eb00578557882b48c098b75a0592979d2aedc73f0c7e0027ef113a93c6","size":59691}
+{"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/audit.py","root":"worktree","sha256":"a9b9bd5cdbb0a4c31683104cb3d74c573155f7c09b5d2f50e1c4691f813edb4c","size":59952}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/bootstrap.py","root":"worktree","sha256":"2ac2e4a1786f2f743b355d000e6b20b7a40e0250a4b8b15a2f876a76a6003c22","size":57235}
-{"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/capture.py","root":"worktree","sha256":"b3904d559d0631329acd62cc9c6229862957a10bcdc0f3d326271b99c930492d","size":68994}
+{"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/capture.py","root":"worktree","sha256":"cb835037bffb46812f05f8c72dc8debc4e3b80b136dfb75e8d121bb3cebd4920","size":69367}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/coordinates.py","root":"worktree","sha256":"0601451912d77fe83a9b21a101475aebb49ffe4c1e5c39fba6e18b3958d8551b","size":5676}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/environment_freeze.py","root":"worktree","sha256":"0f0679e7bf54a939f345d13c1f7dda5dda6f1b6eab77242f998963896eb892b1","size":33435}
-{"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/events.py","root":"worktree","sha256":"330bb23b8ab132c40e07455e76e43ba95238c93eae52a110b344c3e75cac4f9d","size":8432}
-{"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/gates_v2.py","root":"worktree","sha256":"3453cabcde0e648047ae59a04c098998224ef5afaff539f67abb4fb32d24566f","size":26904}
+{"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/events.py","root":"worktree","sha256":"fdbdc8b69ea96dc80b273deaf92289ee6be80ea736aa86e612463226a36c1d58","size":8854}
+{"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/gates_v2.py","root":"worktree","sha256":"3cf38fbd2fe6cf80e0f77a2791a6c1bb152bf96091f8ae2d770f8faab52f2326","size":27449}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/measure.py","root":"worktree","sha256":"22c8ffd9bed481e812cdf671941d98faede107c02558228c1f0641798c8d8c2a","size":8134}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/payload_boundary.py","root":"worktree","sha256":"76caafb811ab4090647789152636e7c3b3ec6dff7955740cf8b3ffaada9b5735","size":10312}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"bistar_gp/m2cr/records.py","root":"worktree","sha256":"34fa7bdbf2a26031aadd17e454a60e0080e0516383bc9a40b95eba00ecb175fb","size":17471}
@@ -39935,7 +39935,7 @@
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_capture.py","root":"worktree","sha256":"974ae89b8cac3c090372433993dc5afaeb5e33e3c9102ba8092a8870baa833bd","size":34730}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_coordinates.py","root":"worktree","sha256":"10af87d34e1728386e6c6e0fd649074479a7547c7859f6a900abaa3b9b933418","size":3996}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_environment_freeze.py","root":"worktree","sha256":"c4d1b3e1e136fa218dbd02902280c8d383d8cd87886f5fff20e77e6038ba7fdc","size":19288}
-{"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_events.py","root":"worktree","sha256":"9d55ee0f07f415337cedcccea49ad40aa6cdd1b0eafb85db7ed192f764e0c380","size":5878}
+{"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_events.py","root":"worktree","sha256":"a12310aee48ad4304cdaab330d663ea2b51cbca13a1c1cebf81763b321ca4a63","size":6056}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_gates_v2.py","root":"worktree","sha256":"eddf1ae3cc8d61fa669c682cd2b1347ec013a9f5938141632f41c6f6aac35920","size":10184}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_gates_v2_equivalence.py","root":"worktree","sha256":"77dacec67bddd24ad865a2723bf78a57b09d8c4332b9ccdab9e29271948ca179","size":11228}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_infrastructure_manifest.py","root":"worktree","sha256":"55ea418d56a817db3fbde9961292502277cdf85d5abf97cbb9bc5b1ade7a5175","size":6427}
@@ -39944,7 +39944,7 @@
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_payload_boundary.py","root":"worktree","sha256":"89813065f123f9081db6de6811dfe24a5203bd1c9f41e1d3eeb5f43f62d6bc7b","size":6283}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_records.py","root":"worktree","sha256":"d47f5d83507dc5d580913a34594ee73cad5733cadf8dc498806e9b93087ad1ca","size":17316}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_serialization.py","root":"worktree","sha256":"a5379a2d7323948c6ad6efe12fcf2aeba787e4a8ac137739a8eb132d51f536c0","size":4390}
-{"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_terminal_records.py","root":"worktree","sha256":"60062ff3af797faa85d8eb94d58d3a4de66435ec1f74e8ffaaaac09409fd319b","size":10063}
+{"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_m2cr_terminal_records.py","root":"worktree","sha256":"56d4d3f013b6c6ed358793a153e7b07b50697d298c0d63ccd6e3bdb4d31c1a65","size":10142}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_mauna_candidate_registry.py","root":"worktree","sha256":"61dd29e8bbe76b7a9c764fa89ae30031f9ffefdcdff44444084a3b3cc0b19c8d","size":11095}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_mauna_period_freeze.py","root":"worktree","sha256":"b6861d86449c9862dde5ecae4adb4829e649d0affcc8de4ebbb15884d2965675","size":7393}
 {"artifact_type":"source","loader":"SourceFileLoader","relpath":"tests/test_mauna_provenance.py","root":"worktree","sha256":"d7ddb9a6b3970bd3355f9ef43b4b58734ac110bfeb040729d58faaf252075011","size":7764}
