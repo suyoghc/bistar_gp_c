@@ -166,3 +166,47 @@ def test_committed_infrastructure_manifest_matches_tree():
         )
     report = verify_infrastructure_manifest(COMMITTED_MANIFEST)
     assert report["ok"], report["errors"]
+
+
+COMMITTED_IMPORTABLE_MANIFEST = (
+    ROOT / "docs/m2c_freeze/m2cr_importable_artifact_manifest_v1.jsonl"
+)
+
+
+def test_committed_importable_manifest_worktree_entries_match_tree():
+    """The committed importable manifest's WORKTREE entries must attest the
+    on-disk source, not only carry a self-consistent file digest.
+
+    External audit (Opus re-review) F1-regen: the infrastructure manifest
+    pins the importable manifest by FILE sha256, which cannot catch a stale
+    INTERIOR worktree entry (a regeneration-ordering slip left audit.py and
+    tests/test_m2cr_audit.py entries lagging their on-disk bytes). This
+    cross-walk closes that CI-invisible class.
+    """
+
+    if os.environ.get("M2CR_ALLOW_MISSING_COMMITTED_MANIFEST") == "1":
+        pytest.skip("orchestrator regeneration window")
+    if not COMMITTED_IMPORTABLE_MANIFEST.exists():
+        pytest.fail("committed importable manifest is missing")
+    from bistar_gp.m2cr.serialization import sha256_file
+
+    stale: list[str] = []
+    with COMMITTED_IMPORTABLE_MANIFEST.open(encoding="utf-8") as handle:
+        handle.readline()  # v2 header
+        for line in handle:
+            entry = json.loads(line)
+            if entry.get("root") != "worktree":
+                continue
+            relpath = entry["relpath"]
+            disk = ROOT / relpath
+            if not disk.is_file():
+                stale.append(f"{relpath}: committed but absent on disk")
+                continue
+            if (
+                sha256_file(disk) != entry["sha256"]
+                or disk.stat().st_size != entry["size"]
+            ):
+                stale.append(f"{relpath}: sha256/size differ from on-disk source")
+    assert not stale, "stale committed importable-manifest worktree entries: " + "; ".join(
+        stale
+    )
