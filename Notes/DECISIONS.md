@@ -4166,3 +4166,39 @@ these fixes again changed cross-cutting contracts (chain binding, the native all
 worktree hashing, pump-error propagation, the closure probe), the review gate re-opens for a fresh
 exact-head round. Protected files, the ledger (single D45 line), the v1.18 absence, and the
 rev-5/v1.17 hashes are unchanged. **Gate state: OPEN.** PR #16 stays Draft.
+
+**Update 5 (2026-07-16, exact-head re-review of the round-2 remediation; APPROVE + two non-blocking findings acted on).**
+After the second external-audit remediation (Update 4), a fresh exact-head re-review ran at the fix
+head 0e93c77:
+
+- **GLM 5.2** produced a chaotic report listing ten findings followed by a self-correction note
+  recanting all of them. Adjudicated independently against source (not relying on the recantation):
+  **all ten FALSE_ALARM.** Representative refutations: its "serialization missing from the closure"
+  is wrong (the committed 76-entry closure contains serialization.py transitively via
+  environment_freeze); its "pump deadlock" ignores that `_pump`'s `with os.fdopen(read_fd)` closes
+  the read end on exception and EPIPEs the child; its "None authorization_id binds" is caught
+  downstream by `_require_pattern`; its "boolean guard should be a lock" is backwards (a lock
+  re-entered by the hash's own open would deadlock — the boolean is the correct audit-hook pattern).
+  No code change from GLM's round.
+- **Opus 4.8** returned **APPROVE** — all nine round-2 fixes faithful with no new fail-open or
+  frozen-contract divergence, all 24 manifest pins recomputed, the 76-entry closure verified complete
+  (contains serialization.py and environment_freeze.py), protected files byte-identical, the report's
+  fixed-artifact total 8,821,133 equal to the committed artifacts and the bundle 26,566,475
+  arithmetically correct, suite 707 passed / 2 skipped. It raised **two non-blocking findings, both
+  acted on here** rather than left to discretion: (1) the round-2 fix commit claimed "every fix
+  carries a discriminating regression test" but F3/F4/F6 had none — added the F3 allowlist test
+  (via an extracted `disallowed_native_modules` helper), the F4a pump-error-surfacing test, the F4b
+  post-prelaunch-setup-failure-still-yields-a-terminal-record test, and the F6
+  read-then-deleted-worktree-file-stays-load-hashed test, making the earlier claim true; (2) the F6
+  audit-hook re-entrancy guard was a shared closure boolean that could drop a concurrent worktree
+  open on another thread — changed to `threading.local` so each thread has its own guard, closing
+  the window without the re-entrant-deadlock risk a lock would carry.
+
+Fixes in commits 2bb0f93, 98e77f7, plus the map-count follow-up; full suite **711 passed, 2 skipped,
+exit 0** (711 because the committed-manifest CI tests run without the regeneration-window gate).
+**Gate state:** both internal reviewers have delivered exact-head verdicts at the remediation head —
+GLM all-false-alarm (disproven, recorded), Opus APPROVE with its two findings now fixed; **zero
+unresolved CONFIRMED_CONFORMING_DEFECT, zero CONFIRMED_AUTHOR_DECISION_REQUIRED.** The external Codex
+verdict at the new head (98e77f7) is the remaining reviewer input; its prompt is handed to the author.
+The review gate remains **OPEN** until that verdict is adjudicated. PR #16 stays Draft; protected
+files, the ledger (single D45 line), the v1.18 absence, and the rev-5/v1.17 hashes are unchanged.
