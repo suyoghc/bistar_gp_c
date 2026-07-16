@@ -183,3 +183,20 @@ def test_bracket_opener_must_carry_its_identity(monkeypatch):
         verdict = ev.check_stream_balance(lines)
         assert not verdict["balanced"]
         assert "omits required identity" in verdict["reason"]
+
+
+def test_pump_error_surfaces_after_join(tmp_path):
+    """External audit round-2 F4a: a durability failure in the pump thread is
+    recorded and readable by the parent, never silently swallowed."""
+
+    # An events path inside a non-existent directory makes the pump's open()
+    # fail; the error must surface via pump_error (and hello_event is set so a
+    # waiter is not left hanging).
+    bad_path = tmp_path / "does_not_exist" / "events.jsonl"
+    pipe = ev.parent_event_pipe(bad_path)
+    pipe.start()
+    pipe.close_write_end_in_parent()
+    pipe.hello_event.wait(timeout=5)
+    pipe.join(timeout=5)
+    assert pipe.pump_error is not None
+    assert isinstance(pipe.pump_error, OSError)

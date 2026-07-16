@@ -1056,3 +1056,55 @@ def test_raw_files_excludes_only_the_root_two_by_relpath(tmp_path: Path) -> None
     got = {p.relative_to(tmp_path).as_posix() for p in _raw_files(tmp_path)}
     assert "nodes/terminal_record.json" in got
     assert RAW_MANIFEST_NAME not in got and TERMINAL_RECORD_NAME not in got
+
+
+def test_post_prelaunch_setup_failure_still_assembles_a_terminal_record(
+    tmp_path: Path,
+) -> None:
+    """External audit round-2 F4b: a failure writing the bootstrap config (a
+    post-prelaunch setup step) must still yield a schema-valid terminal record,
+    not escape capture_run leaving nothing."""
+
+    config = _make_launch(tmp_path)
+    run_dir = Path(config.run_dir)
+    # Turn stdout.txt into a directory so the post-prelaunch open() fails inside
+    # the supervised try; _make_launch does not create it, so this is clean.
+    (run_dir / "stdout.txt").mkdir()
+    record = capture_run(config)
+    # No child could spawn, so this is NOT_STARTED; the key point is a terminal
+    # record exists rather than an escaped exception.
+    assert record["status"] in {"NOT_STARTED", "INFRA_FAILURE"}
+    validate_terminal_record(record)
+
+
+def test_worktree_file_read_then_deleted_stays_hashed_at_load_time(
+    tmp_path: Path,
+) -> None:
+    """External audit round-2 F6: a worktree data file read during the run and
+    then deleted is still recorded with its load-time hash, not lost."""
+
+    import hashlib
+
+    data_path = "worktree_data.txt"
+    contents = b"scientific-worktree-input\n"
+    expected = hashlib.sha256(contents).hexdigest()
+    # The payload writes a worktree file, reads it (load-time hash captured by
+    # the audit hook), then deletes it before returning.
+    extra = (
+        f"_p = os.path.join(os.getcwd(), {data_path!r})\n"
+        f"    open(_p, 'wb').write({contents!r})\n"
+        f"    open(_p, 'rb').read()\n"
+        f"    os.unlink(_p)"
+    )
+    config = _make_launch(tmp_path, extra_payload_code=extra)
+    record = capture_run(config)
+    assert record["status"] == "COMPLETED", record.get("fault")
+    inventory = json.loads((Path(config.run_dir) / "import_inventory.json").read_text())
+    hashed = {
+        item["path"]: item["sha256"]
+        for item in inventory["worktree_opens"]["hashed"]
+    }
+    matched = [d for p, d in hashed.items() if p.endswith(data_path)]
+    assert matched == [expected], (
+        "read-then-deleted worktree file must keep its load-time hash"
+    )

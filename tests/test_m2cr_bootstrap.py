@@ -17,6 +17,7 @@ import bistar_gp.m2cr.environment_freeze as environment_freeze
 from bistar_gp.m2cr.bootstrap import (
     _encode_nonfinite,
     _header_roots_fault,
+    disallowed_native_modules,
     _inventory,
     _load_importable_artifact_manifest,
     _verify_importable_artifact_manifest,
@@ -1090,3 +1091,15 @@ def test_header_roots_fault_exempts_the_per_launch_worktree(tmp_path: Path) -> N
     assert "name exactly the four frozen root ids" in _header_roots_fault(
         incomplete, launch_roots
     )
+
+
+def test_native_stack_allowlist_rejects_bistar_gp_and_payload_modules():
+    """External audit round-2 F3: native_stack_modules is restricted to the
+    frozen native stack so nothing scientific runs before the marker."""
+
+    assert disallowed_native_modules(["torch", "numpy", "scipy.linalg"]) == []
+    assert disallowed_native_modules(["bistar_gp.profile_integration"]) == [
+        "bistar_gp.profile_integration"
+    ]
+    assert disallowed_native_modules(["fake_payload"]) == ["fake_payload"]
+    assert disallowed_native_modules(["os", "torch"]) == ["os"]

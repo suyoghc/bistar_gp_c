@@ -24,6 +24,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Mapping
@@ -691,6 +692,21 @@ def _verify_importable_artifact_manifest(
     }
 
 
+def disallowed_native_modules(native_modules: list[str]) -> list[str]:
+    """Return the native_stack_modules outside the frozen allowlist.
+
+    The top-level package name is what matters (a submodule imports its
+    package), and every bistar_gp.* module and the payload are excluded, so
+    none can execute before the marker (plan §4.3; external audit round-2 F3).
+    """
+
+    return [
+        name
+        for name in native_modules
+        if name.split(".", 1)[0] not in _ALLOWED_NATIVE_STACK
+    ]
+
+
 def _header_roots_fault(
     header_roots: dict[str, Any], four_roots: list[str]
 ) -> str | None:
@@ -1160,11 +1176,17 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
     worktree_root_real = os.path.realpath(roots[0])
     canary_token = f"m2cr-audit-{os.getpid()}"
     canary_seen = False
-    hashing_in_progress = False
+    # Per-thread re-entrancy guard: the _sha256_file open must not recurse into
+    # this hook on the SAME thread, but a concurrent worktree open on ANOTHER
+    # thread must still be hashed rather than dropped (external audit
+    # round-2 re-review, Opus finding 2). threading.local gives each thread its
+    # own flag, closing the drop window without the re-entrant-deadlock risk a
+    # shared lock would carry.
+    hash_guard = threading.local()
 
     def audit_hook(event: str, args: tuple[Any, ...]) -> None:
-        nonlocal canary_seen, hashing_in_progress
-        if hashing_in_progress:
+        nonlocal canary_seen
+        if getattr(hash_guard, "active", False):
             return
         if event == "import":
             module = args[0] if args else None
@@ -1192,11 +1214,11 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
                         == worktree_root_real
                         and os.path.isfile(real)
                     ):
-                        hashing_in_progress = True
+                        hash_guard.active = True
                         try:
                             worktree_load_hashes[real] = _sha256_file(real)
                         finally:
-                            hashing_in_progress = False
+                            hash_guard.active = False
                 except (OSError, ValueError):
                     pass
         elif event == "m2cr.canary" and args and args[0] == canary_token:
@@ -1228,13 +1250,8 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
         )
     # Fail closed on any module outside the frozen native-stack allowlist: a
     # bistar_gp.* module or the payload smuggled here would execute before the
-    # marker, violating the §4.3 boundary (external audit round-2 F3). The
-    # top-level module name is what matters (a submodule imports its package).
-    disallowed = [
-        name
-        for name in native_modules
-        if name.split(".", 1)[0] not in _ALLOWED_NATIVE_STACK
-    ]
+    # marker, violating the §4.3 boundary (external audit round-2 F3).
+    disallowed = disallowed_native_modules(native_modules)
     if disallowed:
         raise SystemExit(
             "attestation_fault: native_stack_modules outside the frozen "
