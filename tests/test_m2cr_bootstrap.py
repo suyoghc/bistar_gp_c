@@ -437,6 +437,23 @@ def test_effect_proofs_hash_seed_path_audit_and_inventory(tmp_path: Path) -> Non
     first_proofs = json.loads((run_dir / "effect_proofs.json").read_text())
     second_proofs = json.loads((second_run / "effect_proofs.json").read_text())
     assert first_proofs["checks"] == {name: True for name in first_proofs["checks"]}
+    # The frozen §4.5.8 proof set must be present in full; a silently dropped
+    # proof would otherwise keep this aggregation green.
+    assert set(first_proofs["checks"]) == {
+        "optimize",
+        "hash_randomization",
+        "bound_hash",
+        "safe_path",
+        "no_user_site",
+        "dont_write_bytecode",
+        "no_site",
+        "isolated",
+        "ignore_environment",
+    }
+    # pycache_prefix equality is proven through its own SystemExit path
+    # (bootstrap._effect_proofs verifies canonical equality separately and
+    # records the realized value), not as a checks entry.
+    assert first_proofs["pycache_prefix"]
     assert (
         first_proofs["sentinel_hash"] == second_proofs["sentinel_hash"] == SENTINEL_HASH
     )

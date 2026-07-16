@@ -195,3 +195,19 @@ def test_guard_rechecks_digest_after_canonical_byte_substitution(
     atomic_write_canonical_json(marker_path, marker)
     with pytest.raises(BoundaryViolation, match="digest"):
         boundary.guard(lambda: None)()
+
+
+def test_mark_refuses_when_no_attestations_were_registered(tmp_path):
+    """Plan §4.3: pre-scientific attestations must complete before the marker;
+    a boundary with nothing registered must never write one."""
+
+    boundary = PayloadBoundary(
+        tmp_path,
+        AUTHORIZATION_ID,
+        LAUNCH_ATTEMPT_ID,
+        EXECUTION_COMMIT,
+        CHAIN,
+    )
+    with pytest.raises(BoundaryViolation, match="no pre-scientific attestations"):
+        boundary.mark()
+    assert not (tmp_path / "payload_started.json").exists()

@@ -890,7 +890,7 @@ def test_launch_config_from_freeze_rejects_tampered_pin(tmp_path: Path) -> None:
             record_kind="diagnostic",
             chain=dict(CHAIN),
             bootstrap_template_path=fixture["template"],
-        worktree_root=REPOSITORY_ROOT,
+            worktree_root=REPOSITORY_ROOT,
         )
 
 
@@ -941,7 +941,7 @@ def test_committed_freeze_artifacts_derive_the_ratified_pins(
         record_kind="diagnostic",
         chain=dict(CHAIN),
         bootstrap_template_path=template_path,
-        worktree_root=REPOSITORY_ROOT,
+            worktree_root=REPOSITORY_ROOT,
     )
     assert config.interpreter_path == MINICONDA_PYTHON
     assert tuple(config.interpreter_flags) == FROZEN_INTERPRETER_FLAGS

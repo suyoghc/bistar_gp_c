@@ -689,7 +689,7 @@ def build_dependency_lock(
     dists.sort(key=lambda item: (item["name"].casefold(), item["version"]))
     extensions = [
         entry
-        for entry in walk_importable_artifacts([("site_packages", site_path)])
+        for entry in walk_importable_artifacts([("site-packages", site_path)])
         if entry["artifact_type"] == "extension"
     ]
     extension_hashes = sorted(entry["sha256"] for entry in extensions)
