@@ -212,3 +212,37 @@ def test_evidence_size_report_figures_reproduce():
         stage_id="level0",
     )
     assert len(canonical_bytes(failed)) == 1613  # report figure
+
+
+def test_evidence_size_report_fixed_total_matches_committed_artifacts():
+    """External audit round-2 F8: the report's fixed-artifact total must equal
+    the sum of the committed artifacts' actual byte sizes, so a regenerated
+    artifact cannot leave the report stale."""
+
+    import os
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    artifacts = [
+        "m2cr_importable_artifact_manifest_v1.jsonl",
+        "m2cr_dependency_lock_v1.json",
+        "m2cr_preboundary_attestation_set_v1.json",
+        "m2cr_infrastructure_manifest_v1.json",
+        "m2cr_environment_freeze_manifest_v1.json",
+        "m2cr_child_env_mapping_v1.json",
+        "m2cr_interpreter_pin_v1.json",
+    ]
+    freeze = root / "docs/m2c_freeze"
+    if not all((freeze / name).exists() for name in artifacts):
+        import pytest
+
+        pytest.skip("committed freeze artifacts absent (regeneration window)")
+    total = sum(os.path.getsize(freeze / name) for name in artifacts)
+    report = (root / "docs/m2cr-r2-evidence-size-report.md").read_text()
+    stated = int(
+        re.search(r"Fixed-artifact total:\s*\*\*([\d,]+) bytes", report)
+        .group(1)
+        .replace(",", "")
+    )
+    assert stated == total, f"report says {stated}, artifacts sum to {total}"

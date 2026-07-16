@@ -17,15 +17,15 @@ serializer with the frozen nonfinite sentinels.
 
 | Artifact | Bytes | Notes |
 |---|---|---|
-| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,743,897 | format v2 (roots header, per-entry loader); 39,955 entries: 39,389 source, 564 extension, 2 importable-archive, 0 orphan-bytecode |
+| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,743,898 | format v2 (roots header, per-entry loader); 39,955 entries: 39,389 source, 564 extension, 2 importable-archive, 0 orphan-bytecode |
 | `m2cr_dependency_lock_v1.json` | 57,417 | supplementary only |
-| `m2cr_preboundary_attestation_set_v1.json` | 3,032 | dyld main cache plus its twelve declared subcaches, interpreter, bootstrap closure |
+| `m2cr_preboundary_attestation_set_v1.json` | 15,400 | dyld main cache plus its twelve declared subcaches, interpreter, and the complete 76-entry pre-boundary bootstrap closure |
 | `m2cr_infrastructure_manifest_v1.json` | 2,702 | Layer 1a; repo-relative pins |
 | `m2cr_environment_freeze_manifest_v1.json` | 731 | the aggregating manifest; its file sha256 is the chain member |
 | `m2cr_child_env_mapping_v1.json` | 602 | includes the concrete frozen `PATH` |
 | `m2cr_interpreter_pin_v1.json` | 383 | version string plus resolved-target sha256 |
 
-Fixed-artifact total: **8,808,764 bytes** (measured).
+Fixed-artifact total: **8,821,133 bytes** (measured).
 
 Two truthfulness notes. First, the plan §4.5.12 ratification-time estimates (roughly 78,890 entries,
 about 12 MB) were explicitly "not the R2 measurement"; the measured inventory is smaller because the
@@ -72,8 +72,8 @@ projection as a parameter with that default, not a constant.
 |---|---|---|
 | Per-node records, all nodes at the structural worst case | 8,729,014 | derived: 5,894 × 1,481 |
 | Event stream, all nodes at the structural worst case | 9,016,328 | derived: 6,088 × 1,481 |
-| Fixed freeze artifacts | 8,808,764 | measured (sum above) |
-| Complete bundle, evidence classes with measured bases | 26,554,106 | derived: fixed total + both per-node products |
+| Fixed freeze artifacts | 8,821,133 | measured (sum above) |
+| Complete bundle, evidence classes with measured bases | 26,566,475 | derived: fixed total + both per-node products |
 
 The projection prices every node at the structural worst-case exemplar (both starts restarted, retry
 fired). It is **not** a proven upper bound over all runs, because the `message` string is unbounded
