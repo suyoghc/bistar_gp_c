@@ -1532,20 +1532,19 @@ def verify_preboundary_closure_complete(
     from bistar_gp.m2cr.capture import enumerate_bootstrap_closure
 
     errors: list[str] = []
-    root_real = os.path.realpath(worktree_root)
 
     def normalize(path: str) -> str:
-        # Worktree-rooted origins are per-launch (the freeze regenerates at
-        # each launch's own worktree, plan §4.3), so they are keyed by their
-        # worktree-relative suffix; host-global stdlib/native origins keep
-        # their absolute realpath. This lets one committed freeze verify
-        # complete against an enumeration run from a different worktree.
+        # A bistar_gp package module is identified by its package-relative
+        # path, so the same module keys identically whether the freeze was
+        # generated in one detached worktree and verified from another (the
+        # per-launch worktree, plan §4.3). Host-global stdlib/native origins
+        # carry no bistar_gp segment and keep their absolute realpath.
         real = os.path.realpath(path)
-        try:
-            common = os.path.commonpath((root_real, real))
-        except ValueError:
-            return real
-        return os.path.relpath(real, root_real) if common == root_real else real
+        marker = os.sep + "bistar_gp" + os.sep
+        index = real.rfind(marker)
+        if index != -1:
+            return real[index + len(os.sep):]
+        return real
 
     artifact = json.loads(
         Path(attestation_set_path).resolve(strict=True).read_text(encoding="utf-8")

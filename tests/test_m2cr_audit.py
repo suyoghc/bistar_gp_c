@@ -1004,3 +1004,25 @@ def test_one_shot_relaunch_after_payload_started_fails():
         validate_ledger(_jsonl(events)),
         "after one-shot authorization",
     )
+
+
+def test_committed_preboundary_closure_is_complete():
+    """External audit F1: the COMMITTED pre-boundary attestation set carries
+    the full bootstrap closure, not just bootstrap.py."""
+
+    from bistar_gp.m2cr.audit import verify_preboundary_closure_complete
+
+    interpreter = "/opt/homebrew/Caskroom/miniconda/base/bin/python3.13"
+    repo_root = Path(__file__).resolve().parents[1]
+    if not Path(interpreter).exists():
+        import pytest
+
+        pytest.skip("Miniconda base interpreter not present")
+    report = verify_preboundary_closure_complete(
+        repo_root / "docs/m2c_freeze/m2cr_preboundary_attestation_set_v1.json",
+        interpreter,
+        repo_root / "bistar_gp/m2cr/bootstrap.py",
+        repo_root,
+    )
+    assert report["ok"], report["errors"]
+    assert report["committed_count"] > 50
