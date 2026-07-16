@@ -4084,3 +4084,39 @@ curvature durability, header verification, ledger consumption, a new closure-com
 fresh exact-head re-review round is required before the gate can close; the review gate therefore
 remains **OPEN**. PR #16 stays Draft. Protected files, the ledger (single D45 line), the v1.18
 absence, and the rev-5/v1.17 hashes are unchanged.
+
+**Update 3 (2026-07-16, exact-head re-review at the remediation head; one further defect fixed).**
+After the external-audit remediation (Update 2), the fixes changed cross-cutting contracts, so a
+fresh exact-head re-review round ran at fix head `9fa20bc`:
+
+- **GLM 5.2 delta re-review:** all eight confirmed fixes verified clean and F5(b) confirmed out of
+  scope; two new findings, **both FALSE_ALARM** on source verification — (1) the closure-normalize
+  slice `real[index + len(os.sep):]` was claimed to drop a separator, but its proposed "resolution"
+  is character-identical to the code and both committed and enumerated paths pass through the same
+  normalize (keys match; the committed-closure test is green); (2) a `_header_roots_fault` symlink
+  asymmetry was claimed, but `_canonical_four_roots` already rejects any non-canonical path, so the
+  comparison is realpath-vs-realpath by construction. No change.
+- **Opus 4.8 exact-head re-review:** all eight fixes faithful, F5(b) out of scope, all 24 pins and
+  protected files verified, suite green — but it caught **one further CONFIRMED_CONFORMING_DEFECT**
+  my own remediation introduced: a regeneration-ordering slip in commit `3631f58` left the committed
+  importable-artifact manifest's `audit.py` and `tests/test_m2cr_audit.py` interior worktree entries
+  (sha256+size) lagging their on-disk bytes. The manifest's own file digest was self-consistent and
+  the infrastructure manifest pins it by file digest, so the standing manifest==tree CI could not
+  see it; a launch's bootstrap re-walk WOULD have raised `attestation_fault` (fail-closed, never
+  fail-open; unreachable in R2 since no launch is authorized, and every future launch regenerates
+  its own freeze per §4.3). Verified by direct sha256 recomputation (audit.py manifest `041af7b8`
+  size 63984 vs on-disk `fc463e49` size 63904; test file likewise). **Fixed:** regenerated the
+  importable manifest so all interior worktree entries match on-disk source, re-pinned the
+  environment-freeze and infrastructure manifests, and added
+  `test_committed_importable_manifest_worktree_entries_match_tree` — a cross-walk of every committed
+  worktree entry against the tree — so this CI-invisible class is caught going forward. Fixes in
+  commits `108b8db`, `5bc23d2`, `35d01fb`; full suite **703 passed, 2 skipped, exit 0**.
+
+**Gate state after this round.** Both internal reviewers (Opus 4.8, GLM 5.2) have delivered
+exact-head reports at the remediation head with every finding adjudicated: **zero unresolved
+CONFIRMED_CONFORMING_DEFECT, zero CONFIRMED_AUTHOR_DECISION_REQUIRED**; GLM's two residual findings
+are disproven FALSE_ALARM (recorded), and Opus's one confirmed finding is fixed and re-verified. The
+external Codex verdict at this new head (`35d01fb`) is the remaining reviewer input; its prompt is
+handed to the author. **The final review gate remains OPEN until that verdict is adjudicated.** PR
+#16 stays Draft; R2a, R3, Ready, merge, and every execution remain separate author acts. Protected
+files, the ledger (single D45 line), the v1.18 absence, and the rev-5/v1.17 hashes are unchanged.
