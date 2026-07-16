@@ -326,14 +326,24 @@ def build_per_node_record(
     selected_optimum_canonical: Sequence[float] | np.ndarray | None,
     battery_record: Mapping[str, Any] | None = None,
     curvature_record: Mapping[str, Any] | None = None,
+    *,
+    stage_id: str,
 ) -> dict[str, Any]:
-    """Build one accepted or failed Layer-2 node record fail-closed."""
+    """Build one accepted or failed Layer-2 node record fail-closed.
+
+    ``stage_id`` names the stage this node ran in; it enters no record field
+    (the schema carries no per-node stage member) and exists to enforce the
+    v1.19 §9 relational invariant that an accepted node's outgoing identity
+    points at exactly this node.
+    """
 
     storage_order = tuple(str(site) for site in computation_storage_order)
     derive_role_map(storage_order)
     noise_value = float(noise)
     if not math.isfinite(noise_value):
         raise ValueError("noise is finite-only")
+    if not isinstance(stage_id, str) or not stage_id:
+        raise ValueError("stage_id must be a non-empty string")
     record: dict[str, Any] = {
         "node_index": int(node_index),
         "noise": noise_value,
@@ -352,7 +362,25 @@ def build_per_node_record(
         selected = np.asarray(selected_optimum_canonical, dtype=np.float64)
         if selected.shape != (3,):
             raise ValueError("selected optimum must have three canonical coordinates")
-        record["selected_optimum"] = encode_vector(selected)
+        encoded_selected = encode_vector(selected)
+        # v1.19 §9: an accepted node's outgoing identity points at THIS node
+        # and its vector is the selected optimum, so the continuation
+        # trajectory reconstructs without external inference.
+        expected_identity = {
+            "kind": "accepted_node",
+            "stage_id": stage_id,
+            "node_index": int(node_index),
+        }
+        if outgoing_ref.get("identity") != expected_identity:
+            raise ValueError(
+                "accepted node's outgoing identity must point at this node "
+                f"({expected_identity}), got {outgoing_ref.get('identity')}"
+            )
+        if list(outgoing_ref.get("vector", [])) != encoded_selected:
+            raise ValueError(
+                "accepted node's outgoing vector must equal the selected optimum"
+            )
+        record["selected_optimum"] = encoded_selected
         record["battery"] = copy.deepcopy(dict(battery_record))
         record["curvature"] = copy.deepcopy(dict(curvature_record))
     else:
@@ -360,8 +388,17 @@ def build_per_node_record(
             raise ValueError("failed node cannot carry a selected optimum")
         if battery_record is not None or curvature_record is not None:
             raise ValueError("failed node cannot carry battery or curvature")
-        if incoming_ref != outgoing_ref:
-            raise ValueError("failed node must carry its incoming warm start forward")
+        # v1.19 §9: on optimizer failure the outgoing IDENTITY and VECTOR
+        # equal the incoming ones; selection_reason legitimately moves to a
+        # carried_* value and is deliberately not compared.
+        if incoming_ref.get("identity") != outgoing_ref.get("identity"):
+            raise ValueError(
+                "failed node must carry its incoming warm-start identity forward"
+            )
+        if incoming_ref.get("vector") != outgoing_ref.get("vector"):
+            raise ValueError(
+                "failed node must carry its incoming warm-start vector forward"
+            )
         record["selected_optimum"] = None
     return record
 

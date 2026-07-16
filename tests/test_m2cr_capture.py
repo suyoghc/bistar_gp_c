@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import signal
@@ -13,14 +14,24 @@ import pytest
 import bistar_gp.m2cr.capture as capture_module
 from bistar_gp.m2cr.capture import (
     BOOTSTRAP_CONFIG_NAME,
+    FROZEN_INTERPRETER_FLAGS,
     RAW_MANIFEST_NAME,
     TERMINAL_RECORD_NAME,
+    WALL_CLOCK_CEILING_HOURS,
     LaunchConfig,
+    RecordAssemblyError,
     capture_run,
+    enumerate_bootstrap_closure,
+    launch_config_from_freeze,
     reconcile_run,
     validate_terminal_record,
+    verify_preboundary_attestation_set,
 )
-from bistar_gp.m2cr.serialization import canonical_dumps, sha256_file
+from bistar_gp.m2cr.serialization import (
+    atomic_write_canonical_json,
+    canonical_dumps,
+    sha256_file,
+)
 
 
 MINICONDA_PYTHON = "/opt/homebrew/Caskroom/miniconda/base/bin/python3.13"
@@ -269,7 +280,7 @@ def test_happy_path_real_subprocess_and_frozen_write_order(tmp_path: Path) -> No
     )
     assert record["evidence"]["event_stream_balanced"] is True
     inventory = json.loads((run_dir / "import_inventory.json").read_text())
-    assert not any(item["module"] == "torch" for item in inventory)
+    assert not any(item["module"] == "torch" for item in inventory["modules"])
     validate_terminal_record(record)
 
     entries = _manifest_entries(run_dir)
@@ -450,3 +461,501 @@ def test_config_parse_failure_after_hello_is_infra_not_not_started(
     assert record["status"] == "INFRA_FAILURE"
     assert record["fault"]["fault_class"] == "other"
     validate_terminal_record(record)
+
+
+def test_spawn_confirmation_write_failure_propagates_as_capture_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIX C3(a): a failed spawned.json write can never yield NOT_STARTED."""
+
+    config = _make_launch(tmp_path)
+    real_write = capture_module.atomic_write_canonical_json
+
+    def failing_write(path, obj):
+        if os.fspath(path).endswith("spawned.json"):
+            raise OSError("synthetic spawn confirmation write failure")
+        return real_write(path, obj)
+
+    monkeypatch.setattr(
+        capture_module, "atomic_write_canonical_json", failing_write
+    )
+    record = capture_run(config)
+    run_dir = Path(config.run_dir)
+    assert not (run_dir / "spawned.json").exists()
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "capture_fault"
+    assert "spawn confirmation lost" in record["fault"]["detail"]
+    assert "synthetic spawn confirmation write failure" in record["fault"]["detail"]
+    validate_terminal_record(record)
+
+
+def test_spawn_confirmation_silently_lost_with_child_evidence_is_infra(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIX C3(b): child evidence without spawned.json is never NOT_STARTED."""
+
+    config = _make_launch(tmp_path)
+    real_write = capture_module.atomic_write_canonical_json
+
+    def skipping_write(path, obj):
+        if os.fspath(path).endswith("spawned.json"):
+            return "0" * 64  # the confirmation silently never became durable
+        return real_write(path, obj)
+
+    monkeypatch.setattr(
+        capture_module, "atomic_write_canonical_json", skipping_write
+    )
+    record = capture_run(config)
+    run_dir = Path(config.run_dir)
+    assert not (run_dir / "spawned.json").exists()
+    assert (run_dir / "payload_started.json").exists()
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "capture_fault"
+    assert "spawn confirmation lost" in record["fault"]["detail"]
+    assert "child evidence exists" in record["fault"]["detail"]
+    assert record["fault"]["payload_started"] is True
+    validate_terminal_record(record)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("run_id", "BAD ID"),
+        ("launch_attempt_id", "launch-1"),
+        ("authorization_id", "auth-1"),
+        ("chain", {"authorization_id": "m2cr-auth-20260716-01"}),
+    ],
+)
+def test_pre_spawn_validation_raises_before_any_artifact(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    """FIX C4: identity validation precedes prelaunch.json and any child."""
+
+    config = _make_launch(tmp_path)
+    bad = dataclasses.replace(config, **{field: value})
+    with pytest.raises(RecordAssemblyError):
+        capture_run(bad)
+    run_dir = Path(config.run_dir)
+    assert not (run_dir / "prelaunch.json").exists()
+    assert not (run_dir / "spawned.json").exists()
+    assert not (run_dir / "events.jsonl").exists()
+    assert not (run_dir / TERMINAL_RECORD_NAME).exists()
+    assert not (run_dir / "home").exists()
+
+
+def test_terminal_assembly_failure_falls_back_to_last_resort_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIX C4: an injected assembly error still yields a schema-valid record."""
+
+    config = _make_launch(tmp_path)
+
+    def exploding_assembly(*args, **kwargs):
+        raise RecordAssemblyError("synthetic terminal assembly explosion")
+
+    monkeypatch.setattr(
+        capture_module, "assemble_terminal_record", exploding_assembly
+    )
+    record = capture_run(config)
+    run_dir = Path(config.run_dir)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "other"
+    assert record["fault"]["reconstructed"] is False
+    assert "terminal assembly failed for status" in record["fault"]["detail"]
+    assert "synthetic terminal assembly explosion" in record["fault"]["detail"]
+    written = json.loads((run_dir / TERMINAL_RECORD_NAME).read_text())
+    assert written == record
+    validate_terminal_record(record)
+
+
+@pytest.mark.parametrize(
+    "blocker",
+    [
+        "prelaunch.json",
+        "spawned.json",
+        "payload_started.json",
+        "events.jsonl",
+        RAW_MANIFEST_NAME,
+        TERMINAL_RECORD_NAME,
+    ],
+)
+def test_stale_run_dir_evidence_refuses_launch(tmp_path: Path, blocker: str) -> None:
+    """FIX C5: a run directory is single-use; prior evidence refuses launch."""
+
+    config = _make_launch(tmp_path)
+    run_dir = Path(config.run_dir)
+    (run_dir / blocker).write_bytes(b"stale")
+    with pytest.raises(ValueError, match="not reusable"):
+        capture_run(config)
+    assert not (run_dir / "spawned.json").exists() or blocker == "spawned.json"
+    if blocker != "prelaunch.json":
+        assert not (run_dir / "prelaunch.json").exists()
+
+
+def test_escaping_attestation_path_refuses_launch_pre_spawn(tmp_path: Path) -> None:
+    """FIX C6: every attestation path must resolve inside run_dir."""
+
+    config = _make_launch(tmp_path)
+    run_dir = Path(config.run_dir)
+    template = json.loads((run_dir / BOOTSTRAP_CONFIG_NAME).read_text())
+    template["attestation_paths"]["stage_a"] = os.fspath(
+        tmp_path / "outside" / "stage_a.json"
+    )
+    (run_dir / BOOTSTRAP_CONFIG_NAME).write_text(
+        canonical_dumps(template), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="escapes the self-contained run"):
+        capture_run(config)
+    assert not (run_dir / "prelaunch.json").exists()
+    assert not (run_dir / "spawned.json").exists()
+    assert not (run_dir / TERMINAL_RECORD_NAME).exists()
+
+
+def test_bootstrap_closure_enumeration_is_import_only(tmp_path: Path) -> None:
+    """FIX C7(a): the pinned interpreter enumerates the bootstrap closure."""
+
+    closure = enumerate_bootstrap_closure(
+        MINICONDA_PYTHON, BOOTSTRAP, REPOSITORY_ROOT
+    )
+    assert closure
+    modules = [entry["module"] for entry in closure]
+    assert modules == sorted(modules)
+    bootstrap_entries = [
+        entry for entry in closure if entry["module"] == "bistar_gp.m2cr.bootstrap"
+    ]
+    assert len(bootstrap_entries) == 1
+    assert bootstrap_entries[0]["origin"] == os.fspath(BOOTSTRAP.resolve())
+    for entry in closure:
+        assert os.path.isfile(entry["origin"])
+    # Import-only: no scientific stack may enter the pre-boundary closure.
+    assert "torch" not in modules
+    assert "numpy" not in modules
+    assert "json" in modules
+
+
+def _preboundary_attestation_document(
+    tmp_path: Path, *, tampered: bool
+) -> tuple[Path, Path]:
+    closure_file = tmp_path / "closure_member.py"
+    closure_file.write_text("CLOSURE = 1\n", encoding="utf-8")
+    digest = "0" * 64 if tampered else sha256_file(closure_file)
+    artifact = {
+        "kind": "m2cr_preboundary_attestation_set",
+        "schema_version": 1,
+        "interpreter_binary": {"path": "/nonexistent/python", "sha256": "1" * 64},
+        "dyld": {"path": "/nonexistent/dyld", "sha256": "2" * 64},
+        "dyld_shared_cache": {
+            "main": {"path": "/nonexistent/cache", "sha256": "3" * 64},
+            "declared_subcache_count": 0,
+            "discovered_subcache_count": 0,
+            "subcaches": [],
+        },
+        "bootstrap_closure": [
+            {"path": os.fspath(closure_file), "sha256": digest}
+        ],
+    }
+    attestation_path = tmp_path / "preboundary_attestation_set.json"
+    atomic_write_canonical_json(attestation_path, artifact)
+    return attestation_path, closure_file
+
+
+def test_preboundary_attestation_set_verifies_before_spawn(tmp_path: Path) -> None:
+    """FIX C7(b): pinned digests verify pre-spawn; hermetic skips honored."""
+
+    attestation_path, _ = _preboundary_attestation_document(
+        tmp_path, tampered=False
+    )
+    outcome = verify_preboundary_attestation_set(
+        attestation_path, skip=("interpreter", "dyld")
+    )
+    assert outcome == {"interpreter": 0, "dyld": 0, "closure": 1}
+    config = dataclasses.replace(
+        _make_launch(tmp_path),
+        preboundary_attestation_set=os.fspath(attestation_path),
+        preboundary_skip=("interpreter", "dyld"),
+    )
+    record = capture_run(config)
+    assert record["status"] == "COMPLETED"
+    validate_terminal_record(record)
+
+
+def test_tampered_preboundary_attestation_refuses_launch(tmp_path: Path) -> None:
+    """FIX C7(b): a digest mismatch refuses launch with no spawn."""
+
+    attestation_path, closure_file = _preboundary_attestation_document(
+        tmp_path, tampered=True
+    )
+    config = dataclasses.replace(
+        _make_launch(tmp_path),
+        preboundary_attestation_set=os.fspath(attestation_path),
+        preboundary_skip=("interpreter", "dyld"),
+    )
+    with pytest.raises(ValueError, match="preboundary attestation mismatch"):
+        capture_run(config)
+    run_dir = Path(config.run_dir)
+    assert not (run_dir / "prelaunch.json").exists()
+    assert not (run_dir / "spawned.json").exists()
+    assert not (run_dir / TERMINAL_RECORD_NAME).exists()
+    # The closure entries are never skippable: no such token exists.
+    with pytest.raises(ValueError, match="unknown preboundary skip tokens"):
+        verify_preboundary_attestation_set(
+            attestation_path, skip=("interpreter", "dyld", "closure")
+        )
+
+
+def _freeze_fixture(tmp_path: Path) -> dict[str, Path]:
+    worktree = tmp_path / "worktree"
+    (worktree / "bistar_gp" / "m2cr").mkdir(parents=True)
+    fake_bootstrap = worktree / "bistar_gp" / "m2cr" / "bootstrap.py"
+    fake_bootstrap.write_text("# fixture bootstrap\n", encoding="utf-8")
+    roots = {
+        "worktree": worktree,
+        "stdlib": tmp_path / "stdlib",
+        "lib-dynload": tmp_path / "lib-dynload",
+        "site-packages": tmp_path / "site-packages",
+    }
+    for name, root in roots.items():
+        root.mkdir(exist_ok=True)
+
+    artifacts_dir = tmp_path / "freeze"
+    artifacts_dir.mkdir()
+    pin_path = artifacts_dir / "interpreter_pin.json"
+    atomic_write_canonical_json(
+        pin_path,
+        {
+            "path": "/fixture/interpreter/python3.13",
+            "realpath": "/fixture/interpreter/python3.13",
+            "version": {"implementation": "cpython"},
+            "sha256": "4" * 64,
+        },
+    )
+    mapping_path = artifacts_dir / "child_env_mapping.json"
+    atomic_write_canonical_json(
+        mapping_path,
+        {
+            "fixed": {"PYTHONHASHSEED": "0", "LC_ALL": "C"},
+            "run_local_keys": ["HOME", "TMPDIR"],
+            "path_policy": "minimal",
+        },
+    )
+    inside = roots["worktree"] / "inside.py"
+    inside.write_text("VALUE = 1\n", encoding="utf-8")
+    header = {
+        "kind": "m2cr_importable_artifact_manifest",
+        "schema_version": 2,
+        "roots": {
+            name: os.fspath(root.resolve()) for name, root in roots.items()
+        },
+    }
+    entry = {
+        "root": "worktree",
+        "relpath": "inside.py",
+        "artifact_type": "source",
+        "sha256": sha256_file(inside),
+        "size": inside.stat().st_size,
+        "loader": "_frozen_importlib_external.SourceFileLoader",
+    }
+    manifest_path = artifacts_dir / "importable_artifact_manifest.jsonl"
+    manifest_path.write_text(
+        canonical_dumps(header) + "\n" + canonical_dumps(entry) + "\n",
+        encoding="utf-8",
+    )
+    attestation_path, _ = _preboundary_attestation_document(
+        artifacts_dir, tampered=False
+    )
+    freeze_path = tmp_path / "environment_freeze_manifest.json"
+    atomic_write_canonical_json(
+        freeze_path,
+        {
+            "kind": "m2cr_environment_freeze_manifest",
+            "schema_version": 1,
+            "artifacts": {
+                "child_env_mapping": {
+                    "path": os.fspath(mapping_path),
+                    "sha256": sha256_file(mapping_path),
+                },
+                "importable_artifact_manifest": {
+                    "path": os.fspath(manifest_path),
+                    "sha256": sha256_file(manifest_path),
+                },
+                "interpreter_pin": {
+                    "path": os.fspath(pin_path),
+                    "sha256": sha256_file(pin_path),
+                },
+                "preboundary_attestation_set": {
+                    "path": os.fspath(attestation_path),
+                    "sha256": sha256_file(attestation_path),
+                },
+            },
+        },
+    )
+    infrastructure_path = tmp_path / "infrastructure_manifest.json"
+    atomic_write_canonical_json(
+        infrastructure_path,
+        {
+            "kind": "m2cr_infrastructure_manifest",
+            "schema_version": 1,
+            "code": {},
+            "artifacts": {
+                "environment_freeze_manifest": {
+                    "path": os.fspath(freeze_path),
+                    "sha256": sha256_file(freeze_path),
+                }
+            },
+            "r1_schemas": {},
+        },
+    )
+    template_path = tmp_path / "bootstrap_template.json"
+    atomic_write_canonical_json(
+        template_path,
+        {
+            "expected_sentinel_hash": -2671292046718125608,
+            "native_stack_modules": [],
+            "payload": {"entry": "fake_payload:run", "pass_context": True},
+        },
+    )
+    return {
+        "freeze": freeze_path,
+        "infrastructure": infrastructure_path,
+        "template": template_path,
+        "worktree": worktree,
+        "manifest": manifest_path,
+        "attestation_set": attestation_path,
+        "mapping": mapping_path,
+        "run_dir": tmp_path / "run",
+    }
+
+
+def test_launch_config_from_freeze_derives_all_pins(tmp_path: Path) -> None:
+    """FIX C11: hermetic derivation from tmp freeze artifacts."""
+
+    fixture = _freeze_fixture(tmp_path)
+    config = launch_config_from_freeze(
+        fixture["freeze"],
+        fixture["infrastructure"],
+        run_dir=fixture["run_dir"],
+        run_id="m2cr-derived-test",
+        authorization_id=AUTHORIZATION_ID,
+        launch_attempt_id=LAUNCH_ATTEMPT_ID,
+        record_kind="diagnostic",
+        chain=dict(CHAIN),
+        bootstrap_template_path=fixture["template"],
+    )
+    assert config.interpreter_path == "/fixture/interpreter/python3.13"
+    assert tuple(config.interpreter_flags) == FROZEN_INTERPRETER_FLAGS
+    assert config.frozen_env == {
+        "fixed": {"PYTHONHASHSEED": "0", "LC_ALL": "C"},
+        "run_local_keys": ["HOME", "TMPDIR"],
+    }
+    assert Path(config.worktree_root) == fixture["worktree"].resolve()
+    assert config.bootstrap_path.endswith("bistar_gp/m2cr/bootstrap.py")
+    assert config.preboundary_attestation_set == os.fspath(
+        fixture["attestation_set"].resolve()
+    )
+    assert config.wall_clock_ceiling_hours == WALL_CLOCK_CEILING_HOURS == 8.0
+    assert config.run_id == "m2cr-derived-test"
+    assert config.record_kind == "diagnostic"
+    assert config.chain == CHAIN
+    materialized = json.loads(
+        (fixture["run_dir"] / BOOTSTRAP_CONFIG_NAME).read_text()
+    )
+    assert materialized["four_roots"][0] == os.fspath(
+        fixture["worktree"].resolve()
+    )
+    assert len(materialized["four_roots"]) == 4
+    assert materialized["importable_artifact_manifest"] == os.fspath(
+        fixture["manifest"].resolve()
+    )
+    assert materialized["payload"] == {
+        "entry": "fake_payload:run",
+        "pass_context": True,
+    }
+
+
+def test_launch_config_from_freeze_rejects_tampered_pin(tmp_path: Path) -> None:
+    """FIX C11: a freeze-artifact digest mismatch fails the derivation."""
+
+    fixture = _freeze_fixture(tmp_path)
+    with fixture["mapping"].open("a", encoding="utf-8") as handle:
+        handle.write("\n")
+    with pytest.raises(ValueError, match="pin mismatch for 'child_env_mapping'"):
+        launch_config_from_freeze(
+            fixture["freeze"],
+            fixture["infrastructure"],
+            run_dir=fixture["run_dir"],
+            run_id="m2cr-derived-test",
+            authorization_id=AUTHORIZATION_ID,
+            launch_attempt_id=LAUNCH_ATTEMPT_ID,
+            record_kind="diagnostic",
+            chain=dict(CHAIN),
+            bootstrap_template_path=fixture["template"],
+        )
+
+
+_COMMITTED_FREEZE = REPOSITORY_ROOT / "docs/m2c_freeze/m2cr_environment_freeze_manifest_v1.json"
+_COMMITTED_INFRASTRUCTURE = (
+    REPOSITORY_ROOT / "docs/m2c_freeze/m2cr_infrastructure_manifest_v1.json"
+)
+
+
+def _committed_manifest_is_v2() -> bool:
+    try:
+        freeze = json.loads(_COMMITTED_FREEZE.read_text(encoding="utf-8"))
+        manifest_path = Path(
+            freeze["artifacts"]["importable_artifact_manifest"]["path"]
+        )
+        with manifest_path.open("rb") as handle:
+            first = json.loads(handle.readline())
+        return isinstance(first, dict) and first.get("schema_version") == 2
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(
+    not _committed_manifest_is_v2(),
+    reason=(
+        "cross-worker seam: the committed importable-artifact manifest is "
+        "not yet format v2 (header line with roots); the environment_freeze "
+        "worker regenerates it — integration reconciles"
+    ),
+)
+def test_committed_freeze_artifacts_derive_the_ratified_pins(
+    tmp_path: Path,
+) -> None:
+    """FIX C11: read-only derivation from the COMMITTED artifacts, no launch."""
+
+    template_path = tmp_path / "template.json"
+    atomic_write_canonical_json(
+        template_path,
+        {"payload": {"entry": "fake_payload:run", "pass_context": True}},
+    )
+    config = launch_config_from_freeze(
+        _COMMITTED_FREEZE,
+        _COMMITTED_INFRASTRUCTURE,
+        run_dir=tmp_path / "run",
+        run_id="m2cr-committed-derivation",
+        authorization_id=AUTHORIZATION_ID,
+        launch_attempt_id=LAUNCH_ATTEMPT_ID,
+        record_kind="diagnostic",
+        chain=dict(CHAIN),
+        bootstrap_template_path=template_path,
+    )
+    assert config.interpreter_path == MINICONDA_PYTHON
+    assert tuple(config.interpreter_flags) == FROZEN_INTERPRETER_FLAGS
+    fixed = config.frozen_env["fixed"]
+    assert fixed["PYTHONHASHSEED"] == "0"
+    assert fixed["OMP_NUM_THREADS"] == "10"
+    assert fixed["OMP_DYNAMIC"] == "FALSE"
+    assert fixed["MKL_NUM_THREADS"] == "10"
+    assert fixed["VECLIB_MAXIMUM_THREADS"] == "10"
+    assert fixed["LC_ALL"] == "C"
+    assert fixed["TZ"] == "UTC"
+    assert config.frozen_env["run_local_keys"] == [
+        "HOME",
+        "TMPDIR",
+        "XDG_CACHE_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+    ]
+    assert config.wall_clock_ceiling_hours == 8.0

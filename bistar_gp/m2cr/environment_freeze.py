@@ -34,6 +34,11 @@ from bistar_gp.m2cr.serialization import (
 __all__ = [
     "R2_CODE_RELPATHS",
     "R1_SCHEMA_RELPATHS",
+    "IMPORTABLE_MANIFEST_KIND",
+    "IMPORTABLE_MANIFEST_SCHEMA_VERSION",
+    "LOADER_BY_ARTIFACT_TYPE",
+    "classify_pyc_candidate",
+    "read_manifest_header",
     "walk_importable_artifacts",
     "build_importable_artifact_manifest",
     "build_interpreter_pin",
@@ -88,6 +93,20 @@ _EXTENSION_SUFFIXES = tuple(
 _DYLD_CACHE_BASENAME = "dyld_shared_cache_arm64e"
 _DYLD_CACHE_DIR = "/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld"
 _INTERPRETER = "/opt/homebrew/Caskroom/miniconda/base/bin/python3.13"
+
+IMPORTABLE_MANIFEST_KIND = "m2cr_importable_artifact_manifest"
+IMPORTABLE_MANIFEST_SCHEMA_VERSION = 2
+
+# Plan section 4.5.7 requires every executed module's resolved origin AND
+# loader class to match a frozen manifest entry, so the manifest itself
+# records the loader class each artifact type resolves through.
+LOADER_BY_ARTIFACT_TYPE = {
+    "source": "SourceFileLoader",
+    "extension": "ExtensionFileLoader",
+    "legacy_bytecode": "SourcelessFileLoader",
+    "orphan_bytecode": "SourcelessFileLoader",
+    "importable_archive": "zipimporter",
+}
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -147,19 +166,63 @@ def _logical_files(root: Path) -> Iterator[tuple[Path, str]]:
     yield from visit(root, (), frozenset())
 
 
+def _source_stem_candidates(tagged_stem: str) -> list[str]:
+    """Return the possible source stems of one ``__pycache__`` filename stem.
+
+    Cache filenames are ``<source_stem>.<cache_tag>.pyc``, so the source stem
+    is the tagged stem with its trailing cache tag stripped at a dot boundary.
+    The tag is usually one dot-component (``v0.9.0.a.cpython-313.pyc`` maps to
+    ``v0.9.0.a.py``) but may itself contain dots (pytest's rewrite tag:
+    ``mod.cpython-313-pytest-8.3.3.pyc`` maps to ``mod.py``), so every dot
+    boundary is a candidate strip point.  A stem with no dot carries no tag
+    and is its own candidate.
+    """
+
+    if "." not in tagged_stem:
+        return [tagged_stem]
+    pieces = tagged_stem.split(".")
+    return [".".join(pieces[:count]) for count in range(len(pieces) - 1, 0, -1)]
+
+
 def _valid_corresponding_source(root: Path, pyc_relpath: str) -> bool:
     parts = pyc_relpath.split("/")
     if len(parts) < 2 or parts[-2] != "__pycache__":
         return False
+    root_real = root.resolve(strict=True)
     tagged_stem = parts[-1][:-4]
-    source_stem = tagged_stem.split(".", 1)[0]
-    source_parts = parts[:-2] + [source_stem + ".py"]
-    source = root.joinpath(*source_parts)
-    try:
-        target = source.resolve(strict=True)
-    except (FileNotFoundError, RuntimeError, OSError):
-        return False
-    return target.is_file() and _inside(target, root.resolve(strict=True))
+    for source_stem in _source_stem_candidates(tagged_stem):
+        source_parts = parts[:-2] + [source_stem + ".py"]
+        source = root.joinpath(*source_parts)
+        try:
+            target = source.resolve(strict=True)
+        except (FileNotFoundError, RuntimeError, OSError):
+            continue
+        if target.is_file() and _inside(target, root_real):
+            return True
+    return False
+
+
+def classify_pyc_candidate(
+    root: str | os.PathLike[str], relpath: str
+) -> str | None:
+    """Classify one ``.pyc`` candidate exactly as the manifest walker does.
+
+    Returns ``None`` for a normal source-backed ``__pycache__`` entry (the
+    B15(ii) exclusion) and for non-``.pyc`` paths, ``"orphan_bytecode"`` for a
+    ``__pycache__`` entry with no valid corresponding source inside ``root``,
+    and ``"legacy_bytecode"`` for a ``.pyc`` outside ``__pycache__``.  The
+    launch-time bootstrap reuses this single classification so the freeze
+    generator and the bytecode rejection scan cannot disagree.
+    """
+
+    name = relpath.rsplit("/", 1)[-1]
+    if not name.endswith(".pyc"):
+        return None
+    if "/__pycache__/" in f"/{relpath}":
+        if _valid_corresponding_source(Path(root), relpath):
+            return None
+        return "orphan_bytecode"
+    return "legacy_bytecode"
 
 
 def _artifact_type(root: Path, relpath: str) -> str | None:
@@ -169,11 +232,7 @@ def _artifact_type(root: Path, relpath: str) -> str | None:
     if any(name.endswith(suffix) for suffix in _EXTENSION_SUFFIXES):
         return "extension"
     if name.endswith(".pyc"):
-        if "/__pycache__/" in f"/{relpath}":
-            if _valid_corresponding_source(root, relpath):
-                return None
-            return "orphan_bytecode"
-        return "legacy_bytecode"
+        return classify_pyc_candidate(root, relpath)
     if name.endswith(_ARCHIVE_SUFFIXES):
         return "importable_archive"
     return None
@@ -185,10 +244,11 @@ def walk_importable_artifacts(
     """Yield the B15(ii)-scoped artifact inventory in canonical order.
 
     Entries contain exactly ``root``, ``relpath``, ``artifact_type``,
-    ``sha256``, and ``size``.  In-root symlinks are recorded under their
-    logical path with the resolved target's bytes.  Escaping, broken, and
-    cyclic symlinks raise :class:`ValueError` so an inventory cannot silently
-    omit an importable spelling.
+    ``loader``, ``sha256``, and ``size``; ``loader`` is the plan-4.5.7 loader
+    class the artifact type resolves through.  In-root symlinks are recorded
+    under their logical path with the resolved target's bytes.  Escaping,
+    broken, and cyclic symlinks raise :class:`ValueError` so an inventory
+    cannot silently omit an importable spelling.
     """
 
     root_ids = [root_id for root_id, _ in roots]
@@ -230,6 +290,7 @@ def walk_importable_artifacts(
                     "root": root_id,
                     "relpath": relpath,
                     "artifact_type": artifact_type,
+                    "loader": LOADER_BY_ARTIFACT_TYPE[artifact_type],
                     "sha256": sha256_file(file_path),
                     "size": file_path.stat().st_size,
                 }
@@ -238,11 +299,67 @@ def walk_importable_artifacts(
     yield from entries
 
 
+def _manifest_header(
+    roots: list[tuple[str, str | os.PathLike[str]]],
+) -> dict[str, Any]:
+    return {
+        "kind": IMPORTABLE_MANIFEST_KIND,
+        "schema_version": IMPORTABLE_MANIFEST_SCHEMA_VERSION,
+        "roots": {
+            root_id: os.fspath(Path(root_value).resolve(strict=True))
+            for root_id, root_value in roots
+        },
+    }
+
+
+def read_manifest_header(path: str | os.PathLike[str]) -> dict[str, Any]:
+    """Parse and shape-validate the first-line v2 manifest header.
+
+    Plan section 4.5.4 sources permitted paths from frozen manifest metadata;
+    the header is that metadata: ``kind``, ``schema_version`` 2, and a
+    ``roots`` mapping from root id to the absolute resolved root path.  A
+    missing or malformed header raises :class:`ValueError` so a headerless
+    (v1) manifest can never be silently consumed as v2.
+    """
+
+    with open(path, "rb") as handle:
+        first_line = handle.readline()
+    try:
+        header = json.loads(first_line.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"importable manifest header is not valid JSON: {exc}")
+    if not isinstance(header, dict):
+        raise ValueError("importable manifest header is not an object")
+    if header.get("kind") != IMPORTABLE_MANIFEST_KIND:
+        raise ValueError("importable manifest header has the wrong kind")
+    if header.get("schema_version") != IMPORTABLE_MANIFEST_SCHEMA_VERSION:
+        raise ValueError("importable manifest header has the wrong schema_version")
+    if set(header) != {"kind", "schema_version", "roots"}:
+        raise ValueError("importable manifest header has a non-canonical key set")
+    roots = header.get("roots")
+    if (
+        not isinstance(roots, dict)
+        or not roots
+        or not all(
+            isinstance(root_id, str)
+            and root_id
+            and isinstance(root_path, str)
+            and os.path.isabs(root_path)
+            for root_id, root_path in roots.items()
+        )
+    ):
+        raise ValueError(
+            "importable manifest header roots must map non-empty ids to "
+            "absolute resolved paths"
+        )
+    return header
+
+
 def build_importable_artifact_manifest(
     roots: list[tuple[str, str | os.PathLike[str]]],
     out_path: str | os.PathLike[str],
 ) -> dict[str, Any]:
-    """Atomically stream the complete inventory as canonical JSONL."""
+    """Atomically stream the v2 header plus inventory as canonical JSONL."""
 
     out_path = Path(out_path)
     directory = out_path.parent
@@ -255,6 +372,12 @@ def build_importable_artifact_manifest(
     digest = hashlib.sha256()
     try:
         with os.fdopen(fd, "wb") as handle:
+            header_line = (canonical_dumps(_manifest_header(roots)) + "\n").encode(
+                "utf-8"
+            )
+            handle.write(header_line)
+            digest.update(header_line)
+            total_bytes += len(header_line)
             for entry in walk_importable_artifacts(roots):
                 line = (canonical_dumps(entry) + "\n").encode("utf-8")
                 handle.write(line)
@@ -424,17 +547,51 @@ def build_preboundary_attestation_set(
     return artifact
 
 
-def _path_spec(value: Any) -> tuple[str, Path]:
+def _path_spec(value: Any) -> tuple[str | None, Path]:
+    """Split one pin input into (explicit display override or None, file path)."""
+
     if isinstance(value, Mapping):
         display = os.fspath(value["path"])
         filesystem_value = value.get("filesystem_path", value["path"])
         return display, Path(filesystem_value)
-    display = os.fspath(value)
-    return display, Path(value)
+    return None, Path(value)
+
+
+def _discover_repo_root(start: Path) -> Path | None:
+    """Return the nearest ancestor holding ``.git`` (a dir, or a worktree file)."""
+
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
+def _stored_pin_path(
+    file_path: Path, repo_root: str | os.PathLike[str] | None
+) -> str:
+    """Store repo-contained pins repo-relative; host-global pins absolute.
+
+    Absolute host paths poison worktree audits: a manifest generated in one
+    checkout would then only ever verify against that checkout.  Files inside
+    the repository (explicit ``repo_root``, or the file's own repository
+    discovered by walking up to a ``.git`` entry) are pinned relative to the
+    repository root; only host-global targets (interpreter, dyld) stay
+    absolute.
+    """
+
+    resolved = file_path.resolve()
+    if repo_root is not None:
+        root: Path | None = Path(repo_root).resolve()
+    else:
+        root = _discover_repo_root(resolved.parent)
+    if root is not None and _inside(resolved, root):
+        return resolved.relative_to(root).as_posix()
+    return os.fspath(resolved)
 
 
 def build_environment_freeze_manifest(
     artifact_paths: Mapping[str, Any],
+    repo_root: str | os.PathLike[str] | None = None,
 ) -> dict[str, Any]:
     """Aggregate and pin exactly the four static v5 freeze artifacts."""
 
@@ -445,11 +602,12 @@ def build_environment_freeze_manifest(
     artifacts: dict[str, dict[str, str]] = {}
     for name in sorted(_FREEZE_ARTIFACT_KEYS):
         display, path = _path_spec(artifact_paths[name])
+        stored = display if display is not None else _stored_pin_path(path, repo_root)
         if _parsed_content_is_test_fixture(path):
             raise ValueError(
-                f"freeze manifest cannot pin test-fixture artifact: {display}"
+                f"freeze manifest cannot pin test-fixture artifact: {stored}"
             )
-        artifacts[name] = {"path": display, "sha256": sha256_file(path)}
+        artifacts[name] = {"path": stored, "sha256": sha256_file(path)}
     return {
         "kind": "m2cr_environment_freeze_manifest",
         "schema_version": 1,
@@ -548,37 +706,46 @@ def build_dependency_lock(
     }
 
 
-def _display_code_path(path: Path) -> str:
+def _display_code_path(
+    path: Path, repo_root: str | os.PathLike[str] | None
+) -> str:
     if not path.is_absolute():
         return path.as_posix()
+    base = Path(repo_root) if repo_root is not None else Path.cwd()
     try:
-        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+        return path.resolve().relative_to(base.resolve()).as_posix()
     except ValueError:
         return path.as_posix()
 
 
-def _named_path_items(values: Any) -> list[tuple[str, Any]]:
+def _named_path_items(
+    values: Any, repo_root: str | os.PathLike[str] | None = None
+) -> list[tuple[str, Any]]:
     if isinstance(values, Mapping):
         return [(str(name), value) for name, value in values.items()]
-    return [(_display_code_path(Path(value)), value) for value in values]
+    return [(_display_code_path(Path(value), repo_root), value) for value in values]
 
 
-def build_infrastructure_manifest(paths: Mapping[str, Any]) -> dict[str, Any]:
+def build_infrastructure_manifest(
+    paths: Mapping[str, Any],
+    repo_root: str | os.PathLike[str] | None = None,
+) -> dict[str, Any]:
     """Build the acyclic Layer-1a manifest over caller-enumerated Layer 0.
 
     ``paths`` has three categories: ``code`` (mapping from repo-relative path
     to filesystem path, or a path sequence), ``artifacts`` (logical name to
     path), and ``r1_schemas`` (logical name to path).  Integration passes all
     entries in :data:`R2_CODE_RELPATHS`.  Every category uses an exact logical
-    key set; missing and extra pins both fail closed.
+    key set; missing and extra pins both fail closed.  Repo-contained pins
+    are stored repo-relative (see :func:`_stored_pin_path`).
     """
 
     expected_categories = {"code", "artifacts", "r1_schemas"}
     if set(paths) != expected_categories:
         raise ValueError("paths must contain code, artifacts, and r1_schemas")
-    named_code = _named_path_items(paths["code"])
-    named_artifacts = _named_path_items(paths["artifacts"])
-    named_r1_schemas = _named_path_items(paths["r1_schemas"])
+    named_code = _named_path_items(paths["code"], repo_root)
+    named_artifacts = _named_path_items(paths["artifacts"], repo_root)
+    named_r1_schemas = _named_path_items(paths["r1_schemas"], repo_root)
     _require_exact_names("code", named_code, set(R2_CODE_RELPATHS))
     _require_exact_names(
         "artifacts", named_artifacts, set(_INFRASTRUCTURE_ARTIFACT_KEYS)
@@ -595,11 +762,14 @@ def build_infrastructure_manifest(paths: Mapping[str, Any]) -> dict[str, Any]:
         result: dict[str, dict[str, str]] = {}
         for name, value in sorted(items):
             display, file_path = _path_spec(value)
-            if _references_r3_diagnostic_schema(display) or (
+            stored = (
+                display if display is not None else _stored_pin_path(file_path, repo_root)
+            )
+            if _references_r3_diagnostic_schema(stored) or (
                 _references_r3_diagnostic_schema(os.fspath(file_path.resolve()))
             ):
                 raise ValueError("the R3 diagnostic schema cannot be pinned by Layer 1a")
-            result[name] = {"path": display, "sha256": sha256_file(file_path)}
+            result[name] = {"path": stored, "sha256": sha256_file(file_path)}
         return result
 
     manifest = {
@@ -666,6 +836,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--dyld", default="/usr/lib/dyld")
     parser.add_argument("--dyld-cache-dir", default=_DYLD_CACHE_DIR)
     parser.add_argument(
+        "--repo-root",
+        default=None,
+        help="repository root for repo-relative pin storage (default: discovered)",
+    )
+    parser.add_argument(
         "--include-hashes", action=argparse.BooleanOptionalAction, default=True
     )
     return parser
@@ -696,7 +871,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     elif kind == "environment-freeze-manifest":
         artifact = build_environment_freeze_manifest(
-            _key_value_pairs(args.artifact, "--artifact")
+            _key_value_pairs(args.artifact, "--artifact"),
+            repo_root=args.repo_root,
         )
     elif kind == "dependency-lock":
         if not args.site_packages:
@@ -708,7 +884,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "code": _key_value_pairs(args.code, "--code"),
                 "artifacts": _key_value_pairs(args.artifact, "--artifact"),
                 "r1_schemas": _key_value_pairs(args.r1_schema, "--r1-schema"),
-            }
+            },
+            repo_root=args.repo_root,
         )
     atomic_write_canonical_json(args.out, artifact)
     return 0

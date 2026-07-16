@@ -10,6 +10,13 @@ per-line/append flush durability discipline of plan section 3.2.  Plan section
 3.1's write-temp, fsync, atomic-rename discipline governs one-shot artifacts:
 prelaunch/spawned attestations, the payload marker, raw manifest, and terminal
 record.
+
+Run-directory layout (plan section 4.4 self-contained directory): every
+artifact of one launch attempt is confined to ``run_dir``.  The frozen layout
+is enumerated by :data:`RUN_DIR_LAYOUT`; every attestation/output path in the
+bootstrap config must resolve inside ``run_dir`` and capture refuses to spawn
+otherwise.  A run directory is single-use: capture refuses to launch over any
+prior run evidence (:data:`FRESH_RUN_DIR_BLOCKERS`).
 """
 
 from __future__ import annotations
@@ -20,6 +27,7 @@ import os
 import re
 import signal
 import subprocess
+import tempfile
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -41,19 +49,26 @@ __all__ = [
     "ALGORITHM_STOP_EXIT_CODE",
     "BOOTSTRAP_CONFIG_NAME",
     "COMPLETED_EXIT_CODE",
+    "FRESH_RUN_DIR_BLOCKERS",
+    "FROZEN_INTERPRETER_FLAGS",
     "GRACE_SECONDS",
     "RAW_MANIFEST_NAME",
+    "RUN_DIR_LAYOUT",
     "TERMINAL_RECORD_NAME",
+    "WALL_CLOCK_CEILING_HOURS",
     "LaunchConfig",
     "RecordAssemblyError",
     "aggregates_from_node_records",
     "assemble_terminal_record",
     "capture_run",
     "empty_aggregates",
+    "enumerate_bootstrap_closure",
+    "launch_config_from_freeze",
     "reconcile_run",
     "run_capture",
     "validate_chain",
     "validate_terminal_record",
+    "verify_preboundary_attestation_set",
     "write_raw_manifest",
 ]
 
@@ -66,6 +81,80 @@ TERMINAL_RECORD_NAME = "terminal_record.json"
 V117_CANONICAL_SHA256 = (
     "65381bc774e894dd9aaf2207cadd9cfa2f2735dafceff4bb39492086a9e522e2"
 )
+# Ratified safety ceiling (plan §7, ballot B10): 8 h wall clock for the
+# full-closure diagnostic and for a future result run.  A safety ceiling,
+# never a validated runtime prediction or a scientific threshold.
+WALL_CLOCK_CEILING_HOURS = 8.0
+# Frozen launch flags (plan §4.5.1); the pycache token is realized per run.
+FROZEN_INTERPRETER_FLAGS = (
+    "-S",
+    "-s",
+    "-P",
+    "-B",
+    "-X",
+    "pycache_prefix={pycache_prefix}",
+)
+# Child attestation/output names routed into run_dir (bootstrap contract).
+_ATTESTATION_NAMES = (
+    "effect_proofs",
+    "stage_a",
+    "bytecode",
+    "audit_canary",
+    "stage_b_os",
+    "stage_b_raw",
+    "native_stack",
+    "manifest_pre",
+    "manifest_post",
+    "sourceless",
+    "import_inventory",
+    "stage_c",
+    "payload",
+    "failure",
+)
+# Frozen self-contained run-directory layout (plan §4.4): every artifact one
+# launch attempt may produce, relative to run_dir.  Trailing "/" marks a
+# directory subtree.
+RUN_DIR_LAYOUT = (
+    "bootstrap_config.json",
+    "prelaunch.json",
+    "spawned.json",
+    "events.jsonl",
+    "stdout.txt",
+    "stderr.txt",
+    "payload_started.json",
+    "effect_proofs.json",
+    "stage_a.json",
+    "bytecode.json",
+    "audit_canary.json",
+    "stage_b_os.json",
+    "stage_b_raw.json",
+    "native_stack.json",
+    "manifest_pre.json",
+    "manifest_post.json",
+    "sourceless.json",
+    "import_inventory.json",
+    "stage_c.json",
+    "payload.json",
+    "bootstrap_failure.json",
+    "nodes/",
+    "home/",
+    "tmp/",
+    "xdg/",
+    "pycache/",
+    RAW_MANIFEST_NAME,
+    TERMINAL_RECORD_NAME,
+)
+# A run directory holding any of these is a consumed launch attempt; capture
+# refuses to reuse it (plan §4.3/§4.4).
+FRESH_RUN_DIR_BLOCKERS = (
+    "prelaunch.json",
+    "spawned.json",
+    "payload_started.json",
+    "events.jsonl",
+    RAW_MANIFEST_NAME,
+    TERMINAL_RECORD_NAME,
+)
+_LAST_RESORT_DETAIL_LIMIT = 4000
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -125,6 +214,12 @@ class LaunchConfig:
     waiter: Callable[[subprocess.Popen[Any], float], Any] = field(
         default=_default_waiter, compare=False, repr=False
     )
+    # Plan §4.5.2: path of the frozen pre-boundary attestation set; when set,
+    # capture verifies every pinned digest on disk before any spawn.
+    preboundary_attestation_set: str | None = None
+    # Hermetic-test escape hatches only ("interpreter", "dyld"); the
+    # bootstrap-closure entries are never skippable.
+    preboundary_skip: Sequence[str] = ()
 
 
 class RecordAssemblyError(ValueError):
@@ -645,6 +740,7 @@ def _prelaunch(
             "run_id": config.run_id,
             "record_kind": config.record_kind,
             "wall_clock_ceiling_hours": config.wall_clock_ceiling_hours,
+            "preboundary_attestation_set": config.preboundary_attestation_set,
             "frozen_environment": dict(sorted(environment.items())),
             "chain": dict(config.chain),
         },
@@ -776,10 +872,327 @@ def _verify_protocol_marker(config: LaunchConfig, run_dir: Path) -> None:
         raise RecordAssemblyError(f"invalid payload-start marker: {exc}") from exc
 
 
+def _require_fresh_run_dir(run_dir: Path) -> None:
+    """Refuse to launch over any prior run evidence (plan §4.3/§4.4)."""
+
+    if not run_dir.is_dir():
+        return
+    present = sorted(
+        name for name in FRESH_RUN_DIR_BLOCKERS if (run_dir / name).exists()
+    )
+    if present:
+        raise ValueError(
+            "run_dir already holds launch evidence and is not reusable: "
+            f"{present}"
+        )
+
+
+def _require_contained_attestation_paths(
+    run_dir: Path, paths: Mapping[str, str]
+) -> None:
+    """Plan §4.4: every attestation/output path resolves inside run_dir."""
+
+    for name in sorted(paths):
+        candidate = Path(paths[name]).resolve()
+        try:
+            candidate.relative_to(run_dir)
+        except ValueError as exc:
+            raise ValueError(
+                f"attestation path {name!r} escapes the self-contained run "
+                f"directory: {paths[name]}"
+            ) from exc
+
+
+def _child_evidence_exists(paths: Mapping[str, str], events_path: Path) -> bool:
+    """Whether any child-written artifact or event line exists (plan §4.3)."""
+
+    for value in paths.values():
+        if Path(value).is_file():
+            return True
+    try:
+        return events_path.is_file() and events_path.stat().st_size > 0
+    except OSError:
+        return True
+
+
+def verify_preboundary_attestation_set(
+    attestation_set_path: str | os.PathLike[str],
+    *,
+    skip: Sequence[str] = (),
+) -> dict[str, int]:
+    """Verify the §4.5.2 pre-boundary pins on disk, before any spawn.
+
+    ``skip`` accepts only ``"interpreter"`` and ``"dyld"`` (the dyld binary
+    plus its shared-cache family) as hermetic-test escape hatches; the
+    bootstrap-closure entries are never skippable.  Any mismatch, missing
+    digest, or unreadable pinned file raises ``ValueError`` with the exact
+    reason, refusing the launch with no child spawned.
+    """
+
+    skip_tokens = set(skip)
+    unknown = skip_tokens - {"interpreter", "dyld"}
+    if unknown:
+        raise ValueError(f"unknown preboundary skip tokens: {sorted(unknown)}")
+    artifact = _read_json_object(Path(attestation_set_path).resolve(strict=True))
+
+    def check_entry(entry: Any, label: str) -> None:
+        if not isinstance(entry, Mapping) or not isinstance(
+            entry.get("path"), str
+        ):
+            raise ValueError(
+                f"preboundary attestation entry {label} is malformed"
+            )
+        expected = entry.get("sha256")
+        if not isinstance(expected, str) or _SHA256_RE.fullmatch(expected) is None:
+            raise ValueError(
+                f"preboundary attestation entry {label} lacks a frozen sha256"
+            )
+        try:
+            actual = sha256_file(entry["path"])
+        except OSError as exc:
+            raise ValueError(
+                f"preboundary attestation entry {label} is unreadable: "
+                f"{entry['path']}: {exc}"
+            ) from exc
+        if actual != expected:
+            raise ValueError(
+                f"preboundary attestation mismatch at {label}: "
+                f"{entry['path']} expected {expected}, actual {actual}"
+            )
+
+    checked = {"interpreter": 0, "dyld": 0, "closure": 0}
+    if "interpreter" not in skip_tokens:
+        check_entry(artifact.get("interpreter_binary"), "interpreter_binary")
+        checked["interpreter"] = 1
+    if "dyld" not in skip_tokens:
+        check_entry(artifact.get("dyld"), "dyld")
+        cache = artifact.get("dyld_shared_cache")
+        if not isinstance(cache, Mapping):
+            raise ValueError(
+                "preboundary attestation dyld_shared_cache is malformed"
+            )
+        check_entry(cache.get("main"), "dyld_shared_cache.main")
+        subcaches = cache.get("subcaches")
+        if not isinstance(subcaches, list):
+            raise ValueError(
+                "preboundary attestation subcaches must be a list"
+            )
+        for index, entry in enumerate(subcaches):
+            check_entry(entry, f"dyld_shared_cache.subcaches[{index}]")
+        checked["dyld"] = 2 + len(subcaches)
+    closure = artifact.get("bootstrap_closure")
+    if not isinstance(closure, list):
+        raise ValueError(
+            "preboundary attestation bootstrap_closure must be a list"
+        )
+    for index, entry in enumerate(closure):
+        check_entry(entry, f"bootstrap_closure[{index}]")
+    checked["closure"] = len(closure)
+    return checked
+
+
+_CLOSURE_PROBE = """\
+import importlib
+import json
+import os
+import sys
+import sysconfig
+from types import ModuleType
+
+bootstrap_path = sys.argv[1]
+worktree = os.path.realpath(sys.argv[2])
+stdlib = os.path.realpath(sysconfig.get_path("stdlib"))
+dynload = os.path.realpath(os.path.join(stdlib, "lib-dynload"))
+site_packages = os.path.realpath(sysconfig.get_path("purelib"))
+sys.path[:] = [worktree, stdlib, dynload, site_packages]
+package = ModuleType("bistar_gp")
+package.__path__ = [os.path.join(worktree, "bistar_gp")]
+package.__package__ = "bistar_gp"
+package.__file__ = os.path.join(worktree, "bistar_gp", "__init__.py")
+sys.modules["bistar_gp"] = package
+subpackage = ModuleType("bistar_gp.m2cr")
+subpackage.__path__ = [os.path.join(worktree, "bistar_gp", "m2cr")]
+subpackage.__package__ = "bistar_gp.m2cr"
+subpackage.__file__ = os.path.join(worktree, "bistar_gp", "m2cr", "__init__.py")
+sys.modules["bistar_gp.m2cr"] = subpackage
+module = importlib.import_module("bistar_gp.m2cr.bootstrap")
+if os.path.realpath(getattr(module, "__file__", "")) != os.path.realpath(
+    bootstrap_path
+):
+    raise SystemExit("closure probe imported an unexpected bootstrap origin")
+closure = []
+for name, loaded in sorted(sys.modules.items()):
+    if loaded is None:
+        continue
+    spec = getattr(loaded, "__spec__", None)
+    origin = getattr(spec, "origin", None) if spec is not None else None
+    if not isinstance(origin, str):
+        origin = getattr(loaded, "__file__", None)
+    if (
+        isinstance(origin, str)
+        and origin not in ("built-in", "frozen")
+        and os.path.isfile(origin)
+    ):
+        closure.append({"module": name, "origin": os.path.realpath(origin)})
+print(json.dumps(closure, sort_keys=True))
+"""
+
+
+def enumerate_bootstrap_closure(
+    interpreter_path: str | os.PathLike[str],
+    bootstrap_path: str | os.PathLike[str],
+    worktree_root: str | os.PathLike[str],
+) -> list[dict[str, str]]:
+    """Enumerate the bootstrap's import-only module closure (plan §4.5.2).
+
+    Spawns the pinned interpreter under the frozen flags with a ``-c`` probe
+    that replaces ``sys.path`` with the four roots, imports
+    ``bistar_gp.m2cr.bootstrap`` WITHOUT calling ``main``, and reports every
+    ``sys.modules`` entry with a file origin as ``{module, origin}``.
+    """
+
+    interpreter = Path(interpreter_path).resolve(strict=True)
+    bootstrap = Path(bootstrap_path).resolve(strict=True)
+    worktree = Path(worktree_root).resolve(strict=True)
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("PYTHON")
+    }
+    with tempfile.TemporaryDirectory(prefix="m2cr-closure-") as prefix:
+        completed = subprocess.run(
+            [
+                os.fspath(interpreter),
+                "-S",
+                "-s",
+                "-P",
+                "-B",
+                "-X",
+                f"pycache_prefix={prefix}",
+                "-c",
+                _CLOSURE_PROBE,
+                os.fspath(bootstrap),
+                os.fspath(worktree),
+            ],
+            shell=False,
+            env=environment,
+            cwd=os.fspath(worktree),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    if completed.returncode != 0:
+        raise ValueError(
+            f"bootstrap closure probe failed: {completed.stderr.strip()}"
+        )
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"bootstrap closure probe emitted malformed JSON: {exc}"
+        ) from exc
+    if not isinstance(payload, list):
+        raise ValueError("bootstrap closure probe must emit a list")
+    closure: list[dict[str, str]] = []
+    for item in payload:
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"module", "origin"}
+            or not all(isinstance(item[key], str) for key in ("module", "origin"))
+        ):
+            raise ValueError("bootstrap closure probe emitted a malformed entry")
+        closure.append({"module": item["module"], "origin": item["origin"]})
+    return sorted(closure, key=lambda entry: entry["module"])
+
+
+def _last_resort_terminal_record(
+    *,
+    record_kind: str,
+    run_id: str,
+    launch_attempt_id: str,
+    chain: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+    detail: str,
+    payload_started: bool,
+) -> dict[str, Any]:
+    """Minimal always-schema-valid INFRA_FAILURE fallback (plan §4.3).
+
+    Assembled directly, never through :func:`assemble_terminal_record`, so a
+    failure inside branch assembly cannot recurse; identity fields were
+    pattern-validated before spawn, evidence members are sanitized here, and
+    the detail is truncated to a safe length.  This path cannot itself fail.
+    """
+
+    text = str(detail)[:_LAST_RESORT_DETAIL_LIMIT] or "terminal assembly failed"
+    digest = evidence.get("raw_manifest_sha256") if isinstance(
+        evidence, Mapping
+    ) else None
+    if not isinstance(digest, str) or _SHA256_RE.fullmatch(digest) is None:
+        digest = "0" * 64
+    node_evidence: list[dict[str, Any]] = []
+    raw_nodes = (
+        evidence.get("node_evidence_digests")
+        if isinstance(evidence, Mapping)
+        else None
+    )
+    if isinstance(raw_nodes, Sequence) and not isinstance(raw_nodes, (str, bytes)):
+        for item in raw_nodes:
+            if (
+                isinstance(item, Mapping)
+                and isinstance(item.get("node_index"), int)
+                and not isinstance(item.get("node_index"), bool)
+                and item["node_index"] >= 0
+                and isinstance(item.get("record_sha256"), str)
+                and _SHA256_RE.fullmatch(item["record_sha256"]) is not None
+            ):
+                node_evidence.append(
+                    {
+                        "node_index": item["node_index"],
+                        "record_sha256": item["record_sha256"],
+                    }
+                )
+    node_evidence.sort(key=lambda item: item["node_index"])
+    balanced = (
+        bool(evidence.get("event_stream_balanced"))
+        if isinstance(evidence, Mapping)
+        else False
+    )
+    record: dict[str, Any] = {
+        "schema_version": 1,
+        "record_kind": record_kind,
+        "status": "INFRA_FAILURE",
+        "run_id": run_id,
+        "launch_attempt_id": launch_attempt_id,
+        "chain": dict(chain),
+        "fault": {
+            "fault_class": "other",
+            "detail": text,
+            "reconstructed": False,
+            "payload_started": bool(payload_started),
+        },
+        "evidence": {
+            "raw_manifest_sha256": digest,
+            "node_evidence_digests": node_evidence,
+            "event_stream_balanced": balanced,
+        },
+    }
+    if record_kind == "diagnostic":
+        record["not_a_result"] = True
+    return record
+
+
 def capture_run(config: LaunchConfig) -> dict[str, Any]:
     """Launch, supervise, resolve, and durably assemble one terminal record."""
 
     run_dir = Path(config.run_dir).resolve()
+    # Plan §4.3: validate the frozen identity shapes BEFORE any prelaunch
+    # artifact or child exists, so a malformed launch can never consume
+    # anything.
+    validate_chain(config.chain, config.record_kind)
+    _require_pattern(config.run_id, _RUN_ID_RE, "run_id")
+    _require_pattern(config.launch_attempt_id, _LAUNCH_ID_RE, "launch_attempt_id")
+    _require_pattern(config.authorization_id, _AUTH_ID_RE, "authorization_id")
+    _require_fresh_run_dir(run_dir)
     local = _prepare_run_directories(run_dir)
     environment, bootstrap_environment = _realize_environment(
         config.frozen_env, run_dir, local
@@ -789,14 +1202,6 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     bootstrap_config_path = run_dir / BOOTSTRAP_CONFIG_NAME
     template = _load_bootstrap_template(bootstrap_config_path)
     payload_path = _payload_entry_path(template, worktree_root)
-    prelaunch = _prelaunch(config, bootstrap_path, payload_path, environment)
-    prelaunch_sha256 = atomic_write_canonical_json(
-        run_dir / "prelaunch.json", prelaunch
-    )
-
-    events_path = run_dir / "events.jsonl"
-    pipe = parent_event_pipe(events_path)
-    pipe.start()
     template.pop("event_fd", None)
     template.update(
         frozen_env=template.pop("expected_frozen_env", bootstrap_environment),
@@ -811,26 +1216,28 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     )
     paths = dict(template.get("attestation_paths", {}))
     paths.setdefault("payload_started", os.fspath(run_dir / "payload_started.json"))
-    for name in (
-        "effect_proofs",
-        "stage_a",
-        "bytecode",
-        "audit_canary",
-        "stage_b_os",
-        "stage_b_raw",
-        "manifest_pre",
-        "manifest_post",
-        "sourceless",
-        "import_inventory",
-        "stage_c",
-        "payload",
-        "failure",
-    ):
+    for name in _ATTESTATION_NAMES:
         paths.setdefault(name, os.fspath(run_dir / f"{name}.json"))
     paths["payload"] = os.fspath(run_dir / "payload.json")
     paths["failure"] = os.fspath(run_dir / "bootstrap_failure.json")
     paths["stage_c"] = os.fspath(run_dir / "stage_c.json")
     template["attestation_paths"] = paths
+    _require_contained_attestation_paths(run_dir, paths)
+    if config.preboundary_attestation_set is not None:
+        # Plan §4.5.2: a pre-boundary digest mismatch refuses the launch;
+        # the raised reason records the exact failing entry and no child is
+        # ever spawned.
+        verify_preboundary_attestation_set(
+            config.preboundary_attestation_set, skip=config.preboundary_skip
+        )
+    prelaunch = _prelaunch(config, bootstrap_path, payload_path, environment)
+    prelaunch_sha256 = atomic_write_canonical_json(
+        run_dir / "prelaunch.json", prelaunch
+    )
+
+    events_path = run_dir / "events.jsonl"
+    pipe = parent_event_pipe(events_path)
+    pipe.start()
     atomic_write_canonical_json(bootstrap_config_path, template)
 
     stdout_handle = open(run_dir / "stdout.txt", "wb")
@@ -842,6 +1249,7 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     signal_sequence: list[str] = []
     sigkill_issued = False
     spawn_thread: threading.Thread | None = None
+    spawn_confirm_errors: list[BaseException] = []
     try:
         argv = [
             os.fspath(Path(config.interpreter_path).resolve()),
@@ -862,16 +1270,21 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         )
 
         def mark_spawned() -> None:
-            pipe.hello_event.wait()
-            if pipe.hello_payload is not None:
-                atomic_write_canonical_json(
-                    run_dir / "spawned.json",
-                    {
-                        "pid": process.pid,
-                        "received_utc": _utc_now(),
-                        "hello": pipe.hello_payload,
-                    },
-                )
+            try:
+                pipe.hello_event.wait()
+                if pipe.hello_payload is not None:
+                    atomic_write_canonical_json(
+                        run_dir / "spawned.json",
+                        {
+                            "pid": process.pid,
+                            "received_utc": _utc_now(),
+                            "hello": pipe.hello_payload,
+                        },
+                    )
+            except BaseException as exc:
+                # Plan §4.3: a failed spawn confirmation must surface as a
+                # capture fault; it can never silently reclassify the run.
+                spawn_confirm_errors.append(exc)
 
         spawn_thread = threading.Thread(target=mark_spawned, daemon=True)
         spawn_thread.start()
@@ -923,6 +1336,11 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
             finally:
                 handle.close()
 
+    if spawn_confirm_errors and capture_fault is None:
+        capture_fault = (
+            f"spawn confirmation write failed: {spawn_confirm_errors[0]}"
+        )
+
     spawned_path = run_dir / "spawned.json"
     if spawned_path.is_file():
         try:
@@ -950,9 +1368,23 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     aggregates: Mapping[str, Any] | None = None
     fault: tuple[str, str] | None = None
 
-    # Frozen first-match precedence.
+    # Frozen first-match precedence (plan §4.3).  Rule 1 distinguishes a
+    # truly unstarted child from a lost spawn confirmation: when child
+    # evidence exists without spawned.json, no state is silently
+    # reclassified as NOT_STARTED.
     if not spawned:
-        status = "NOT_STARTED"
+        if spawn_confirm_errors or _child_evidence_exists(paths, events_path):
+            reason = "spawn confirmation lost"
+            if spawn_confirm_errors:
+                reason += (
+                    f": spawned.json write failed: {spawn_confirm_errors[0]}"
+                )
+            else:
+                reason += ": child evidence exists without spawned.json"
+            status = "INFRA_FAILURE"
+            fault = ("capture_fault", reason)
+        else:
+            status = "NOT_STARTED"
     elif budget_kill:
         status = "ABORTED_BUDGET"
     else:
@@ -1056,51 +1488,21 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         "node_evidence_digests": node_evidence,
         "event_stream_balanced": bool(balance["balanced"]),
     }
-    if status == "NOT_STARTED":
-        reason = f"spawn not confirmed: {spawn_error or 'no HELLO received'}"
-        record = assemble_terminal_record(
-            record_kind=config.record_kind,
-            status=status,
-            run_id=config.run_id,
-            launch_attempt_id=config.launch_attempt_id,
-            chain=config.chain,
-            not_started_info={"prelaunch_sha256": prelaunch_sha256, "reason": reason},
-        )
-    elif status == "ABORTED_BUDGET":
-        record = assemble_terminal_record(
-            record_kind=config.record_kind,
-            status=status,
-            run_id=config.run_id,
-            launch_attempt_id=config.launch_attempt_id,
-            chain=config.chain,
-            evidence=evidence,
-            stages=stages or [],
-            aggregates=aggregates or empty_aggregates(),
-            interruption_info={
-                "ceiling_hours": config.wall_clock_ceiling_hours,
-                "signal_sequence": signal_sequence,
-                "grace_seconds": GRACE_SECONDS,
-                "sigkill_issued": sigkill_issued,
-            },
-        )
-    elif status == "INFRA_FAILURE":
-        fault_class, detail = fault or ("other", "uncategorized infrastructure failure")
-        record = assemble_terminal_record(
-            record_kind=config.record_kind,
-            status=status,
-            run_id=config.run_id,
-            launch_attempt_id=config.launch_attempt_id,
-            chain=config.chain,
-            evidence=evidence,
-            infra_fault={
-                "fault_class": fault_class,
-                "detail": detail,
-                "reconstructed": False,
-                "payload_started": (run_dir / "payload_started.json").is_file(),
-            },
-        )
-    else:
-        try:
+    try:
+        if status == "NOT_STARTED":
+            reason = f"spawn not confirmed: {spawn_error or 'no HELLO received'}"
+            record = assemble_terminal_record(
+                record_kind=config.record_kind,
+                status=status,
+                run_id=config.run_id,
+                launch_attempt_id=config.launch_attempt_id,
+                chain=config.chain,
+                not_started_info={
+                    "prelaunch_sha256": prelaunch_sha256,
+                    "reason": reason,
+                },
+            )
+        elif status == "ABORTED_BUDGET":
             record = assemble_terminal_record(
                 record_kind=config.record_kind,
                 status=status,
@@ -1108,25 +1510,76 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                 launch_attempt_id=config.launch_attempt_id,
                 chain=config.chain,
                 evidence=evidence,
-                stages=stages,
-                aggregates=aggregates,
-                payload=payload,
+                stages=stages or [],
+                aggregates=aggregates or empty_aggregates(),
+                interruption_info={
+                    "ceiling_hours": config.wall_clock_ceiling_hours,
+                    "signal_sequence": signal_sequence,
+                    "grace_seconds": GRACE_SECONDS,
+                    "sigkill_issued": sigkill_issued,
+                },
             )
-        except RecordAssemblyError as exc:
+        elif status == "INFRA_FAILURE":
+            fault_class, detail = fault or (
+                "other",
+                "uncategorized infrastructure failure",
+            )
             record = assemble_terminal_record(
                 record_kind=config.record_kind,
-                status="INFRA_FAILURE",
+                status=status,
                 run_id=config.run_id,
                 launch_attempt_id=config.launch_attempt_id,
                 chain=config.chain,
                 evidence=evidence,
                 infra_fault={
-                    "fault_class": "schema_invalid_payload",
-                    "detail": str(exc),
+                    "fault_class": fault_class,
+                    "detail": detail,
                     "reconstructed": False,
                     "payload_started": (run_dir / "payload_started.json").is_file(),
                 },
             )
+        else:
+            try:
+                record = assemble_terminal_record(
+                    record_kind=config.record_kind,
+                    status=status,
+                    run_id=config.run_id,
+                    launch_attempt_id=config.launch_attempt_id,
+                    chain=config.chain,
+                    evidence=evidence,
+                    stages=stages,
+                    aggregates=aggregates,
+                    payload=payload,
+                )
+            except RecordAssemblyError as exc:
+                record = assemble_terminal_record(
+                    record_kind=config.record_kind,
+                    status="INFRA_FAILURE",
+                    run_id=config.run_id,
+                    launch_attempt_id=config.launch_attempt_id,
+                    chain=config.chain,
+                    evidence=evidence,
+                    infra_fault={
+                        "fault_class": "schema_invalid_payload",
+                        "detail": str(exc),
+                        "reconstructed": False,
+                        "payload_started": (
+                            run_dir / "payload_started.json"
+                        ).is_file(),
+                    },
+                )
+    except Exception as exc:
+        # Plan §4.3 last resort: if the chosen branch cannot assemble, a
+        # minimal always-schema-valid INFRA_FAILURE record is still written.
+        record = _last_resort_terminal_record(
+            record_kind=config.record_kind,
+            run_id=config.run_id,
+            launch_attempt_id=config.launch_attempt_id,
+            chain=config.chain,
+            evidence=evidence,
+            detail=f"terminal assembly failed for status {status}: {exc}",
+            payload_started=(run_dir / "payload_started.json").is_file(),
+        )
     _write_terminal(run_dir, record)
     return record
 
@@ -1173,3 +1626,160 @@ def reconcile_run(
     )
     _write_terminal(root, record)
     return record
+
+
+_FOUR_ROOT_IDS = ("worktree", "stdlib", "lib-dynload", "site-packages")
+
+
+def _read_manifest_v2_header(path: Path) -> dict[str, str]:
+    """Read the importable-manifest format-v2 header's frozen roots.
+
+    Delegates the header parse to the single shared implementation in
+    :mod:`bistar_gp.m2cr.environment_freeze` (a late import keeps capture's
+    import surface unchanged), then requires exactly the four frozen root
+    ids for launch derivation.
+    """
+
+    from bistar_gp.m2cr.environment_freeze import read_manifest_header
+
+    header = read_manifest_header(path)
+    roots = header["roots"]
+    if set(roots) != set(_FOUR_ROOT_IDS):
+        raise ValueError(
+            "importable manifest header roots must name exactly the four "
+            "frozen root ids"
+        )
+    return {name: roots[name] for name in _FOUR_ROOT_IDS}
+
+
+def _pinned_artifact(freeze: Mapping[str, Any], name: str, base: Path) -> Path:
+    """Resolve and digest-authenticate one environment-freeze artifact pin."""
+
+    artifacts = freeze.get("artifacts")
+    if not isinstance(artifacts, Mapping) or name not in artifacts:
+        raise ValueError(f"environment freeze manifest lacks artifact {name!r}")
+    entry = artifacts[name]
+    if not isinstance(entry, Mapping) or not isinstance(entry.get("path"), str):
+        raise ValueError(f"environment freeze pin for {name!r} is malformed")
+    path = Path(entry["path"])
+    if not path.is_absolute():
+        path = (base / path).resolve()
+    expected = entry.get("sha256")
+    if not isinstance(expected, str) or _SHA256_RE.fullmatch(expected) is None:
+        raise ValueError(f"environment freeze pin for {name!r} lacks a sha256")
+    actual = sha256_file(path)
+    if actual != expected:
+        raise ValueError(
+            f"environment freeze pin mismatch for {name!r}: expected "
+            f"{expected}, actual {actual}"
+        )
+    return path
+
+
+def launch_config_from_freeze(
+    env_freeze_manifest_path: str | os.PathLike[str],
+    infrastructure_manifest_path: str | os.PathLike[str],
+    *,
+    run_dir: str | os.PathLike[str],
+    run_id: str,
+    authorization_id: str,
+    launch_attempt_id: str,
+    record_kind: str,
+    chain: Mapping[str, Any],
+    bootstrap_template_path: str | os.PathLike[str],
+    waiter: Callable[[subprocess.Popen[Any], float], Any] | None = None,
+) -> LaunchConfig:
+    """Derive a :class:`LaunchConfig` from the frozen artifacts (plan §3.1/§4.5).
+
+    Authenticates the aggregating environment-freeze manifest against its
+    Layer-1a infrastructure pin, authenticates each of the four freeze
+    artifacts against the aggregating manifest, then derives: the interpreter
+    path from the interpreter pin, the frozen ``-S -s -P -B`` flag set plus
+    the per-run pycache prefix, the frozen child environment from the
+    child-env mapping artifact, the four roots from the importable-manifest
+    format-v2 header, and the attestation-set/manifest paths.  The B10
+    safety ceiling (:data:`WALL_CLOCK_CEILING_HOURS`) is applied.  The
+    bootstrap template is materialized as ``run_dir/bootstrap_config.json``
+    with the derived ``four_roots`` and manifest path injected.
+    """
+
+    freeze_path = Path(env_freeze_manifest_path).resolve(strict=True)
+    infrastructure_path = Path(infrastructure_manifest_path).resolve(strict=True)
+    infrastructure = _read_json_object(infrastructure_path)
+    infra_artifacts = infrastructure.get("artifacts")
+    if not isinstance(infra_artifacts, Mapping):
+        raise ValueError("infrastructure manifest lacks an artifacts section")
+    freeze_pin = infra_artifacts.get("environment_freeze_manifest")
+    if not isinstance(freeze_pin, Mapping):
+        raise ValueError(
+            "infrastructure manifest does not pin the environment freeze "
+            "manifest"
+        )
+    actual_freeze_sha = sha256_file(freeze_path)
+    if actual_freeze_sha != freeze_pin.get("sha256"):
+        raise ValueError(
+            "environment freeze manifest does not match its infrastructure "
+            f"pin: expected {freeze_pin.get('sha256')}, actual "
+            f"{actual_freeze_sha}"
+        )
+    freeze = _read_json_object(freeze_path)
+    base = freeze_path.parent
+    interpreter_pin_path = _pinned_artifact(freeze, "interpreter_pin", base)
+    env_mapping_path = _pinned_artifact(freeze, "child_env_mapping", base)
+    manifest_path = _pinned_artifact(freeze, "importable_artifact_manifest", base)
+    attestation_set_path = _pinned_artifact(
+        freeze, "preboundary_attestation_set", base
+    )
+
+    pin = _read_json_object(interpreter_pin_path)
+    interpreter_path = pin.get("path")
+    if not isinstance(interpreter_path, str) or not os.path.isabs(
+        interpreter_path
+    ):
+        raise ValueError("interpreter pin lacks an absolute interpreter path")
+
+    mapping = _read_json_object(env_mapping_path)
+    fixed = mapping.get("fixed")
+    run_local_keys = mapping.get("run_local_keys")
+    if not isinstance(fixed, Mapping) or not isinstance(run_local_keys, list):
+        raise ValueError(
+            "child environment mapping lacks fixed/run_local_keys members"
+        )
+    frozen_env: dict[str, Any] = {
+        "fixed": dict(fixed),
+        "run_local_keys": list(run_local_keys),
+    }
+
+    roots = _read_manifest_v2_header(manifest_path)
+    worktree_root = roots["worktree"]
+    bootstrap_path = Path(worktree_root) / "bistar_gp/m2cr/bootstrap.py"
+    if not bootstrap_path.is_file():
+        raise ValueError(f"derived bootstrap is missing: {bootstrap_path}")
+
+    template = _load_bootstrap_template(
+        Path(bootstrap_template_path).resolve(strict=True)
+    )
+    template["four_roots"] = [roots[name] for name in _FOUR_ROOT_IDS]
+    template["importable_artifact_manifest"] = os.fspath(manifest_path.resolve())
+    run_root = Path(run_dir).resolve()
+    run_root.mkdir(parents=True, exist_ok=True)
+    atomic_write_canonical_json(run_root / BOOTSTRAP_CONFIG_NAME, template)
+
+    arguments: dict[str, Any] = {
+        "interpreter_path": interpreter_path,
+        "interpreter_flags": FROZEN_INTERPRETER_FLAGS,
+        "bootstrap_path": os.fspath(bootstrap_path),
+        "worktree_root": worktree_root,
+        "run_dir": os.fspath(run_root),
+        "frozen_env": frozen_env,
+        "authorization_id": authorization_id,
+        "launch_attempt_id": launch_attempt_id,
+        "run_id": run_id,
+        "record_kind": record_kind,
+        "chain": dict(chain),
+        "wall_clock_ceiling_hours": WALL_CLOCK_CEILING_HOURS,
+        "preboundary_attestation_set": os.fspath(attestation_set_path.resolve()),
+    }
+    if waiter is not None:
+        arguments["waiter"] = waiter
+    return LaunchConfig(**arguments)

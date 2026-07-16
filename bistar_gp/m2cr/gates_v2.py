@@ -38,6 +38,7 @@ from bistar_gp.m2c_freeze import (
 )
 from bistar_gp.m2cr.coordinates import (
     CANONICAL_AXIS_ORDER,
+    matrix_storage_to_canonical,
     vector_storage_to_canonical,
 )
 
@@ -132,6 +133,13 @@ def _event_vector(values: Any, perm: Sequence[int] | None) -> list[float]:
     return vector.tolist()
 
 
+def _event_matrix(values: Any, perm: Sequence[int] | None) -> list[list[float]]:
+    matrix = np.asarray(values, dtype=np.float64)
+    if perm is not None:
+        matrix = matrix_storage_to_canonical(matrix, perm)
+    return matrix.tolist()
+
+
 def optimize_conditional_v2(
     neg_g: Callable[[np.ndarray], float],
     neg_grad: Callable[[np.ndarray], np.ndarray],
@@ -192,6 +200,10 @@ def optimize_conditional_v2(
             if event_sink is not None:
                 # Closing the attempt here keeps the write-ahead stream
                 # balanced without evaluating the discarded result early.
+                # Everything SciPy already returned is durable immediately
+                # (plan §3.2: the stream is the durability channel); only the
+                # oracle-derived telemetry is deferred, to preserve the
+                # frozen oracle-call prefix.
                 event_sink.emit(
                     "ATTEMPT_END",
                     start_label=label,
@@ -200,6 +212,11 @@ def optimize_conditional_v2(
                     node_index=node_index,
                     persisted_axis_order=_event_axis_order(perm),
                     status=int(result.status),
+                    scipy_success=bool(getattr(result, "success", True)),
+                    message=str(result.message),
+                    u_raw=np.asarray(result.x, dtype=np.float64)
+                    .reshape(-1)
+                    .tolist(),
                     telemetry_deferred=True,
                 )
             rng_seed = RESTART_RNG_BASE + index
@@ -540,6 +557,9 @@ def _emit_curvature_result(
 ) -> None:
     if event_sink is None:
         return
+    # The full already-computed evaluation rides in the durable event, so a
+    # crash before node-file assembly loses nothing (plan §3.2); no oracle
+    # call happens here.
     event_sink.emit(
         "EVAL_RESULT",
         gate="curvature",
@@ -547,9 +567,30 @@ def _emit_curvature_result(
         node_index=node_index,
         persisted_axis_order=_event_axis_order(perm),
         u_star=_event_vector(evaluation["u_star"], perm),
+        raw_hessian=_event_matrix(evaluation["raw_hessian"], perm),
+        K=_event_matrix(evaluation["K"], perm),
         # Spectral order is invariant and is never coordinate-permuted.
         eigenvalues=np.asarray(evaluation["eigenvalues"], dtype=np.float64).tolist(),
         logdet=evaluation["logdet"],
+        logdet_by_h=[
+            {"h": float(h), "logdet": evaluation["logdet_by_h"][h]}
+            for h in HESS_H_SWEEP
+        ],
+        logdet_stability_error=evaluation["logdet_stability_error"],
+        symmetry_error=evaluation["symmetry_error"],
+        directional=[
+            {
+                "seed": int(seed),
+                "direction": _event_vector(
+                    evaluation["directional_directions"][seed], perm
+                ),
+                "second_difference": evaluation["directional_second_differences"][
+                    seed
+                ],
+                "error": evaluation["directional_errors"][seed],
+            }
+            for seed in DIRECTION_RNG_SEEDS
+        ],
         rcond=evaluation["rcond"],
         spd=evaluation["spd"],
         conditioning_ok=evaluation["conditioning_ok"],

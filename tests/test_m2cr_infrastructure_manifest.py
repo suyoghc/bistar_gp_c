@@ -53,13 +53,20 @@ def test_generated_manifest_matches_tree_and_detects_copied_tree_tamper(
     tmp_path: Path,
 ):
     inputs = _inputs(tmp_path)
-    manifest = build_infrastructure_manifest(inputs)
+    manifest = build_infrastructure_manifest(inputs, repo_root=ROOT)
     manifest_path = tmp_path / "manifest.json"
     atomic_write_canonical_json(manifest_path, manifest)
-    assert verify_infrastructure_manifest(manifest_path)["ok"]
+    assert verify_infrastructure_manifest(manifest_path, repo_root=ROOT)["ok"]
 
+    # Repo-contained pins are stored repo-relative (fix A9), so a detached
+    # copy of the pinned tree audits its own copy, never this checkout.
     copy_root = tmp_path / "copy"
-    for relpath in manifest["code"]:
+    relative_pins = list(manifest["code"]) + [
+        pin["path"]
+        for pin in manifest["r1_schemas"].values()
+        if not Path(pin["path"]).is_absolute()
+    ]
+    for relpath in relative_pins:
         destination = copy_root / relpath
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / relpath, destination)
@@ -120,14 +127,14 @@ def test_builder_rejects_r3_schema_as_an_expected_pin_path(tmp_path: Path):
 
 
 def test_verifier_rejects_nonexact_key_sets_and_malformed_pins(tmp_path: Path):
-    manifest = build_infrastructure_manifest(_inputs(tmp_path))
+    manifest = build_infrastructure_manifest(_inputs(tmp_path), repo_root=ROOT)
     manifest["artifacts"]["unexpected_alias"] = manifest["artifacts"][
         "dependency_lock"
     ]
     manifest["code"][R2_CODE_RELPATHS[0]]["path"] = R2_CODE_RELPATHS[0]
     manifest_path = tmp_path / "malformed.json"
     atomic_write_canonical_json(manifest_path, manifest)
-    report = verify_infrastructure_manifest(manifest_path)
+    report = verify_infrastructure_manifest(manifest_path, repo_root=ROOT)
     assert not report["ok"]
     assert any("exact required key set" in error for error in report["errors"])
     assert any("malformed pin" in error for error in report["errors"])
@@ -135,18 +142,24 @@ def test_verifier_rejects_nonexact_key_sets_and_malformed_pins(tmp_path: Path):
 
 def test_no_pinned_digest_occurs_inside_the_file_it_pins(tmp_path: Path):
     inputs = _inputs(tmp_path)
-    manifest = build_infrastructure_manifest(inputs)
+    manifest = build_infrastructure_manifest(inputs, repo_root=ROOT)
     for relpath, pin in manifest["code"].items():
         assert pin["sha256"].encode("ascii") not in (ROOT / relpath).read_bytes()
     for category in ("artifacts", "r1_schemas"):
         for pin in manifest[category].values():
-            assert pin["sha256"].encode("ascii") not in Path(pin["path"]).read_bytes()
+            pin_path = Path(pin["path"])
+            if not pin_path.is_absolute():
+                pin_path = ROOT / pin_path
+            assert pin["sha256"].encode("ascii") not in pin_path.read_bytes()
 
 
 def test_committed_infrastructure_manifest_matches_tree():
+    if os.environ.get("M2CR_ALLOW_MISSING_COMMITTED_MANIFEST") == "1":
+        pytest.skip(
+            "orchestrator regeneration window: the committed manifest is being "
+            "regenerated and its content check is deferred to the orchestrator"
+        )
     if not COMMITTED_MANIFEST.exists():
-        if os.environ.get("M2CR_ALLOW_MISSING_COMMITTED_MANIFEST") == "1":
-            pytest.skip("orchestrator temporarily allows the ungenerated manifest")
         pytest.fail(
             "committed R2 infrastructure manifest is missing; only the generation "
             "orchestrator may set M2CR_ALLOW_MISSING_COMMITTED_MANIFEST=1"

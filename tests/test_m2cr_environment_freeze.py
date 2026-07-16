@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.machinery
+import json
 import os
 import subprocess
 import sys
@@ -18,6 +19,8 @@ from bistar_gp.m2cr.environment_freeze import (
     build_importable_artifact_manifest,
     build_interpreter_pin,
     build_preboundary_attestation_set,
+    classify_pyc_candidate,
+    read_manifest_header,
     walk_importable_artifacts,
 )
 from bistar_gp.m2cr.serialization import (
@@ -53,19 +56,71 @@ def test_walker_classifies_b15ii_scope_exactly(tmp_path: Path):
 
     assert "pkg/module.py" in by_path
     assert by_path["pkg/module.py"]["artifact_type"] == "source"
+    assert by_path["pkg/module.py"]["loader"] == "SourceFileLoader"
     assert "pkg/__pycache__/module.cpython-313.pyc" not in by_path
     assert by_path["pkg/__pycache__/orphan.any-tag.pyc"]["artifact_type"] == (
         "orphan_bytecode"
     )
+    assert by_path["pkg/__pycache__/orphan.any-tag.pyc"]["loader"] == (
+        "SourcelessFileLoader"
+    )
     assert by_path["pkg/legacy.pyc"]["artifact_type"] == "legacy_bytecode"
+    assert by_path["pkg/legacy.pyc"]["loader"] == "SourcelessFileLoader"
     extension = next(
         entry for entry in entries if entry["artifact_type"] == "extension"
     )
     assert extension["sha256"] == sha256_file(root / extension["relpath"])
+    assert extension["loader"] == "ExtensionFileLoader"
     assert by_path["vendor.zip"]["artifact_type"] == "importable_archive"
+    assert by_path["vendor.zip"]["loader"] == "zipimporter"
     assert list(by_path) == sorted(by_path)
-    assert all(set(entry) == {"root", "relpath", "artifact_type", "sha256", "size"}
-               for entry in entries)
+    assert all(
+        set(entry) == {"root", "relpath", "artifact_type", "loader", "sha256", "size"}
+        for entry in entries
+    )
+
+
+def test_pyc_classification_handles_dotted_stems_pytest_tags_orphans_legacy_plain(
+    tmp_path: Path,
+):
+    """Fix A1: dotted source stems and dotted (pytest) cache tags are
+    source-backed; true orphans, legacy, and plain stems classify exactly."""
+
+    root = tmp_path / "root"
+    _write(root / "pkg/v0.9.0.a.py", b"dotted-stem source")
+    _write(root / "pkg/__pycache__/v0.9.0.a.cpython-313.pyc", b"dotted cache")
+    _write(root / "pkg/mod.py", b"module source")
+    _write(root / "pkg/__pycache__/mod.cpython-313-pytest-8.3.3.pyc", b"pytest cache")
+    _write(root / "pkg/plain.py", b"plain source")
+    _write(root / "pkg/__pycache__/plain.cpython-313.pyc", b"plain cache")
+    _write(root / "pkg/__pycache__/untagged.pyc", b"untagged cache")
+    _write(root / "pkg/untagged.py", b"untagged source")
+    _write(root / "pkg/__pycache__/orphan.cpython-313.pyc", b"true orphan")
+    _write(root / "pkg/legacy.pyc", b"legacy")
+
+    backed = (
+        "pkg/__pycache__/v0.9.0.a.cpython-313.pyc",
+        "pkg/__pycache__/mod.cpython-313-pytest-8.3.3.pyc",
+        "pkg/__pycache__/plain.cpython-313.pyc",
+        "pkg/__pycache__/untagged.pyc",
+    )
+    for relpath in backed:
+        assert classify_pyc_candidate(root, relpath) is None, relpath
+    assert classify_pyc_candidate(root, "pkg/__pycache__/orphan.cpython-313.pyc") == (
+        "orphan_bytecode"
+    )
+    assert classify_pyc_candidate(root, "pkg/legacy.pyc") == "legacy_bytecode"
+    assert classify_pyc_candidate(root, "pkg/mod.py") is None
+
+    included = {
+        entry["relpath"]: entry["artifact_type"]
+        for entry in walk_importable_artifacts([("fake", root)])
+        if entry["relpath"].endswith(".pyc")
+    }
+    assert included == {
+        "pkg/__pycache__/orphan.cpython-313.pyc": "orphan_bytecode",
+        "pkg/legacy.pyc": "legacy_bytecode",
+    }
 
 
 def test_numpy_distributor_local_addition_changes_set_and_manifest_digest(
@@ -112,6 +167,52 @@ def test_manifest_generation_is_byte_deterministic(tmp_path: Path):
     assert first_path.read_bytes() == second_path.read_bytes()
     assert first["total_bytes_of_manifest"] == len(first_path.read_bytes())
     assert first["sha256_of_manifest"] == sha256_file(first_path)
+
+
+def test_manifest_opens_with_v2_header_carrying_resolved_roots(tmp_path: Path):
+    root = tmp_path / "root"
+    _synthetic_import_tree(root)
+    manifest_path = tmp_path / "manifest.jsonl"
+    summary = build_importable_artifact_manifest([("fake", root)], manifest_path)
+    lines = manifest_path.read_text(encoding="utf-8").splitlines()
+    header = json.loads(lines[0])
+    assert header == {
+        "kind": "m2cr_importable_artifact_manifest",
+        "schema_version": 2,
+        "roots": {"fake": os.fspath(root.resolve())},
+    }
+    assert read_manifest_header(manifest_path) == header
+    entries = [json.loads(line) for line in lines[1:]]
+    assert summary["total_entries"] == len(entries)
+    assert {entry["loader"] for entry in entries} == {
+        "SourceFileLoader",
+        "SourcelessFileLoader",
+        "ExtensionFileLoader",
+        "zipimporter",
+    }
+
+
+def test_read_manifest_header_rejects_headerless_or_malformed_first_line(
+    tmp_path: Path,
+):
+    headerless = tmp_path / "v1.jsonl"
+    headerless.write_text(
+        '{"artifact_type":"source","relpath":"a.py"}\n', encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="wrong kind"):
+        read_manifest_header(headerless)
+    malformed = tmp_path / "broken.jsonl"
+    malformed.write_text("not json\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        read_manifest_header(malformed)
+    relative_roots = tmp_path / "relative.jsonl"
+    relative_roots.write_text(
+        '{"kind":"m2cr_importable_artifact_manifest","roots":{"stdlib":"lib"},'
+        '"schema_version":2}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="absolute resolved paths"):
+        read_manifest_header(relative_roots)
 
 
 def test_symlink_escape_fails_closed_with_offending_path(tmp_path: Path):
@@ -184,14 +285,47 @@ def test_aggregate_manifest_pins_four_artifacts_without_self_digest(tmp_path: Pa
     assert manifest["kind"] == "m2cr_environment_freeze_manifest"
     assert set(manifest["artifacts"]) == set(names)
     for name, path in paths.items():
+        # Outside any repository the pin stays absolute (host-global rule).
         assert manifest["artifacts"][name] == {
-            "path": os.fspath(path),
+            "path": os.fspath(path.resolve()),
             "sha256": sha256_file(path),
         }
     data = canonical_bytes(manifest)
     own_digest = canonical_sha256(manifest).encode("ascii")
     assert own_digest not in data
     assert b"environment_freeze_manifest_sha256" not in data
+
+
+def test_freeze_manifest_stores_repo_relative_pins_for_repo_contained_files(
+    tmp_path: Path,
+):
+    """Fix A9: repo-contained pins are repo-relative; host-global pins stay
+    absolute, so a regenerated manifest verifies inside any worktree."""
+
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    names = (
+        "child_env_mapping",
+        "importable_artifact_manifest",
+        "interpreter_pin",
+        "preboundary_attestation_set",
+    )
+    paths: dict[str, Path] = {}
+    for name in names[:-1]:
+        path = repo / "docs" / f"{name}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_canonical_json(path, {"kind": name})
+        paths[name] = path
+    outside = tmp_path / "host-global.json"
+    atomic_write_canonical_json(outside, {"kind": names[-1]})
+    paths[names[-1]] = outside
+
+    discovered = build_environment_freeze_manifest(paths)
+    explicit = build_environment_freeze_manifest(paths, repo_root=repo)
+    for manifest in (discovered, explicit):
+        for name in names[:-1]:
+            assert manifest["artifacts"][name]["path"] == f"docs/{name}.json"
+        assert Path(manifest["artifacts"][names[-1]]["path"]).is_absolute()
 
 
 def test_interpreter_pin_probes_target_process_and_hashes_resolved_binary():

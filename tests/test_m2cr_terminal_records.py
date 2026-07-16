@@ -6,6 +6,7 @@ import pytest
 
 from bistar_gp.m2cr.capture import (
     RecordAssemblyError,
+    _last_resort_terminal_record,
     aggregates_from_node_records,
     assemble_terminal_record,
     empty_aggregates,
@@ -259,3 +260,57 @@ def test_grace_seconds_is_frozen_to_thirty() -> None:
             aggregates=AGGREGATES,
             interruption_info=bad,
         )
+
+
+@pytest.mark.parametrize("kind", ["diagnostic", "result"])
+def test_last_resort_record_is_schema_valid_by_construction(kind: str) -> None:
+    """FIX C4: the assembly fallback validates even over degenerate inputs."""
+
+    record = _last_resort_terminal_record(
+        record_kind=kind,
+        run_id=RUN_ID,
+        launch_attempt_id=LAUNCH_ATTEMPT_ID,
+        chain=_chain(kind),
+        evidence={
+            "raw_manifest_sha256": "not-a-digest",
+            "node_evidence_digests": [
+                {"node_index": True, "record_sha256": "6" * 64},
+                {"node_index": -1, "record_sha256": "6" * 64},
+                {"node_index": 2, "record_sha256": "junk"},
+                {"node_index": 1, "record_sha256": "6" * 64},
+            ],
+            "event_stream_balanced": "yes",
+        },
+        detail="x" * 100_000,
+        payload_started=True,
+    )
+    validate_terminal_record(record)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "other"
+    assert record["fault"]["reconstructed"] is False
+    assert record["fault"]["payload_started"] is True
+    assert len(record["fault"]["detail"]) == 4000
+    assert record["evidence"]["raw_manifest_sha256"] == "0" * 64
+    assert record["evidence"]["node_evidence_digests"] == [
+        {"node_index": 1, "record_sha256": "6" * 64}
+    ]
+    assert record["evidence"]["event_stream_balanced"] is True
+    assert (record.get("not_a_result") is True) == (kind == "diagnostic")
+
+
+def test_last_resort_record_survives_empty_detail_and_evidence() -> None:
+    """FIX C4: the fallback cannot itself fail on missing inputs."""
+
+    record = _last_resort_terminal_record(
+        record_kind="diagnostic",
+        run_id=RUN_ID,
+        launch_attempt_id=LAUNCH_ATTEMPT_ID,
+        chain=_chain("diagnostic"),
+        evidence={},
+        detail="",
+        payload_started=False,
+    )
+    validate_terminal_record(record)
+    assert record["fault"]["detail"] == "terminal assembly failed"
+    assert record["evidence"]["node_evidence_digests"] == []
+    assert record["evidence"]["event_stream_balanced"] is False

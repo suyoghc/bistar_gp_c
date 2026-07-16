@@ -19,6 +19,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from bistar_gp.m2cr.environment_freeze import read_manifest_header
 from bistar_gp.m2cr.serialization import canonical_bytes, canonical_sha256, sha256_file
 
 __all__ = [
@@ -45,10 +46,45 @@ V117_CANONICAL_SHA256 = (
     "65381bc774e894dd9aaf2207cadd9cfa2f2735dafceff4bb39492086a9e522e2"
 )
 _EVENT_ID = re.compile(r"^m2cr-ev-(\d{6})$")
-_LAUNCH_ID = re.compile(r"^m2cr-launch-[0-9]{8}-[0-9]{2}$")
 _EVIDENCE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_RAW_MANIFEST_NAME = "RAW_MANIFEST.sha256"
+_TERMINAL_RECORD_NAME = "terminal_record.json"
+_RAW_MANIFEST_LINE = re.compile(r"^([0-9a-f]{64})  (\S[^\n]*)$")
+# Chain members the caller may legitimately declare absent during R2: they are
+# R3/R5-owned artifacts that do not exist yet.
+_DECLARABLE_ABSENT = {
+    "protocol_manifest_sha256",
+    "diagnostic_record_sha256",
+    "amendment_manifest",
+}
+# Plan section 4.5.5 Stage-A frozen parent-supplied mapping, restated here so
+# the auditor verifies the freeze independently of the generator.
+_FROZEN_CHILD_ENV_FIXED = {
+    "PYTHONHASHSEED": "0",
+    "OMP_NUM_THREADS": "10",
+    "OMP_DYNAMIC": "FALSE",
+    "MKL_NUM_THREADS": "10",
+    "VECLIB_MAXIMUM_THREADS": "10",
+    "LC_ALL": "C",
+    "TZ": "UTC",
+    "PATH": "/usr/bin:/bin",
+}
+_RUN_LOCAL_KEYS = {
+    "HOME",
+    "TMPDIR",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+}
+_IMPORTABLE_MANIFEST_ROOT_IDS = {
+    "worktree",
+    "stdlib",
+    "lib-dynload",
+    "site-packages",
+}
 _R2_CODE_RELPATHS = {
     "bistar_gp/m2cr/__init__.py",
     "bistar_gp/m2cr/serialization.py",
@@ -97,7 +133,11 @@ def validate_ledger(jsonl_text: str) -> dict[str, Any]:
     In particular, an ``authorization_consumed`` line is accepted only when
     ``derived_from`` resolves to an earlier, genuine ``payload_started`` line
     whose authorization id, launch-attempt id, and marker digest all match.
-    Historical records are never eligible derivation sources.
+    Historical records are never eligible derivation sources.  A grant whose
+    scope declares ``one_shot`` cannot start another launch attempt after its
+    consumption, and every launch attempt must close through exactly one
+    terminal channel (``pre_payload_terminal_outcome`` xor
+    ``terminal_outcome``) by the end of the ledger.
     """
 
     schema = json.loads(_LEDGER_SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -131,6 +171,7 @@ def validate_ledger(jsonl_text: str) -> dict[str, Any]:
     attempts: dict[str, dict[str, Any]] = {}
     events_by_id: dict[str, dict[str, Any]] = {}
     consumed_sources: set[str] = set()
+    consumed_authorizations: set[str] = set()
     payload_event_ids: set[str] = set()
 
     for line_number, event in parsed:
@@ -175,6 +216,15 @@ def validate_ledger(jsonl_text: str) -> dict[str, Any]:
                     f"line {line_number}: launch attempt cites unknown or non-grant "
                     f"authorization {authorization_id}"
                 )
+            else:
+                scope = grants[authorization_id].get("scope")
+                one_shot = scope.get("one_shot") if isinstance(scope, dict) else None
+                if one_shot is True and authorization_id in consumed_authorizations:
+                    errors.append(
+                        f"line {line_number}: launch attempt {launch_id} starts "
+                        f"after one-shot authorization {authorization_id} was "
+                        "consumed"
+                    )
             if launch_id in attempts:
                 errors.append(
                     f"line {line_number}: duplicate launch_attempt_id {launch_id}"
@@ -337,6 +387,10 @@ def validate_ledger(jsonl_text: str) -> dict[str, Any]:
                     )
                 elif isinstance(source_id, str):
                     consumed_sources.add(source_id)
+            # Fail closed for one-shot scoping: any consumption event marks the
+            # authorization consumed even when its derivation is itself invalid.
+            if isinstance(authorization_id, str):
+                consumed_authorizations.add(authorization_id)
 
         elif kind == "superseding_correction":
             target = event.get("supersedes_event_id")
@@ -357,6 +411,11 @@ def validate_ledger(jsonl_text: str) -> dict[str, Any]:
             errors.append(
                 f"launch attempt {launch_id} has payload_started but no terminal_outcome"
             )
+        elif state["pre_payload_terminal"] is None and state["terminal"] is None:
+            errors.append(
+                f"launch attempt {launch_id} is dangling: it reached no terminal "
+                "channel (pre_payload_terminal_outcome or terminal_outcome)"
+            )
     return {
         "ok": not errors,
         "errors": errors,
@@ -365,16 +424,135 @@ def validate_ledger(jsonl_text: str) -> dict[str, Any]:
     }
 
 
-def _attempt_dir(evidence_root: Path, launch_id: Any) -> Path:
-    if not isinstance(launch_id, str) or _LAUNCH_ID.fullmatch(launch_id) is None:
-        raise ValueError(f"invalid launch-attempt evidence key: {launch_id!r}")
-    root = evidence_root.resolve()
-    attempt = (root / launch_id).resolve()
+def _run_directories(root: Path, errors: list[str]) -> dict[str, Path]:
+    """Index the capture layout ``evidence_root/<run_id>/`` by launch attempt.
+
+    Each committed run directory is self-contained and carries its own
+    terminal record (plan section 4.4), whose ``launch_attempt_id`` associates
+    the directory with its ledger events.  A directory without a parseable
+    terminal record is simply not indexed, so every event pointing at it
+    fails closed.
+    """
+
+    mapping: dict[str, Path] = {}
+    if not root.is_dir():
+        errors.append(f"evidence root is not a directory: {root}")
+        return mapping
+    for child in sorted(root.iterdir()):
+        if not child.is_dir():
+            continue
+        record_path = child / _TERMINAL_RECORD_NAME
+        if not record_path.is_file():
+            continue
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        launch_id = record.get("launch_attempt_id")
+        if not isinstance(launch_id, str):
+            continue
+        if launch_id in mapping:
+            errors.append(
+                f"ambiguous evidence: launch attempt {launch_id} has terminal "
+                f"records in both {mapping[launch_id].name}/ and {child.name}/"
+            )
+            continue
+        mapping[launch_id] = child
+    return mapping
+
+
+def _relpath_is_safe(relpath: str) -> bool:
+    if relpath.startswith("/") or "\\" in relpath:
+        return False
+    parts = relpath.split("/")
+    return all(part not in ("", ".", "..") for part in parts)
+
+
+def _audit_raw_manifest(
+    run_dir: Path,
+    label: str,
+    checks: list[dict[str, Any]],
+    errors: list[str],
+) -> None:
+    """Strictly parse Layer 3 and prove it complete over Layer 2.
+
+    Lines are ``<64hex>  <relpath>`` sorted strictly by relpath.  The listed
+    set must equal the run directory's files minus ``RAW_MANIFEST.sha256``
+    and ``terminal_record.json`` (the capture exclusion), and every listed
+    file is rehashed.  Extra, missing, and tampered files all fail.
+    """
+
+    before = len(errors)
+    manifest_path = run_dir / _RAW_MANIFEST_NAME
+    entries: list[tuple[str, str]] = []
     try:
-        attempt.relative_to(root)
-    except ValueError as exc:
-        raise ValueError(f"launch-attempt evidence escapes root: {launch_id}") from exc
-    return attempt
+        text = manifest_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        errors.append(f"{label}: raw manifest is unreadable: {exc}")
+        text = None
+    if text is not None:
+        if text and not text.endswith("\n"):
+            errors.append(f"{label}: raw manifest lacks a final newline")
+        else:
+            previous: str | None = None
+            for line_number, line in enumerate(text.split("\n")[:-1], start=1):
+                match = (
+                    _RAW_MANIFEST_LINE.fullmatch(line) if "\r" not in line else None
+                )
+                if match is None:
+                    errors.append(
+                        f"{label}: malformed raw manifest line {line_number}"
+                    )
+                    entries = []
+                    break
+                digest, relpath = match.group(1), match.group(2)
+                if not _relpath_is_safe(relpath):
+                    errors.append(
+                        f"{label}: unsafe raw manifest relpath at line {line_number}"
+                    )
+                    entries = []
+                    break
+                if previous is not None and not (relpath > previous):
+                    errors.append(
+                        f"{label}: raw manifest relpaths are not strictly sorted "
+                        f"at line {line_number}"
+                    )
+                    entries = []
+                    break
+                previous = relpath
+                entries.append((digest, relpath))
+            else:
+                excluded = {_RAW_MANIFEST_NAME, _TERMINAL_RECORD_NAME}
+                actual = {
+                    path.relative_to(run_dir).as_posix()
+                    for path in run_dir.rglob("*")
+                    if path.is_file() and path.name not in excluded
+                }
+                listed = {relpath for _, relpath in entries}
+                for relpath in sorted(actual - listed):
+                    errors.append(f"{label}: unlisted evidence file {relpath}")
+                for relpath in sorted(listed - actual):
+                    errors.append(
+                        f"{label}: listed evidence file is missing: {relpath}"
+                    )
+                for digest, relpath in entries:
+                    target = run_dir / relpath
+                    if not target.is_file():
+                        continue
+                    if sha256_file(target) != digest:
+                        errors.append(
+                            f"{label}: raw manifest digest mismatch for {relpath}"
+                        )
+    checks.append(
+        {
+            "label": label,
+            "path": os.fspath(manifest_path),
+            "status": "passed" if len(errors) == before else "failed",
+            "entries": len(entries),
+        }
+    )
 
 
 def _read_hashed_file(
@@ -409,13 +587,19 @@ def verify_ledger_against_evidence(
     jsonl_text: str,
     evidence_root: str | os.PathLike[str],
 ) -> dict[str, Any]:
-    """Verify prospective ledger digests against an attempt-keyed evidence tree.
+    """Verify prospective ledger digests against the capture evidence layout.
 
-    The hermetic layout is ``<evidence_root>/<launch_attempt_id>/`` with
-    ``payload_started.json``, ``prelaunch.json``, ``terminal_record.json``, and
-    ``RAW_MANIFEST.sha256``.  Marker attestation entries named ``NAME`` resolve
-    to ``attestations/NAME.json``.  Terminal records are validated against the
-    committed execution-record schema and bound back to their ledger event.
+    The layout is the capture driver's ``<evidence_root>/<run_id>/`` (plan
+    sections 3.1 and 4.4): ``prelaunch.json``, ``spawned.json``,
+    ``payload_started.json``, ``events.jsonl``, ``stdout.txt``,
+    ``stderr.txt``, attestation JSONs at the run root (a marker attestation
+    named ``NAME`` resolves to ``NAME.json``), per-node record files,
+    ``RAW_MANIFEST.sha256``, and ``terminal_record.json``.  Run directories
+    are associated to ledger events through their terminal record's
+    ``launch_attempt_id``.  Terminal and pre-payload terminal records are
+    rehashed against the cited digests and validated against the committed
+    execution-record schema; ``RAW_MANIFEST.sha256`` is strictly parsed,
+    proven complete over the directory, and every listed file rehashed.
     """
 
     stream_report = validate_ledger(jsonl_text)
@@ -444,15 +628,26 @@ def verify_ledger_against_evidence(
         if event.get("event") == "authorization_granted"
     }
 
+    audited_kinds = {
+        "payload_started",
+        "terminal_outcome",
+        "pre_payload_terminal_outcome",
+    }
+    run_dirs = _run_directories(root, errors)
     for event in events:
         kind = event.get("event")
-        if kind not in {"payload_started", "terminal_outcome"}:
+        if kind not in audited_kinds:
             continue
         launch_id = event.get("launch_attempt_id")
-        try:
-            attempt = _attempt_dir(root, launch_id)
-        except ValueError as exc:
-            errors.append(str(exc))
+        if not isinstance(launch_id, str):
+            errors.append(f"{kind}: event lacks a launch_attempt_id")
+            continue
+        attempt = run_dirs.get(launch_id)
+        if attempt is None:
+            errors.append(
+                f"{kind}:{launch_id}: no run directory under the evidence root "
+                "carries a terminal record for this launch attempt"
+            )
             continue
 
         if kind == "payload_started":
@@ -549,7 +744,7 @@ def verify_ledger_against_evidence(
                     continue
                 attestation_names.append(name)
                 _read_hashed_file(
-                    attempt / "attestations" / f"{name}.json",
+                    attempt / f"{name}.json",
                     item.get("evidence_sha256"),
                     f"attestation:{launch_id}:{name}",
                     checks,
@@ -564,48 +759,64 @@ def verify_ledger_against_evidence(
                 )
             continue
 
-        terminal_path = attempt / "terminal_record.json"
+        # terminal_outcome and pre_payload_terminal_outcome share the record
+        # authentication path: resolve the cited digest, rehash, and validate
+        # the record against the committed execution-record schema.
+        label = (
+            f"terminal_record:{launch_id}"
+            if kind == "terminal_outcome"
+            else f"pre_payload_terminal_record:{launch_id}"
+        )
+        terminal_path = attempt / _TERMINAL_RECORD_NAME
         raw_terminal = _read_hashed_file(
             terminal_path,
             event.get("terminal_record_sha256"),
-            f"terminal_record:{launch_id}",
+            label,
             checks,
             errors,
         )
-        _read_hashed_file(
-            attempt / "RAW_MANIFEST.sha256",
-            event.get("raw_manifest_sha256"),
-            f"raw_manifest:{launch_id}",
-            checks,
-            errors,
-        )
+        if kind == "terminal_outcome":
+            _read_hashed_file(
+                attempt / _RAW_MANIFEST_NAME,
+                event.get("raw_manifest_sha256"),
+                f"raw_manifest:{launch_id}",
+                checks,
+                errors,
+            )
+            _audit_raw_manifest(
+                attempt, f"raw_manifest_audit:{launch_id}", checks, errors
+            )
         if raw_terminal is None:
             continue
         try:
             record = json.loads(raw_terminal)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            errors.append(f"terminal_record:{launch_id}: malformed JSON: {exc}")
+            errors.append(f"{label}: malformed JSON: {exc}")
             continue
         failures = sorted(
             record_validator.iter_errors(record),
             key=lambda item: tuple(str(part) for part in item.absolute_path),
         )
         for failure in failures:
-            errors.append(
-                f"terminal_record:{launch_id}: {_schema_error(failure)}"
-            )
+            errors.append(f"{label}: {_schema_error(failure)}")
         if not isinstance(record, dict):
             continue
-        for field in ("launch_attempt_id", "record_kind", "status"):
+        if record.get("run_id") != attempt.name:
+            errors.append(
+                f"{label}: record run_id does not name its evidence directory "
+                f"{attempt.name}"
+            )
+        bound_fields = ("launch_attempt_id", "status")
+        if kind == "terminal_outcome":
+            bound_fields = ("launch_attempt_id", "record_kind", "status")
+        for field in bound_fields:
             if record.get(field) != event.get(field):
-                errors.append(f"terminal_record:{launch_id}: {field} mismatch")
+                errors.append(f"{label}: {field} mismatch")
         chain = record.get("chain")
         if not isinstance(chain, dict) or chain.get("authorization_id") != event.get(
             "authorization_id"
         ):
-            errors.append(
-                f"terminal_record:{launch_id}: authorization_id mismatch"
-            )
+            errors.append(f"{label}: authorization_id mismatch")
         else:
             grant = grants.get(event.get("authorization_id"))
             frozen_chain = grant.get("frozen_chain") if isinstance(grant, dict) else {}
@@ -613,16 +824,13 @@ def verify_ledger_against_evidence(
                 frozen_chain.items() if isinstance(frozen_chain, dict) else ()
             ):
                 if chain.get(field) != expected:
-                    errors.append(
-                        f"terminal_record:{launch_id}: chain {field} mismatch"
-                    )
-        evidence = record.get("evidence")
-        if not isinstance(evidence, dict) or evidence.get(
-            "raw_manifest_sha256"
-        ) != event.get("raw_manifest_sha256"):
-            errors.append(
-                f"terminal_record:{launch_id}: raw_manifest_sha256 mismatch"
-            )
+                    errors.append(f"{label}: chain {field} mismatch")
+        if kind == "terminal_outcome":
+            evidence = record.get("evidence")
+            if not isinstance(evidence, dict) or evidence.get(
+                "raw_manifest_sha256"
+            ) != event.get("raw_manifest_sha256"):
+                errors.append(f"{label}: raw_manifest_sha256 mismatch")
 
     return {
         "ok": not errors,
@@ -641,31 +849,60 @@ def _chain_check(
     checks[name] = {"status": status, **details}
 
 
-def _committed_authorizations() -> set[str]:
-    result: set[str] = set()
-    for raw in _LEDGER_PATH.read_text(encoding="utf-8").splitlines():
-        event = json.loads(raw)
-        if event.get("event") in {
-            "authorization_granted",
-            "historical_authorization_record",
-        }:
-            result.add(event["authorization_id"])
-    return result
+def _ledger_authorization_state(ledger_jsonl: str) -> dict[str, Any]:
+    """Split committed authorizations into grants, historical ids, consumed ids."""
+
+    grants: dict[str, dict[str, Any]] = {}
+    historical: set[str] = set()
+    consumed: set[str] = set()
+    for raw in ledger_jsonl.splitlines():
+        if not raw.strip():
+            continue
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        kind = event.get("event")
+        authorization_id = event.get("authorization_id")
+        if not isinstance(authorization_id, str):
+            continue
+        if kind == "authorization_granted":
+            grants[authorization_id] = event
+        elif kind == "historical_authorization_record":
+            historical.add(authorization_id)
+        elif kind == "authorization_consumed":
+            consumed.add(authorization_id)
+    return {"grants": grants, "historical": historical, "consumed": consumed}
 
 
 def verify_chain(
     record_chain: dict[str, Any],
     expectations: dict[str, Any],
     record_kind: str,
+    *,
+    require_unconsumed: bool = False,
+    ledger_jsonl: str | None = None,
 ) -> dict[str, Any]:
     """Verify each effective-chain member or state why it is unavailable.
 
     ``record_kind`` selects the exact B18 member set; chain shape is never
     inferred from whichever optional members happen to be present.
     ``expectations`` supplies committed digests under their chain-field names.
-    During R2, R3/R5-owned artifacts may receive an explicit
-    ``expected_absent`` status.  Pass ``verify_execution_commit=False`` to
-    skip git-object lookup.
+    A member with no caller-supplied expectation FAILS unless the caller
+    explicitly lists it in ``expectations["expected_absent"]``, which is
+    allowed only for the R3/R5-owned members (protocol manifest, diagnostic
+    record, amendment manifest).  The chain's ``authorization_id`` must
+    resolve to a prospective ``authorization_granted`` ledger event; a
+    ``historical_authorization_record`` never satisfies a chain (prereg v1.19:
+    every future execution requires its own fresh explicit authorization).
+    When the grant freezes an execution commit, the chain's commit must equal
+    it.  ``require_unconsumed=True`` additionally rejects a grant the ledger
+    already shows consumed (for pre-launch audits).  ``ledger_jsonl``
+    overrides the committed ledger text (hermetic audits of proposed ledger
+    states).  Pass ``verify_execution_commit=False`` to skip git-object
+    lookup.
     """
 
     checks: dict[str, dict[str, Any]] = {}
@@ -704,19 +941,16 @@ def verify_chain(
         )
         errors.append("v117_canonical_sha256 does not equal const and live canonical hash")
 
-    default_absent = {
-        "protocol_manifest_sha256",
-        "diagnostic_record_sha256",
-        "amendment_manifest",
-    }
-    expected_absent = set(expectations.get("expected_absent", default_absent))
-    invalid_absent = expected_absent - default_absent
+    # No default expected_absent: absence is a caller declaration, never an
+    # assumption (fix A7).
+    expected_absent = set(expectations.get("expected_absent", ()))
+    invalid_absent = expected_absent - _DECLARABLE_ABSENT
     if invalid_absent:
         errors.append(
             "expected_absent contains non-R3/R5 chain members: "
             + ", ".join(sorted(invalid_absent))
         )
-    expected_absent &= default_absent
+    expected_absent &= _DECLARABLE_ABSENT
     diagnostic_members = {
         "v117_canonical_sha256",
         "infrastructure_manifest_sha256",
@@ -783,17 +1017,19 @@ def verify_chain(
                 name,
                 "expected_absent",
                 actual=actual,
-                reason="R3 artifact does not exist during milestone R2",
+                reason="caller explicitly declared this R3/R5 member absent",
             )
         else:
             _chain_check(
                 checks,
                 name,
-                "unverifiable",
+                "failed",
                 actual=actual,
-                reason="caller supplied no committed-artifact digest",
+                reason="unverifiable: no committed artifact expectation supplied",
             )
-            errors.append(f"{name} is unverifiable without a committed-artifact digest")
+            errors.append(
+                f"{name} unverifiable: no committed artifact expectation supplied"
+            )
 
     commit = record_chain.get("execution_commit")
     if not isinstance(commit, str) or not _HEX40.fullmatch(commit):
@@ -826,28 +1062,103 @@ def verify_chain(
         )
 
     authorization_id = record_chain.get("authorization_id")
-    if authorization_id in _committed_authorizations():
+    if ledger_jsonl is None:
+        try:
+            ledger_jsonl = _LEDGER_PATH.read_text(encoding="utf-8")
+        except OSError as exc:
+            ledger_jsonl = ""
+            errors.append(f"cannot read the committed authorization ledger: {exc}")
+    state = _ledger_authorization_state(ledger_jsonl)
+    grant = state["grants"].get(authorization_id)
+    if grant is not None:
+        _chain_check(checks, "authorization_id", "passed", actual=authorization_id)
+        frozen_chain = grant.get("frozen_chain")
+        frozen_commit = (
+            frozen_chain.get("execution_commit")
+            if isinstance(frozen_chain, dict)
+            else None
+        )
+        if frozen_commit is not None and commit != frozen_commit:
+            _chain_check(
+                checks,
+                "grant_execution_commit",
+                "failed",
+                actual=commit,
+                expected=frozen_commit,
+                reason="chain execution_commit does not equal the grant's frozen commit",
+            )
+            errors.append(
+                "execution_commit does not equal the commit frozen by the grant"
+            )
+        elif frozen_commit is not None:
+            _chain_check(
+                checks, "grant_execution_commit", "passed", actual=commit
+            )
+        if require_unconsumed and authorization_id in state["consumed"]:
+            _chain_check(
+                checks,
+                "authorization_unconsumed",
+                "failed",
+                actual=authorization_id,
+                reason="the ledger already shows this authorization consumed",
+            )
+            errors.append("authorization is already consumed in the ledger")
+        elif require_unconsumed:
+            _chain_check(
+                checks, "authorization_unconsumed", "passed", actual=authorization_id
+            )
+    elif authorization_id in state["historical"]:
         _chain_check(
-            checks, "authorization_id", "passed", actual=authorization_id
+            checks,
+            "authorization_id",
+            "failed",
+            actual=authorization_id,
+            reason=(
+                "historical_authorization_record never satisfies a chain; every "
+                "future execution requires its own fresh prospective grant"
+            ),
+        )
+        errors.append(
+            "authorization_id resolves to a historical_authorization_record, "
+            "not a prospective authorization_granted event"
         )
     else:
-        _chain_check(
-            checks, "authorization_id", "failed", actual=authorization_id
-        )
-        errors.append("authorization_id is not a grant or historical record in the ledger")
+        _chain_check(checks, "authorization_id", "failed", actual=authorization_id)
+        errors.append("authorization_id is not a prospective grant in the ledger")
     return {"ok": not errors, "errors": errors, "checks": checks}
 
 
-def _resolve_pinned_path(stored: str, manifest_path: Path) -> Path | None:
+def _discover_repo_root(start: Path) -> Path | None:
+    """Return the nearest ancestor holding ``.git`` (a dir, or a worktree file)."""
+
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
+def _pin_resolution_base(
+    manifest_path: Path, repo_root: str | os.PathLike[str] | None
+) -> Path:
+    """Resolve relative pins against the repo root, never the process CWD.
+
+    An explicit ``repo_root`` wins; otherwise the manifest file's own
+    repository is discovered by walking up to a ``.git`` entry, falling back
+    to the manifest's directory for detached copies.  Repo-relative pins are
+    what keep a manifest verifiable inside any worktree (fix A9).
+    """
+
+    if repo_root is not None:
+        return Path(repo_root).resolve()
+    discovered = _discover_repo_root(manifest_path.parent)
+    return discovered if discovered is not None else manifest_path.parent
+
+
+def _resolve_pinned_path(stored: str, resolution_base: Path) -> Path | None:
     path = Path(stored)
     if path.is_absolute():
         return path if path.is_file() else None
-    # A temp manifest can sit at the root of a copied tree; prefer its ancestry.
-    for parent in (manifest_path.parent, *manifest_path.parents):
-        candidate = parent / path
-        if candidate.is_file():
-            return candidate
-    candidate = Path.cwd() / path
+    candidate = resolution_base / path
     return candidate if candidate.is_file() else None
 
 
@@ -856,17 +1167,17 @@ def _verify_pin(
     label: str,
     stored_path: str,
     expected: Any,
-    manifest_path: Path,
+    resolution_base: Path,
     checks: list[dict[str, Any]],
     errors: list[str],
-) -> None:
-    path = _resolve_pinned_path(stored_path, manifest_path)
+) -> Path | None:
+    path = _resolve_pinned_path(stored_path, resolution_base)
     if path is None:
         checks.append(
             {"label": label, "path": stored_path, "status": "failed", "reason": "missing"}
         )
         errors.append(f"{label}: pinned file is missing: {stored_path}")
-        return
+        return None
     actual = sha256_file(path)
     status = "passed" if actual == expected else "failed"
     checks.append(
@@ -880,14 +1191,21 @@ def _verify_pin(
     )
     if status == "failed":
         errors.append(f"{label}: sha256 mismatch for {stored_path}")
+    return path
 
 
 def verify_infrastructure_manifest(
     manifest_path: str | os.PathLike[str],
+    repo_root: str | os.PathLike[str] | None = None,
 ) -> dict[str, Any]:
-    """Recompute every Layer-1a pin (the standing manifest==code check)."""
+    """Recompute every Layer-1a pin (the standing manifest==code check).
+
+    Relative pins resolve against ``repo_root`` (default: the manifest
+    file's repository, discovered by walking up to a ``.git`` entry).
+    """
 
     path = Path(manifest_path).resolve()
+    resolution_base = _pin_resolution_base(path, repo_root)
     errors: list[str] = []
     checks: list[dict[str, Any]] = []
     try:
@@ -924,7 +1242,7 @@ def verify_infrastructure_manifest(
             label=f"code:{stored_path}",
             stored_path=stored_path,
             expected=pin["sha256"],
-            manifest_path=path,
+            resolution_base=resolution_base,
             checks=checks,
             errors=errors,
         )
@@ -955,7 +1273,7 @@ def verify_infrastructure_manifest(
                     f"{category}:{name}: R3 diagnostic schema cannot be pinned by Layer 1a"
                 )
                 continue
-            resolved_pin = _resolve_pinned_path(pin["path"], path)
+            resolved_pin = _resolve_pinned_path(pin["path"], resolution_base)
             if (
                 resolved_pin is not None
                 and resolved_pin.resolve().name == _R3_DIAGNOSTIC_SCHEMA_BASENAME
@@ -968,7 +1286,7 @@ def verify_infrastructure_manifest(
                 label=f"{category}:{name}",
                 stored_path=pin["path"],
                 expected=pin.get("sha256"),
-                manifest_path=path,
+                resolution_base=resolution_base,
                 checks=checks,
                 errors=errors,
             )
@@ -1007,12 +1325,112 @@ def band_masses_sum_identity(payload: dict[str, Any]) -> bool:
     return struct.pack(">d", computed) == struct.pack(">d", supplied)
 
 
+def _json_object(path: Path) -> dict[str, Any]:
+    parsed = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(parsed, dict):
+        raise ValueError("artifact is not a JSON object")
+    return parsed
+
+
+def _freeze_semantic_failures(name: str, artifact_path: Path) -> list[str]:
+    """Validate one pinned freeze artifact against its frozen semantics.
+
+    Plan sections 4.5.5 and 4.5.7 (prereg v1.19 section 2) freeze the
+    artifact *contents*, not merely their digests: the exact Stage-A mapping,
+    a complete interpreter pin, a genuine (non-fixture, count-consistent)
+    pre-boundary attestation set, and a v2 importable manifest opening with
+    the four-root header.
+    """
+
+    failures: list[str] = []
+    if name == "child_env_mapping":
+        try:
+            mapping = _json_object(artifact_path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            return [f"unparseable child_env_mapping: {exc}"]
+        if mapping.get("fixed") != _FROZEN_CHILD_ENV_FIXED:
+            failures.append(
+                "child_env_mapping fixed pairs do not equal the frozen "
+                "Stage-A mapping exactly"
+            )
+        run_local = mapping.get("run_local_keys")
+        if (
+            not isinstance(run_local, list)
+            or len(run_local) != len(_RUN_LOCAL_KEYS)
+            or set(run_local) != _RUN_LOCAL_KEYS
+        ):
+            failures.append(
+                "child_env_mapping run_local_keys is not exactly the six "
+                "run-local keys"
+            )
+    elif name == "interpreter_pin":
+        try:
+            pin = _json_object(artifact_path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            return [f"unparseable interpreter_pin: {exc}"]
+        version = pin.get("version")
+        members = {
+            "path": pin.get("path"),
+            "realpath": pin.get("realpath"),
+            "sha256": pin.get("sha256"),
+            "version_string": (
+                version.get("version_string") if isinstance(version, dict) else None
+            ),
+        }
+        for member, value in sorted(members.items()):
+            if not isinstance(value, str) or not value:
+                failures.append(f"interpreter_pin lacks a nonempty {member}")
+    elif name == "preboundary_attestation_set":
+        try:
+            attestation = _json_object(artifact_path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            return [f"unparseable preboundary_attestation_set: {exc}"]
+        if attestation.get("test_fixture", False) is not False:
+            failures.append(
+                "preboundary_attestation_set declares test_fixture; fixtures "
+                "cannot be frozen"
+            )
+        cache = attestation.get("dyld_shared_cache")
+        cache = cache if isinstance(cache, dict) else {}
+        if cache.get("discovered_subcache_count") != cache.get(
+            "declared_subcache_count"
+        ):
+            failures.append(
+                "preboundary_attestation_set discovered subcache count does "
+                "not equal the declared count"
+            )
+        closure = attestation.get("bootstrap_closure")
+        if not isinstance(closure, list) or not closure:
+            failures.append(
+                "preboundary_attestation_set bootstrap closure is empty"
+            )
+    elif name == "importable_artifact_manifest":
+        try:
+            header = read_manifest_header(artifact_path)
+        except (OSError, ValueError) as exc:
+            return [f"importable manifest lacks a valid v2 header: {exc}"]
+        if set(header["roots"]) != _IMPORTABLE_MANIFEST_ROOT_IDS:
+            failures.append(
+                "importable manifest header roots are not exactly "
+                "{worktree, stdlib, lib-dynload, site-packages}"
+            )
+    return failures
+
+
 def verify_environment_freeze(
     freeze_manifest_path: str | os.PathLike[str],
+    repo_root: str | os.PathLike[str] | None = None,
 ) -> dict[str, Any]:
-    """Rehash all four artifacts pinned by the static v5 freeze manifest."""
+    """Rehash and semantically validate the static v5 freeze manifest.
+
+    Beyond digest equality, each pinned artifact is parsed and checked
+    against its frozen semantics (fix A8); failures are reported per member.
+    Relative pins resolve against ``repo_root`` (default: the manifest
+    file's repository, discovered by walking up to a ``.git`` entry).
+    """
 
     path = Path(freeze_manifest_path).resolve()
+    resolution_base = _pin_resolution_base(path, repo_root)
     errors: list[str] = []
     checks: list[dict[str, Any]] = []
     try:
@@ -1039,12 +1457,25 @@ def verify_environment_freeze(
         if not isinstance(pin, dict) or not isinstance(pin.get("path"), str):
             errors.append(f"artifact:{name}: malformed pin")
             continue
-        _verify_pin(
+        resolved = _verify_pin(
             label=f"artifact:{name}",
             stored_path=pin["path"],
             expected=pin.get("sha256"),
-            manifest_path=path,
+            resolution_base=resolution_base,
             checks=checks,
             errors=errors,
         )
+        if resolved is None:
+            continue
+        failures = _freeze_semantic_failures(name, resolved)
+        checks.append(
+            {
+                "label": f"semantic:{name}",
+                "path": pin["path"],
+                "status": "failed" if failures else "passed",
+                "reasons": failures,
+            }
+        )
+        for failure in failures:
+            errors.append(f"semantic:{name}: {failure}")
     return {"ok": not errors, "errors": errors, "checks": checks}

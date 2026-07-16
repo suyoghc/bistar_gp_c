@@ -92,6 +92,7 @@ def fragments():
         selected,
         battery,
         curvature,
+        stage_id="level0",
     )
     return {
         "opt_v2": opt_v2,
@@ -278,16 +279,196 @@ def test_per_node_branch_invariants_are_fail_closed(fragments):
         fragments["optimizer"],
     )
     with pytest.raises(ValueError, match="battery and curvature"):
-        build_per_node_record(*args, True, [0.0, 0.0, 0.0])
+        build_per_node_record(*args, True, [0.0, 0.0, 0.0], stage_id="level0")
     with pytest.raises(ValueError, match="battery or curvature"):
         build_per_node_record(
-            *args, False, None, battery_record=fragments["battery"]
+            *args, False, None, battery_record=fragments["battery"],
+            stage_id="level0",
         )
     with pytest.raises(ValueError, match="selected optimum"):
-        build_per_node_record(*args, False, [0.0, 0.0, 0.0])
-    failed = build_per_node_record(*args, False, None)
+        build_per_node_record(*args, False, [0.0, 0.0, 0.0], stage_id="level0")
+    failed = build_per_node_record(*args, False, None, stage_id="level0")
     validate_fragment(failed, "#/$defs/per_node_record")
     invalid = copy.deepcopy(failed)
     invalid["selected_optimum"] = [0.0, 0.0, 0.0]
     with pytest.raises(ValidationError):
         validate_fragment(invalid, "#/$defs/per_node_record")
+
+
+def test_failed_node_compares_identity_and_vector_not_selection_reason(fragments):
+    """v1.19 §9: on failure the outgoing IDENTITY and VECTOR carry forward;
+    selection_reason legitimately becomes a carried_* value."""
+
+    incoming = build_warm_start_ref(
+        {"kind": "mode_u"}, [0.0, 0.0, 0.0], "initial_mode_u"
+    )
+    carried = build_warm_start_ref(
+        {"kind": "mode_u"}, [0.0, 0.0, 0.0], "carried_mode_u"
+    )
+    node = build_per_node_record(
+        6, 0.4, STORAGE_ORDER, incoming, carried, fragments["optimizer"],
+        False, None, stage_id="level0",
+    )
+    validate_fragment(node, "#/$defs/per_node_record")
+
+    different_identity = build_warm_start_ref(
+        {"kind": "accepted_node", "stage_id": "level0", "node_index": 2},
+        [0.0, 0.0, 0.0],
+        "carried_last_accepted_node",
+    )
+    with pytest.raises(ValueError, match="identity forward"):
+        build_per_node_record(
+            6, 0.4, STORAGE_ORDER, incoming, different_identity,
+            fragments["optimizer"], False, None, stage_id="level0",
+        )
+    different_vector = build_warm_start_ref(
+        {"kind": "mode_u"}, [1.0, 0.0, 0.0], "carried_mode_u"
+    )
+    with pytest.raises(ValueError, match="vector forward"):
+        build_per_node_record(
+            6, 0.4, STORAGE_ORDER, incoming, different_vector,
+            fragments["optimizer"], False, None, stage_id="level0",
+        )
+
+
+def test_accepted_node_outgoing_must_point_at_itself(fragments):
+    """v1.19 §9: an accepted node's outgoing identity points at that node and
+    carries the selected optimum vector."""
+
+    selected = [0.5, -0.25, 1.5]
+    good_outgoing = build_warm_start_ref(
+        {"kind": "accepted_node", "stage_id": "level0", "node_index": 7},
+        selected,
+        "accepted_current_node",
+    )
+    node = build_per_node_record(
+        7, 0.5, STORAGE_ORDER, fragments["incoming"], good_outgoing,
+        fragments["optimizer"], True, selected,
+        fragments["battery"], fragments["curvature"], stage_id="level0",
+    )
+    validate_fragment(node, "#/$defs/per_node_record")
+
+    wrong_node = build_warm_start_ref(
+        {"kind": "accepted_node", "stage_id": "level0", "node_index": 999},
+        selected,
+        "accepted_current_node",
+    )
+    with pytest.raises(ValueError, match="point at this node"):
+        build_per_node_record(
+            7, 0.5, STORAGE_ORDER, fragments["incoming"], wrong_node,
+            fragments["optimizer"], True, selected,
+            fragments["battery"], fragments["curvature"], stage_id="level0",
+        )
+    wrong_stage = build_warm_start_ref(
+        {"kind": "accepted_node", "stage_id": "refine_1", "node_index": 7},
+        selected,
+        "accepted_current_node",
+    )
+    with pytest.raises(ValueError, match="point at this node"):
+        build_per_node_record(
+            7, 0.5, STORAGE_ORDER, fragments["incoming"], wrong_stage,
+            fragments["optimizer"], True, selected,
+            fragments["battery"], fragments["curvature"], stage_id="level0",
+        )
+    wrong_vector = build_warm_start_ref(
+        {"kind": "accepted_node", "stage_id": "level0", "node_index": 7},
+        [9.0, 9.0, 9.0],
+        "accepted_current_node",
+    )
+    with pytest.raises(ValueError, match="equal the selected optimum"):
+        build_per_node_record(
+            7, 0.5, STORAGE_ORDER, fragments["incoming"], wrong_vector,
+            fragments["optimizer"], True, selected,
+            fragments["battery"], fragments["curvature"], stage_id="level0",
+        )
+
+
+def test_persisted_jitter_invariant_on_canonical_record(monkeypatch):
+    """v1.19 §9: resulting_start == base_start + jitter_vector, asserted on
+    the PERSISTED canonical record."""
+
+    from scipy.optimize import OptimizeResult
+    from bistar_gp.m2cr.serialization import decode_number
+
+    calls = {"n": 0}
+
+    def failing_then_ok(fun, x0, **kwargs):
+        calls["n"] += 1
+        status = 2 if calls["n"] in {1, 3} else 0
+        return OptimizeResult(
+            x=np.zeros(3), status=status, success=status == 0, message="rig"
+        )
+
+    monkeypatch.setattr(gates, "minimize", failing_then_ok)
+    result = gates.optimize_conditional_v2(
+        lambda u: 0.0, lambda u: np.zeros(3), np.ones(3), -np.ones(3)
+    )
+    record = build_two_start_optimizer_record(result, PERM)
+    for start in record["starts"]:
+        if len(start["attempts"]) != 2:
+            continue
+        jitter = start["attempts"][1]["jitter"]
+        base = [decode_number(value) for value in jitter["base_start"]]
+        offset = [decode_number(value) for value in jitter["jitter_vector"]]
+        resulting = [decode_number(value) for value in jitter["resulting_start"]]
+        assert resulting == [b + o for b, o in zip(base, offset)]
+    assert any(len(start["attempts"]) == 2 for start in record["starts"])
+
+
+def test_battery_aggregate_pass_matches_emitted_conjunction():
+    """v1.19 §9: the aggregate pass equals the conjunction of the three
+    coordinate passes, in both directions, read from the emitted record."""
+
+    def coords_with(passes):
+        scale = max(1.0, 2.0, 3.0, 0.5)
+        threshold = TOL_GRAD_ABS + TOL_GRAD_REL * scale
+        return [
+            {
+                "role": role,
+                "fd_step": 1.0e-5,
+                "reference_value": ref,
+                "functional_value": ref,
+                "absolute_error": 0.0,
+                "threshold": threshold,
+                "pass": flag,
+            }
+            for role, ref, flag in zip(("ls", "os", "lv"), (2.0, -3.0, 0.5), passes)
+        ]
+
+    all_pass = build_battery_record(coords_with((True, True, True)))
+    assert all_pass["pass"] is True
+    assert all_pass["pass"] == all(c["pass"] for c in all_pass["coordinates"])
+    one_fail = build_battery_record(coords_with((True, False, True)))
+    assert one_fail["pass"] is False
+    assert one_fail["pass"] == all(c["pass"] for c in one_fail["coordinates"])
+
+
+def test_permutation_and_conjugation_against_hardcoded_expectations():
+    """v1.19 §9 both-directions mandate, with hardcoded expected values so an
+    identity permutation cannot satisfy the test."""
+
+    from bistar_gp.m2cr.coordinates import (
+        matrix_canonical_to_storage,
+        matrix_storage_to_canonical,
+        vector_canonical_to_storage,
+    )
+
+    perm = (1, 0, 2)  # storage (os, ls, lv); canonical (ls, os, lv)
+    storage_vector = np.asarray([10.0, 20.0, 30.0])
+    assert vector_storage_to_canonical(storage_vector, perm).tolist() == [
+        20.0,
+        10.0,
+        30.0,
+    ]
+    assert vector_canonical_to_storage(
+        np.asarray([20.0, 10.0, 30.0]), perm
+    ).tolist() == [10.0, 20.0, 30.0]
+    storage_matrix = np.asarray(
+        [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+    )
+    expected_canonical = [[5.0, 4.0, 6.0], [2.0, 1.0, 3.0], [8.0, 7.0, 9.0]]
+    canonical = matrix_storage_to_canonical(storage_matrix, perm)
+    assert canonical.tolist() == expected_canonical
+    assert matrix_canonical_to_storage(canonical, perm).tolist() == (
+        storage_matrix.tolist()
+    )

@@ -7,17 +7,21 @@ four canonical frozen roots.
 
 from __future__ import annotations
 
+import argparse
 import collections.abc
+import contextlib
 import ctypes
 import copy
 import hashlib
 import importlib
 import importlib.machinery
 import importlib.util
+import io
 import json
 import math
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -25,6 +29,7 @@ from types import ModuleType
 from typing import Any, Mapping
 
 __all__ = [
+    "classify_new_loaded_images",
     "classify_pyc_candidate",
     "classify_stage_b_deltas",
     "environment_delta",
@@ -48,15 +53,40 @@ _ARTIFACT_TYPES = {
     "legacy_bytecode",
     "importable_archive",
 }
-# Payload-boundary/serialization stdlib dependencies must already be loaded
-# before the child replaces sys.path with a hermetic four-root test fixture.
-_PRELOADED_STDLIB = (collections.abc, copy, math)
+# Stdlib dependencies of the post-path-replacement project imports
+# (payload_boundary, serialization, and the shared environment_freeze
+# classifier) must already be loaded before the child replaces sys.path with
+# a hermetic four-root test fixture.
+_PRELOADED_STDLIB = (argparse, collections.abc, copy, math, subprocess)
 
 
 def _canonical_bytes(obj: Any) -> bytes:
     return json.dumps(
         obj, sort_keys=True, separators=(",", ":"), allow_nan=False
     ).encode("utf-8")
+
+
+def _encode_nonfinite(value: Any) -> Any:
+    """Recursively rewrite nonfinite floats as the frozen §5.4 sentinels.
+
+    A local stdlib-only mirror of the serialization module's sentinel rule:
+    the control writer must be usable before the child's ``sys.path`` has
+    been replaced, so it cannot import the project serializer. Every control
+    and event line passes through this encoder before
+    ``json.dumps(allow_nan=False)``.
+    """
+
+    if isinstance(value, float):
+        if math.isnan(value):
+            return {"_nonfinite": "nan"}
+        if math.isinf(value):
+            return {"_nonfinite": "+inf"} if value > 0 else {"_nonfinite": "-inf"}
+        return value
+    if isinstance(value, dict):
+        return {key: _encode_nonfinite(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_encode_nonfinite(item) for item in value]
+    return value
 
 
 def _atomic_write_json(path: str | os.PathLike[str], obj: Any) -> str:
@@ -103,6 +133,7 @@ class _ControlWriter:
     def emit(self, event: str, **fields: Any) -> None:
         payload = {"seq": self._seq, "event": event}
         payload.update(fields)
+        payload = _encode_nonfinite(payload)
         self._handle.write(_canonical_bytes(payload).decode("utf-8") + "\n")
         self._handle.flush()
         self._seq += 1
@@ -252,25 +283,56 @@ def classify_stage_b_deltas(
     return {"os_delta": os_delta, "raw_delta": raw_delta, "accepted": accepted}
 
 
+def _shared_pyc_classifier() -> Any:
+    """Resolve the single walker-shared bytecode classifier, fail-closed.
+
+    Plan §4.5.3/§4.5.7 require the freeze-time walker and the launch-time
+    scan to agree; both therefore delegate to exactly one classifier,
+    ``environment_freeze.classify_pyc_candidate(root, relpath)`` (tolerant
+    rule: a ``__pycache__/*.pyc`` is normal source-backed iff a sibling
+    source exists for the stem obtained by stripping the trailing
+    dot-separated cache-tag components; a stem with no dot keeps itself).
+    The import is deliberately late: in the child it resolves only after
+    ``sys.path`` was replaced with the four frozen roots.
+    """
+
+    from bistar_gp.m2cr import environment_freeze
+
+    classifier = getattr(environment_freeze, "classify_pyc_candidate", None)
+    if classifier is None:
+        raise SystemExit(
+            "attestation_fault: shared pyc classifier "
+            "environment_freeze.classify_pyc_candidate is unavailable"
+        )
+    return classifier
+
+
 def classify_pyc_candidate(path: str | os.PathLike[str]) -> str | None:
-    """Classify a rejected legacy/orphan bytecode candidate, else ``None``."""
+    """Classify a rejected legacy/orphan bytecode candidate, else ``None``.
+
+    Thin API-stable wrapper: it derives ``(root, relpath)`` for one absolute
+    candidate path and delegates to the shared walker classifier.
+    """
 
     candidate = Path(path)
     if candidate.suffix != ".pyc":
         return None
-    if candidate.parent.name != "__pycache__":
-        return "legacy_directly_importable"
-    try:
-        source = Path(importlib.util.source_from_cache(os.fspath(candidate)))
-    except (ValueError, NotImplementedError):
-        return "orphan"
-    return None if source.is_file() else "orphan"
+    if candidate.parent.name == "__pycache__":
+        root = candidate.parent.parent
+        relpath = f"__pycache__/{candidate.name}"
+    else:
+        root = candidate.parent
+        relpath = candidate.name
+    return _shared_pyc_classifier()(root, relpath)
 
 
 def scan_pyc_candidates(
     scan_roots: list[str] | tuple[str, ...],
 ) -> list[dict[str, str]]:
+    """Scan the frozen roots, delegating every candidate to the shared rule."""
+
     rejected: list[dict[str, str]] = []
+    classifier: Any = None
     for root in scan_roots:
         canonical_root = os.path.realpath(root)
         for directory, _, files in os.walk(canonical_root):
@@ -278,10 +340,158 @@ def scan_pyc_candidates(
                 if not filename.endswith(".pyc"):
                     continue
                 path = os.path.join(directory, filename)
-                reason = classify_pyc_candidate(path)
+                if classifier is None:
+                    classifier = _shared_pyc_classifier()
+                relpath = os.path.relpath(path, canonical_root).replace(
+                    os.sep, "/"
+                )
+                reason = classifier(canonical_root, relpath)
                 if reason is not None:
                     rejected.append({"path": os.path.realpath(path), "reason": reason})
     return sorted(rejected, key=lambda item: item["path"])
+
+
+def _dyld_loaded_images() -> list[str]:
+    """Enumerate every dyld-loaded image path (plan §4.5.6/§4.5.11)."""
+
+    if sys.platform != "darwin":
+        return []
+    libc = ctypes.CDLL(None)
+    count_fn = libc._dyld_image_count
+    count_fn.restype = ctypes.c_uint32
+    name_fn = libc._dyld_get_image_name
+    name_fn.restype = ctypes.c_char_p
+    name_fn.argtypes = [ctypes.c_uint32]
+    images: set[str] = set()
+    for index in range(count_fn()):
+        raw = name_fn(index)
+        if raw:
+            images.add(os.fsdecode(raw))
+    return sorted(images)
+
+
+# Injection point for hermetic tests; the child always uses the real one.
+_image_enumerator = _dyld_loaded_images
+
+
+def classify_new_loaded_images(
+    baseline: list[str] | tuple[str, ...],
+    current: list[str] | tuple[str, ...],
+    allowlist: list[str] | tuple[str, ...],
+) -> list[str]:
+    """Return every newly loaded image that the frozen allowlist rejects."""
+
+    return sorted(set(current) - set(baseline) - set(allowlist))
+
+
+def _loaded_image_allowlist(config: dict[str, Any]) -> list[str]:
+    allowlist = config.get("loaded_image_allowlist", [])
+    if not isinstance(allowlist, list) or not all(
+        isinstance(item, str) for item in allowlist
+    ):
+        raise SystemExit(
+            "attestation_fault: loaded_image_allowlist must be a string list"
+        )
+    return allowlist
+
+
+def _torch_thread_readback(module: Any) -> dict[str, int]:
+    """Read back both torch thread pools; fail closed unless both are 10."""
+
+    try:
+        intra = int(module.get_num_threads())
+        interop = int(module.get_num_interop_threads())
+    except BaseException as exc:
+        raise SystemExit(
+            f"attestation_fault: torch thread readback failed: {exc}"
+        ) from exc
+    if intra != 10 or interop != 10:
+        raise SystemExit(
+            "attestation_fault: torch thread readback mismatch: "
+            f"intra={intra} interop={interop} (both must equal 10)"
+        )
+    return {"intra": intra, "interop": interop}
+
+
+def _torch_build_description(module: Any) -> str:
+    try:
+        return str(module.__config__.show())
+    except BaseException as exc:
+        raise SystemExit(
+            f"attestation_fault: torch build configuration unavailable: {exc}"
+        ) from exc
+
+
+def _numpy_build_description(module: Any) -> str:
+    show = getattr(module, "show_config", None)
+    if show is None:
+        raise SystemExit(
+            "attestation_fault: numpy build configuration unavailable"
+        )
+    buffer = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buffer):
+            result = show()
+    except BaseException as exc:
+        raise SystemExit(
+            f"attestation_fault: numpy build configuration unavailable: {exc}"
+        ) from exc
+    text = buffer.getvalue()
+    if isinstance(result, str):
+        text += result
+    elif result is not None:
+        text += repr(result)
+    return text
+
+
+def _require_build_markers(
+    module_name: str, shown: str, config_key: str, expected: Any
+) -> dict[str, Any]:
+    """Require every config-frozen substring in the build description.
+
+    An absent config key, an empty list, and a missing substring all fail
+    closed (plan §4.5.6: a build or runtime backend change fails closed).
+    """
+
+    if (
+        not isinstance(expected, list)
+        or not expected
+        or not all(isinstance(item, str) and item for item in expected)
+    ):
+        raise SystemExit(
+            f"attestation_fault: {config_key} must be a frozen non-empty "
+            "string list"
+        )
+    missing = sorted(item for item in expected if item not in shown)
+    if missing:
+        raise SystemExit(
+            f"attestation_fault: {module_name} build markers missing {missing}"
+        )
+    return {"expected": list(expected), "all_present": True}
+
+
+def _read_authenticated_json(
+    path: Path, expected_sha256: str, label: str
+) -> dict[str, Any]:
+    """Re-read a persisted attestation, verifying its recorded digest first."""
+
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise SystemExit(
+            f"attestation_fault: persisted {label} baseline unreadable: {exc}"
+        ) from exc
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise SystemExit(
+            f"attestation_fault: persisted {label} baseline failed digest "
+            "authentication"
+        )
+    document = json.loads(raw.decode("utf-8"))
+    if not isinstance(document, dict):
+        raise SystemExit(
+            f"attestation_fault: persisted {label} baseline is not an object"
+        )
+    return document
 
 
 def _canonical_four_roots(values: Any) -> list[str]:
@@ -308,10 +518,43 @@ def _manifest_roots(roots: list[str]) -> list[tuple[str, str]]:
     return list(zip(_MANIFEST_ROOT_IDS, roots, strict=True))
 
 
+def _manifest_header(candidate: Any) -> dict[str, Any] | None:
+    """Return a validated format-v2 header object, or ``None`` for v1."""
+
+    if not isinstance(candidate, dict) or "schema_version" not in candidate:
+        return None
+    if candidate.get("schema_version") != 2:
+        raise SystemExit(
+            "attestation_fault: unsupported importable manifest schema_version"
+        )
+    roots = candidate.get("roots")
+    if (
+        not isinstance(roots, dict)
+        or not roots
+        or not all(
+            isinstance(root_id, str)
+            and isinstance(path, str)
+            and os.path.isabs(path)
+            for root_id, path in roots.items()
+        )
+    ):
+        raise SystemExit(
+            "attestation_fault: importable manifest header roots must map "
+            "ids to absolute paths"
+        )
+    return candidate
+
+
 def _load_importable_artifact_manifest(
     path: str | os.PathLike[str],
-) -> tuple[dict[tuple[str, str], dict[str, Any]], str]:
-    """Read the frozen JSONL canonically and return its keyed entry set."""
+) -> tuple[dict[tuple[str, str], dict[str, Any]], str, dict[str, Any] | None]:
+    """Read the frozen JSONL canonically and return its keyed entry set.
+
+    Format v2 carries a leading header line
+    ``{"kind": ..., "schema_version": 2, "roots": {id: abspath}}`` and a
+    per-entry ``loader`` field; format v1 has neither. Returns
+    ``(entries, sha256_of_manifest, header_or_None)``.
+    """
 
     manifest_path = Path(path)
     try:
@@ -321,6 +564,8 @@ def _load_importable_artifact_manifest(
             f"attestation_fault: importable artifact manifest unreadable: {exc}"
         ) from exc
     entries: dict[tuple[str, str], dict[str, Any]] = {}
+    header: dict[str, Any] | None = None
+    expected_fields = _MANIFEST_ENTRY_FIELDS
     offset = 0
     for line_number, line in enumerate(raw.splitlines(keepends=True), start=1):
         offset += len(line)
@@ -335,7 +580,16 @@ def _load_importable_artifact_manifest(
             raise SystemExit(
                 f"attestation_fault: malformed importable manifest line {line_number}: {exc}"
             ) from exc
-        if not isinstance(entry, dict) or set(entry) != _MANIFEST_ENTRY_FIELDS:
+        if line_number == 1:
+            header = _manifest_header(entry)
+            if header is not None:
+                if encoded != _canonical_bytes(header):
+                    raise SystemExit(
+                        "attestation_fault: noncanonical importable manifest header"
+                    )
+                expected_fields = _MANIFEST_ENTRY_FIELDS | {"loader"}
+                continue
+        if not isinstance(entry, dict) or set(entry) != expected_fields:
             raise SystemExit(
                 f"attestation_fault: invalid importable manifest entry {line_number}"
             )
@@ -366,6 +620,12 @@ def _load_importable_artifact_manifest(
             raise SystemExit(
                 f"attestation_fault: invalid artifact size at line {line_number}"
             )
+        if header is not None:
+            loader = entry.get("loader")
+            if not isinstance(loader, str) or not loader:
+                raise SystemExit(
+                    f"attestation_fault: invalid manifest loader at line {line_number}"
+                )
         key = (root_id, relpath)
         if key in entries:
             raise SystemExit(
@@ -374,7 +634,7 @@ def _load_importable_artifact_manifest(
         entries[key] = entry
     if offset != len(raw):
         raise SystemExit("attestation_fault: importable manifest framing failure")
-    return entries, hashlib.sha256(raw).hexdigest()
+    return entries, hashlib.sha256(raw).hexdigest(), header
 
 
 def _verify_importable_artifact_manifest(
@@ -388,8 +648,14 @@ def _verify_importable_artifact_manifest(
     # This project import is intentionally after the child's sys.path replacement.
     from bistar_gp.m2cr.environment_freeze import walk_importable_artifacts
 
+    def core(entry: Mapping[str, Any]) -> dict[str, Any]:
+        # Drift is defined over the on-disk artifact facts. The v2 "loader"
+        # annotation is derived metadata enforced per-module at the at-exit
+        # inventory check, not by the re-walk.
+        return {name: entry[name] for name in sorted(_MANIFEST_ENTRY_FIELDS)}
+
     actual_entries = {
-        (entry["root"], entry["relpath"]): entry
+        (entry["root"], entry["relpath"]): core(entry)
         for entry in walk_importable_artifacts(_manifest_roots(roots))
     }
     frozen_keys = set(frozen_entries)
@@ -399,7 +665,7 @@ def _verify_importable_artifact_manifest(
     changed = sorted(
         key
         for key in frozen_keys & actual_keys
-        if dict(frozen_entries[key]) != actual_entries[key]
+        if core(frozen_entries[key]) != actual_entries[key]
     )
     if added or removed or changed:
         raise SystemExit(
@@ -480,6 +746,7 @@ def _attestation_paths(config: dict[str, Any]) -> tuple[Path, dict[str, Path]]:
         "audit_canary": "audit_canary.json",
         "stage_b_os": "stage_b_os.json",
         "stage_b_raw": "stage_b_raw.json",
+        "native_stack": "native_stack.json",
         "manifest_pre": "importable_manifest_pre.json",
         "manifest_post": "importable_manifest_post.json",
         "sourceless": "sourceless_attestation.json",
@@ -636,6 +903,20 @@ def _inventory(
                     f"{name} -> {resolved_origin}"
                 )
             _, root_id, relpath, entry = max(matching, key=lambda match: match[0])
+            expected_loader = entry.get("loader")
+            # Manifest v2 pins the loader class name (walker spelling is the
+            # bare class name; the runtime spelling is module-qualified).
+            loader_class = item["loader_class"]
+            loader_spellings = {loader_class, loader_class.rsplit(".", 1)[-1]}
+            if (
+                expected_loader is not None
+                and expected_loader not in loader_spellings
+            ):
+                raise SystemExit(
+                    "attestation_fault: loaded module loader class mismatch "
+                    f"{name} -> {loader_class} (manifest pins "
+                    f"{expected_loader})"
+                )
             item.update(
                 classification="manifest_file",
                 manifest_root=root_id,
@@ -664,6 +945,78 @@ def _write_node_records(run_dir: Path, result: dict[str, Any]) -> list[dict[str,
         digest = _atomic_write_json(path, record)
         evidence.append({"node_index": node_index, "record_sha256": digest})
     return sorted(evidence, key=lambda item: item["node_index"])
+
+
+def _hashed_worktree_opens(
+    recorded: set[str], worktree_root: str
+) -> list[dict[str, str]]:
+    """Hash every recorded 'open' target still present under the worktree.
+
+    Plan §4.5.10: every worktree file loaded is hashed at exit. Targets that
+    resolve outside the worktree root or no longer exist (e.g. renamed
+    atomic-write temporaries) carry no loadable bytes and are skipped.
+    """
+
+    root_real = os.path.realpath(worktree_root)
+    by_realpath: dict[str, str] = {}
+    for raw in recorded:
+        try:
+            real = os.path.realpath(raw)
+        except (OSError, ValueError):
+            continue
+        if real in by_realpath:
+            continue
+        try:
+            common = os.path.commonpath((root_real, real))
+        except ValueError:
+            continue
+        if common != root_real or not os.path.isfile(real):
+            continue
+        try:
+            by_realpath[real] = _sha256_file(real)
+        except OSError:
+            continue
+    return [
+        {"path": path, "sha256": digest}
+        for path, digest in sorted(by_realpath.items())
+    ]
+
+
+def _profile_integration_check(config: dict[str, Any]) -> dict[str, Any] | None:
+    """Explicit frozen-hash comparison for ``bistar_gp.profile_integration``.
+
+    Plan §4.5.10: an explicit comparison, never a Python ``assert``. The
+    outcome object is recorded in the inventory attestation either way; the
+    caller exits on a failed comparison.
+    """
+
+    expected = config.get("expected_profile_integration_sha256")
+    if expected is None:
+        return None
+    if not isinstance(expected, str) or _SHA256_RE.fullmatch(expected) is None:
+        raise SystemExit(
+            "attestation_fault: expected_profile_integration_sha256 must be "
+            "a lowercase sha256"
+        )
+    module = sys.modules.get("bistar_gp.profile_integration")
+    check: dict[str, Any] = {
+        "expected_sha256": expected,
+        "module_loaded": module is not None,
+        "actual_sha256": None,
+        "match": None,
+    }
+    if module is None:
+        return check
+    origin = getattr(module, "__file__", None)
+    if not isinstance(origin, str) or not os.path.isfile(origin):
+        raise SystemExit(
+            "attestation_fault: bistar_gp.profile_integration has no "
+            "hashable file origin"
+        )
+    actual = _sha256_file(origin)
+    check["actual_sha256"] = actual
+    check["match"] = actual == expected
+    return check
 
 
 def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
@@ -695,9 +1048,22 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
             raise SystemExit(
                 "attestation_fault: importable_artifact_manifest must be an absolute path"
             )
-        manifest_entries, manifest_sha256 = _load_importable_artifact_manifest(
-            manifest_path
+        manifest_entries, manifest_sha256, manifest_header = (
+            _load_importable_artifact_manifest(manifest_path)
         )
+        if manifest_header is not None:
+            header_roots = manifest_header["roots"]
+            if set(header_roots) != set(_MANIFEST_ROOT_IDS):
+                raise SystemExit(
+                    "attestation_fault: manifest header roots must name exactly "
+                    "the four frozen root ids"
+                )
+            for position, root_id in enumerate(_MANIFEST_ROOT_IDS):
+                if os.path.realpath(header_roots[root_id]) != roots[position]:
+                    raise SystemExit(
+                        "attestation_fault: manifest header roots do not match "
+                        "four_roots"
+                    )
 
     run_dir, paths = _attestation_paths(config)
     proof_digest = _atomic_write_json(paths["effect_proofs"], proofs)
@@ -749,6 +1115,7 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
         manifest_pre_digest = _atomic_write_json(paths["manifest_pre"], manifest_pre)
 
     import_events: list[tuple[str, Any]] = []
+    worktree_opens: set[str] = set()
     canary_token = f"m2cr-audit-{os.getpid()}"
     canary_seen = False
 
@@ -759,6 +1126,13 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
             filename = args[1] if len(args) > 1 else None
             if isinstance(module, str):
                 import_events.append((module, filename))
+        elif event == "open" and args:
+            target = args[0]
+            if isinstance(target, (str, bytes, os.PathLike)):
+                try:
+                    worktree_opens.add(os.fsdecode(target))
+                except (TypeError, ValueError):
+                    pass
         elif event == "m2cr.canary" and args and args[0] == canary_token:
             canary_seen = True
 
@@ -794,6 +1168,7 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
             raise SystemExit(
                 f"attestation_fault: native import {module_name} failed: {exc}"
             ) from exc
+    native_attestation: dict[str, Any] = {"torch_threads": None, "build_markers": {}}
     if "torch" in loaded_native:
         try:
             loaded_native["torch"].set_num_threads(10)
@@ -802,6 +1177,23 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
             raise SystemExit(
                 f"attestation_fault: torch thread controls failed: {exc}"
             ) from exc
+        native_attestation["torch_threads"] = _torch_thread_readback(
+            loaded_native["torch"]
+        )
+        native_attestation["build_markers"]["torch"] = _require_build_markers(
+            "torch",
+            _torch_build_description(loaded_native["torch"]),
+            "torch_build_expected",
+            config.get("torch_build_expected"),
+        )
+    if "numpy" in loaded_native:
+        native_attestation["build_markers"]["numpy"] = _require_build_markers(
+            "numpy",
+            _numpy_build_description(loaded_native["numpy"]),
+            "numpy_build_expected",
+            config.get("numpy_build_expected"),
+        )
+    image_allowlist = _loaded_image_allowlist(config)
 
     from bistar_gp.m2cr.payload_boundary import (
         BoundaryViolation,
@@ -844,6 +1236,11 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
             "delta": delta_classification["raw_delta"],
         },
     )
+    stage_b_images = list(_image_enumerator())
+    native_attestation["loaded_images_stage_b"] = stage_b_images
+    native_stack_digest = _atomic_write_json(
+        paths["native_stack"], native_attestation
+    )
 
     sourceless = []
     for name, module in sorted(sys.modules.items()):
@@ -878,6 +1275,7 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
         "audit_canary": canary_digest,
         "stage_b_os": stage_b_os_digest,
         "stage_b_raw": stage_b_raw_digest,
+        "native_stack": native_stack_digest,
         "sourceless_check": sourceless_digest,
     }
     if manifest_pre_digest is not None:
@@ -934,7 +1332,25 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
         roots=roots if manifest_entries is not None else None,
         manifest_entries=manifest_entries,
     )
-    inventory_digest = _atomic_write_json(paths["import_inventory"], inventory)
+    profile_check = _profile_integration_check(config)
+    inventory_document = {
+        "modules": inventory,
+        "worktree_opens": _hashed_worktree_opens(set(worktree_opens), roots[0]),
+        "profile_integration_check": profile_check,
+    }
+    inventory_digest = _atomic_write_json(
+        paths["import_inventory"], inventory_document
+    )
+    if (
+        profile_check is not None
+        and profile_check["module_loaded"]
+        and profile_check["match"] is not True
+    ):
+        raise SystemExit(
+            "attestation_fault: profile_integration explicit hash comparison "
+            f"failed: expected {profile_check['expected_sha256']}, actual "
+            f"{profile_check['actual_sha256']}"
+        )
 
     try:
         verify_marker(
@@ -980,8 +1396,32 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
         raise SystemExit(
             f"environment_fault: duplicate Stage C raw environment: {exc}"
         ) from exc
-    if stage_c_os != stage_b_os or stage_c_raw != stage_b_raw:
+    # Plan §4.5.5: each view is compared to its own PERSISTED, authenticated
+    # post-initialization baseline re-read from disk, never to in-memory
+    # copies a payload could not have tampered with.
+    persisted_stage_b_os = _read_authenticated_json(
+        paths["stage_b_os"], stage_b_os_digest, "stage_b_os"
+    )
+    persisted_stage_b_raw = _read_authenticated_json(
+        paths["stage_b_raw"], stage_b_raw_digest, "stage_b_raw"
+    )
+    baseline_os = persisted_stage_b_os.get("baseline")
+    baseline_raw = persisted_stage_b_raw.get("baseline")
+    if not isinstance(baseline_os, dict) or not isinstance(baseline_raw, dict):
+        raise SystemExit(
+            "attestation_fault: persisted Stage B baselines are malformed"
+        )
+    if stage_c_os != baseline_os or stage_c_raw != baseline_raw:
         raise SystemExit("environment_fault: Stage C environment drift")
+    stage_c_images = list(_image_enumerator())
+    new_images = classify_new_loaded_images(
+        stage_b_images, stage_c_images, image_allowlist
+    )
+    if new_images:
+        raise SystemExit(
+            "environment_fault: unapproved native images loaded during "
+            f"payload: {new_images}"
+        )
     if any(prefix.iterdir()):
         raise SystemExit("attestation_fault: pycache prefix was not empty at Stage C")
     _atomic_write_json(
@@ -997,6 +1437,14 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
             "pycache_prefix_empty": True,
             "bytecode_candidates": [],
             "sourceless_modules": [],
+            "loaded_image_check": {
+                "stage_b_count": len(stage_b_images),
+                "stage_c_count": len(stage_c_images),
+                "new_allowed": sorted(
+                    (set(stage_c_images) - set(stage_b_images))
+                    & set(image_allowlist)
+                ),
+            },
             "payload_marker_sha256": marker_sha256,
             "import_inventory_sha256": inventory_digest,
             "importable_manifest_post_sha256": manifest_post_digest,

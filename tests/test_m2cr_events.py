@@ -132,3 +132,35 @@ def test_parent_pipe_preserves_lines_from_a_killed_child(tmp_path):
     ]
     verdict = ev.check_stream_balance(lines)
     assert not verdict["balanced"]  # admitted only under INFRA/ABORTED branches
+
+
+def test_closer_identity_must_match_opener():
+    """Plan §5.3 reconstruction: a bracket closed under a different identity
+    is a capture defect, not a balanced stream."""
+
+    mismatched_stage = [
+        '{"seq":0,"event":"STAGE_BEGIN","stage_id":"level0"}',
+        '{"seq":1,"event":"STAGE_END","stage_id":"refine_1"}',
+    ]
+    verdict = ev.check_stream_balance(mismatched_stage)
+    assert not verdict["balanced"]
+    assert "identity mismatch" in verdict["reason"]
+
+    mismatched_attempt = [
+        '{"seq":0,"event":"ATTEMPT_BEGIN","start_label":"warm","attempt_index":0}',
+        '{"seq":1,"event":"ATTEMPT_END","start_label":"warm","attempt_index":1}',
+    ]
+    assert not ev.check_stream_balance(mismatched_attempt)["balanced"]
+
+    matched = [
+        '{"seq":0,"event":"NODE_BEGIN","node_index":3}',
+        '{"seq":1,"event":"NODE_END","node_index":3}',
+    ]
+    assert ev.check_stream_balance(matched)["balanced"]
+
+    closer_without_identity = [
+        '{"seq":0,"event":"NODE_BEGIN","node_index":3}',
+        '{"seq":1,"event":"NODE_END"}',
+    ]
+    # A closer that omits the identity field repeats the opener implicitly.
+    assert ev.check_stream_balance(closer_without_identity)["balanced"]

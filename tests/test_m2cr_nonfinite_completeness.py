@@ -215,6 +215,7 @@ def _record_battery(monkeypatch):
         [0.0, 0.0, 0.0],
         _battery(),
         normal_curvature,
+        stage_id="level0",
     )
 
     calls = 0
@@ -259,6 +260,7 @@ def _record_battery(monkeypatch):
         [0.0, 0.0, 0.0],
         _battery(nonfinite=True),
         retried_curvature,
+        stage_id="level0",
     )
 
     def nonfinite_attempt(fun, x0, **kwargs):
@@ -286,6 +288,7 @@ def _record_battery(monkeypatch):
         failed_optimizer,
         False,
         None,
+        stage_id="level0",
     )
     assert normal_opt_v2["stop"] is False
     return [normal_node, fallback_node, failed_node]

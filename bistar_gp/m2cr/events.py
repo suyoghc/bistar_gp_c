@@ -86,18 +86,27 @@ class EventSink:
         return payload
 
 
+# Identity fields a closer must repeat exactly from its opener; a bracket
+# closed under a different identity is a capture defect, not a balanced
+# stream (plan §5.3: node/stage evidence must support independent
+# reconstruction).
+_IDENTITY_FIELDS = ("stage_id", "node_index", "start_label", "attempt_index")
+
+
 def check_stream_balance(lines: Iterable[str]) -> dict[str, Any]:
     """Classify an event stream as balanced or not, with the exact reason.
 
     Balanced means: every line parses as a JSON object carrying ``seq`` and
     ``event``; ``seq`` values are 0, 1, 2, ... in order; every bracket BEGIN
-    is closed by its matching END with proper nesting; the bracket stack is
-    empty at the end; every event type is known. Control lines participate in
-    the ``seq`` discipline but not in bracketing. An empty stream is
-    unbalanced (nothing was captured, so nothing is certified complete).
+    is closed by its matching END with proper nesting AND matching identity
+    fields (stage_id, node_index, start_label, attempt_index, where the
+    opener carries them); the bracket stack is empty at the end; every event
+    type is known. Control lines participate in the ``seq`` discipline but
+    not in bracketing. An empty stream is unbalanced (nothing was captured,
+    so nothing is certified complete).
     """
 
-    stack: list[str] = []
+    stack: list[tuple[str, dict[str, Any]]] = []
     expected_seq = 0
     saw_any = False
     for line_number, raw in enumerate(lines, start=1):
@@ -122,19 +131,31 @@ def check_stream_balance(lines: Iterable[str]) -> dict[str, Any]:
         if event not in GATE_EVENT_TYPES:
             return _unbalanced(f"line {line_number}: unknown event {event!r}")
         if event in _OPEN_FOR:
-            stack.append(event)
+            identity = {
+                field: obj[field] for field in _IDENTITY_FIELDS if field in obj
+            }
+            stack.append((event, identity))
         elif event in _CLOSE_FOR:
-            if not stack or stack[-1] != _CLOSE_FOR[event]:
+            if not stack or stack[-1][0] != _CLOSE_FOR[event]:
                 return _unbalanced(
                     f"line {line_number}: {event} closes "
-                    f"{stack[-1] if stack else 'nothing'}"
+                    f"{stack[-1][0] if stack else 'nothing'}"
                 )
-            stack.pop()
+            _, opener_identity = stack.pop()
+            for field, opener_value in opener_identity.items():
+                if obj.get(field, opener_value) != opener_value:
+                    return _unbalanced(
+                        f"line {line_number}: {event} identity mismatch on "
+                        f"{field}: opener {opener_value!r} vs closer "
+                        f"{obj.get(field)!r}"
+                    )
         # Point events need no bracket handling.
     if not saw_any:
         return _unbalanced("empty stream")
     if stack:
-        return _unbalanced(f"unclosed brackets at end of stream: {stack}")
+        return _unbalanced(
+            f"unclosed brackets at end of stream: {[item[0] for item in stack]}"
+        )
     return {"balanced": True, "reason": ""}
 
 
