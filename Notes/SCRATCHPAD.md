@@ -2,7 +2,7 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## M2cR R2 — ROUND-4 REMEDIATION DONE; INTERNAL GATE CLOSED at 00c3a92 (D48 Updates 7–9, 2026-07-17); NEW EXTERNAL EXACT-HEAD AUDIT at bd1d0f9 → REVISE, UNDER ADJUDICATION — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR #16, HARD STOP
+## M2cR R2 — CONTINUOUS HARDENING; external audit bd1d0f9 findings 3/4/5/6 CLOSED, 2 advanced, 1 deferred (D48 Updates 7–10, 2026-07-17); another three-reviewer delta review pending — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR #16, HARD STOP
 
 - **Shipped (hermetic, plan §8 R2 exactly):** `bistar_gp/m2cr/` (12 modules) + **15** `tests/test_m2cr_*`
   files; v2 gates byte-equivalent with full attempt/retry evidence; write-ahead events; capture driver +
@@ -20,29 +20,44 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   APPROVE, GLM clean-on-adjudication. **Internal gate CLOSED** (D48 Update 9, head bd1d0f9 = Update-9
   docs commit). Every regeneration used the established fresh-detached-worktree process; the four
   environment-derived artifacts stayed byte-identical across all five regenerations.
-- **OPEN NOW — external exact-head audit at bd1d0f9 (2026-07-17) returned REVISE (2 BLOCKER / 4 MAJOR
-  / 2 MINOR).** The two MINOR documentation findings (D48 commit accounting; stale SCRATCHPAD/
-  implementation-map counts) are confirmed and fixed. The remaining six re-open author-ratified
-  dispositions or require architecture/enumeration acts and are **PENDING AUTHOR DECISION** (see the
-  session adjudication): (1) unconditional importable-manifest binding + re-walks on the marker path
-  (§4.5.7 hard text vs the ratified optional-manifest disclosure; cost problem: mandatory re-walks
-  force real-root walks into hermetic positives); (2) capture_run deriving env/preboundary/interpreter
-  from the committed freeze unconditionally (C1 principle extended; tractable via fake-bundle pins);
-  (3) build-pinning `expected_sentinel_hash` in a committed artifact (§4.5.8 "build-pinned frozen");
-  (4) retry candidate_vector canonicalization — CONFLICTS with the protected R1 schema field text
-  ("RAW output, at whatever shape") and the recorded D48 adjudication; recommend DISMISS;
-  (5) evidence-report "complete bundle" to include measured runtime-envelope classes + labeled
-  stdout/stderr allowances; (6) pre-spawn terminal-publication failure reporting (re-opens the
-  rounds-2–4 disclosed residual; tractable annotate-the-returned-record option exists).
+- **External exact-head audit at bd1d0f9 (2026-07-17) → REVISE (2 BLOCKER / 4 MAJOR / 2 MINOR).**
+  The two MINOR documentation findings (7/8) were fixed by 0b7c596. A continuous-hardening cycle
+  (D48 Update 10, heads through f51a98e) then addressed the rest:
+  - **Finding 4 (retry candidate_vector) — DISMISSED-as-defect / clarified.** It is the protected R1
+    schema's RAW-output field; canonicalizing would contradict the closed schema. Documented as an
+    explicit field-specific exception + discriminating asymmetric test (27e7e8d).
+  - **Finding 6 (terminal-publication truthfulness) — CLOSED.** Typed publication states
+    (TerminalWriteError / TerminalAlreadyExists / TerminalDurabilityUncertain); capture returns a
+    record only when durably published (ceb9793).
+  - **Finding 3 (sentinel hash) — CLOSED.** Now the 8th mandatory attestation directive, measured
+    under PYTHONHASHSEED=0 and frozen in the native-stack expectations artifact, derived + bound +
+    required (8a319b5).
+  - **Finding 5 (evidence bundle) — CLOSED.** RUN_DIR_LAYOUT fully classified with a fail-closed
+    coverage guard; report separates static freeze storage from the per-run evidence bundle
+    (runtime envelopes measured + per-node/per-event scaled + labeled stdout/stderr allowances);
+    ceilings non-binding (f1e15a8).
+  - **Finding 2 (BLOCKER, env/interpreter authentication) — ADVANCED.** Parent already derives
+    expectations/lock/roots/sentinel from the chain-bound committed infra manifest; the env-mapping /
+    interpreter-pin / pre-boundary-set derivation (capture_run ignoring caller static fields) is a
+    bounded harness rebuild scheduled with finding 1's cycle (no real-root walk needed).
+  - **Finding 1 (BLOCKER, mandatory importable-manifest child binding) — DEFERRED with a measured
+    plan.** A hermetic child loads 66 real-stdlib file-backed modules whose origins force real-root
+    binding; a real-root walk is ~11.7 s, so a mandatory-manifest child launch is ~12–23 s —
+    prohibitive for the ~30-launch fast battery. Parent-side derivation is authenticated; the child's
+    unconditional consumption + isolated real-root integration launches (incl.
+    numpy/_distributor_init_local.py) need a session-cached host manifest and a small launch count —
+    a dedicated next cycle. Full record: D48 Update 10 + docs/m2cr-r2-hardening-design.md.
+- Full suite at f51a98e: **792 passed / 2 skipped / 0 failed**. Boundaries clean (protected
+  byte-identical, ledger 1 line, v1.18 absent, no runs/). This is an iterative cycle, NOT a freeze.
 - **Prompt-hash note:** the R2 authorization prompt's rev-5 hash was a splice (suffix = D46 historical
   plan hash); the plan is consistent at §1 and §12 with the true `c3e9db66…d1ce3f`, which the file
   matches. Gate intent held. See D48.
-- **NEXT (each a separate author act; none authorized):** adjudicate the external-audit findings 1–6
-  above (any code/artifact change re-runs the three-reviewer delta gate); then R2a versioned
-  pre-execution addendum freezing per-class evidence ceilings from the D48 measurements; then R3
-  (diagnostic protocol freeze, §6 verbatim, diagnostic-record schema, PROTOCOL manifest, classifier
-  goldens); R4 execution needs a fresh grant in the v1.19 ledger + freeze regeneration at its own
-  worktree/commit.
+- **NEXT (each a separate author act; none authorized):** the finding-1/2 launch-authority cycle
+  (mandatory importable-manifest child binding + env/interpreter/pre-boundary derivation, with the
+  real-root integration-test strategy); then R2a versioned pre-execution addendum freezing per-class
+  evidence ceilings; then R3 (diagnostic protocol freeze, §6 verbatim, diagnostic-record schema,
+  PROTOCOL manifest, classifier goldens); R4 execution needs a fresh grant in the v1.19 ledger +
+  freeze regeneration at its own worktree/commit.
 
 ## M2c — v1.17 ALGORITHM FREEZE RATIFIED (branch `feat/d19-m2c` off main fcc3ce4; D40, 2026-07-13). STOPPED before compute.
 

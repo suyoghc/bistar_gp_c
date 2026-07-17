@@ -4386,3 +4386,67 @@ checkpoint); reviewers: codex CLI gpt-5.6-sol xHigh (read-only sandbox), one per
 Opus 4.8 agent, GLM 5.2 via OpenRouter. **Gate state: CLOSED for the round-4 remediation — all
 three reports at 00c3a92 adjudicated, zero unresolved confirmed defects, zero pending author
 decisions.** PR #16 stays Draft; no Ready/merge/R2a/R3/execute.
+
+### D48 — Update 10 (2026-07-17): external exact-head audit (bd1d0f9) hardening cycle — findings 3/4/5/6 closed, finding 2 (env/interpreter) advanced, finding 1 (mandatory importable-manifest child binding) deferred with a cost-driven plan
+
+A fresh external full-tree audit at bd1d0f9 returned REVISE with 8 findings. Findings 7/8
+(documentation) were fixed by 0b7c596. This continuous-hardening cycle (author-directed
+"improve to the greatest practical extent without prematurely declaring it final") addressed the
+rest. Design note: docs/m2cr-r2-hardening-design.md. Commits (each a green checkpoint):
+
+- 27e7e8d **WI4 / finding 4** — retry `candidate_vector` is the protected R1 schema's RAW-output
+  field ("at whatever shape it came back"), so the current unpermuted behavior is correct and
+  canonicalizing it would contradict the closed schema. Adjudicated to Option A: the field-specific
+  exception is now explicit in records.py, with a discriminating asymmetric test (raw candidate vs
+  canonical gradient under a non-identity storage permutation). No schema change.
+- ceb9793 **WI6 / finding 6** — truthful terminal-publication states. capture_run/reconcile_run
+  return a terminal record ONLY when it is the authoritative no-clobber record AND durability is
+  confirmed; `_write_terminal` otherwise raises a typed state: `TerminalWriteError` (nothing
+  published; carries attempted record + cause), `TerminalAlreadyExists` (a RecordAssemblyError,
+  preserving the race-loser / reconciliation-refused contract), or `TerminalDurabilityUncertain`
+  (bytes visible, directory fsync failed; carries record + digest). The prior swallow-OSError-and-
+  return-an-uncommitted-record path is removed. Preserved (equivalence-covered): no-clobber winner,
+  full-write loop, unique-temp/no-residue, umask mode, concurrent-publisher safety, pre-spawn
+  race-loser, assembly fallback. 14 new discriminating tests.
+- 8a319b5 **WI3 / finding 3** — the build-pinned bound sentinel `__hash__` value (§4.5.8) is now the
+  eighth mandatory attestation directive, MEASURED under PYTHONHASHSEED=0 in the frozen interpreter
+  and frozen in the committed native-stack expectations artifact, derived + bound by the parent
+  (`_bind_attestation_directives` rejects caller substitution), required child-side, and re-checked
+  by the effect proofs. The caller template no longer carries it. Discriminating tests: missing /
+  malformed / caller-substituted / wrong committed value + positive derivation.
+- f1e15a8 **WI5 / finding 5** — the report's "complete bundle" was labelled measured while it summed
+  the STATIC one-time freeze storage with the per-node/per-event products and OMITTED the runtime
+  envelope classes and stdout/stderr allowances. measure.py now classifies every RUN_DIR_LAYOUT
+  member (`RUN_DIR_EVIDENCE_CLASSES`) with a reason and a fail-closed coverage guard, measures the
+  17 runtime envelope classes from a hermetic run (61,340 B, inventory-dominated), and the report
+  distinguishes static freeze storage (8,833,073 B) from the per-run evidence bundle (runtime
+  envelopes + per-node×N + per-event×N + labeled allowances, measured-basis subtotal 17,806,682 B).
+  Ceilings stay non-binding; R2a remains the only future freezing act.
+- f51a98e — freeze artifacts regenerated at f1e15a8 via the established detached-worktree process:
+  native-stack expectations gains the sentinel field (12,268→12,314 B); the importable manifest
+  (8,743,895 B), preboundary set (bootstrap.py closure pin), and the two aggregating manifests
+  re-pin for the changed code; child_env_mapping / dependency_lock / interpreter_pin byte-identical.
+
+**Finding 2 (BLOCKER) — environment/interpreter authentication:** ADVANCED but not yet the full
+"one authenticated launch authority." The parent already derives the native-stack expectations,
+dependency lock, importable-manifest header roots, and now the sentinel from the chain-bound
+committed infrastructure manifest under the launch worktree. The remaining env-mapping / interpreter
+-pin / pre-boundary-set derivation (so capture_run ignores caller-authored `frozen_env` /
+`interpreter_path` / `preboundary_attestation_set` entirely) is a bounded harness rebuild scheduled
+with finding 1's cycle; it does NOT need real-root walks.
+
+**Finding 1 (BLOCKER) — mandatory importable-manifest child binding: DEFERRED with a measured
+cost-driven plan.** Measured at HEAD: a hermetic child loads 66 file-backed real-stdlib modules
+whose `sys.modules` origins are fixed to the real stdlib, so the §4.5.7 child origin/loader binding
+genuinely requires the four roots to include the real stdlib; a real-root importable walk is ~11.7 s,
+so a mandatory-manifest child launch (pre- + post-walk) costs ~12–23 s — prohibitive for the ~30-
+launch fast synthetic battery, exactly the tension the author flagged. The parent-side manifest
+derivation is authenticated already; the deferred piece is the child's unconditional consumption +
+its isolated real-root positive/negative integration launches (incl. the numpy/_distributor_init_local.py
+case), which need a session-cached host manifest and a small launch count — a dedicated next cycle.
+
+**State.** Full suite at f51a98e (regenerated tree): **792 passed, 2 skipped, 0 failed**. Boundaries
+re-verified: all protected files byte-identical to origin/main, ledger 1 line, v1.18 result instance
+absent, nothing under runs/ or experiments/, only bistar_gp/m2cr/* source changed. This is an
+iterative improvement cycle, NOT a freeze, R2a, R3, execution grant, Ready, or merge; PR #16 stays
+Draft. A fresh three-reviewer delta review at the new head follows per the standing protocol.
