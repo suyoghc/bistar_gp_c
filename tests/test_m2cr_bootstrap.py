@@ -1482,8 +1482,11 @@ def test_malformed_digest_argument_and_arity_fail_closed(tmp_path: Path) -> None
     a missing argument (old three-argument contract) and a malformed digest
     each fail closed before any consumption."""
 
+    config_stub = tmp_path / "contract" / "config.json"
+    config_stub.parent.mkdir(parents=True)
+    config_stub.write_text("{}", encoding="utf-8")
     short = subprocess.run(
-        [MINICONDA_PYTHON, os.fspath(BOOTSTRAP), "/nonexistent/config", "9"],
+        [MINICONDA_PYTHON, os.fspath(BOOTSTRAP), os.fspath(config_stub), "9"],
         capture_output=True,
         timeout=30,
     )
@@ -1492,6 +1495,13 @@ def test_malformed_digest_argument_and_arity_fail_closed(tmp_path: Path) -> None
         "expected config path, event fd, and config sha256"
         in short.stderr.decode()
     )
+    # Round-4 (Codex round 4): the CLI-contract guard persists its evidence
+    # beside the config too — an arity violation is not evidence-less.
+    contract_failure = json.loads(
+        (config_stub.parent / "bootstrap_failure.json").read_text()
+    )
+    assert contract_failure["fault_class"] == "attestation_fault"
+    assert "expected config path" in contract_failure["detail"]
 
     completed, run_dir, events = _launch_bootstrap(
         tmp_path, config_sha256="not-a-sha"

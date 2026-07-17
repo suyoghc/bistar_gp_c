@@ -1821,15 +1821,24 @@ def _persist_failure(config_path: str, reason: Any) -> None:
 
 
 if __name__ == "__main__":
+    # The CLI-contract guards persist their evidence too (round-4, Codex
+    # round 4): any non-protocol child exit that has a config-path argument
+    # leaves a failure record beside it — the pre-derivation fallback route,
+    # since no authenticated route can exist before main() runs.
     if len(sys.argv) != 4:
-        raise SystemExit(
+        _CONTRACT_REASON = (
             "attestation_fault: expected config path, event fd, and config "
             "sha256"
         )
+        if len(sys.argv) >= 2:
+            _persist_failure(sys.argv[1], _CONTRACT_REASON)
+        raise SystemExit(_CONTRACT_REASON)
     try:
         event_fd = int(sys.argv[2])
     except ValueError as exc:
-        raise SystemExit("attestation_fault: event fd is not an integer") from exc
+        _CONTRACT_REASON = "attestation_fault: event fd is not an integer"
+        _persist_failure(sys.argv[1], _CONTRACT_REASON)
+        raise SystemExit(_CONTRACT_REASON) from exc
     try:
         code = main(sys.argv[1], event_fd, sys.argv[3])
     except SystemExit as exc:
