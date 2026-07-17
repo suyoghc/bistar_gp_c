@@ -789,11 +789,15 @@ def _write_terminal(run_dir: Path, record: Mapping[str, Any]) -> str:
 
     final = run_dir / TERMINAL_RECORD_NAME
     payload = canonical_bytes(dict(record))
-    descriptor, tmp = tempfile.mkstemp(
-        prefix=f".{TERMINAL_RECORD_NAME}.", suffix=".tmp", dir=run_dir
+    # A per-call-unique name (never a shared PID-derived one) with an
+    # O_EXCL, umask-honoring open: concurrent publishers cannot collide on the
+    # temp, and the published mode matches the historical open(0o644)-under-
+    # umask semantics rather than overriding the caller's umask.
+    tmp = os.fspath(
+        run_dir / f".{TERMINAL_RECORD_NAME}.{os.urandom(8).hex()}.tmp"
     )
+    descriptor = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
     try:
-        os.fchmod(descriptor, 0o644)
         written = 0
         while written < len(payload):
             count = os.write(descriptor, payload[written:])
@@ -1547,9 +1551,16 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
             except (OSError, ValueError):
                 pass
         except OSError:
-            # run_dir unwritable; nothing could be persisted.  The in-memory
-            # record is still returned so the caller sees a terminal outcome
-            # rather than an escaped exception.
+            # Two sub-cases, both absorbed because a pre-spawn failure must
+            # never escape capture_run without a terminal outcome (F5/C3):
+            # (i) nothing could be persisted (run_dir unwritable, write or
+            # content-fsync failure — no terminal exists); (ii) the record was
+            # fully written and linked but the DIRECTORY fsync failed, so the
+            # on-disk record equals the returned one and only its
+            # crash-durability is unestablished.  In (ii) the durability fault
+            # is not separately reported through the record — a disclosed
+            # residual of this last-resort path (the normal publication site
+            # propagates the same fault loudly).
             pass
         return record
 
@@ -1959,7 +1970,15 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         # Codex round-3 C4: a terminal already exists (a reconciliation of this
         # run won the publish race).  Nothing vanishes — the durable record is
         # the one already on disk; return it verbatim rather than overwrite it.
-        return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
+        # Round-4 unification: if the occupying file is unreadable or not a
+        # canonical record (a non-protocol writer squatted the name — §4.5.13
+        # residual class), it is preserved as evidence and the in-memory
+        # record is returned, exactly like the pre-spawn race loser; the
+        # publication never clobbers and the failure never escapes.
+        try:
+            return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
+        except (OSError, ValueError):
+            pass
     return record
 
 

@@ -2027,6 +2027,46 @@ def test_write_terminal_fsyncs_the_record_and_directory(
     assert len(calls) == 2, "one file fsync before link, one directory fsync after"
 
 
+def test_race_loser_with_unreadable_squatter_returns_in_memory_record(
+    tmp_path: Path,
+) -> None:
+    """Round-4 (Codex round 2): when the terminal name is occupied by a
+    non-protocol writer's unreadable bytes, the race loser preserves them as
+    evidence (no clobber), returns its own assembled in-memory record, and the
+    read failure never escapes capture_run — the same fallback semantics as
+    the pre-spawn race loser."""
+
+    config = _make_launch(
+        tmp_path,
+        extra_payload_code=(
+            "open(os.path.join("
+            f"{os.fspath(tmp_path / 'run')!r}, 'terminal_record.json'), "
+            "'wb').write(b'NOT-JSON-SQUATTER')"
+        ),
+    )
+    record = capture_run(config)
+    run_dir = Path(config.run_dir)
+    assert (run_dir / TERMINAL_RECORD_NAME).read_bytes() == b"NOT-JSON-SQUATTER"
+    assert record["status"] == "COMPLETED", record.get("fault")
+    validate_terminal_record(record)
+
+
+def test_write_terminal_mode_honors_the_caller_umask(tmp_path: Path) -> None:
+    """Round-4 (Codex round 2): the published terminal keeps the historical
+    open-with-0o644-under-umask semantics; publication must not override a
+    restrictive caller umask."""
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    previous = os.umask(0o077)
+    try:
+        capture_module._write_terminal(run_dir, {"durable": True})
+    finally:
+        os.umask(previous)
+    mode = (run_dir / TERMINAL_RECORD_NAME).stat().st_mode & 0o777
+    assert mode == 0o600
+
+
 def test_write_terminal_full_write_loop_survives_short_writes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -416,6 +416,7 @@ def _launch_bootstrap(
     profile: str = "match",
     omit_directives: tuple[str, ...] = (),
     config_sha256: str | None = None,
+    attestation_path_overrides: dict[str, str] | None = None,
 ) -> tuple[subprocess.CompletedProcess[bytes], Path, list[dict[str, object]]]:
     """Launch the REAL bootstrap in a synthetic four-root worktree.
 
@@ -493,6 +494,8 @@ def _launch_bootstrap(
             "payload_started": "payload_started.json",
         }.items()
     }
+    if attestation_path_overrides:
+        paths.update(attestation_path_overrides)
     if prelaunch:
         (run_dir / "prelaunch.json").write_text(
             canonical_dumps({"launch": 1}), encoding="utf-8"
@@ -1442,6 +1445,36 @@ def test_config_digest_mismatch_fails_closed_before_any_consumption(
     assert not (run_dir / "native_stack.json").exists()
     failure = json.loads((run_dir / "bootstrap_failure.json").read_text())
     assert failure["fault_class"] == "attestation_fault"
+
+
+def test_rejected_config_cannot_redirect_the_failure_record(
+    tmp_path: Path,
+) -> None:
+    """Round-4 (Codex round 2): a digest-REJECTED config is unauthenticated in
+    full — including its attestation_paths — so it cannot redirect the failure
+    record to a path it names; the evidence lands beside the config instead,
+    and the named path is never created."""
+
+    outside = tmp_path / "outside" / "hijacked_failure.json"
+    completed, run_dir, events = _launch_bootstrap(
+        tmp_path,
+        config_sha256="e" * 64,
+        attestation_path_overrides={"failure": os.fspath(outside)},
+    )
+    assert completed.returncode not in (0, 3)
+    assert "bootstrap config digest mismatch" in completed.stderr.decode()
+    assert [event["event"] for event in events] == ["HELLO"]
+    assert not outside.exists()
+    assert not outside.parent.exists()
+    # The evidence still exists (nothing vanishes) at the untrusted-config
+    # fallback location beside the consumed config.
+    failure = json.loads((run_dir / "bootstrap_failure.json").read_text())
+    assert failure["fault_class"] == "attestation_fault"
+    assert "bootstrap config digest mismatch" in failure["detail"]
+    # An AUTHENTICATED config still routes through its attestation_paths: the
+    # ordinary omission negative writes its failure record through the config
+    # (covered by the existing directive-omission tests, whose configs pass
+    # the digest gate).
 
 
 def test_malformed_digest_argument_and_arity_fail_closed(tmp_path: Path) -> None:

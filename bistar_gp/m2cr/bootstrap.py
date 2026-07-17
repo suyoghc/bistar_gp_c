@@ -1282,6 +1282,8 @@ def main(
             "consumed config does not match the parent's authenticated "
             "derivation"
         )
+    global _CONFIG_AUTHENTICATED
+    _CONFIG_AUTHENTICATED = True
     config = json.loads(raw_config.decode("utf-8"))
     if not isinstance(config, dict):
         raise SystemExit("attestation_fault: bootstrap config is malformed")
@@ -1786,16 +1788,32 @@ def main(
     raise SystemExit("schema_invalid_payload: payload status is not a protocol verdict")
 
 
+# Set by main() exactly once, immediately after the consumed config bytes have
+# been verified against the parent's argv-bound digest.  While False, no field
+# of the on-disk config may be trusted for ANY purpose — including choosing
+# where failure evidence is written (round-4 delta review, Codex round 2: a
+# digest-REJECTED config must not be able to redirect the failure record to a
+# path it names).
+_CONFIG_AUTHENTICATED = False
+
+
 def _persist_failure(config_path: str, reason: Any) -> None:
     text = str(reason) if reason is not None else "bootstrap exited"
     fault_class = text.split(":", 1)[0] if ":" in text else "other"
-    try:
-        with open(config_path, "r", encoding="utf-8") as handle:
-            config = json.load(handle)
-        _, paths = _attestation_paths(config)
-        failure_path = paths["failure"]
-    except BaseException:
-        failure_path = Path(config_path).resolve().parent / "bootstrap_failure.json"
+    failure_path = Path(config_path).resolve().parent / "bootstrap_failure.json"
+    if _CONFIG_AUTHENTICATED:
+        # Only an authenticated config may route the failure record through its
+        # attestation_paths (the parent already contained those paths inside
+        # the run dir before binding the digest).
+        try:
+            with open(config_path, "r", encoding="utf-8") as handle:
+                config = json.load(handle)
+            _, paths = _attestation_paths(config)
+            failure_path = paths["failure"]
+        except BaseException:
+            failure_path = (
+                Path(config_path).resolve().parent / "bootstrap_failure.json"
+            )
     try:
         _atomic_write_json(failure_path, {"fault_class": fault_class, "detail": text})
     except BaseException:
