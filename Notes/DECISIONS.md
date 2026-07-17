@@ -4290,3 +4290,98 @@ audit/env-freeze infra-key extension), 8c24b1f (regenerated artifacts + the new 
 files byte-identical, ledger 1 line, v1.18 absent, nothing under runs/. **Gate state: implementation
 complete; review gate OPEN** — fresh Codex/Opus/GLM delta reviews at the new head must return clean
 before the gate closes. PR #16 stays Draft; no Ready/merge/R2a/R3/execute; no force-push.
+
+### D48 — Update 9 (2026-07-17): Codex round-3 C1–C4 remediated through five adjudicated delta-review rounds; three-reviewer gate CLOSED at 00c3a92
+
+The fresh Codex delta review commissioned at dcefefd (Update 8) returned **REVISE with 4 confirmed
+findings (C1–C4)**; the author directed the remediation (C1 as two mandatory enforcement layers
+plus the Stage-C hermetic-test rework; C2/C3/C4 as ratified in their commit texts) and this
+orchestration session completed it. Ten commits, each followed by the established fresh-detached-
+worktree artifact regeneration at its exact code commit:
+
+- 43f1055 C2/C3/C4: pre-Popen setup failures are INFRA_FAILURE (NOT_STARTED reserved for a spawn
+  attempted at Popen but never confirmed); the pre-spawn phase catches ordinary Exception; terminal
+  publication is atomic no-clobber (temp + fsync + hard-link + dir fsync).
+- 38188b2 C1 layers 1+2: `require_mandatory_attestation_directives` unconditionally requires all
+  seven directives child-side before any native import; `capture_run` independently derives and
+  authenticates the expectations + dependency lock from the committed infrastructure manifest
+  UNDER the launch worktree, chain-bound, then binds and re-validates the consumed template
+  (profile-token gate and `dependency_lock_path` conditional both removed).
+- 04ec93f C1 Stage C: the hermetic tests supply a complete self-consistent fake bundle through the
+  SAME unconditional production path (no test-only bypass, no token-conditioned enforcement). The
+  bootstrap harness carries all seven directives via a fake native stack (raw-environ KMP/CF
+  registration, build markers, thread controls) + an in-worktree profile stub; the session-scoped
+  `expected_loaded_images` comes from an UNAUTHENTICATED dummy-fail probe whose recorded image
+  PATHS are re-hashed test-side (never its own hashes), with two probe measurements required to
+  agree exactly or setup fails; the capture harness builds a synthetic worktree with copied child
+  modules and a committed fake `docs/m2c_freeze` bundle (first-principles fake dependency lock over
+  a synthetic site-packages; the chain binds the real fake-manifest digest). The full mandated
+  negative battery landed (directive omissions at both layers, empty stack, image
+  missing/unexpected/mismatch, lock semantic mismatch, caller substitution, derivation failures,
+  INFRA-vs-NOT_STARTED split, no-clobber/durability, no marker on any failed attestation), plus
+  the positive fake-bundle launch reaching COMPLETED through capture derivation, real bootstrap
+  enforcement, marker and terminal publication. One capture change: the ratified C2 phase
+  classification is restored after the derive/bind/require block.
+- 16e1127 + 805f3a7 + cc6a8de (round-4/4b/4c/4d review remediations): `_write_terminal` full-write
+  loop, per-call-unique random-suffix O_EXCL temp under the caller's umask with collision retry,
+  and PROPAGATING directory fsync; the bootstrap-config handoff is transport-bound (canonical
+  digest of the exact written bytes passed through argv, verified by the child before consuming
+  any field, re-hashed by the parent post-exit — closing the mutable-file substitution window as
+  hardening beyond the §4.5.13/14 disclosed TOCTOU residual); post-exit image re-attestation
+  consumes the DERIVED in-memory expectations; both race-loser sites prefer the on-disk record and
+  never clobber or escape (incl. RecursionError); the failure route is cached once from the
+  in-memory authenticated config so `_persist_failure` never re-reads the mutable config (a
+  digest-rejected config cannot route evidence; a mid-run mutation cannot redirect it); the
+  CLI-contract guards persist their evidence too; dead `_dependency_lock_fault` (the conditioned
+  pattern C1 ordered removed) deleted.
+- 5ba23be / 246d87e / e2a57c1 / 00c3a92: artifact regenerations — every round changed exactly the
+  code-derived artifacts (importable-manifest worktree entries for the touched files + freeze-time
+  header path; the bootstrap.py closure pin in the identical 76-member set; the two aggregating
+  manifests); the four environment-derived artifacts stayed byte-identical across all five
+  regenerations (the 66-image measured expectations reproduced exactly every time); artifact byte
+  sizes never changed after the first regeneration, so the evidence-size report needed only its
+  initial refresh (8,743,892 / 8,833,024 / 26,578,366).
+
+**Review gate (five rounds, all three reviewers per round, same exact head per round, read-only).**
+R1 at 5ba23be: Codex gpt-5.6-sol xHigh REVISE (4: unauthenticated config handoff — adjudicated
+disclosed-TOCTOU but remediated; short-write/dir-fsync; PID-temp race; window test), Opus 4.8
+APPROVE (3 MINOR + 3 NOTEs, incl. the derived-expectations input and the importable-manifest
+enumeration follow-up), GLM 5.2 (working configuration again: reasoning disabled, subsystem
+chunks; two degenerated repetition tails discarded as before) 1 surviving finding (pre-spawn
+race-loser return). R2 at 246d87e: Codex REVISE (4), Opus APPROVE (1 NOTE), GLM zero surviving.
+R3 at e2a57c1: Codex REVISE (2 MAJOR + 1 MINOR), Opus APPROVE (2 NOTEs), GLM zero surviving. R4 at
+2fcce1b: Codex REVISE (1 MINOR), Opus APPROVE (1 precision NOTE), GLM APPROVE ×3. **R5 at 00c3a92:
+Codex APPROVE (no findings), Opus APPROVE (no findings), GLM tests/artifacts APPROVE with one
+code-chunk MINOR adjudicated false** (the pre-derivation fallback beside argv[1] is the
+long-established pre-authentication evidence convention; hostile-invoker premise out of the frozen
+threat model; GLM itself conceded non-exploitability). Every finding across all rounds was
+cross-verified against plan/source/hashes/tests before any change; false alarms were dismissed
+with recorded rationale, never fixed to satisfy votes.
+
+**Ratification note.** Update 8's F5 illustration ("a bad interpreter that fails at Popen remains
+NOT_STARTED") is superseded in effect by the C1 unconditional lock recomputation: a missing pinned
+interpreter now fails the pre-spawn attestation phase (INFRA_FAILURE, committed record) and never
+reaches Popen; the ratified RULE (Popen-attempted-but-unconfirmed is the only NOT_STARTED origin)
+is unchanged and both branches carry discriminating tests.
+
+**Recorded non-blocking residuals (disclosed, no action):** the pre-write caller-template mutation
+window (§4.5.13/14 TOCTOU class; the argv digest closes the post-write window); the pre-spawn
+last-resort publication absorbs a directory-fsync failure without separate reporting (the normal
+and reconcile sites propagate it loudly); a MemoryError-sized squatter is outside the named
+never-escape exception tuple (adversarial-squatter residual class); promoting the
+`importable_artifact_manifest` template binding into the mandatory directive enumeration remains a
+future author act (the enumeration is ratified at exactly seven; the transport digest already
+covers its post-write strip window).
+
+**Final state.** Full suite at 00c3a92: **774 passed, 2 skipped, 0 failed** (five full-suite green
+runs across the rounds). Boundaries re-verified at every candidate: all protected files
+byte-identical to origin/main, ledger 1 line, v1.18 result instance absent, nothing under runs/,
+no force-push (origin advanced dcefefd → 00c3a92 by plain pushes). No scientific, diagnostic,
+profile, optimizer-on-model, gradient/Hessian-on-model, MAP, sampler, Mauna, or holdout
+computation was performed; every child ran fake payloads over the fake bundle, and the only real
+measurements were the established freeze-time attestation measurements. Orchestration provenance:
+sole orchestrator, one Fable 5 session (continuation from the deliberate context-exhaustion
+checkpoint); reviewers: codex CLI gpt-5.6-sol xHigh (read-only sandbox), one persistent internal
+Opus 4.8 agent, GLM 5.2 via OpenRouter. **Gate state: CLOSED for the round-4 remediation — all
+three reports at 00c3a92 adjudicated, zero unresolved confirmed defects, zero pending author
+decisions.** PR #16 stays Draft; no Ready/merge/R2a/R3/execute.
