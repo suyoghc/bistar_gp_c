@@ -221,9 +221,10 @@ class LaunchConfig:
     # Hermetic-test escape hatches only ("interpreter", "dyld"); the
     # bootstrap-closure entries are never skippable.
     preboundary_skip: Sequence[str] = ()
-    # F4 (round-3 revision): the committed dependency lock + the frozen
-    # site-packages, so the stable semantic lock fields can be recomputed and
-    # compared parent-side after exit.
+    # Informational provenance only (round-4 Codex C1): capture_run recomputes
+    # the semantic lock against the bundle DERIVED from the committed worktree
+    # manifests, never against these caller-supplied fields; they merely record
+    # what launch_config_from_freeze authenticated for downstream provenance.
     dependency_lock_path: str | None = None
     site_packages: str | None = None
 
@@ -771,92 +772,79 @@ def _prelaunch(
 
 def _write_terminal(run_dir: Path, record: Mapping[str, Any]) -> str:
     """Atomically publish the terminal record with no-clobber semantics + fsync
-    (Codex round-3 C4).
+    (Codex round-3 C4; round-4 durability strengthening).
 
-    A fully-flushed temp is written and fsync'd, then hard-linked to the final
-    name — an atomic, no-replace publication that fails ``EEXIST`` if a terminal
-    already exists, so neither normal capture nor reconciliation can overwrite
-    the other's terminal (§4.3 "Nothing vanishes and no state is silently
-    reclassified"; §3.1 write-temp / fsync / atomic publish).  The run directory
-    is fsync'd so the link is durable.  Raises :class:`RecordAssemblyError` on a
-    pre-existing terminal.
+    A fully-written, fsync'd temp with a per-call unique name (``mkstemp``, so
+    concurrent same-process publishers can never unlink or link each other's
+    in-flight temp) is hard-linked to the final name — an atomic, no-replace
+    publication that fails ``EEXIST`` if a terminal already exists, so neither
+    normal capture nor reconciliation can overwrite the other's terminal (§4.3
+    "Nothing vanishes and no state is silently reclassified"; §3.1 write-temp /
+    fsync / atomic publish).  The payload is written with a full-write loop (a
+    POSIX short write must fail closed, never publish truncated bytes), and the
+    run directory is fsync'd so the link is durable — a directory-fsync failure
+    PROPAGATES rather than silently degrading the durability claim.  Raises
+    :class:`RecordAssemblyError` on a pre-existing terminal.
     """
 
     final = run_dir / TERMINAL_RECORD_NAME
     payload = canonical_bytes(dict(record))
-    tmp = run_dir / f".{TERMINAL_RECORD_NAME}.{os.getpid()}.tmp"
+    descriptor, tmp = tempfile.mkstemp(
+        prefix=f".{TERMINAL_RECORD_NAME}.", suffix=".tmp", dir=run_dir
+    )
     try:
-        os.unlink(tmp)
-    except OSError:
-        pass
-    descriptor = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-    try:
-        os.write(descriptor, payload)
+        os.fchmod(descriptor, 0o644)
+        written = 0
+        while written < len(payload):
+            count = os.write(descriptor, payload[written:])
+            if count <= 0:
+                raise OSError(
+                    f"terminal record short write at byte {written} of "
+                    f"{len(payload)}"
+                )
+            written += count
         os.fsync(descriptor)
-    finally:
+    except BaseException:
+        os.close(descriptor)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    else:
         os.close(descriptor)
     try:
         os.link(tmp, final)
     except FileExistsError as exc:
-        os.unlink(tmp)
         raise RecordAssemblyError(
             f"terminal record already exists at {final}"
         ) from exc
     finally:
         try:
-            if tmp.exists():
-                os.unlink(tmp)
+            os.unlink(tmp)
         except OSError:
             pass
     dir_fd = os.open(run_dir, os.O_RDONLY)
     try:
         os.fsync(dir_fd)
-    except OSError:
-        pass
     finally:
         os.close(dir_fd)
     return hashlib.sha256(payload).hexdigest()
 
 
-def _dependency_lock_fault(config: LaunchConfig) -> str | None:
-    """Recompute the stable semantic dependency-lock fields from the live frozen
-    environment and compare to the committed lock (external audit round-3
-    revision of F4).  Returns a fault string on any mismatch or recompute
-    failure, else ``None``.  A no-op when the lock/site-packages are unbound.
-    """
-
-    if config.dependency_lock_path is None or config.site_packages is None:
-        return None
-    from bistar_gp.m2cr.environment_freeze import verify_dependency_lock_semantics
-
-    try:
-        committed = _read_json_object(Path(config.dependency_lock_path))
-    except (OSError, ValueError) as exc:
-        return f"committed dependency lock unreadable: {exc}"
-    try:
-        return verify_dependency_lock_semantics(
-            committed, config.interpreter_path, config.site_packages
-        )
-    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
-        return f"dependency-lock recompute failed: {exc}"
-
-
-def _reauthenticate_loaded_images_parent_side(run_dir: Path) -> str | None:
+def _reauthenticate_loaded_images_parent_side(
+    expected: Sequence[Mapping[str, Any]],
+) -> str | None:
     """Re-hash the committed expected loaded-image set parent-side after exit
-    (external audit round-3 revision of F2).  The parent (not the payload)
-    re-verifies the on-disk native-library bytes against the frozen
-    expectations, so payload code cannot replace this check.  Returns a fault
-    string on any mismatch/unreadable image, else ``None``.  Absent expectations
-    (a lean hermetic launch, or a pre-spawn failure with no config) are a no-op.
+    (external audit round-3 revision of F2; round-4 Codex delta review).  The
+    parent (not the payload) re-verifies the on-disk native-library bytes
+    against the DERIVED committed expectations — the in-memory bundle from
+    ``_derive_authenticated_bundle``, never the mutable run-dir config a
+    payload could rewrite — so payload code can replace neither this check nor
+    its input.  Returns a fault string on any mismatch/unreadable image, else
+    ``None``.
     """
 
-    try:
-        template = _read_json_object(run_dir / BOOTSTRAP_CONFIG_NAME)
-    except (OSError, ValueError):
-        return None
-    expected = template.get("expected_loaded_images")
-    if not isinstance(expected, list):
-        return None
     for entry in expected:
         if (
             not isinstance(entry, Mapping)
@@ -1190,9 +1178,10 @@ if os.path.realpath(getattr(module, "__file__", "")) != os.path.realpath(
 ):
     raise SystemExit("closure probe imported an unexpected bootstrap origin")
 # main() imports these project modules BEFORE installing the audit hook
-# (scan_pyc_candidates -> environment_freeze -> serialization, at
-# bootstrap.py:1127 which precedes sys.addaudithook at :1168), so a faithful
-# pre-boundary closure must include them (external audit round-2 F1). Import
+# (scan_pyc_candidates -> environment_freeze -> serialization, from the
+# pre-import bytecode scan, which precedes the sys.addaudithook call later in
+# main()), so a faithful pre-boundary closure must include them (external
+# audit round-2 F1). Import
 # them here so sys.modules reflects the real pre-hook closure, not just the
 # bootstrap module's own top-level imports.
 importlib.import_module("bistar_gp.m2cr.environment_freeze")
@@ -1401,6 +1390,8 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     stderr_handle: Any = None
     derived_lock: dict[str, Any] | None = None
     derived_site_packages: str | None = None
+    derived_images: list[Any] | None = None
+    bootstrap_config_sha256: str | None = None
     try:
         local = _prepare_run_directories(run_dir)
         environment, bootstrap_environment = _realize_environment(
@@ -1424,6 +1415,10 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         )
         _bind_attestation_directives(template, expectations)
         _require_complete_attestation_directives(template)
+        # The post-exit image re-attestation consumes the DERIVED committed
+        # expectations (round-4 Codex delta review) — never a re-read of the
+        # mutable run-dir config a payload could rewrite.
+        derived_images = list(expectations["expected_loaded_images"])
         # After the derive/bind/require attestation block, the remaining
         # pre-Popen work (payload-path resolution, template plumbing, run-dir
         # containment) is infrastructure setup again, so its failures keep the
@@ -1494,7 +1489,15 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         # ordinary Exception (e.g. a RuntimeError from pipe.start()), so no
         # pre-spawn failure can escape capture_run without a terminal record.
         pre_spawn_phase = "setup"
-        atomic_write_canonical_json(bootstrap_config_path, template)
+        # Round-4 (Codex delta review): the canonical digest of the exact
+        # config bytes written here is handed to the child THROUGH ARGV — a
+        # channel a mutation of the on-disk config cannot alter — so the child
+        # verifies the bytes it reads against the parent's authenticated
+        # derivation before consuming any field (transport binding of the
+        # otherwise-mutable bootstrap_config.json handoff).
+        bootstrap_config_sha256 = atomic_write_canonical_json(
+            bootstrap_config_path, template
+        )
         stdout_handle = open(run_dir / "stdout.txt", "wb")
         stderr_handle = open(run_dir / "stderr.txt", "wb")
     except Exception as exc:
@@ -1534,10 +1537,19 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         try:
             run_dir.mkdir(parents=True, exist_ok=True)
             _write_terminal(run_dir, record)
-        except (OSError, RecordAssemblyError):
-            # run_dir unwritable, or a terminal already exists (a reconciliation
-            # won the publish race); the record is still returned so the caller
-            # sees a terminal outcome rather than an escaped exception.
+        except RecordAssemblyError:
+            # A terminal already exists (a reconciliation won the publish
+            # race).  Exactly like the normal-capture race loser below, the
+            # durable record is the one on disk — return it verbatim rather
+            # than a record that was never published (round-4 GLM finding).
+            try:
+                return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
+            except (OSError, ValueError):
+                pass
+        except OSError:
+            # run_dir unwritable; nothing could be persisted.  The in-memory
+            # record is still returned so the caller sees a terminal outcome
+            # rather than an escaped exception.
             pass
         return record
 
@@ -1560,6 +1572,7 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
             os.fspath(bootstrap_path),
             os.fspath(bootstrap_config_path),
             str(pipe.write_fd),
+            bootstrap_config_sha256,
         ]
         process = subprocess.Popen(
             argv,
@@ -1664,6 +1677,22 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                 )
         except OSError as exc:
             capture_fault = f"post-exit source re-attestation failed: {exc}"
+        # Round-4 (Codex delta review): repeat the bootstrap-config transport
+        # binding at exit (§4.5.11 "repeat every pre-run static class"), so a
+        # mutation of the mutable config file DURING the run — after the child
+        # verified its argv-bound digest at startup — still voids
+        # certification.
+        if capture_fault is None and bootstrap_config_sha256 is not None:
+            try:
+                if sha256_file(bootstrap_config_path) != bootstrap_config_sha256:
+                    capture_fault = (
+                        "bootstrap config changed between write and post-exit "
+                        "attestation"
+                    )
+            except OSError as exc:
+                capture_fault = (
+                    f"post-exit bootstrap-config re-attestation failed: {exc}"
+                )
         # Plan §4.5.11: repeat every pre-run static class at exit, parent-side.
         # The pre-boundary set (interpreter, dyld family, and the FULL bootstrap
         # closure) is re-verified here so an ordinary mutation to any of those
@@ -1679,11 +1708,14 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                 )
             except ValueError as exc:
                 capture_fault = f"post-exit pre-boundary re-attestation failed: {exc}"
-        # F2 (round-3 revision): re-hash the committed expected loaded-image set
-        # parent-side after exit, so a native-library mutation during the run is
-        # caught by the trusted parent (the payload cannot replace this check).
-        if capture_fault is None:
-            fault = _reauthenticate_loaded_images_parent_side(run_dir)
+        # F2 (round-3 revision) + round-4 (Codex delta review): re-hash the
+        # committed expected loaded-image set parent-side after exit, against
+        # the DERIVED in-memory expectations — never a re-read of the mutable
+        # run-dir config — so a native-library mutation during the run is
+        # caught by the trusted parent (the payload can replace neither the
+        # check nor its input).
+        if capture_fault is None and derived_images is not None:
+            fault = _reauthenticate_loaded_images_parent_side(derived_images)
             if fault is not None:
                 capture_fault = fault
         # F4 (round-3 revision) + Codex C1: recompute + compare the stable

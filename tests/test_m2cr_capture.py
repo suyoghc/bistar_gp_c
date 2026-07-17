@@ -738,21 +738,35 @@ def test_false_payload_aggregates_are_recomputed_and_rejected(tmp_path: Path) ->
     validate_terminal_record(record)
 
 
-def test_config_parse_failure_after_hello_is_infra_not_not_started(
+def test_config_mutation_after_write_is_rejected_and_voids_certification(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Round-4 (Codex delta review): a mutation of the mutable
+    bootstrap_config.json in the window between the parent's authenticated
+    write and the child's read is defeated twice over — the child rejects the
+    bytes against the argv-bound digest before consuming any directive (no
+    marker), and the parent's post-exit re-hash of the config voids
+    certification as a capture fault."""
+
     config = _make_launch(tmp_path)
     real_popen = subprocess.Popen
 
-    def corrupt_config_then_spawn(argv, *args, **kwargs):
-        # Corrupt ONLY the child bootstrap's config argument; the pre-spawn
-        # dependency-lock recompute's own subprocesses (pip freeze) pass
-        # through untouched.
-        if os.fspath(argv[-2]).endswith(BOOTSTRAP_CONFIG_NAME):
-            Path(argv[-2]).write_text("{", encoding="utf-8")
+    def substitute_directive_then_spawn(argv, *args, **kwargs):
+        # Mutate ONLY the child bootstrap's config argument (a caller-style
+        # substitution of one committed directive value); the pre-spawn
+        # dependency-lock recompute's own subprocesses pass through untouched.
+        config_argument = os.fspath(argv[-3]) if len(argv) >= 3 else ""
+        if config_argument.endswith(BOOTSTRAP_CONFIG_NAME):
+            template = json.loads(Path(config_argument).read_text())
+            template["expected_profile_integration_sha256"] = "c" * 64
+            Path(config_argument).write_text(
+                canonical_dumps(template), encoding="utf-8"
+            )
         return real_popen(argv, *args, **kwargs)
 
-    monkeypatch.setattr(capture_module.subprocess, "Popen", corrupt_config_then_spawn)
+    monkeypatch.setattr(
+        capture_module.subprocess, "Popen", substitute_directive_then_spawn
+    )
     record = capture_run(config)
     run_dir = Path(config.run_dir)
     assert (run_dir / "spawned.json").exists()
@@ -760,9 +774,49 @@ def test_config_parse_failure_after_hello_is_infra_not_not_started(
         json.loads((run_dir / "events.jsonl").read_text().splitlines()[0])["event"]
         == "HELLO"
     )
-    assert (run_dir / "bootstrap_failure.json").exists()
+    # The child refused the mutated bytes before consuming any directive.
+    failure = json.loads((run_dir / "bootstrap_failure.json").read_text())
+    assert failure["fault_class"] == "attestation_fault"
+    assert "bootstrap config digest mismatch" in failure["detail"]
+    assert not (run_dir / "payload_started.json").exists()
+    assert not (run_dir / "effect_proofs.json").exists()
+    # The parent's post-exit static re-attestation independently voids the run.
     assert record["status"] == "INFRA_FAILURE"
-    assert record["fault"]["fault_class"] == "other"
+    assert record["fault"]["fault_class"] == "capture_fault"
+    assert (
+        "bootstrap config changed between write and post-exit attestation"
+        in record["fault"]["detail"]
+    )
+    assert record["fault"]["payload_started"] is False
+    validate_terminal_record(record)
+
+
+def test_config_mutation_during_run_is_caught_at_post_exit(
+    tmp_path: Path,
+) -> None:
+    """Round-4 (Codex delta review): a mutation of bootstrap_config.json
+    DURING the run — after the child already verified its argv-bound digest at
+    startup — is caught by the parent's post-exit re-hash and voids
+    certification, even though the child exited with a protocol claim."""
+
+    config = _make_launch(
+        tmp_path,
+        extra_payload_code=(
+            "open(os.path.join("
+            f"{os.fspath(tmp_path / 'run')!r}, 'bootstrap_config.json'), "
+            "'ab').write(b' ')"
+        ),
+    )
+    record = capture_run(config)
+    run_dir = Path(config.run_dir)
+    assert (run_dir / "payload_started.json").exists()
+    assert (run_dir / "payload.json").exists()
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "capture_fault"
+    assert (
+        "bootstrap config changed between write and post-exit attestation"
+        in record["fault"]["detail"]
+    )
     validate_terminal_record(record)
 
 
@@ -1971,6 +2025,124 @@ def test_write_terminal_fsyncs_the_record_and_directory(
     digest = capture_module._write_terminal(run_dir, {"durable": True})
     assert isinstance(digest, str) and len(digest) == 64
     assert len(calls) == 2, "one file fsync before link, one directory fsync after"
+
+
+def test_write_terminal_full_write_loop_survives_short_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round-4 (Codex + Opus convergent): a POSIX short write must never
+    publish truncated terminal bytes — the full-write loop completes the
+    payload even when each os.write consumes at most 7 bytes."""
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    real_write = os.write
+
+    def short_write(fd: int, data: bytes) -> int:
+        return real_write(fd, bytes(data)[:7])
+
+    monkeypatch.setattr(capture_module.os, "write", short_write)
+    record = {"durable": True, "padding": "x" * 200}
+    digest = capture_module._write_terminal(run_dir, record)
+    on_disk = (run_dir / TERMINAL_RECORD_NAME).read_bytes()
+    assert on_disk == json.dumps(
+        record, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    assert hashlib.sha256(on_disk).hexdigest() == digest
+
+
+def test_write_terminal_surfaces_directory_fsync_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round-4 (Codex): a directory-fsync failure PROPAGATES instead of being
+    silently swallowed — the publication is visible and byte-complete, but the
+    durability failure surfaces loudly rather than degrading the C4 claim."""
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    calls: list[int] = []
+    real_fsync = os.fsync
+
+    def failing_directory_fsync(fd: int) -> None:
+        calls.append(fd)
+        if len(calls) == 2:
+            raise OSError("simulated directory fsync EIO")
+        real_fsync(fd)
+
+    monkeypatch.setattr(capture_module.os, "fsync", failing_directory_fsync)
+    with pytest.raises(OSError, match="simulated directory fsync EIO"):
+        capture_module._write_terminal(run_dir, {"durable": True})
+    assert json.loads((run_dir / TERMINAL_RECORD_NAME).read_text()) == {
+        "durable": True
+    }
+
+
+def test_concurrent_same_process_publishers_cannot_interfere(
+    tmp_path: Path,
+) -> None:
+    """Round-4 (Codex): PID-only temp naming let same-process concurrent
+    publishers unlink and hard-link each other's in-flight temp; the
+    per-call-unique mkstemp temp guarantees exactly one winner whose published
+    bytes are intact, every loser failing closed on EEXIST, and no temp
+    residue."""
+
+    for round_index in range(10):
+        run_dir = tmp_path / f"run{round_index}"
+        run_dir.mkdir()
+        results: dict[int, tuple[str, str | None, dict]] = {}
+        barrier = threading.Barrier(4)
+
+        def publish(index: int, target: Path) -> None:
+            record = {"writer": index, "round": round_index}
+            barrier.wait()
+            try:
+                digest = capture_module._write_terminal(target, record)
+                results[index] = ("ok", digest, record)
+            except RecordAssemblyError:
+                results[index] = ("lost", None, record)
+
+        threads = [
+            threading.Thread(target=publish, args=(index, run_dir))
+            for index in range(4)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        winners = [value for value in results.values() if value[0] == "ok"]
+        assert len(winners) == 1, results
+        _, digest, record = winners[0]
+        on_disk = (run_dir / TERMINAL_RECORD_NAME).read_bytes()
+        assert on_disk == json.dumps(
+            record, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        assert hashlib.sha256(on_disk).hexdigest() == digest
+        assert [path.name for path in run_dir.iterdir()] == [
+            TERMINAL_RECORD_NAME
+        ], "no temp residue may survive publication"
+
+
+def test_pre_spawn_race_loser_returns_the_on_disk_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round-4 (GLM): when another writer (a reconciliation racing this
+    capture) publishes the terminal during the pre-spawn window, the pre-spawn
+    race loser returns the durable on-disk record verbatim — exactly like the
+    normal-capture race loser — never an in-memory record that was never
+    published."""
+
+    config = _make_launch(tmp_path)
+    run_dir = Path(config.run_dir)
+    planted = {"planted": "pre-spawn-race-winner"}
+
+    def racing_prelaunch(*args: object, **kwargs: object) -> dict:
+        capture_module._write_terminal(run_dir, planted)
+        raise OSError("simulated failure after losing the publish race")
+
+    monkeypatch.setattr(capture_module, "_prelaunch", racing_prelaunch)
+    record = capture_run(config)
+    assert record == planted
+    assert json.loads((run_dir / TERMINAL_RECORD_NAME).read_text()) == planted
 
 
 def test_normal_and_fallback_publication_both_route_through_write_terminal(

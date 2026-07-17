@@ -415,6 +415,7 @@ def _launch_bootstrap(
     expected_loaded_images: object = "measured",
     profile: str = "match",
     omit_directives: tuple[str, ...] = (),
+    config_sha256: str | None = None,
 ) -> tuple[subprocess.CompletedProcess[bytes], Path, list[dict[str, object]]]:
     """Launch the REAL bootstrap in a synthetic four-root worktree.
 
@@ -552,7 +553,15 @@ def _launch_bootstrap(
     for directive in omit_directives:
         config.pop(directive, None)
     config_path = run_dir / "config.json"
-    config_path.write_text(canonical_dumps(config), encoding="utf-8")
+    config_text = canonical_dumps(config)
+    config_path.write_text(config_text, encoding="utf-8")
+    # Round-4: the parent transport-binds the exact written config bytes to
+    # the child via an argv digest; the harness does the same (an explicit
+    # config_sha256 override exercises the mismatch rejection).
+    if config_sha256 is None:
+        config_sha256 = hashlib.sha256(
+            config_text.encode("utf-8")
+        ).hexdigest()
     completed = subprocess.run(
         [
             MINICONDA_PYTHON,
@@ -565,6 +574,7 @@ def _launch_bootstrap(
             os.fspath(BOOTSTRAP),
             os.fspath(config_path),
             str(write_fd),
+            config_sha256,
         ],
         shell=False,
         env=environment,
@@ -1410,6 +1420,55 @@ def test_header_roots_fault_exempts_the_per_launch_worktree(tmp_path: Path) -> N
     assert "name exactly the four frozen root ids" in _header_roots_fault(
         incomplete, launch_roots
     )
+
+
+def test_config_digest_mismatch_fails_closed_before_any_consumption(
+    tmp_path: Path,
+) -> None:
+    """Round-4 (Codex delta review): the child verifies the config bytes it
+    read against the parent's argv-bound digest BEFORE consuming any field, so
+    a mutation of the mutable bootstrap_config.json between the parent's write
+    and the child's read fails closed with no attestation evidence and no
+    marker."""
+
+    completed, run_dir, events = _launch_bootstrap(
+        tmp_path, config_sha256="e" * 64
+    )
+    assert completed.returncode not in (0, 3)
+    assert "bootstrap config digest mismatch" in completed.stderr.decode()
+    assert [event["event"] for event in events] == ["HELLO"]
+    assert not (run_dir / "payload_started.json").exists()
+    assert not (run_dir / "effect_proofs.json").exists()
+    assert not (run_dir / "native_stack.json").exists()
+    failure = json.loads((run_dir / "bootstrap_failure.json").read_text())
+    assert failure["fault_class"] == "attestation_fault"
+
+
+def test_malformed_digest_argument_and_arity_fail_closed(tmp_path: Path) -> None:
+    """Round-4: the config-digest argument is mandatory and unconditional —
+    a missing argument (old three-argument contract) and a malformed digest
+    each fail closed before any consumption."""
+
+    short = subprocess.run(
+        [MINICONDA_PYTHON, os.fspath(BOOTSTRAP), "/nonexistent/config", "9"],
+        capture_output=True,
+        timeout=30,
+    )
+    assert short.returncode not in (0, 3)
+    assert (
+        "expected config path, event fd, and config sha256"
+        in short.stderr.decode()
+    )
+
+    completed, run_dir, events = _launch_bootstrap(
+        tmp_path, config_sha256="not-a-sha"
+    )
+    assert completed.returncode not in (0, 3)
+    assert (
+        "expected bootstrap-config sha256 argument is malformed"
+        in completed.stderr.decode()
+    )
+    assert not (run_dir / "payload_started.json").exists()
 
 
 def test_native_stack_allowlist_rejects_bistar_gp_and_payload_modules():

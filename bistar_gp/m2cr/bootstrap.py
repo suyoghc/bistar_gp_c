@@ -1246,13 +1246,43 @@ def _profile_integration_check(config: dict[str, Any]) -> dict[str, Any] | None:
     return check
 
 
-def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
-    """Run one child launch.  Every failure raises an explicit ``SystemExit``."""
+def main(
+    config_path: str | os.PathLike[str],
+    event_fd: int,
+    expected_config_sha256: str,
+) -> int:
+    """Run one child launch.  Every failure raises an explicit ``SystemExit``.
+
+    ``expected_config_sha256`` is the parent's transport binding of the
+    authenticated bootstrap config (round-4 Codex delta review): the parent
+    passes the canonical digest of the exact config bytes it derived, bound,
+    validated, and wrote — through argv, which a mutation of the on-disk
+    config file cannot alter.  The child verifies the bytes it actually read
+    against that digest BEFORE consuming any field, closing the
+    write-to-read mutation window on the otherwise-mutable
+    ``bootstrap_config.json`` handoff.  The digest argument is mandatory and
+    unconditional: there is no launch mode without it.
+    """
 
     writer = _ControlWriter(event_fd)
     writer.emit("HELLO", pid=os.getpid())
-    with open(config_path, "r", encoding="utf-8") as handle:
-        config = json.load(handle)
+    if (
+        not isinstance(expected_config_sha256, str)
+        or _SHA256_RE.fullmatch(expected_config_sha256) is None
+    ):
+        raise SystemExit(
+            "attestation_fault: expected bootstrap-config sha256 argument is "
+            "malformed"
+        )
+    with open(config_path, "rb") as handle:
+        raw_config = handle.read()
+    if hashlib.sha256(raw_config).hexdigest() != expected_config_sha256:
+        raise SystemExit(
+            "attestation_fault: bootstrap config digest mismatch — the "
+            "consumed config does not match the parent's authenticated "
+            "derivation"
+        )
+    config = json.loads(raw_config.decode("utf-8"))
     if not isinstance(config, dict):
         raise SystemExit("attestation_fault: bootstrap config is malformed")
 
@@ -1773,14 +1803,17 @@ def _persist_failure(config_path: str, reason: Any) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        raise SystemExit("attestation_fault: expected config path and event fd")
+    if len(sys.argv) != 4:
+        raise SystemExit(
+            "attestation_fault: expected config path, event fd, and config "
+            "sha256"
+        )
     try:
         event_fd = int(sys.argv[2])
     except ValueError as exc:
         raise SystemExit("attestation_fault: event fd is not an integer") from exc
     try:
-        code = main(sys.argv[1], event_fd)
+        code = main(sys.argv[1], event_fd, sys.argv[3])
     except SystemExit as exc:
         if exc.code not in (0, 3):
             _persist_failure(sys.argv[1], exc.code)
