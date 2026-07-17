@@ -4202,3 +4202,46 @@ unresolved CONFIRMED_CONFORMING_DEFECT, zero CONFIRMED_AUTHOR_DECISION_REQUIRED.
 verdict at the new head (98e77f7) is the remaining reviewer input; its prompt is handed to the author.
 The review gate remains **OPEN** until that verdict is adjudicated. PR #16 stays Draft; protected
 files, the ledger (single D45 line), the v1.18 absence, and the rev-5/v1.17 hashes are unchanged.
+
+### D48 — Update 7 (2026-07-16): external Codex round-3 at cd5b0ad returned REVISE (6 confirmed defects); remediated F1–F6 + a checkpoint's CP-1..CP-5; artifacts regenerated; gate re-review pending
+
+The external Codex verdict at cd5b0ad (the head the prior update handed the author) came back
+**REVISE with 6 confirmed conforming defects — zero false alarms.** Every finding was cross-verified
+against the plan/source/recomputation before any change; the prior internal-delta "APPROVE" is thereby
+**superseded** (the external adversarial pass is the load-bearing check — it has now found real
+BLOCKERs three rounds running). The author ratified, via a decision prompt: **fix all 6; F5 status =
+INFRA_FAILURE; F1/F2 fail-closed now with the specific frozen values deferred to R2a.**
+
+- **F1** (BLOCKER, fail-open): `launch_config_from_freeze` accepted a degenerate template (empty
+  native stack, absent profile-hash directive), so a marker could be emitted with no native-stack
+  attestation and no §4.5.10 comparison. Fix: `_require_complete_attestation_directives` rejects such
+  a template at the factory; the specific frozen values ride on the R4 template.
+- **F2** (BLOCKER): loaded native images were path-enumerated but never hashed. Fix: `hash_loaded_images`
+  hashes on-disk regular-file images at Stage B, re-hashes at Stage C, `loaded_image_hash_drift` fails
+  closed on any byte change (§4.5.7 "enumeration AND hashing"; §4.5.11).
+- **F3** (BLOCKER): the pre-boundary set pinned the freeze-time absolute worktree path. Fix: worktree
+  closure pins are stored `{root, relpath, sha256}` and verified against each launch's worktree.
+- **F4** (MAJOR): the dependency lock was stale at HEAD (embedded a per-checkout editable VCS commit)
+  and unenforced. Fix: `_filter_volatile_pip_freeze` excludes editables (reproducible lock) + a
+  reproduces-at-HEAD CI test.
+- **F5** (MAJOR): a pre-spawn attestation/setup failure escaped `capture_run` with no record. Fix: the
+  pre-spawn path commits an INFRA_FAILURE terminal record (author decision) rather than raising.
+- **F6** (MAJOR): `reconcile_run` copied caller identity and could overwrite a terminal. Fix: identity
+  is derived from the captured prelaunch.json, a disagreeing config is refused, and publish is O_EXCL.
+
+A focused Codex checkpoint of the F1–F6 commit (18d85f0) then found **5 deeper fail-open/robustness
+cases (CP-1..CP-5), all confirmed and fixed:** CP-1a `capture_run` re-validates the consumed template
+(gated on the profile directive; a full strip stays a disclosed §4.5.13 mutation residual); CP-1b the
+profile check fails closed when the directive is present but the module was never loaded; CP-2 a
+Stage-B image absent/non-file at Stage C is drift, not silently dropped; CP-3 worktree pins resolve
+strictly and must stay beneath the worktree (no symlink escape); CP-4 the pre-spawn fail-safe now
+covers `_prelaunch` + event-pipe setup; CP-5 reconcile publishes with O_EXCL against a concurrent race.
+
+Commits: 18d85f0 (F1–F6 code+tests), 27291c5 (CP-1..CP-5), eeefeef (artifacts regenerated at 27291c5 +
+evidence-size report refreshed). Full suite **723 passed, 2 skipped**. Boundaries re-verified at
+eeefeef: all protected files byte-identical, ledger 1 line, v1.18 absent, nothing under runs/, plan
+sha256 51b8ec60…. **Gate state: implementation complete; review gate OPEN** — per the standing
+protocol ("if any implementation or frozen artifact changes, rerun focused delta reviews from all
+three reviewers against the new exact head"), the F1–F6 + CP remediation requires fresh Codex/Opus/GLM
+reviews at eeefeef before the gate can close. PR #16 stays Draft; no Ready/merge/R2a/R3/execute; no
+force-push.

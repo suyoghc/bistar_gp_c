@@ -16,9 +16,14 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   re-reviews at 340a73d both clean (Opus APPROVE). Suite now 695 passed/2 skipped. Zero unresolved
   confirmed defects; zero pending author decisions. Author RATIFIED rev-5 c3e9db66…d1ce3f (D48
   Update).
-- **GATE CLOSES WHEN:** the external Codex GPT-5.6-sol xHigh audit (self-contained prompt handed to
-  the author; full PR, attention cf5c08c..340a73d) returns its verdict and it is adjudicated. Until
-  then the gate is OPEN and PR #16 stays Draft.
+- **External Codex round-3 (at cd5b0ad) → REVISE, 6 confirmed defects (D48 Update 7).** Author
+  ratified fix-all; F5=INFRA_FAILURE; F1/F2 fail-closed with frozen values to R2a. Remediated F1–F6
+  (commit 18d85f0); a Codex checkpoint then found 5 deeper cases CP-1..CP-5 (commit 27291c5); artifacts
+  regenerated (eeefeef). Suite **723 passed/2 skipped**. Boundaries re-verified at eeefeef.
+- **GATE CLOSES WHEN:** fresh Codex/Opus/GLM delta re-reviews at head **eeefeef** (the standing
+  "rerun all three on any implementation/artifact change" rule) each return clean and are adjudicated.
+  Until then the gate is OPEN and PR #16 stays Draft. Distinguish "implementation complete" (true now)
+  from "final review gate passed" (NOT yet).
 - **Prompt-hash note:** the R2 authorization prompt's rev-5 hash was a splice (suffix = D46 historical
   plan hash); the plan is consistent at §1 and §12 with the true `c3e9db66…d1ce3f`, which the file
   matches. Gate intent held. See D48.
