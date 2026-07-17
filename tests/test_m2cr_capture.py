@@ -894,6 +894,66 @@ def test_preboundary_worktree_entry_verifies_against_the_launch_worktree(
             attestation_path, skip=("interpreter", "dyld")
         )
 
+    # CP-3: a lexically safe relpath that is a symlink resolving OUTSIDE the
+    # launch worktree fails closed, even if the external target's bytes match —
+    # the freeze-time bytes cannot be satisfied by an out-of-tree file.
+    external = tmp_path / "external_probe.py"
+    external.write_text("PROBE = 1\n", encoding="utf-8")  # byte-identical
+    member_path = launch_worktree / "bistar_gp/m2cr/probe_closure.py"
+    member_path.unlink()
+    member_path.symlink_to(external)
+    with pytest.raises(ValueError, match="resolves outside the launch worktree"):
+        verify_preboundary_attestation_set(
+            attestation_path,
+            worktree_root=os.fspath(launch_worktree),
+            skip=("interpreter", "dyld"),
+        )
+
+
+def test_prelaunch_failure_commits_infra_pre_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CP-4: a failure in prelaunch provenance (or event-pipe setup) after the
+    attestation checks but before spawn also commits an INFRA_FAILURE record
+    rather than escaping capture_run (§4.3 "Nothing vanishes")."""
+
+    config = _make_launch(tmp_path)
+
+    def boom(*args: object, **kwargs: object) -> dict:
+        raise OSError("simulated bootstrap disappearance during prelaunch")
+
+    monkeypatch.setattr(capture_module, "_prelaunch", boom)
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "capture_fault"
+    assert "pre-spawn prelaunch failure" in record["fault"]["detail"]
+    assert (Path(config.run_dir) / TERMINAL_RECORD_NAME).is_file()
+    assert not (Path(config.run_dir) / "spawned.json").exists()
+    validate_terminal_record(record)
+
+
+def test_capture_run_revalidates_a_partially_stripped_real_launch_template(
+    tmp_path: Path,
+) -> None:
+    """CP-1a: capture_run re-validates the template it actually consumes; a
+    real-launch config (profile-hash directive present) whose native stack was
+    stripped after the factory validated it is caught, committing an
+    INFRA_FAILURE rather than proceeding with no native attestation."""
+
+    config = _make_launch(tmp_path)
+    run_dir = Path(config.run_dir)
+    template = json.loads((run_dir / BOOTSTRAP_CONFIG_NAME).read_text())
+    template["expected_profile_integration_sha256"] = "a" * 64
+    template["native_stack_modules"] = []
+    (run_dir / BOOTSTRAP_CONFIG_NAME).write_text(
+        canonical_dumps(template), encoding="utf-8"
+    )
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert "non-empty native_stack_modules" in record["fault"]["detail"]
+    assert (run_dir / TERMINAL_RECORD_NAME).is_file()
+    validate_terminal_record(record)
+
 
 def _freeze_fixture(tmp_path: Path) -> dict[str, Path]:
     worktree = tmp_path / "worktree"
@@ -1191,9 +1251,15 @@ def test_committed_freeze_artifacts_derive_the_ratified_pins(
     """FIX C11: read-only derivation from the COMMITTED artifacts, no launch."""
 
     template_path = tmp_path / "template.json"
+    # A COMPLETE template: F1 requires the factory to see a non-empty native
+    # stack and a well-formed profile-hash directive.
     atomic_write_canonical_json(
         template_path,
-        {"payload": {"entry": "fake_payload:run", "pass_context": True}},
+        {
+            "native_stack_modules": ["numpy", "torch"],
+            "expected_profile_integration_sha256": "a" * 64,
+            "payload": {"entry": "fake_payload:run", "pass_context": True},
+        },
     )
     config = launch_config_from_freeze(
         _COMMITTED_FREEZE,

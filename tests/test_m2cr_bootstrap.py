@@ -799,6 +799,14 @@ def test_loaded_image_hashing_detects_on_disk_byte_drift(tmp_path: Path) -> None
     assert bootstrap_module.loaded_image_hash_drift(stage_b, stage_c) == [
         os.fspath(image)
     ]
+    # CP-2: a Stage-B image unlinked (or replaced by a non-file) at Stage C has
+    # no Stage-C hash and must still be flagged as drift, not silently dropped.
+    image.unlink()
+    stage_c_gone = bootstrap_module.hash_loaded_images(paths)
+    assert os.fspath(image) not in stage_c_gone
+    assert bootstrap_module.loaded_image_hash_drift(stage_b, stage_c_gone) == [
+        os.fspath(image)
+    ]
 
     fake_torch = ModuleType("torch")
     fake_torch.get_num_threads = lambda: 10

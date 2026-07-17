@@ -423,12 +423,19 @@ def hash_loaded_images(paths: Iterable[str]) -> dict[str, str]:
 def loaded_image_hash_drift(
     stage_b_hashes: Mapping[str, str], stage_c_hashes: Mapping[str, str]
 ) -> list[str]:
-    """Return every image whose on-disk bytes changed between Stage B and C."""
+    """Return every Stage-B image that is not byte-identical at Stage C.
+
+    Drift includes an image whose bytes changed AND an image that is absent or
+    no longer a readable regular file at Stage C (unlinked or replaced by a
+    non-file during payload execution): its Stage-B hash has no matching Stage-C
+    hash, so it must fail closed rather than be silently dropped (external audit
+    checkpoint CP-2; §4.5.11 "any drift is INFRA_FAILURE").
+    """
 
     return sorted(
         path
         for path, digest in stage_b_hashes.items()
-        if path in stage_c_hashes and stage_c_hashes[path] != digest
+        if stage_c_hashes.get(path) != digest
     )
 
 
@@ -1485,14 +1492,18 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
     inventory_digest = _atomic_write_json(
         paths["import_inventory"], inventory_document
     )
-    if (
-        profile_check is not None
-        and profile_check["module_loaded"]
-        and profile_check["match"] is not True
+    # CP-1b: a launch that declares the profile-hash directive must actually
+    # have imported bistar_gp.profile_integration and matched it; a directive
+    # present with the module never loaded (match is None) is a fail-open of the
+    # §4.5.10 explicit comparison and must fail closed, not pass silently.
+    if profile_check is not None and (
+        not profile_check["module_loaded"]
+        or profile_check["match"] is not True
     ):
         raise SystemExit(
             "attestation_fault: profile_integration explicit hash comparison "
-            f"failed: expected {profile_check['expected_sha256']}, actual "
+            f"failed (module_loaded={profile_check['module_loaded']}): "
+            f"expected {profile_check['expected_sha256']}, actual "
             f"{profile_check['actual_sha256']}"
         )
 

@@ -984,7 +984,18 @@ def verify_preboundary_attestation_set(
                     f"preboundary attestation entry {label} is worktree-relative "
                     "but no worktree_root was supplied"
                 )
-            target = worktree / relpath
+            # CP-3: a lexically safe relpath can still be a symlink whose target
+            # resolves outside the launch worktree; resolve strictly and require
+            # the physical path to remain beneath the worktree root before
+            # hashing, so external bytes cannot satisfy a worktree pin.
+            target = (worktree / relpath).resolve()
+            try:
+                target.relative_to(worktree)
+            except ValueError as exc:
+                raise ValueError(
+                    f"preboundary attestation entry {label} worktree relpath "
+                    f"{relpath} resolves outside the launch worktree"
+                ) from exc
             display = f"worktree:{relpath}"
         elif isinstance(entry.get("path"), str):
             target = Path(entry["path"])
@@ -1273,6 +1284,7 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     # but never confirmed (precedence rule 1, resolved after the supervised
     # block below).
     pre_spawn_phase = "infrastructure"
+    pipe = None
     try:
         local = _prepare_run_directories(run_dir)
         environment, bootstrap_environment = _realize_environment(
@@ -1282,6 +1294,16 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         worktree_root = Path(config.worktree_root).resolve(strict=True)
         bootstrap_config_path = run_dir / BOOTSTRAP_CONFIG_NAME
         template = _load_bootstrap_template(bootstrap_config_path)
+        # CP-1a: re-validate the template capture_run actually consumes, not
+        # only the one launch_config_from_freeze validated, so a rewrite of the
+        # mutable bootstrap_config.json that partially strips the mandatory
+        # directives is caught.  Gated on the profile-hash directive (a real
+        # launch declares it); a lean hermetic template has none and is
+        # unaffected.  A full strip that removes the profile directive too is
+        # indistinguishable from a hermetic config and remains a §4.5.13
+        # mutation-and-restore residual, disclosed rather than claimed away.
+        if template.get("expected_profile_integration_sha256") is not None:
+            _require_complete_attestation_directives(template)
         payload_path = _payload_entry_path(template, worktree_root)
         template.pop("event_fd", None)
         template.update(
@@ -1316,7 +1338,24 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                 worktree_root=worktree_root,
                 skip=config.preboundary_skip,
             )
+        # CP-4: prelaunch provenance and the event-pipe setup precede the spawn,
+        # so a failure here (e.g. the bootstrap source vanishing during
+        # _prelaunch, or the event pipe failing to start) must also commit an
+        # INFRA_FAILURE record rather than escape capture_run.
+        pre_spawn_phase = "prelaunch"
+        prelaunch = _prelaunch(config, bootstrap_path, payload_path, environment)
+        prelaunch_sha256 = atomic_write_canonical_json(
+            run_dir / "prelaunch.json", prelaunch
+        )
+        events_path = run_dir / "events.jsonl"
+        pipe = parent_event_pipe(events_path)
+        pipe.start()
     except (OSError, ValueError) as exc:
+        if pipe is not None:
+            try:
+                pipe.join()
+            except BaseException:
+                pass
         fault_class = (
             "attestation_fault"
             if pre_spawn_phase == "attestation"
@@ -1340,14 +1379,6 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
             # caller sees a terminal outcome rather than an escaped exception.
             pass
         return record
-    prelaunch = _prelaunch(config, bootstrap_path, payload_path, environment)
-    prelaunch_sha256 = atomic_write_canonical_json(
-        run_dir / "prelaunch.json", prelaunch
-    )
-
-    events_path = run_dir / "events.jsonl"
-    pipe = parent_event_pipe(events_path)
-    pipe.start()
 
     # The post-prelaunch setup (bootstrap-config write, stdout/stderr opens)
     # is inside the supervised try so an ordinary failure there sets
@@ -1810,7 +1841,26 @@ def reconcile_run(
             "payload_started": (root / "payload_started.json").is_file(),
         },
     )
-    _write_terminal(root, record)
+    # CP-5: publish atomically with O_EXCL so two racing reconcilers (or
+    # reconciliation racing normal capture) cannot both pass the existence
+    # check above and overwrite each other's terminal record; the loser fails
+    # closed on EEXIST (§4.3 "Nothing vanishes and no state is silently
+    # reclassified").
+    terminal_path = root / TERMINAL_RECORD_NAME
+    try:
+        descriptor = os.open(
+            terminal_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644
+        )
+    except FileExistsError as exc:
+        raise RecordAssemblyError(
+            "reconciliation refused: a terminal record already exists at "
+            f"{terminal_path}"
+        ) from exc
+    try:
+        os.write(descriptor, canonical_bytes(record))
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
     return record
 
 
