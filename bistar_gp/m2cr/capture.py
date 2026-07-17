@@ -1399,6 +1399,8 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     pipe = None
     stdout_handle: Any = None
     stderr_handle: Any = None
+    derived_lock: dict[str, Any] | None = None
+    derived_site_packages: str | None = None
     try:
         local = _prepare_run_directories(run_dir)
         environment, bootstrap_environment = _realize_environment(
@@ -1408,16 +1410,20 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         worktree_root = Path(config.worktree_root).resolve(strict=True)
         bootstrap_config_path = run_dir / BOOTSTRAP_CONFIG_NAME
         template = _load_bootstrap_template(bootstrap_config_path)
-        # CP-1a: re-validate the template capture_run actually consumes, not
-        # only the one launch_config_from_freeze validated, so a rewrite of the
-        # mutable bootstrap_config.json that partially strips the mandatory
-        # directives is caught.  Gated on the profile-hash directive (a real
-        # launch declares it); a lean hermetic template has none and is
-        # unaffected.  A full strip that removes the profile directive too is
-        # indistinguishable from a hermetic config and remains a §4.5.13
-        # mutation-and-restore residual, disclosed rather than claimed away.
-        if template.get("expected_profile_integration_sha256") is not None:
-            _require_complete_attestation_directives(template)
+        # Codex round-3 C1 (requirement 2): capture_run INDEPENDENTLY derives and
+        # authenticates the mandatory native-stack expectations and dependency
+        # lock from the committed manifests UNDER the launch worktree, bound to
+        # the authorized chain — it never trusts the caller-injected template
+        # directives, a caller path, or a caller-created bundle as its trust
+        # root.  A missing/unbindable/mismatched artifact fails closed before the
+        # marker.  The derived expectations are bound into the template (any
+        # caller substitution rejected) and re-validated in full.
+        pre_spawn_phase = "attestation"
+        expectations, derived_lock, derived_site_packages = (
+            _derive_authenticated_bundle(config, worktree_root)
+        )
+        _bind_attestation_directives(template, expectations)
+        _require_complete_attestation_directives(template)
         payload_path = _payload_entry_path(template, worktree_root)
         template.pop("event_fd", None)
         template.update(
@@ -1452,14 +1458,16 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                 worktree_root=worktree_root,
                 skip=config.preboundary_skip,
             )
-        if config.dependency_lock_path is not None:
-            # F4 (round-3 revision): recompute the stable semantic dependency-lock
-            # fields from the live environment and compare to the committed lock
-            # BEFORE launch; a third-party-stack drift refuses the launch.
-            pre_spawn_phase = "attestation"
-            lock_fault = _dependency_lock_fault(config)
-            if lock_fault is not None:
-                raise ValueError(lock_fault)
+        # F4 + Codex round-3 C1: recompute the stable semantic dependency-lock
+        # fields from the live environment and compare to the DERIVED committed
+        # lock (authenticated from the worktree manifest, not a caller path) —
+        # unconditionally, before launch; a third-party-stack drift refuses it.
+        pre_spawn_phase = "attestation"
+        lock_fault = _lock_semantic_fault(
+            derived_lock, config.interpreter_path, derived_site_packages
+        )
+        if lock_fault is not None:
+            raise ValueError(lock_fault)
         # CP-4: prelaunch provenance and the event-pipe setup precede the spawn,
         # so a failure here (e.g. the bootstrap source vanishing during
         # _prelaunch, or the event pipe failing to start) must also commit an
@@ -1672,10 +1680,13 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
             fault = _reauthenticate_loaded_images_parent_side(run_dir)
             if fault is not None:
                 capture_fault = fault
-        # F4 (round-3 revision): recompute + compare the stable semantic
-        # dependency-lock fields parent-side after exit (§4.5.11 "lock metadata").
-        if capture_fault is None and config.dependency_lock_path is not None:
-            fault = _dependency_lock_fault(config)
+        # F4 (round-3 revision) + Codex C1: recompute + compare the stable
+        # semantic dependency-lock fields parent-side after exit against the
+        # DERIVED committed lock (§4.5.11 "lock metadata").
+        if capture_fault is None and derived_lock is not None:
+            fault = _lock_semantic_fault(
+                derived_lock, config.interpreter_path, derived_site_packages
+            )
             if fault is not None:
                 capture_fault = f"post-exit {fault}"
 
@@ -2016,27 +2027,32 @@ _FOUR_ROOT_IDS = ("worktree", "stdlib", "lib-dynload", "site-packages")
 
 
 def _require_complete_attestation_directives(template: Mapping[str, Any]) -> None:
-    """Fail closed unless the bootstrap template mandates the full
-    pre-scientific attestation set (external audit round-3 F1).
+    """Fail closed unless the bootstrap template carries EVERY mandatory
+    pre-scientific attestation directive, well-formed (Codex round-3 C1).
 
-    A real launch must import and attest a non-empty, allow-listed native stack
-    and must carry a well-formed ``expected_profile_integration_sha256`` so the
-    §4.5.10 explicit hash comparison is never skipped.  The specific frozen
-    values ride on the R4-supplied template; R2 enforces their presence and
-    well-formedness (author decision F1: fail-closed now, frozen values to R2a).
+    All seven directives are validated unconditionally (no profile-hash gate):
+    a non-empty allow-listed native stack, a lowercase profile-hash, non-empty
+    torch/numpy build-marker lists, a Stage-B object, a loaded-image allowlist,
+    and a non-empty expected loaded-image set.  A missing, empty, or malformed
+    directive raises ``ValueError`` so capture_run commits a pre-payload
+    INFRA_FAILURE before the marker.
     """
 
     from bistar_gp.m2cr.bootstrap import disallowed_native_modules
 
-    native = template.get("native_stack_modules")
+    missing = [key for key in _MANDATORY_ATTESTATION_KEYS if key not in template]
+    if missing:
+        raise ValueError(
+            f"bootstrap template lacks mandatory attestation directives: {missing}"
+        )
+    native = template["native_stack_modules"]
     if (
         not isinstance(native, list)
         or not native
         or not all(isinstance(name, str) for name in native)
     ):
         raise ValueError(
-            "bootstrap template must declare a non-empty native_stack_modules "
-            "list (F1: pre-scientific attestations are mandatory)"
+            "bootstrap template must declare a non-empty native_stack_modules list"
         )
     disallowed = disallowed_native_modules(native)
     if disallowed:
@@ -2044,12 +2060,32 @@ def _require_complete_attestation_directives(template: Mapping[str, Any]) -> Non
             "bootstrap template native_stack_modules outside the frozen "
             f"allowlist: {disallowed}"
         )
-    profile = template.get("expected_profile_integration_sha256")
+    profile = template["expected_profile_integration_sha256"]
     if not isinstance(profile, str) or _SHA256_RE.fullmatch(profile) is None:
         raise ValueError(
-            "bootstrap template must carry a frozen "
-            "expected_profile_integration_sha256 (F1: the §4.5.10 profile-hash "
-            "comparison is mandatory)"
+            "bootstrap template must carry a lowercase "
+            "expected_profile_integration_sha256"
+        )
+    for key in ("torch_build_expected", "numpy_build_expected"):
+        value = template[key]
+        if (
+            not isinstance(value, list)
+            or not value
+            or not all(isinstance(item, str) and item for item in value)
+        ):
+            raise ValueError(
+                f"bootstrap template {key} must be a non-empty string list"
+            )
+    if not isinstance(template["stage_b_expected"], Mapping):
+        raise ValueError("bootstrap template stage_b_expected must be an object")
+    if not isinstance(template["loaded_image_allowlist"], list):
+        raise ValueError(
+            "bootstrap template loaded_image_allowlist must be a list"
+        )
+    images = template["expected_loaded_images"]
+    if not isinstance(images, list) or not images:
+        raise ValueError(
+            "bootstrap template expected_loaded_images must be a non-empty list"
         )
 
 
@@ -2093,6 +2129,117 @@ def _bind_attestation_directives(
                 "caller-supplied"
             )
         template[key] = expectations[key]
+
+
+_COMMITTED_INFRA_RELPATH = "docs/m2c_freeze/m2cr_infrastructure_manifest_v1.json"
+
+
+def _authenticated_pin_under_worktree(
+    infra_artifacts: Mapping[str, Any], name: str, worktree: Path
+) -> Path:
+    """Resolve one infrastructure-manifest artifact pin against the launch
+    worktree and authenticate its sha256 (Codex round-3 C1, requirement 2)."""
+
+    pin = infra_artifacts.get(name)
+    if (
+        not isinstance(pin, Mapping)
+        or not isinstance(pin.get("path"), str)
+        or not isinstance(pin.get("sha256"), str)
+    ):
+        raise ValueError(f"infrastructure manifest does not pin {name}")
+    path = (worktree / pin["path"]).resolve()
+    try:
+        path.relative_to(worktree.resolve())
+    except ValueError as exc:
+        raise ValueError(
+            f"pinned {name} resolves outside the launch worktree"
+        ) from exc
+    if not path.is_file():
+        raise ValueError(f"pinned {name} not found under the worktree: {path}")
+    if sha256_file(path) != pin["sha256"]:
+        raise ValueError(
+            f"pinned {name} sha256 does not match the infrastructure manifest"
+        )
+    return path
+
+
+def _derive_authenticated_bundle(
+    config: LaunchConfig, worktree_root: Path
+) -> tuple[dict[str, Any], dict[str, Any], str]:
+    """Derive + authenticate the mandatory native-stack expectations and the
+    dependency lock from the committed infrastructure manifest UNDER the launch
+    worktree, bound to the authorized chain (Codex round-3 C1, requirement 2).
+
+    capture_run's trust root is the committed manifests inside the launch
+    worktree, authenticated against ``config.chain`` — never a caller-supplied
+    path, boolean, or an internally consistent caller-created bundle.  Returns
+    ``(expectations, dependency_lock, site_packages)``; raises ``ValueError`` on
+    any missing, unbindable, or mismatched artifact so capture_run commits a
+    pre-payload INFRA_FAILURE before the marker.
+    """
+
+    from bistar_gp.m2cr.environment_freeze import read_manifest_header
+
+    worktree = Path(worktree_root)
+    infra_path = worktree / _COMMITTED_INFRA_RELPATH
+    if not infra_path.is_file():
+        raise ValueError(
+            "committed infrastructure manifest not found under the launch "
+            f"worktree: {infra_path}"
+        )
+    expected_infra_sha = config.chain.get("infrastructure_manifest_sha256")
+    if (
+        not isinstance(expected_infra_sha, str)
+        or _SHA256_RE.fullmatch(expected_infra_sha) is None
+    ):
+        raise ValueError(
+            "authorized chain lacks a valid infrastructure_manifest_sha256 "
+            "binding"
+        )
+    if sha256_file(infra_path) != expected_infra_sha:
+        raise ValueError(
+            "infrastructure manifest under the worktree does not match the "
+            "authorized chain binding"
+        )
+    infra = _read_json_object(infra_path)
+    infra_artifacts = infra.get("artifacts")
+    if not isinstance(infra_artifacts, Mapping):
+        raise ValueError("infrastructure manifest lacks an artifacts section")
+    expectations_path = _authenticated_pin_under_worktree(
+        infra_artifacts, "native_stack_expectations", worktree
+    )
+    lock_path = _authenticated_pin_under_worktree(
+        infra_artifacts, "dependency_lock", worktree
+    )
+    manifest_path = _authenticated_pin_under_worktree(
+        infra_artifacts, "importable_artifact_manifest", worktree
+    )
+    expectations = _read_json_object(expectations_path)
+    dependency_lock = _read_json_object(lock_path)
+    roots = read_manifest_header(manifest_path).get("roots")
+    if not isinstance(roots, Mapping) or not isinstance(
+        roots.get("site-packages"), str
+    ):
+        raise ValueError(
+            "importable manifest header lacks a site-packages root binding"
+        )
+    return expectations, dependency_lock, roots["site-packages"]
+
+
+def _lock_semantic_fault(
+    committed_lock: Mapping[str, Any], interpreter_path: str, site_packages: str
+) -> str | None:
+    """Recompute + compare the stable semantic dependency-lock fields against
+    the derived committed lock (Codex round-3 C1); a fault string or None."""
+
+    from bistar_gp.m2cr.environment_freeze import verify_dependency_lock_semantics
+
+    try:
+        return verify_dependency_lock_semantics(
+            committed_lock, interpreter_path, site_packages
+        )
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+        return f"dependency-lock recompute failed: {exc}"
 
 
 def _read_manifest_v2_header(path: Path) -> dict[str, str]:

@@ -420,6 +420,76 @@ def hash_loaded_images(paths: Iterable[str]) -> dict[str, str]:
     return hashes
 
 
+MANDATORY_ATTESTATION_KEYS = (
+    "native_stack_modules",
+    "expected_profile_integration_sha256",
+    "torch_build_expected",
+    "numpy_build_expected",
+    "stage_b_expected",
+    "loaded_image_allowlist",
+    "expected_loaded_images",
+)
+
+
+def require_mandatory_attestation_directives(config: Mapping[str, Any]) -> None:
+    """Fail closed unless every mandatory pre-scientific attestation directive is
+    present and well-formed before the marker (Codex round-3 C1, requirement 1).
+
+    No directive defaults or is optional: ``native_stack_modules`` must be a
+    non-empty allow-listed list, ``expected_profile_integration_sha256`` a
+    lowercase sha256, the build-marker lists non-empty, ``stage_b_expected`` an
+    object, ``loaded_image_allowlist`` a list, and ``expected_loaded_images`` a
+    non-empty list.  A missing, empty, or malformed directive raises
+    ``SystemExit`` before any native import.
+    """
+
+    missing = [key for key in MANDATORY_ATTESTATION_KEYS if key not in config]
+    if missing:
+        raise SystemExit(
+            "attestation_fault: missing mandatory attestation directives: "
+            f"{missing}"
+        )
+    native = config["native_stack_modules"]
+    if (
+        not isinstance(native, list)
+        or not native
+        or not all(isinstance(name, str) for name in native)
+    ):
+        raise SystemExit(
+            "attestation_fault: native_stack_modules must be a non-empty "
+            "string list"
+        )
+    profile = config["expected_profile_integration_sha256"]
+    if not isinstance(profile, str) or _SHA256_RE.fullmatch(profile) is None:
+        raise SystemExit(
+            "attestation_fault: expected_profile_integration_sha256 must be a "
+            "lowercase sha256"
+        )
+    for key in ("torch_build_expected", "numpy_build_expected"):
+        value = config[key]
+        if (
+            not isinstance(value, list)
+            or not value
+            or not all(isinstance(item, str) and item for item in value)
+        ):
+            raise SystemExit(
+                f"attestation_fault: {key} must be a non-empty string list"
+            )
+    if not isinstance(config["stage_b_expected"], dict):
+        raise SystemExit(
+            "attestation_fault: stage_b_expected must be an object"
+        )
+    if not isinstance(config["loaded_image_allowlist"], list):
+        raise SystemExit(
+            "attestation_fault: loaded_image_allowlist must be a list"
+        )
+    images = config["expected_loaded_images"]
+    if not isinstance(images, list) or not images:
+        raise SystemExit(
+            "attestation_fault: expected_loaded_images must be a non-empty list"
+        )
+
+
 def authenticate_loaded_images(
     measured: Mapping[str, str],
     expected: Sequence[Mapping[str, str]],
@@ -1333,21 +1403,14 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
         },
     )
 
-    native_modules = config.get("native_stack_modules", [])
-    if not isinstance(native_modules, list) or not all(
-        isinstance(name, str) for name in native_modules
-    ):
-        raise SystemExit(
-            "attestation_fault: native_stack_modules must be a string list"
-        )
-    # F1: completeness of the pre-scientific attestation set (a non-empty
-    # native stack imported/attested alongside the mandatory
-    # expected_profile_integration_sha256) is enforced at the real-launch
-    # construction point, launch_config_from_freeze._require_complete_
-    # attestation_directives, so a degenerate template can never build a launch
-    # config.  The bootstrap keeps its per-module allowlist gate below and its
-    # explicit profile-hash comparison, and continues to serve hermetic tests
-    # (which exercise, e.g., the profile check in isolation with a lean stack).
+    # Codex round-3 C1 (requirement 1): unconditionally require EVERY mandatory
+    # pre-scientific attestation directive before the marker — no directive
+    # defaults, is optional, or is gated.  A missing, empty, or malformed
+    # directive fails closed here, so a lean bootstrap config can never reach
+    # payload_started (§4.3 "all pre-scientific attestations complete before the
+    # marker").  This is defense-in-depth beneath the parent's derive-and-bind.
+    require_mandatory_attestation_directives(config)
+    native_modules = config["native_stack_modules"]
     # Fail closed on any module outside the frozen native-stack allowlist: a
     # bistar_gp.* module or the payload smuggled here would execute before the
     # marker, violating the §4.3 boundary (external audit round-2 F3).
@@ -1437,20 +1500,20 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
     stage_b_image_hashes = hash_loaded_images(stage_b_images)
     native_attestation["loaded_images_stage_b"] = stage_b_images
     native_attestation["loaded_images_stage_b_sha256"] = stage_b_image_hashes
-    # F2 (round-3 revision): authenticate the on-disk loaded images against the
-    # committed expected set BEFORE the payload marker; an image with no
-    # committed expectation, or any sha256 mismatch (a same-path pre-launch
-    # mutation), fails closed here.
-    expected_loaded_images = config.get("expected_loaded_images")
-    if expected_loaded_images is not None:
-        if not isinstance(expected_loaded_images, list):
-            raise SystemExit(
-                "attestation_fault: expected_loaded_images must be a list"
-            )
-        authenticate_loaded_images(stage_b_image_hashes, expected_loaded_images)
-        native_attestation["loaded_images_authenticated"] = True
+    # Record the measured Stage-B images as evidence BEFORE authenticating, so a
+    # captured native_stack.json exists even when the authentication below fails
+    # closed (nothing vanishes; also enables committed-expectation measurement).
     native_stack_digest = _atomic_write_json(
         paths["native_stack"], native_attestation
+    )
+    # F2 (round-3 revision) + Codex round-3 C1: authenticate the on-disk loaded
+    # images against the committed expected set BEFORE the payload marker,
+    # unconditionally (expected_loaded_images is a mandatory directive validated
+    # by require_mandatory_attestation_directives above); an image with no
+    # committed expectation, or any sha256 mismatch (a same-path pre-launch
+    # mutation), fails closed here.
+    authenticate_loaded_images(
+        stage_b_image_hashes, config["expected_loaded_images"]
     )
 
     sourceless = []
