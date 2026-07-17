@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from importlib.machinery import SourceFileLoader
 from importlib.util import spec_from_file_location
 from pathlib import Path
@@ -52,9 +54,182 @@ CHAIN = {
 }
 SOURCE_LOADER_CLASS = f"{SourceFileLoader.__module__}.{SourceFileLoader.__qualname__}"
 
+# Codex round-3 C1 (Stage C): the hermetic fake native stack.  Every launch
+# through the real bootstrap now carries the complete mandatory attestation
+# directive set, so the fake torch/numpy modules and the frozen fake values
+# below are the single source the tests and the capture-level fake bundle
+# share.
+FAKE_CF_VALUE = "0x1F5:0x0:0x0"
+FAKE_STAGE_B_EXPECTED = {"__CF_USER_TEXT_ENCODING": FAKE_CF_VALUE}
+FAKE_TORCH_BUILD_MARKERS = ["FAKE_BLAS=accelerate", "USE_MKL=OFF"]
+FAKE_NUMPY_BUILD_MARKERS = ["FAKE_NUMPY_BLAS=accelerate"]
+FAKE_PROFILE_SOURCE = "FROZEN_PROFILE_MARKER = 1\n"
+MANDATORY_DIRECTIVES = (
+    "native_stack_modules",
+    "expected_profile_integration_sha256",
+    "torch_build_expected",
+    "numpy_build_expected",
+    "stage_b_expected",
+    "loaded_image_allowlist",
+    "expected_loaded_images",
+)
+# The setup probe's deliberately non-loading expectation: well-formed (it
+# passes require_mandatory_attestation_directives) but guaranteed to fail
+# authentication AFTER the measured Stage-B evidence is recorded, so the probe
+# can never emit payload_started.json.
+UNAUTHENTICATED_PROBE_EXPECTATION = [
+    {"path": "/m2cr-fixture/unauthenticated-probe.dylib", "sha256": "0" * 64}
+]
+
 pytestmark = pytest.mark.skipif(
     sys.platform != "darwin", reason="raw _NSGetEnviron is Darwin-specific"
 )
+
+
+def _fake_torch_source(thread_log: Path, variant: str) -> str:
+    """Source of the fake torch package: registers the PID-bound KMP entry and
+    the frozen __CF_USER_TEXT_ENCODING in the RAW C environment (mirroring
+    libomp/CoreFoundation, invisible to os.environ), exposes the frozen build
+    description and the 10/10 thread controls."""
+
+    interop_tail = (
+        "raise RuntimeError('synthetic interop failure')"
+        if variant == "raise"
+        else "return None"
+    )
+    intra_readback = (
+        "return 9" if variant == "wrong-readback" else 'return _threads["intra"]'
+    )
+    return f"""import ctypes
+import os
+from pathlib import Path
+
+_libc = ctypes.CDLL(None)
+_libc.setenv(b"__CF_USER_TEXT_ENCODING", b"{FAKE_CF_VALUE}", 1)
+_libc.setenv(
+    f"__KMP_REGISTERED_LIB_{{os.getpid()}}".encode(),
+    b"0x1234-cafe1234-libomp.dylib",
+    1,
+)
+_log = Path({os.fspath(thread_log)!r})
+_threads = {{"intra": 0, "interop": 0}}
+
+
+class _Config:
+    @staticmethod
+    def show():
+        return "{FAKE_TORCH_BUILD_MARKERS[0]}\\n{FAKE_TORCH_BUILD_MARKERS[1]}"
+
+
+__config__ = _Config()
+
+
+def set_num_threads(value):
+    _threads["intra"] = value
+    _log.write_text(f"intra={{value}}\\n", encoding="utf-8")
+
+def set_num_interop_threads(value):
+    _threads["interop"] = value
+    with _log.open("a", encoding="utf-8") as handle:
+        handle.write(f"interop={{value}}\\n")
+    {interop_tail}
+
+def get_num_threads():
+    {intra_readback}
+
+def get_num_interop_threads():
+    return _threads["interop"]
+"""
+
+
+def _fake_numpy_source() -> str:
+    return (
+        "def show_config():\n"
+        f"    print({FAKE_NUMPY_BUILD_MARKERS[0]!r})\n"
+    )
+
+
+def write_fake_native_stack(worktree: Path, *, torch_variant: str = "ok") -> Path:
+    """Materialize fake torch + numpy at the worktree root (sys.path index 0
+    shadows the real site-packages) and return the torch thread-call log."""
+
+    thread_log = worktree / "thread_calls.txt"
+    torch_dir = worktree / "torch"
+    torch_dir.mkdir()
+    (torch_dir / "__init__.py").write_text(
+        _fake_torch_source(thread_log, torch_variant), encoding="utf-8"
+    )
+    (worktree / "numpy.py").write_text(_fake_numpy_source(), encoding="utf-8")
+    return thread_log
+
+
+_measured_expected_loaded_images: list[dict[str, str]] | None = None
+
+
+def measured_expected_loaded_images() -> list[dict[str, str]]:
+    """Session-cached loaded-image expectations, measured by the setup probe
+    and hashed test-side.
+
+    The probe launches the REAL bootstrap through the real validation path with
+    ``UNAUTHENTICATED_PROBE_EXPECTATION`` as its expected set: authentication
+    fails closed AFTER the measured Stage-B evidence (native_stack.json) is
+    recorded and BEFORE the marker, so the probe never emits
+    payload_started.json.  The probe's native_stack.json is UNAUTHENTICATED
+    setup evidence, never a successful attestation: only its recorded image
+    PATHS are consumed, and each on-disk image is re-hashed here test-side
+    (the probe's own recorded hashes are deliberately ignored, so a launch can
+    never self-certify its expectation set within one invocation).  Two
+    independent probe measurements must agree exactly; a disagreement fails
+    the fixture rather than weakening authentication.
+    """
+
+    global _measured_expected_loaded_images
+    if _measured_expected_loaded_images is None:
+        measurements: list[list[str]] = []
+        for attempt in ("first", "second"):
+            probe_root = Path(
+                tempfile.mkdtemp(prefix=f"m2cr-image-probe-{attempt}-")
+            )
+            try:
+                completed, run_dir, events = _launch_bootstrap(
+                    probe_root,
+                    expected_loaded_images=UNAUTHENTICATED_PROBE_EXPECTATION,
+                )
+                assert completed.returncode not in (0, 3), (
+                    "the dummy-fail probe must fail authentication"
+                )
+                assert (
+                    b"has no committed expectation" in completed.stderr
+                ), completed.stderr.decode()
+                assert not (run_dir / "payload_started.json").exists(), (
+                    "the unauthenticated probe must never emit the marker"
+                )
+                assert [event["event"] for event in events] == ["HELLO"]
+                native = json.loads(
+                    (run_dir / "native_stack.json").read_text()
+                )
+                paths = native["loaded_images_stage_b"]
+                assert paths and paths == sorted(paths)
+                measurements.append(list(paths))
+            finally:
+                shutil.rmtree(probe_root, ignore_errors=True)
+        if measurements[0] != measurements[1]:
+            pytest.fail(
+                "repeated unauthenticated probe measurements disagree; "
+                "refusing to cache session-scoped loaded-image expectations "
+                "rather than weaken authentication: "
+                f"{sorted(set(measurements[0]) ^ set(measurements[1]))}"
+            )
+        expected: list[dict[str, str]] = []
+        for path in measurements[0]:
+            if not os.path.isfile(path):
+                continue
+            with open(path, "rb") as handle:
+                digest = hashlib.file_digest(handle, "sha256").hexdigest()
+            expected.append({"path": path, "sha256": digest})
+        assert expected, "the probe must measure at least one on-disk image"
+        _measured_expected_loaded_images = expected
+    return [dict(entry) for entry in _measured_expected_loaded_images]
 
 # Cross-worker seam: the shared bytecode classifier and the v2 walker land in
 # environment_freeze.py in a sibling change; the scan delegates to them.
@@ -124,7 +299,7 @@ def _payload_source(
     import_side_effect: Path | None = None,
     thread_log: Path | None = None,
     data_path: Path | None = None,
-    profile_import: bool = False,
+    profile_import: bool = True,
 ) -> str:
     lines: list[str] = []
     if profile_import:
@@ -232,97 +407,57 @@ def _launch_bootstrap(
     planted: str | None = None,
     prelaunch: bool = True,
     import_spy: bool = False,
-    fake_torch: str | None = None,
+    fake_torch: str = "ok",
+    native_stack_modules: list[str] | None = None,
     stage_b_expected: dict[str, str] | None = None,
     torch_build_expected: object = "auto",
-    profile: str | None = None,
+    numpy_build_expected: object = "auto",
+    expected_loaded_images: object = "measured",
+    profile: str = "match",
+    omit_directives: tuple[str, ...] = (),
 ) -> tuple[subprocess.CompletedProcess[bytes], Path, list[dict[str, object]]]:
+    """Launch the REAL bootstrap in a synthetic four-root worktree.
+
+    Codex round-3 C1 (Stage C): every launch carries the complete
+    seven-directive mandatory attestation set by default — the fake native
+    stack (torch + numpy), the fake in-worktree profile_integration stub, the
+    frozen fake Stage-B/build markers, and the session-measured
+    expected_loaded_images — so the config exercises the same unconditional
+    production validation and marker path as a real launch.  Negative tests
+    weaken exactly one directive via ``omit_directives`` or an explicit
+    override; there is no test-only bypass.
+    """
+
     worktree = tmp_path / "worktree"
     run_dir = worktree / "run"
     worktree.mkdir(parents=True)
     run_dir.mkdir()
-    fake_profile_path: Path | None = None
-    if profile is None:
-        (worktree / "bistar_gp").symlink_to(
-            REPOSITORY_ROOT / "bistar_gp", target_is_directory=True
-        )
-    else:
-        # The profile check needs a hashable in-worktree fake module; only
-        # the m2cr subpackage is shared with the repository.
-        package_dir = worktree / "bistar_gp"
-        package_dir.mkdir()
-        (package_dir / "m2cr").symlink_to(
-            REPOSITORY_ROOT / "bistar_gp" / "m2cr", target_is_directory=True
-        )
-        fake_profile_path = package_dir / "profile_integration.py"
-        fake_profile_path.write_text(
-            "FROZEN_PROFILE_MARKER = 1\n", encoding="utf-8"
-        )
+    # The profile check needs a hashable in-worktree fake module; only the
+    # m2cr subpackage is shared with the repository.
+    package_dir = worktree / "bistar_gp"
+    package_dir.mkdir()
+    (package_dir / "m2cr").symlink_to(
+        REPOSITORY_ROOT / "bistar_gp" / "m2cr", target_is_directory=True
+    )
+    fake_profile_path = package_dir / "profile_integration.py"
+    fake_profile_path.write_text(FAKE_PROFILE_SOURCE, encoding="utf-8")
     data_path: Path | None = None
     if mode == "open_worktree":
         data_path = worktree / "payload_data.txt"
         data_path.write_bytes(b"frozen worktree bytes\n")
     side_effect = worktree / "payload_imported.txt"
     marker_path = run_dir / "payload_started.json"
+    thread_log = write_fake_native_stack(worktree, torch_variant=fake_torch)
     (worktree / "fake_payload.py").write_text(
         _payload_source(
             mode,
             marker_path=marker_path,
             import_side_effect=side_effect if import_spy else None,
-            thread_log=(worktree / "thread_calls.txt")
-            if fake_torch is not None
-            else None,
+            thread_log=thread_log,
             data_path=data_path,
-            profile_import=profile is not None,
         ),
         encoding="utf-8",
     )
-    if fake_torch is not None:
-        torch = worktree / "torch"
-        torch.mkdir()
-        torch.joinpath("__init__.py").write_text(
-            f"""import ctypes
-import os
-from pathlib import Path
-
-_libc = ctypes.CDLL(None)
-_libc.setenv(b"__CF_USER_TEXT_ENCODING", b"0x1F5:0x0:0x0", 1)
-_libc.setenv(
-    f"__KMP_REGISTERED_LIB_{{os.getpid()}}".encode(),
-    b"0x1234-cafe1234-libomp.dylib",
-    1,
-)
-_log = Path({os.fspath(worktree / "thread_calls.txt")!r})
-_threads = {{"intra": 0, "interop": 0}}
-
-
-class _Config:
-    @staticmethod
-    def show():
-        return "FAKE_BLAS=accelerate\\nUSE_MKL=OFF"
-
-
-__config__ = _Config()
-
-
-def set_num_threads(value):
-    _threads["intra"] = value
-    _log.write_text(f"intra={{value}}\\n", encoding="utf-8")
-
-def set_num_interop_threads(value):
-    _threads["interop"] = value
-    with _log.open("a", encoding="utf-8") as handle:
-        handle.write(f"interop={{value}}\\n")
-    {"raise RuntimeError('synthetic interop failure')" if fake_torch == "raise" else "return None"}
-
-def get_num_threads():
-    {"return 9" if fake_torch == "wrong-readback" else 'return _threads["intra"]'}
-
-def get_num_interop_threads():
-    return _threads["interop"]
-""",
-            encoding="utf-8",
-        )
     if planted == "orphan":
         orphan_dir = worktree / "orphan/__pycache__"
         orphan_dir.mkdir(parents=True)
@@ -372,12 +507,30 @@ def get_num_interop_threads():
         os.fspath(worktree.resolve()),
         *(os.fspath(root.resolve()) for root in extra_roots),
     ]
+    if expected_loaded_images == "measured":
+        resolved_images = measured_expected_loaded_images()
+    else:
+        resolved_images = expected_loaded_images
     config = {
         "four_roots": roots,
         "frozen_env": expected_environment,
         "expected_pycache_prefix": os.fspath(pycache.resolve()),
         "expected_sentinel_hash": SENTINEL_HASH,
-        "native_stack_modules": ["torch"] if fake_torch is not None else [],
+        "native_stack_modules": (
+            ["torch", "numpy"]
+            if native_stack_modules is None
+            else native_stack_modules
+        ),
+        "expected_profile_integration_sha256": (
+            sha256_file(fake_profile_path) if profile == "match" else "f" * 64
+        ),
+        "stage_b_expected": (
+            dict(FAKE_STAGE_B_EXPECTED)
+            if stage_b_expected is None
+            else stage_b_expected
+        ),
+        "loaded_image_allowlist": [],
+        "expected_loaded_images": resolved_images,
         "worktree_root": roots[0],
         "attestation_paths": paths,
         "payload": {"entry": "fake_payload:run", "pass_context": True},
@@ -388,21 +541,16 @@ def get_num_interop_threads():
             "chain": CHAIN,
         },
     }
-    if stage_b_expected is not None:
-        config["stage_b_expected"] = stage_b_expected
-    if fake_torch is not None:
-        if torch_build_expected == "auto":
-            config["torch_build_expected"] = [
-                "FAKE_BLAS=accelerate",
-                "USE_MKL=OFF",
-            ]
-        elif torch_build_expected is not None:
-            config["torch_build_expected"] = torch_build_expected
-    if profile is not None:
-        assert fake_profile_path is not None
-        config["expected_profile_integration_sha256"] = (
-            sha256_file(fake_profile_path) if profile == "match" else "f" * 64
-        )
+    if torch_build_expected == "auto":
+        config["torch_build_expected"] = list(FAKE_TORCH_BUILD_MARKERS)
+    elif torch_build_expected is not None:
+        config["torch_build_expected"] = torch_build_expected
+    if numpy_build_expected == "auto":
+        config["numpy_build_expected"] = list(FAKE_NUMPY_BUILD_MARKERS)
+    elif numpy_build_expected is not None:
+        config["numpy_build_expected"] = numpy_build_expected
+    for directive in omit_directives:
+        config.pop(directive, None)
     config_path = run_dir / "config.json"
     config_path.write_text(canonical_dumps(config), encoding="utf-8")
     completed = subprocess.run(
@@ -472,8 +620,22 @@ def test_effect_proofs_hash_seed_path_audit_and_inventory(tmp_path: Path) -> Non
     payload_entry = next(item for item in modules if item["module"] == "fake_payload")
     assert payload_entry["origin"].endswith("/fake_payload.py")
     assert payload_entry["loader_class"].endswith("SourceFileLoader")
-    assert not any(item["module"] == "torch" for item in modules)
-    assert inventory["profile_integration_check"] is None
+    # C1 (Stage C): the mandatory native stack is attested on every launch —
+    # the fake torch/numpy resolve from the worktree root, never the real
+    # site-packages.
+    fake_torch_entry = next(item for item in modules if item["module"] == "torch")
+    assert fake_torch_entry["origin"].startswith(
+        os.fspath(run_dir.parent.resolve())
+    )
+    fake_numpy_entry = next(item for item in modules if item["module"] == "numpy")
+    assert fake_numpy_entry["origin"].startswith(
+        os.fspath(run_dir.parent.resolve())
+    )
+    # C1: the profile-hash directive is mandatory, so the explicit §4.5.10
+    # comparison ran and matched on this successful launch.
+    profile_check = inventory["profile_integration_check"]
+    assert profile_check["module_loaded"] is True
+    assert profile_check["match"] is True
     assert [event["event"] for event in events] == [
         "HELLO",
         "PAYLOAD_STARTED",
@@ -509,21 +671,109 @@ def test_stage_a_rejects_missing_and_extra_environment_entries(tmp_path: Path) -
         assert not (run_dir / "payload_started.json").exists()
 
 
-def test_stage_b_empty_stack_has_zero_delta_and_stage_c_detects_drift(
+def test_stage_b_native_delta_is_classified_and_stage_c_detects_drift(
     tmp_path: Path,
 ) -> None:
     completed, run_dir, _ = _launch_bootstrap(tmp_path / "clean")
     assert completed.returncode == 0, completed.stderr.decode()
+    # The fake native stack must never touch os.environ (only the raw C view
+    # carries the accepted CF + PID-bound KMP additions).
     assert json.loads((run_dir / "stage_b_os.json").read_text())["delta"] == {
         "added": {},
         "removed": {},
         "changed": {},
+    }
+    raw_added = json.loads((run_dir / "stage_b_raw.json").read_text())["delta"][
+        "added"
+    ]
+    assert set(raw_added) == {
+        "__CF_USER_TEXT_ENCODING",
+        next(key for key in raw_added if key.startswith("__KMP_REGISTERED_LIB_")),
     }
     drifted, drift_run, _ = _launch_bootstrap(tmp_path / "drift", mode="drift")
     assert drifted.returncode not in (0, 3)
     assert "Stage C environment drift" in drifted.stderr.decode()
     assert not (drift_run / "stage_c.json").exists()
     assert (drift_run / "payload_started.json").exists()
+
+
+def test_empty_native_stack_declaration_fails_closed(tmp_path: Path) -> None:
+    """Codex round-3 C1: an EMPTY native-stack declaration is rejected by the
+    unconditional mandatory-directive gate before any native import — the lean
+    empty-stack launch the old hermetic tests used can never reach the marker."""
+
+    completed, run_dir, events = _launch_bootstrap(
+        tmp_path, native_stack_modules=[]
+    )
+    assert completed.returncode not in (0, 3)
+    assert (
+        "native_stack_modules must be a non-empty string list"
+        in completed.stderr.decode()
+    )
+    assert [event["event"] for event in events] == ["HELLO"]
+    assert not (run_dir / "payload_started.json").exists()
+    # Enforcement precedes the native imports and Stage-B measurement.
+    assert not (run_dir / "native_stack.json").exists()
+
+
+@pytest.mark.parametrize("directive", MANDATORY_DIRECTIVES)
+def test_each_mandatory_directive_omitted_individually_fails_closed(
+    tmp_path: Path, directive: str
+) -> None:
+    """Codex round-3 C1 (requirement 1): every production marker path requires
+    ALL seven mandatory attestation directives — omitting any single one fails
+    closed before any native import, with no marker and no Stage-B evidence."""
+
+    completed, run_dir, events = _launch_bootstrap(
+        tmp_path, omit_directives=(directive,)
+    )
+    assert completed.returncode not in (0, 3)
+    stderr = completed.stderr.decode()
+    assert "missing mandatory attestation directives" in stderr
+    assert directive in stderr
+    assert [event["event"] for event in events] == ["HELLO"]
+    assert not (run_dir / "payload_started.json").exists()
+    assert not (run_dir / "native_stack.json").exists()
+    failure = json.loads((run_dir / "bootstrap_failure.json").read_text())
+    assert failure["fault_class"] == "attestation_fault"
+
+
+@pytest.mark.parametrize(
+    "case", ["missing_expected", "unexpected_additional", "hash_mismatch"]
+)
+def test_loaded_image_authentication_fails_closed_at_launch(
+    tmp_path: Path, case: str
+) -> None:
+    """Codex round-3 C1 + F2 at the launch level: the real bootstrap's
+    measured Stage-B images are authenticated against the committed expected
+    set — a committed-expected image that did not load, a loaded image with no
+    committed expectation, and an expected-image hash mismatch each fail
+    closed AFTER the measured evidence is recorded and BEFORE the marker."""
+
+    measured = measured_expected_loaded_images()
+    if case == "missing_expected":
+        expected = measured + [
+            {"path": "/m2cr-fixture/never-loads.dylib", "sha256": "1" * 64}
+        ]
+        message = "committed-expected native image did not"
+    elif case == "unexpected_additional":
+        expected = measured[:-1]
+        message = "has no committed expectation"
+    else:
+        expected = [dict(measured[0], sha256="f" * 64), *measured[1:]]
+        message = "does not match its committed expectation"
+    completed, run_dir, events = _launch_bootstrap(
+        tmp_path, expected_loaded_images=expected
+    )
+    assert completed.returncode not in (0, 3)
+    assert message in completed.stderr.decode()
+    assert [event["event"] for event in events] == ["HELLO"]
+    # The measured Stage-B evidence is recorded (nothing vanishes), but it is
+    # pre-authentication evidence only: the marker must never exist.
+    assert (run_dir / "native_stack.json").exists()
+    assert not (run_dir / "payload_started.json").exists()
+    failure = json.loads((run_dir / "bootstrap_failure.json").read_text())
+    assert failure["fault_class"] == "attestation_fault"
 
 
 def test_duplicate_raw_keys_and_delta_rules(tmp_path: Path) -> None:

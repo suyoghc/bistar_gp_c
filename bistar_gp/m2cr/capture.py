@@ -1424,6 +1424,12 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         )
         _bind_attestation_directives(template, expectations)
         _require_complete_attestation_directives(template)
+        # After the derive/bind/require attestation block, the remaining
+        # pre-Popen work (payload-path resolution, template plumbing, run-dir
+        # containment) is infrastructure setup again, so its failures keep the
+        # ratified C2 classification (capture_fault, "pre-spawn infrastructure
+        # failure") rather than inheriting the attestation phase.
+        pre_spawn_phase = "infrastructure"
         payload_path = _payload_entry_path(template, worktree_root)
         template.pop("event_fd", None)
         template.update(
