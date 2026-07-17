@@ -17,18 +17,19 @@ serializer with the frozen nonfinite sentinels.
 
 | Artifact | Bytes | Notes |
 |---|---|---|
-| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,743,892 | format v2 (roots header, per-entry loader); 39,955 entries: 39,389 source, 564 extension, 2 importable-archive, 0 orphan-bytecode |
+| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,743,895 | format v2 (roots header, per-entry loader); 39,955 entries: 39,389 source, 564 extension, 2 importable-archive, 0 orphan-bytecode |
 | `m2cr_dependency_lock_v1.json` | 57,451 | supplementary only; editable installs excluded from `pip_freeze` (external audit round-3 F4), reproducible at HEAD |
 | `m2cr_preboundary_attestation_set_v1.json` | 14,825 | dyld main cache plus its twelve declared subcaches, interpreter, and the complete 76-entry pre-boundary bootstrap closure; the five worktree-origin closure pins are stored worktree-relative (F3), which is why the set is smaller than before |
 | `m2cr_infrastructure_manifest_v1.json` | 2,872 | Layer 1a; repo-relative pins (now 7 artifacts incl. native-stack expectations) |
-| `m2cr_native_stack_expectations_v1.json` | 12,268 | F1/F2 round-3: frozen native stack, profile hash, backend build markers, Stage-B delta, and the 66-entry expected on-disk loaded-image set (path+sha256) |
+| `m2cr_native_stack_expectations_v1.json` | 12,314 | F1/F2 round-3 + finding 3: frozen native stack, profile hash, build-pinned bound sentinel `__hash__` (§4.5.8), backend build markers, Stage-B delta, and the 66-entry expected on-disk loaded-image set (path+sha256) |
 | `m2cr_environment_freeze_manifest_v1.json` | 731 | the aggregating manifest; its file sha256 is the chain member |
 | `m2cr_child_env_mapping_v1.json` | 602 | includes the concrete frozen `PATH` |
 | `m2cr_interpreter_pin_v1.json` | 383 | version string plus resolved-target sha256 |
 
-Fixed-artifact total: **8,833,024 bytes** (measured; regenerated after the Codex round-3
-C1–C4 remediation — unconditional bootstrap/parent attestation enforcement and the Stage-C
-hermetic fake-bundle tests; the F3 worktree-relative closure pins and the F4
+Fixed-artifact total: **8,833,073 bytes** (measured; regenerated after the external-audit
+hardening cycle — WI3 adds the build-pinned sentinel hash to the native-stack expectations,
+and the importable/preboundary/aggregating pins re-derive for the changed code; the F3
+worktree-relative closure pins and the F4
 editable-filtered lock carry over unchanged).
 
 Two truthfulness notes. First, the plan §4.5.12 ratification-time estimates (roughly 78,890 entries,
@@ -87,7 +88,7 @@ classified in `bistar_gp/m2cr/measure.py` (`RUN_DIR_EVIDENCE_CLASSES`), and a CI
 any layout member lacks a measurement classification, so the per-run projection cannot silently omit a
 component.
 
-**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,833,024 bytes**
+**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,833,073 bytes**
 (the table above); it is NOT part of the per-run evidence bundle.
 
 **Per-run evidence bundle (per launch) — components:**
