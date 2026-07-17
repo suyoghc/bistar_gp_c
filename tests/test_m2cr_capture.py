@@ -2034,33 +2034,121 @@ def test_dependency_lock_semantic_mismatch_refuses_launch(tmp_path: Path) -> Non
     assert "do not match the committed lock" in record["fault"]["detail"]
 
 
-def test_racing_terminal_publication_is_never_clobbered_by_capture(
-    tmp_path: Path,
-) -> None:
-    """Codex round-3 C4 at the capture level: when another writer (a
-    reconciliation racing this capture) publishes the terminal first, the
-    capture publish loses on EEXIST and returns the durable on-disk record
-    verbatim — it never overwrites it."""
+def _valid_same_run_winner(config: LaunchConfig) -> dict:
+    """A schema-valid INFRA_FAILURE terminal record bound to THIS run — the shape
+    a legitimate reconciliation/racing publisher would leave on disk, and the
+    only kind of occupant _race_winner_or_raise returns as the authoritative
+    winner (Codex hardening round 2)."""
 
-    planted = {"planted": "by-racing-writer"}
-    planted_bytes = json.dumps(
-        planted, sort_keys=True, separators=(",", ":")
+    return {
+        "schema_version": 1,
+        "record_kind": config.record_kind,
+        "status": "INFRA_FAILURE",
+        "run_id": config.run_id,
+        "launch_attempt_id": config.launch_attempt_id,
+        "chain": dict(config.chain),
+        "fault": {
+            "fault_class": "capture_fault",
+            "detail": "reconstructed after parent death",
+            "reconstructed": True,
+            "payload_started": False,
+        },
+        "evidence": {
+            "raw_manifest_sha256": "0" * 64,
+            "node_evidence_digests": [],
+            "event_stream_balanced": False,
+        },
+        "not_a_result": True,
+    }
+
+
+def test_racing_terminal_publication_is_never_clobbered_by_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Codex round-3 C4 at the capture level: when a reconciliation racing this
+    capture publishes a valid same-run terminal first, the capture publish loses
+    on EEXIST and returns the durable on-disk winner verbatim — it never
+    overwrites it, and the launch-attempt evidence survives alongside."""
+
+    config = _make_launch(tmp_path)
+    winner = _valid_same_run_winner(config)
+    real_write = capture_module._write_terminal
+
+    def racing_write(rd: Path, record: dict) -> str:
+        if record.get("status") == "COMPLETED":
+            real_write(rd, winner)  # a reconciler wins just before capture
+        return real_write(rd, record)
+
+    monkeypatch.setattr(capture_module, "_write_terminal", racing_write)
+    record = capture_run(config)
+    run_dir = Path(config.run_dir)
+    assert record == winner
+    assert json.loads((run_dir / TERMINAL_RECORD_NAME).read_text()) == winner
+    assert (run_dir / RAW_MANIFEST_NAME).is_file()
+    assert (run_dir / "payload_started.json").is_file()
+
+
+def test_canonical_squatter_is_not_returned_as_winner(tmp_path: Path) -> None:
+    """Codex hardening round 2: a canonical-but-schema-invalid occupant (here an
+    empty object) is NOT an authoritative terminal record, so capture_run raises
+    TerminalWriteError rather than returning it — capture_run's return value is
+    always a schema-valid terminal record or a raised exception, never a
+    non-record. The squatter is preserved, never clobbered."""
+
+    config = _make_launch(
+        tmp_path,
+        extra_payload_code=(
+            "open(os.path.join("
+            f"{os.fspath(tmp_path / 'run')!r}, 'terminal_record.json'), "
+            "'wb').write(b'{}')"
+        ),
+    )
+    with pytest.raises(capture_module.TerminalWriteError, match="schema-invalid"):
+        capture_run(config)
+    assert (Path(config.run_dir) / TERMINAL_RECORD_NAME).read_bytes() == b"{}"
+
+
+def test_wrong_run_winner_is_not_returned(tmp_path: Path) -> None:
+    """Codex hardening round 2: a canonical, schema-VALID terminal record for a
+    DIFFERENT run is still a squatter — capture_run raises rather than returning
+    another run's record as this run's outcome. (The run-id mismatch alone
+    triggers the refusal; the foreign record is schema-valid so the check reaches
+    the identity comparison.)"""
+
+    foreign = {
+        "schema_version": 1,
+        "record_kind": "diagnostic",
+        "status": "INFRA_FAILURE",
+        "run_id": "m2cr-some-other-run",
+        "launch_attempt_id": LAUNCH_ATTEMPT_ID,
+        "chain": dict(CHAIN),
+        "fault": {
+            "fault_class": "capture_fault",
+            "detail": "a different run's record",
+            "reconstructed": True,
+            "payload_started": False,
+        },
+        "evidence": {
+            "raw_manifest_sha256": "0" * 64,
+            "node_evidence_digests": [],
+            "event_stream_balanced": False,
+        },
+        "not_a_result": True,
+    }
+    validate_terminal_record(foreign)  # confirm the occupant is genuinely valid
+    foreign_bytes = json.dumps(
+        foreign, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     config = _make_launch(
         tmp_path,
         extra_payload_code=(
             "open(os.path.join("
             f"{os.fspath(tmp_path / 'run')!r}, 'terminal_record.json'), "
-            f"'wb').write({planted_bytes!r})"
+            f"'wb').write({foreign_bytes!r})"
         ),
     )
-    record = capture_run(config)
-    run_dir = Path(config.run_dir)
-    assert record == planted
-    assert json.loads((run_dir / TERMINAL_RECORD_NAME).read_text()) == planted
-    # The launch-attempt evidence still exists alongside the preserved record.
-    assert (run_dir / RAW_MANIFEST_NAME).is_file()
-    assert (run_dir / "payload_started.json").is_file()
+    with pytest.raises(capture_module.TerminalWriteError, match="DIFFERENT run"):
+        capture_run(config)
 
 
 def test_write_terminal_fsyncs_the_record_and_directory(
@@ -2290,7 +2378,7 @@ def test_pre_spawn_race_loser_returns_the_on_disk_terminal(
 
     config = _make_launch(tmp_path)
     run_dir = Path(config.run_dir)
-    planted = {"planted": "pre-spawn-race-winner"}
+    planted = _valid_same_run_winner(config)
 
     def racing_prelaunch(*args: object, **kwargs: object) -> dict:
         capture_module._write_terminal(run_dir, planted)
@@ -2518,26 +2606,7 @@ def test_normal_capture_racing_reconciliation_returns_the_durable_winner(
 
     config = _make_launch(tmp_path)
     run_dir = Path(config.run_dir)
-    reconciled = {
-        "schema_version": 1,
-        "record_kind": "diagnostic",
-        "status": "INFRA_FAILURE",
-        "run_id": "m2cr-capture-test",
-        "launch_attempt_id": LAUNCH_ATTEMPT_ID,
-        "chain": dict(config.chain),
-        "fault": {
-            "fault_class": "capture_fault",
-            "detail": "reconstructed after parent death",
-            "reconstructed": True,
-            "payload_started": False,
-        },
-        "evidence": {
-            "raw_manifest_sha256": "0" * 64,
-            "node_evidence_digests": [],
-            "event_stream_balanced": False,
-        },
-        "not_a_result": True,
-    }
+    reconciled = _valid_same_run_winner(config)
     real_write = capture_module._write_terminal
 
     def racing_write(rd: Path, record: dict) -> str:
@@ -2550,3 +2619,33 @@ def test_normal_capture_racing_reconciliation_returns_the_durable_winner(
     record = capture_run(config)
     assert record == reconciled
     assert json.loads((run_dir / TERMINAL_RECORD_NAME).read_text()) == reconciled
+
+
+def test_reconcile_run_refuses_on_a_racing_terminal_valid_or_squatter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Codex hardening round 2: reconcile_run's contract is REFUSE on any
+    pre-existing terminal, so when a terminal appears in the window between its
+    precheck and its own publish — whether a valid winner or a malformed squatter
+    — it raises TerminalAlreadyExists (a RecordAssemblyError refusal) and never
+    returns an un-published reconstructed record.  Distinct from the capture
+    race-loser contract (which returns the valid winner); reconcile does not
+    reconstruct over an occupied name."""
+
+    for occupant in (b'{"a":1}', b"NOT-JSON-SQUATTER"):
+        run_dir = tmp_path / f"reconcile-{len(occupant)}"
+        _write_reconcile_evidence(run_dir)
+        real_write = capture_module._write_terminal
+
+        def racing_write(rd: Path, record: dict, _bytes=occupant) -> str:
+            # A racing writer occupies the terminal name between reconcile's
+            # precheck and its publish.
+            (rd / TERMINAL_RECORD_NAME).write_bytes(_bytes)
+            return real_write(rd, record)
+
+        monkeypatch.setattr(capture_module, "_write_terminal", racing_write)
+        with pytest.raises(RecordAssemblyError, match="already exists"):
+            reconcile_run(run_dir)
+        # The occupant is preserved; reconcile never clobbered it.
+        assert (run_dir / TERMINAL_RECORD_NAME).read_bytes() == occupant
+        monkeypatch.undo()

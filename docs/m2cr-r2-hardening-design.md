@@ -122,6 +122,16 @@ manifest is mandatory and consumed.
   (raise a typed `TerminalPublicationError` carrying the attempted record + cause),
   another-valid-winner (return that record), directory-fsync-uncertain (explicit
   publication-uncertain surface), confirmed-durable, and malformed-occupant.
+  Hardening-round-2 refinement (Codex): the shared `_race_winner_or_raise` returns an
+  EEXIST occupant ONLY when it is a schema-valid terminal record bound to THIS run
+  (`validate_terminal_record` + matching `run_id`/`launch_attempt_id`/`chain`); a
+  canonical-but-schema-invalid or wrong-run occupant is a §4.5.13 squatter surfaced as
+  a `TerminalWriteError`, so `capture_run` always returns a schema-valid record or
+  raises, never a non-record. The winner path fsyncs the run directory before
+  returning (a racing publisher may have linked the name but not yet fsync'd), raising
+  `TerminalDurabilityUncertain` if that cannot be confirmed. `reconcile_run` keeps its
+  distinct refuse-on-any-existing-terminal contract (it raises `TerminalAlreadyExists`,
+  a `RecordAssemblyError`, rather than reconstructing over an occupied name).
 
 ## Files expected to change
 

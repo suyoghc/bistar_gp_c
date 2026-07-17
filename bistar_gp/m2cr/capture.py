@@ -960,27 +960,78 @@ def _race_winner_or_raise(
 ) -> dict[str, Any]:
     """Resolve a no-clobber publication that lost to an existing terminal.
 
-    If the occupying file is a valid canonical record it is the authoritative
-    durable winner (a reconciliation of this run, or a racing writer) and is
-    returned verbatim.  If it is unreadable or noncanonical — a §4.5.13
-    adversarial squatter — then NOTHING of ours was durably published, so under
-    the finding-6 contract (return only an authoritative durable record) a
-    :class:`TerminalWriteError` is raised carrying the attempted record; the
-    squatter is preserved on disk, never clobbered.  This is the single point
-    both publication sites share, so the valid-winner and malformed-occupant
-    states are distinguished identically.
+    The AUTHORITATIVE winner is a schema-valid terminal record for THIS run — a
+    reconciliation of this run, or a racing capture of the same run — and only
+    such a record is returned.  Any other occupant is a §4.5.13 squatter and is
+    surfaced as a publication failure rather than returned as the outcome, so
+    capture_run's return value is always a schema-valid terminal record (or a
+    raised typed exception), never a non-record (finding-6 contract; Codex
+    hardening round 2):
+
+    - unreadable or noncanonical bytes → :class:`TerminalWriteError`;
+    - canonical but schema-invalid, or a record for a DIFFERENT run →
+      :class:`TerminalWriteError` (a canonical squatter is not an authoritative
+      record);
+    - a valid same-run winner whose directory entry cannot be confirmed durable
+      from our vantage (a racing publisher may have linked it but not yet
+      fsync'd the directory) → :class:`TerminalDurabilityUncertain`.
+
+    The squatter/occupant is preserved on disk in every failing case, never
+    clobbered.  Both capture publication sites share this one resolver.
     """
 
+    final = run_dir / TERMINAL_RECORD_NAME
     try:
-        return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
+        occupant = _read_json_object(final)
     except (OSError, ValueError, RecursionError) as exc:
         raise TerminalWriteError(
-            f"the terminal name at {run_dir / TERMINAL_RECORD_NAME} is occupied "
-            "by a non-authoritative or unreadable file and this record could "
-            f"not be published: {exc}",
+            f"the terminal name at {final} is occupied by a non-authoritative "
+            f"or unreadable file and this record could not be published: {exc}",
             attempted_record=attempted_record,
             cause=exc,
         ) from exc
+    # A canonical JSON object is not necessarily a terminal record: require the
+    # occupant to be schema-valid AND bound to this run before treating it as the
+    # authoritative winner (else it is a squatter, returned to no one).
+    try:
+        validate_terminal_record(occupant)
+    except RecordAssemblyError as exc:
+        raise TerminalWriteError(
+            f"the terminal name at {final} is occupied by a canonical but "
+            f"schema-invalid file and this record could not be published: {exc}",
+            attempted_record=attempted_record,
+            cause=exc,
+        ) from exc
+    same_run = all(
+        occupant.get(key) == attempted_record.get(key)
+        for key in ("run_id", "launch_attempt_id")
+    ) and dict(occupant.get("chain", {})) == dict(attempted_record.get("chain", {}))
+    if not same_run:
+        raise TerminalWriteError(
+            f"the terminal name at {final} is occupied by a terminal record for "
+            "a DIFFERENT run and this record could not be published",
+            attempted_record=attempted_record,
+            cause=ValueError("occupant run identity does not match this run"),
+        )
+    # The winner is authoritative; confirm its directory entry is durable from
+    # our vantage before returning it — a racing publisher may have linked the
+    # final name but not yet fsync'd the directory, so we fsync here so the
+    # returned record is truthfully crash-durable (Codex hardening round 2).
+    try:
+        dir_fd = os.open(run_dir, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError as exc:
+        raise TerminalDurabilityUncertain(
+            f"the authoritative race winner is visible at {final} but its "
+            f"directory entry could not be confirmed durable: {exc}",
+            record=occupant,
+            digest=hashlib.sha256(canonical_bytes(occupant)).hexdigest(),
+            cause=exc,
+        ) from exc
+    return occupant
 
 
 def _reauthenticate_loaded_images_parent_side(
