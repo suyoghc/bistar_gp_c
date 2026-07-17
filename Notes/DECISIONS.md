@@ -4450,3 +4450,54 @@ re-verified: all protected files byte-identical to origin/main, ledger 1 line, v
 absent, nothing under runs/ or experiments/, only bistar_gp/m2cr/* source changed. This is an
 iterative improvement cycle, NOT a freeze, R2a, R3, execution grant, Ready, or merge; PR #16 stays
 Draft. A fresh three-reviewer delta review at the new head follows per the standing protocol.
+
+### D48 — Update 11 (2026-07-17): external-audit hardening cycle — four-round three-reviewer delta review returned unanimous APPROVE at 0a1a7f2; findings 3/4/5/6 closed, 2 advanced, 1 deferred
+
+The continuous-hardening cycle for the bd1d0f9 external audit (Update 10) was put through the
+standing three-reviewer delta gate (Codex gpt-5.6-sol xHigh / Opus 4.8 / GLM 5.2 via OpenRouter),
+re-run at each new head per the "any implementation or frozen artifact change re-runs all three"
+rule. Four rounds, converging:
+
+- **Round 1 (head 8650661):** Codex REVISE (3 MAJOR + 2 MINOR), Opus REVISE (one doc-truthfulness
+  finding), GLM APPROVE x3. The load-bearing finding (both Codex and Opus): the design note falsely
+  claimed WI2/finding-2 "landed/closed" and referenced an unbuilt AuthenticatedLaunchSpec.
+  Adjudicated + fixed (7150b89): design-note truthfulness; the malformed-squatter EEXIST case now
+  RAISES (WI6 contract) instead of returning an un-published record; run-local dirs reclassified as
+  allowance-bearing (their contents are Layer-3 raw-manifested); pre-spawn mkdir isolated; in-code
+  sentinel-drift guard; seven->eight directive doc fixes. One GLM ordering nit dismissed (fail-closed).
+- **Round 2 (head c1c6442):** Codex REVISE (3 MAJOR), Opus APPROVE, GLM APPROVE x3. Two Codex MAJORs
+  confirmed against the WI6 wording and fixed (181cd52): _race_winner_or_raise now returns an EEXIST
+  occupant ONLY if it is a schema-valid terminal record bound to THIS run (a canonical-but-invalid or
+  wrong-run occupant is a squatter -> raise, never a non-record), and it fsyncs the run directory
+  before returning a winner (durability TOCTOU), raising TerminalDurabilityUncertain on failure. The
+  third (reconcile not using the helper) dismissed — Opus verified reconcile's refuse-on-existing
+  contract is correct — with a coverage test added.
+- **Round 3 (head 9c3549d):** Codex REVISE (1 MAJOR + 1 MINOR, BOTH test-discrimination gaps; Codex
+  confirmed the production path correct), Opus APPROVE, GLM APPROVE x3. Fixed test-only (f2bc851): a
+  discriminating test for the _race_winner_or_raise durability-fsync -> TerminalDurabilityUncertain
+  branch (which a fully-published planted winner cannot reach), and the reconcile-race test
+  parametrized over a VALID raced winner + the two squatters.
+- **Round 4 (head 0a1a7f2, final confirmatory):** **Codex APPROVE, Opus APPROVE, GLM APPROVE x3** —
+  no confirmed defects; the delta is test-only (`git diff -- bistar_gp/` empty) plus a mechanical
+  manifest re-pin; both new tests verified non-vacuous; regeneration exact; boundaries clean.
+
+**Cycle commits (heads):** 27e7e8d (WI4) · ceb9793 (WI6) · 8a319b5 (WI3) · f1e15a8 (WI5) · f51a98e
+(regen) · 8650661 (docs U10) · 7150b89 (r1 fixes) · c1c6442 (regen) · 181cd52 (r2 squatter contract)
+· 9c3549d (regen) · f2bc851 (r3 tests) · 0a1a7f2 (regen). Freeze artifacts regenerated at each code
+head via the established detached-worktree process; the four environment-derived artifacts stayed
+byte-identical throughout, and the fixed-artifact total settled at 8,833,073 B (native-stack
+expectations +49 B for the sentinel field, everything else size-stable).
+
+**Disposition of the eight audit findings:** 7/8 (docs) fixed by 0b7c596; **3 (sentinel), 4 (retry
+candidate), 5 (evidence bundle), 6 (terminal publication) CLOSED** with discriminating tests and
+regenerated artifacts; **2 (env/interpreter authentication, BLOCKER) ADVANCED but OPEN** (parent
+derives expectations/lock/roots/sentinel; the env/interpreter/pre-boundary derivation + skip-token
+removal is the next cycle); **1 (mandatory importable-manifest child binding, BLOCKER) DEFERRED**
+with the measured ~12-23 s real-root-walk cost plan (docs/m2cr-r2-hardening-design.md).
+
+**State.** Full suite at 0a1a7f2: **798 passed, 2 skipped, 0 failed**. Boundaries re-verified: all
+protected files byte-identical to origin/main, ledger 1 line, v1.18 result instance absent, nothing
+under runs/ or experiments/, only bistar_gp/m2cr/* source changed across the cycle. This is an
+iterative improvement cycle — NOT a freeze, R2a, R3, execution grant, Ready, or merge. The two
+BLOCKER findings (1 and 2) remain the explicitly-documented next launch-authority cycle. PR #16
+stays Draft.

@@ -2,7 +2,7 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## M2cR R2 — CONTINUOUS HARDENING; external audit bd1d0f9 findings 3/4/5/6 CLOSED, 2 advanced, 1 deferred (D48 Updates 7–10, 2026-07-17); another three-reviewer delta review pending — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR #16, HARD STOP
+## M2cR R2 — CONTINUOUS HARDENING; external audit bd1d0f9 findings 3/4/5/6 CLOSED, 2 advanced, 1 deferred; four-round three-reviewer gate returned unanimous APPROVE at 0a1a7f2 (D48 Updates 7–11, 2026-07-17) — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR #16, HARD STOP
 
 - **Shipped (hermetic, plan §8 R2 exactly), at HEAD:** `bistar_gp/m2cr/` (12 modules) + **15**
   `tests/test_m2cr_*` files; v2 gates byte-equivalent with full attempt/retry evidence; write-ahead
@@ -48,8 +48,15 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
     unconditional consumption + isolated real-root integration launches (incl.
     numpy/_distributor_init_local.py) need a session-cached host manifest and a small launch count —
     a dedicated next cycle. Full record: D48 Update 10 + docs/m2cr-r2-hardening-design.md.
-- Full suite at f51a98e: **792 passed / 2 skipped / 0 failed**. Boundaries clean (protected
-  byte-identical, ledger 1 line, v1.18 absent, no runs/). This is an iterative cycle, NOT a freeze.
+- The cycle's fixes were put through the standing three-reviewer delta gate (Codex/Opus/GLM),
+  four converging rounds (heads 8650661 → c1c6442 → 9c3549d → 0a1a7f2), ending in **unanimous
+  APPROVE at 0a1a7f2** with zero unresolved confirmed defects (round 1 fixed the design-note
+  WI2/finding-2 overclaim + the squatter-return contract; round 2 the schema-valid-winner + durability
+  -fsync contract; round 3 the discriminating durability/valid-raced-reconcile tests; round 4
+  confirmatory). Full record: D48 Update 11.
+- Full suite at HEAD (0a1a7f2): **798 passed / 2 skipped / 0 failed**. Boundaries clean (protected
+  byte-identical, ledger 1 line, v1.18 absent, no runs/ or experiments/). This is an iterative cycle,
+  NOT a freeze; findings 1/2 remain the next launch-authority cycle. PR #16 stays Draft.
 - **Prompt-hash note:** the R2 authorization prompt's rev-5 hash was a splice (suffix = D46 historical
   plan hash); the plan is consistent at §1 and §12 with the true `c3e9db66…d1ce3f`, which the file
   matches. Gate intent held. See D48.
