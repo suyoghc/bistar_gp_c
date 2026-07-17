@@ -932,6 +932,80 @@ def test_prelaunch_failure_commits_infra_pre_spawn(
     validate_terminal_record(record)
 
 
+def test_terminal_publish_is_no_clobber_in_both_paths(tmp_path: Path) -> None:
+    """Codex round-3 C4: the terminal record is published with atomic no-clobber
+    semantics, so neither normal capture nor reconciliation can overwrite an
+    existing terminal — the second writer (the race loser) fails closed."""
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    record = {
+        "schema_version": 1,
+        "record_kind": "diagnostic",
+        "status": "INFRA_FAILURE",
+        "run_id": "m2cr-noclobber",
+        "launch_attempt_id": LAUNCH_ATTEMPT_ID,
+        "chain": dict(CHAIN),
+        "fault": {
+            "fault_class": "other",
+            "detail": "first",
+            "reconstructed": False,
+            "payload_started": False,
+        },
+        "evidence": {
+            "raw_manifest_sha256": "0" * 64,
+            "node_evidence_digests": [],
+            "event_stream_balanced": False,
+        },
+        "not_a_result": True,
+    }
+    digest = capture_module._write_terminal(run_dir, record)
+    assert isinstance(digest, str) and len(digest) == 64
+    assert (run_dir / TERMINAL_RECORD_NAME).is_file()
+    # A second publish (the race loser, whether capture or reconcile) fails
+    # closed rather than overwriting the first.
+    with pytest.raises(RecordAssemblyError, match="already exists"):
+        capture_module._write_terminal(run_dir, {**record, "fault": {**record["fault"], "detail": "second"}})
+    # The on-disk record is unchanged (the first writer's).
+    on_disk = json.loads((run_dir / TERMINAL_RECORD_NAME).read_text())
+    assert on_disk["fault"]["detail"] == "first"
+
+
+def test_event_pipe_start_failure_commits_infra_pre_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Codex round-3 C3: a non-OSError/ValueError failure in the pre-spawn phase
+    (a RuntimeError from the event-pipe start, e.g. thread-resource exhaustion)
+    is caught by the broadened handler and commits an INFRA_FAILURE record
+    rather than escaping capture_run after prelaunch.json is written."""
+
+    config = _make_launch(tmp_path)
+    real_pipe = capture_module.parent_event_pipe
+
+    class _BoomPipe:
+        def __init__(self, inner: object) -> None:
+            self._inner = inner
+            self.hello_event = threading.Event()
+
+        def start(self) -> None:
+            raise RuntimeError("thread resource exhausted")
+
+        def join(self, *args: object, **kwargs: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        capture_module,
+        "parent_event_pipe",
+        lambda events_path: _BoomPipe(real_pipe(events_path)),
+    )
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert "pre-spawn prelaunch failure" in record["fault"]["detail"]
+    assert "thread resource exhausted" in record["fault"]["detail"]
+    assert (Path(config.run_dir) / TERMINAL_RECORD_NAME).is_file()
+    validate_terminal_record(record)
+
+
 def test_capture_run_revalidates_a_partially_stripped_real_launch_template(
     tmp_path: Path,
 ) -> None:
@@ -1386,22 +1460,25 @@ def test_raw_files_excludes_only_the_root_two_by_relpath(tmp_path: Path) -> None
     assert RAW_MANIFEST_NAME not in got and TERMINAL_RECORD_NAME not in got
 
 
-def test_post_prelaunch_setup_failure_still_assembles_a_terminal_record(
+def test_post_prelaunch_setup_failure_is_infra_failure_not_not_started(
     tmp_path: Path,
 ) -> None:
-    """External audit round-2 F4b: a failure writing the bootstrap config (a
-    post-prelaunch setup step) must still yield a schema-valid terminal record,
-    not escape capture_run leaving nothing."""
+    """External audit round-2 F4b + Codex round-3 C2: a failure opening
+    stdout.txt (a pre-Popen infrastructure setup step) is a pre-payload
+    infrastructure fault, so it is INFRA_FAILURE with no payload_started — NOT
+    NOT_STARTED, which is reserved for a spawn attempted at Popen but never
+    confirmed."""
 
     config = _make_launch(tmp_path)
     run_dir = Path(config.run_dir)
-    # Turn stdout.txt into a directory so the post-prelaunch open() fails inside
-    # the supervised try; _make_launch does not create it, so this is clean.
+    # Turn stdout.txt into a directory so the pre-Popen open() fails.
     (run_dir / "stdout.txt").mkdir()
     record = capture_run(config)
-    # No child could spawn, so this is NOT_STARTED; the key point is a terminal
-    # record exists rather than an escaped exception.
-    assert record["status"] in {"NOT_STARTED", "INFRA_FAILURE"}
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "capture_fault"
+    assert "pre-spawn setup failure" in record["fault"]["detail"]
+    assert record["fault"]["payload_started"] is False
+    assert not (run_dir / "spawned.json").exists()
     validate_terminal_record(record)
 
 

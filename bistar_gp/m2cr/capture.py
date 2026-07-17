@@ -21,6 +21,7 @@ prior run evidence (:data:`FRESH_RUN_DIR_BLOCKERS`).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -769,7 +770,52 @@ def _prelaunch(
 
 
 def _write_terminal(run_dir: Path, record: Mapping[str, Any]) -> str:
-    return atomic_write_canonical_json(run_dir / TERMINAL_RECORD_NAME, dict(record))
+    """Atomically publish the terminal record with no-clobber semantics + fsync
+    (Codex round-3 C4).
+
+    A fully-flushed temp is written and fsync'd, then hard-linked to the final
+    name — an atomic, no-replace publication that fails ``EEXIST`` if a terminal
+    already exists, so neither normal capture nor reconciliation can overwrite
+    the other's terminal (§4.3 "Nothing vanishes and no state is silently
+    reclassified"; §3.1 write-temp / fsync / atomic publish).  The run directory
+    is fsync'd so the link is durable.  Raises :class:`RecordAssemblyError` on a
+    pre-existing terminal.
+    """
+
+    final = run_dir / TERMINAL_RECORD_NAME
+    payload = canonical_bytes(dict(record))
+    tmp = run_dir / f".{TERMINAL_RECORD_NAME}.{os.getpid()}.tmp"
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+    descriptor = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    try:
+        os.write(descriptor, payload)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        os.link(tmp, final)
+    except FileExistsError as exc:
+        os.unlink(tmp)
+        raise RecordAssemblyError(
+            f"terminal record already exists at {final}"
+        ) from exc
+    finally:
+        try:
+            if tmp.exists():
+                os.unlink(tmp)
+        except OSError:
+            pass
+    dir_fd = os.open(run_dir, os.O_RDONLY)
+    try:
+        os.fsync(dir_fd)
+    except OSError:
+        pass
+    finally:
+        os.close(dir_fd)
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _dependency_lock_fault(config: LaunchConfig) -> str | None:
@@ -1351,6 +1397,8 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     # block below).
     pre_spawn_phase = "infrastructure"
     pipe = None
+    stdout_handle: Any = None
+    stderr_handle: Any = None
     try:
         local = _prepare_run_directories(run_dir)
         environment, bootstrap_environment = _realize_environment(
@@ -1424,12 +1472,36 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         events_path = run_dir / "events.jsonl"
         pipe = parent_event_pipe(events_path)
         pipe.start()
-    except (OSError, ValueError) as exc:
+        # Codex round-3 F5(C2): the bootstrap-config write and stdout/stderr
+        # opens are pre-Popen infrastructure setup, so a failure here is a
+        # pre-payload infrastructure fault (INFRA_FAILURE), never NOT_STARTED
+        # (which is reserved for a spawn attempted at Popen but never
+        # confirmed).  Codex round-3 F5(C3): the whole pre-spawn phase catches
+        # ordinary Exception (e.g. a RuntimeError from pipe.start()), so no
+        # pre-spawn failure can escape capture_run without a terminal record.
+        pre_spawn_phase = "setup"
+        atomic_write_canonical_json(bootstrap_config_path, template)
+        stdout_handle = open(run_dir / "stdout.txt", "wb")
+        stderr_handle = open(run_dir / "stderr.txt", "wb")
+    except Exception as exc:
         if pipe is not None:
+            # Close the parent's write end first, or the pump thread blocks
+            # reading and pipe.join() would hang (the write end is normally
+            # closed in the supervised block after Popen).
+            try:
+                pipe.close_write_end_in_parent()
+            except BaseException:
+                pass
             try:
                 pipe.join()
             except BaseException:
                 pass
+        for handle in (stdout_handle, stderr_handle):
+            if handle is not None:
+                try:
+                    handle.close()
+                except OSError:
+                    pass
         fault_class = (
             "attestation_fault"
             if pre_spawn_phase == "attestation"
@@ -1448,18 +1520,17 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         try:
             run_dir.mkdir(parents=True, exist_ok=True)
             _write_terminal(run_dir, record)
-        except OSError:
-            # run_dir itself is unwritable; the record is still returned so the
-            # caller sees a terminal outcome rather than an escaped exception.
+        except (OSError, RecordAssemblyError):
+            # run_dir unwritable, or a terminal already exists (a reconciliation
+            # won the publish race); the record is still returned so the caller
+            # sees a terminal outcome rather than an escaped exception.
             pass
         return record
 
-    # The post-prelaunch setup (bootstrap-config write, stdout/stderr opens)
-    # is inside the supervised try so an ordinary failure there sets
-    # spawn_error and still assembles a terminal record, rather than escaping
-    # capture_run and leaving nothing (external audit round-2 F4b).
-    stdout_handle: Any = None
-    stderr_handle: Any = None
+    # The bootstrap-config write and stdout/stderr opens are now done in the
+    # pre-spawn phase above (Codex round-3 F5(C2)); the supervised block spawns
+    # and waits.  A failure at Popen (not before it) is the only NOT_STARTED
+    # path — an attempted-but-unconfirmed spawn.
     process: subprocess.Popen[Any] | None = None
     spawn_error: BaseException | None = None
     capture_fault: str | None = None
@@ -1469,9 +1540,6 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     spawn_thread: threading.Thread | None = None
     spawn_confirm_errors: list[BaseException] = []
     try:
-        atomic_write_canonical_json(bootstrap_config_path, template)
-        stdout_handle = open(run_dir / "stdout.txt", "wb")
-        stderr_handle = open(run_dir / "stderr.txt", "wb")
         argv = [
             os.fspath(Path(config.interpreter_path).resolve()),
             *_expanded_flags(config.interpreter_flags, local["PYCACHE_PREFIX"]),
@@ -1836,7 +1904,13 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
             detail=f"terminal assembly failed for status {status}: {exc}",
             payload_started=(run_dir / "payload_started.json").is_file(),
         )
-    _write_terminal(run_dir, record)
+    try:
+        _write_terminal(run_dir, record)
+    except RecordAssemblyError:
+        # Codex round-3 C4: a terminal already exists (a reconciliation of this
+        # run won the publish race).  Nothing vanishes — the durable record is
+        # the one already on disk; return it verbatim rather than overwrite it.
+        return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
     return record
 
 
@@ -1928,26 +2002,13 @@ def reconcile_run(
             "payload_started": (root / "payload_started.json").is_file(),
         },
     )
-    # CP-5: publish atomically with O_EXCL so two racing reconcilers (or
-    # reconciliation racing normal capture) cannot both pass the existence
-    # check above and overwrite each other's terminal record; the loser fails
-    # closed on EEXIST (§4.3 "Nothing vanishes and no state is silently
-    # reclassified").
-    terminal_path = root / TERMINAL_RECORD_NAME
-    try:
-        descriptor = os.open(
-            terminal_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644
-        )
-    except FileExistsError as exc:
-        raise RecordAssemblyError(
-            "reconciliation refused: a terminal record already exists at "
-            f"{terminal_path}"
-        ) from exc
-    try:
-        os.write(descriptor, canonical_bytes(record))
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    # CP-5 + Codex round-3 C4: publish through the shared no-clobber, fsync'd,
+    # atomic-link protocol so two racing reconcilers — OR reconciliation racing
+    # normal capture — cannot overwrite each other's terminal record; the loser
+    # fails closed on EEXIST (§4.3 "Nothing vanishes"; §3.1 write-temp / fsync /
+    # atomic publish).  _write_terminal raises RecordAssemblyError on a
+    # pre-existing terminal, which is the reconciliation-refused signal.
+    _write_terminal(root, record)
     return record
 
 
