@@ -20,7 +20,12 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   ratified fix-all; F5=INFRA_FAILURE; F1/F2 fail-closed with frozen values to R2a. Remediated F1–F6
   (commit 18d85f0); a Codex checkpoint then found 5 deeper cases CP-1..CP-5 (commit 27291c5); artifacts
   regenerated (eeefeef). Suite **723 passed/2 skipped**. Boundaries re-verified at eeefeef.
-- **GATE CLOSES WHEN:** fresh Codex/Opus/GLM delta re-reviews at head **eeefeef** (the standing
+- **Author-directed F1/F2/F4 strengthening (D48 Update 8):** mandatory attestations are now
+  DERIVED from a committed native-stack expectations artifact (F1), loaded images authenticated
+  against a committed (path,sha256) set before payload + parent rehash after exit (F2), semantic
+  lock recomputed before/after (F4); F5 INFRA_FAILURE-vs-NOT_STARTED split ratified. Commits
+  6a90522 (code) + 8c24b1f (artifacts). Suite 730 passed/2 skipped. Head now 8c24b1f.
+- **GATE CLOSES WHEN:** fresh Codex/Opus/GLM delta re-reviews at head **8c24b1f** (the standing
   "rerun all three on any implementation/artifact change" rule) each return clean and are adjudicated.
   Until then the gate is OPEN and PR #16 stays Draft. Distinguish "implementation complete" (true now)
   from "final review gate passed" (NOT yet).

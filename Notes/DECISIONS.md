@@ -4245,3 +4245,48 @@ protocol ("if any implementation or frozen artifact changes, rerun focused delta
 three reviewers against the new exact head"), the F1–F6 + CP remediation requires fresh Codex/Opus/GLM
 reviews at eeefeef before the gate can close. PR #16 stays Draft; no Ready/merge/R2a/R3/execute; no
 force-push.
+
+### D48 — Update 8 (2026-07-16): author-directed F1/F2/F4 strengthening + F5 interpretation ratified
+
+Before the eeefeef reviewers returned, the author revised the F1/F2/F4 constraints (the earlier
+"fail-closed now, frozen values to R2a" reading was too weak). **Ratified corrections:**
+
+1. **R2a scope.** R2a is ONLY the versioned numeric evidence-ceiling addendum. Native-image hashes,
+   build markers, Stage-B expectations, and image allowlists that R2 certification depends on are
+   committed R2 artifacts NOW, not deferred to R2a.
+2. **F1 — derive/bind, not merely validate.** The complete mandatory attestation set is canonically
+   DERIVED from a new committed, infra-pinned artifact
+   `docs/m2c_freeze/m2cr_native_stack_expectations_v1.json` (frozen native import list, the v1.17
+   `profile_integration_sha256`, torch/numpy backend build markers, the Stage-B env delta, the
+   loaded-image allowlist, and the F2 expected loaded-image set). `launch_config_from_freeze`
+   authenticates it against the Layer-1a infra pin and injects the directives via
+   `_bind_attestation_directives`, which REJECTS any caller-substituted value; the caller template
+   carries none of them. `build_native_stack_expectations` measures the set by importing the stack in
+   the frozen interpreter (attestation, not scientific evaluation) and verifies the frozen build /
+   Stage-B markers hold.
+3. **F2 — authenticate against a committed expected set, not self-certify.** `authenticate_loaded_images`
+   checks every on-disk loaded image against the committed `(path, sha256)` set BEFORE payload start
+   (fail closed on mismatch — a same-path pre-launch mutation — on any image with no committed
+   expectation, or on a committed-expected image that did not load); the parent re-hashes the set
+   after exit (`_reauthenticate_loaded_images_parent_side`) so payload code cannot replace the check.
+   66 on-disk images measured on the B14-host, deterministic across re-measurement.
+4. **F4 — no self-staling lock.** Editable installs (incl. the local `bistar_gp` git identity) stay
+   excluded; the project is bound through the worktree/importable + infrastructure manifests;
+   `capture_run` recomputes and compares the stable semantic lock fields (dist RECORD digests +
+   binary-extension aggregate) before spawn and parent-side after exit
+   (`verify_dependency_lock_semantics`).
+5. **F5 interpretation — RATIFIED.** For a pre-payload infrastructure/attestation failure the specific
+   §4.3 pre-payload sentence controls over the first-match NOT_STARTED rule: this case produces
+   **INFRA_FAILURE with no `payload_started` and no authorization consumption** (no scientific
+   evaluation occurred). A no-**confirmed**-spawn failure that is NOT a pre-payload attestation/infra
+   fault (e.g. a bad interpreter that fails at `Popen`) remains **NOT_STARTED** (precedence rule 1).
+   The capture driver implements exactly this split; NOT_STARTED never consumes authorization either.
+
+Discriminating negative tests were added for each property (caller-substitution rejection;
+loaded-image mismatch / no-expectation / did-not-load; semantic-lock drift; absent build marker; the
+pre-spawn INFRA_FAILURE vs NOT_STARTED split). Commits: 6a90522 (F1/F2/F4 code+tests, incl. the
+audit/env-freeze infra-key extension), 8c24b1f (regenerated artifacts + the new expectations artifact
++ evidence-size report). Full suite **730 passed, 2 skipped**. Boundaries re-verified: all protected
+files byte-identical, ledger 1 line, v1.18 absent, nothing under runs/. **Gate state: implementation
+complete; review gate OPEN** — fresh Codex/Opus/GLM delta reviews at the new head must return clean
+before the gate closes. PR #16 stays Draft; no Ready/merge/R2a/R3/execute; no force-push.
