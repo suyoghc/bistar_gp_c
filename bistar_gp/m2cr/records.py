@@ -197,13 +197,20 @@ def _retry_record(evidence: Mapping[str, Any], perm: Sequence[int]) -> dict[str,
             "status": int(telemetry["status"]),
             "reported_success": bool(telemetry["reported_success"]),
             "message": str(telemetry["message"]),
-            # The R1 schema freezes this as the retry optimizer's RAW output,
-            # flattened in call order with observed_shape as shape authority.
-            # The general B1 rule governs typed canonical positions, but this
-            # specific field text controls, so no permutation is applied even
-            # to well-formed candidates.  See
+            # EXPLICIT field-specific exception to canonical-axis persistence
+            # (prereg v1.19 §9 / plan §3.3).  The protected R1 execution-record
+            # schema freezes candidate_vector as the retry optimizer's RAW
+            # output "at whatever shape it came back," flattened in call order
+            # with observed_shape as the shape authority — so NO canonical
+            # permutation is applied even to a well-formed three-element
+            # candidate, and this field is deliberately NOT canonical.  The
+            # sibling gradient below IS canonicalized, making the raw/canonical
+            # asymmetry within one telemetry block intentional and frozen.  The
+            # general B1 canonical-position rule governs the typed axes, but the
+            # closed schema's field-specific text controls here.  See
             # docs/m2c_freeze/m2c_execution_record.schema_v1.json,
-            # retry_fired.telemetry.candidate_vector description.
+            # retry_fired.telemetry.candidate_vector description, and the
+            # asymmetric discriminating test in tests/test_m2cr_records.py.
             "candidate_vector": encode_vector(telemetry["candidate_vector"]),
             "candidate_finite": bool(telemetry["candidate_finite"]),
             "required_shape": [int(value) for value in telemetry["required_shape"]],

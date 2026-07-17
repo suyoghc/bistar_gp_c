@@ -17,6 +17,7 @@ from bistar_gp.m2cr.coordinates import (
     vector_storage_to_canonical,
 )
 from bistar_gp.m2cr.records import (
+    _retry_record,
     build_battery_record,
     build_curvature_record,
     build_per_node_record,
@@ -157,6 +158,64 @@ def test_permutation_and_conjugation_round_trip_both_directions():
         ),
         matrix_canonical,
     )
+
+
+def _retry_evidence(candidate_storage, gradient_storage):
+    """A minimal well-formed positively-accepted retry evidence block whose
+    candidate and gradient carry DISTINCT storage-order values, so a
+    canonicalization of one is observable against the raw other."""
+
+    return {
+        "fired": True,
+        "trigger": "curvature",
+        "telemetry": {
+            "status": 0,
+            "reported_success": True,
+            "message": "synthetic retry",
+            "candidate_vector": list(candidate_storage),
+            "candidate_finite": True,
+            "required_shape": [3],
+            "observed_shape": [3],
+            "objective": -1.0,
+            "gradient": list(gradient_storage),
+            "stationarity_norm": 0.0,
+        },
+        "conjuncts": {
+            "status_zero": True,
+            "reported_success": True,
+            "output_shape_and_finite": True,
+            "objective_finite": True,
+            "gradient_shape_and_finite": True,
+            "stationarity_within_bound": True,
+        },
+        "positively_accepted": True,
+        "fallback_fired": False,
+    }
+
+
+def test_retry_candidate_is_raw_while_gradient_is_canonical():
+    """Finding-4 discriminating asymmetry: under a NON-identity storage
+    permutation the retry candidate_vector is persisted RAW (unpermuted, the
+    protected R1 schema's field-specific exception) while the sibling gradient
+    IS canonicalized.  A well-shaped three-element candidate makes the two
+    outcomes distinguishable; a regression that canonicalized the candidate
+    would fail here."""
+
+    assert tuple(PERM) != (0, 1, 2), "test requires a non-identity permutation"
+    candidate_storage = [10.0, 20.0, 30.0]
+    gradient_storage = [1.0, 2.0, 3.0]
+    record = _retry_record(_retry_evidence(candidate_storage, gradient_storage), PERM)
+    telemetry = record["telemetry"]
+    # Candidate stays in raw call order — NOT permuted to canonical axes.
+    assert telemetry["candidate_vector"] == candidate_storage
+    # Gradient IS conjugated to canonical (ls, os, lv) axes.
+    np.testing.assert_array_equal(
+        telemetry["gradient"],
+        vector_storage_to_canonical(np.array(gradient_storage), PERM),
+    )
+    # The asymmetry is real: the gradient moved, the candidate did not.
+    assert telemetry["gradient"] != telemetry["candidate_vector"]
+    assert telemetry["gradient"] != gradient_storage
 
 
 @pytest.mark.parametrize("mutation", ["reorder", "missing", "duplicate", "extra", "off_sweep", "dict"])
