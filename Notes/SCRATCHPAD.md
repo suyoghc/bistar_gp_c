@@ -2,40 +2,47 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## M2cR R2 — IMPLEMENTATION COMPLETE; FINAL REVIEW GATE OPEN (D48 + Update, 2026-07-16) — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR #16, HARD STOP
+## M2cR R2 — ROUND-4 REMEDIATION DONE; INTERNAL GATE CLOSED at 00c3a92 (D48 Updates 7–9, 2026-07-17); NEW EXTERNAL EXACT-HEAD AUDIT at bd1d0f9 → REVISE, UNDER ADJUDICATION — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR #16, HARD STOP
 
-- **Shipped (hermetic, plan §8 R2 exactly):** `bistar_gp/m2cr/` (12 modules) + 16 test files; v2 gates
-  byte-equivalent with full attempt/retry evidence; write-ahead events; capture driver + B14-stack v5
-  bootstrap; fail-closed `payload_started.json` boundary; 7 committed freeze artifacts under
-  `docs/m2c_freeze/m2cr_*` (importable manifest v2: 39,955 entries / 8,743,897 B / 0 orphans);
-  audit tooling; B15(ii) measurement report (NO ceilings; proposals non-binding). Suite: baseline
-  442 passed/1 skipped; final **694 passed/2 skipped**, exit 0.
-- **Review gate (OPEN):** round 1 (3 blinded reviewers, 48 findings, 27 confirmed+fixed); Opus
-  round 2 + GLM deltas; Opus round-3 delta APPROVE; author-directed EXACT-HEAD round at a96a0eb
-  (Opus APPROVE; GLM full-coverage chunks; 1 confirmed defect fixed at 1cdb08a/340a73d); delta
-  re-reviews at 340a73d both clean (Opus APPROVE). Suite now 695 passed/2 skipped. Zero unresolved
-  confirmed defects; zero pending author decisions. Author RATIFIED rev-5 c3e9db66…d1ce3f (D48
-  Update).
-- **External Codex round-3 (at cd5b0ad) → REVISE, 6 confirmed defects (D48 Update 7).** Author
-  ratified fix-all; F5=INFRA_FAILURE; F1/F2 fail-closed with frozen values to R2a. Remediated F1–F6
-  (commit 18d85f0); a Codex checkpoint then found 5 deeper cases CP-1..CP-5 (commit 27291c5); artifacts
-  regenerated (eeefeef). Suite **723 passed/2 skipped**. Boundaries re-verified at eeefeef.
-- **Author-directed F1/F2/F4 strengthening (D48 Update 8):** mandatory attestations are now
-  DERIVED from a committed native-stack expectations artifact (F1), loaded images authenticated
-  against a committed (path,sha256) set before payload + parent rehash after exit (F2), semantic
-  lock recomputed before/after (F4); F5 INFRA_FAILURE-vs-NOT_STARTED split ratified. Commits
-  6a90522 (code) + 8c24b1f (artifacts). Suite 730 passed/2 skipped. Head now 8c24b1f.
-- **GATE CLOSES WHEN:** fresh Codex/Opus/GLM delta re-reviews at head **8c24b1f** (the standing
-  "rerun all three on any implementation/artifact change" rule) each return clean and are adjudicated.
-  Until then the gate is OPEN and PR #16 stays Draft. Distinguish "implementation complete" (true now)
-  from "final review gate passed" (NOT yet).
+- **Shipped (hermetic, plan §8 R2 exactly):** `bistar_gp/m2cr/` (12 modules) + **15** `tests/test_m2cr_*`
+  files; v2 gates byte-equivalent with full attempt/retry evidence; write-ahead events; capture driver +
+  B14-stack v5 bootstrap; fail-closed `payload_started.json` boundary; **8** committed freeze artifacts
+  under `docs/m2c_freeze/m2cr_*` (importable manifest v2: 39,955 entries / **8,743,892 B** / 0 orphans;
+  the 8th = the D48-Update-8 native-stack expectations artifact); audit tooling; B15(ii) measurement
+  report (NO ceilings; proposals non-binding). Suite at head: **774 passed / 2 skipped**, exit 0.
+- **Review-gate history (compressed):** original three-reviewer gate + external Codex round-3 F1–F6 +
+  CP-1..CP-5 + author-directed F1/F2/F4 strengthening = D48 main entry + Updates 7–8 (heads eeefeef,
+  8c24b1f, dcefefd). Then the fresh Codex delta review at dcefefd returned **C1–C4 (REVISE)**; the
+  author-directed round-4 remediation (unconditional two-layer attestation enforcement, Stage-C
+  hermetic fake-bundle tests, argv config-digest transport binding, durable no-clobber publication,
+  cached failure route) ran as twelve commits (seven code + five regenerations) through **five
+  adjudicated Codex/Opus/GLM delta-review rounds**, ending R5 at **00c3a92**: Codex APPROVE, Opus
+  APPROVE, GLM clean-on-adjudication. **Internal gate CLOSED** (D48 Update 9, head bd1d0f9 = Update-9
+  docs commit). Every regeneration used the established fresh-detached-worktree process; the four
+  environment-derived artifacts stayed byte-identical across all five regenerations.
+- **OPEN NOW — external exact-head audit at bd1d0f9 (2026-07-17) returned REVISE (2 BLOCKER / 4 MAJOR
+  / 2 MINOR).** The two MINOR documentation findings (D48 commit accounting; stale SCRATCHPAD/
+  implementation-map counts) are confirmed and fixed. The remaining six re-open author-ratified
+  dispositions or require architecture/enumeration acts and are **PENDING AUTHOR DECISION** (see the
+  session adjudication): (1) unconditional importable-manifest binding + re-walks on the marker path
+  (§4.5.7 hard text vs the ratified optional-manifest disclosure; cost problem: mandatory re-walks
+  force real-root walks into hermetic positives); (2) capture_run deriving env/preboundary/interpreter
+  from the committed freeze unconditionally (C1 principle extended; tractable via fake-bundle pins);
+  (3) build-pinning `expected_sentinel_hash` in a committed artifact (§4.5.8 "build-pinned frozen");
+  (4) retry candidate_vector canonicalization — CONFLICTS with the protected R1 schema field text
+  ("RAW output, at whatever shape") and the recorded D48 adjudication; recommend DISMISS;
+  (5) evidence-report "complete bundle" to include measured runtime-envelope classes + labeled
+  stdout/stderr allowances; (6) pre-spawn terminal-publication failure reporting (re-opens the
+  rounds-2–4 disclosed residual; tractable annotate-the-returned-record option exists).
 - **Prompt-hash note:** the R2 authorization prompt's rev-5 hash was a splice (suffix = D46 historical
   plan hash); the plan is consistent at §1 and §12 with the true `c3e9db66…d1ce3f`, which the file
   matches. Gate intent held. See D48.
-- **NEXT (each a separate author act; none authorized):** R2a versioned pre-execution addendum freezing
-  per-class evidence ceilings from the D48 measurements; then R3 (diagnostic protocol freeze, §6
-  verbatim, diagnostic-record schema, PROTOCOL manifest, classifier goldens); R4 execution needs a
-  fresh grant in the v1.19 ledger + freeze regeneration at its own worktree/commit.
+- **NEXT (each a separate author act; none authorized):** adjudicate the external-audit findings 1–6
+  above (any code/artifact change re-runs the three-reviewer delta gate); then R2a versioned
+  pre-execution addendum freezing per-class evidence ceilings from the D48 measurements; then R3
+  (diagnostic protocol freeze, §6 verbatim, diagnostic-record schema, PROTOCOL manifest, classifier
+  goldens); R4 execution needs a fresh grant in the v1.19 ledger + freeze regeneration at its own
+  worktree/commit.
 
 ## M2c — v1.17 ALGORITHM FREEZE RATIFIED (branch `feat/d19-m2c` off main fcc3ce4; D40, 2026-07-13). STOPPED before compute.
 

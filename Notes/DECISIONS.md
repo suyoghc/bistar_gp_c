@@ -4296,8 +4296,9 @@ before the gate closes. PR #16 stays Draft; no Ready/merge/R2a/R3/execute; no fo
 The fresh Codex delta review commissioned at dcefefd (Update 8) returned **REVISE with 4 confirmed
 findings (C1–C4)**; the author directed the remediation (C1 as two mandatory enforcement layers
 plus the Stage-C hermetic-test rework; C2/C3/C4 as ratified in their commit texts) and this
-orchestration session completed it. Ten commits, each followed by the established fresh-detached-
-worktree artifact regeneration at its exact code commit:
+orchestration session completed it. Twelve commits — seven code/test commits and five established
+fresh-detached-worktree artifact regenerations, each regeneration at its exact code commit
+(corrected 2026-07-17; this entry originally miscounted "ten" and omitted 2fcce1b below):
 
 - 43f1055 C2/C3/C4: pre-Popen setup failures are INFRA_FAILURE (NOT_STARTED reserved for a spawn
   attempted at Popen but never confirmed); the pre-spawn phase catches ordinary Exception; terminal
@@ -4334,7 +4335,7 @@ worktree artifact regeneration at its exact code commit:
   digest-rejected config cannot route evidence; a mid-run mutation cannot redirect it); the
   CLI-contract guards persist their evidence too; dead `_dependency_lock_fault` (the conditioned
   pattern C1 ordered removed) deleted.
-- 5ba23be / 246d87e / e2a57c1 / 00c3a92: artifact regenerations — every round changed exactly the
+- 5ba23be / 246d87e / e2a57c1 / 2fcce1b / 00c3a92: artifact regenerations — every round changed exactly the
   code-derived artifacts (importable-manifest worktree entries for the touched files + freeze-time
   header path; the bootstrap.py closure pin in the identical 76-member set; the two aggregating
   manifests); the four environment-derived artifacts stayed byte-identical across all five
