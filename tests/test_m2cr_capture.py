@@ -2621,31 +2621,120 @@ def test_normal_capture_racing_reconciliation_returns_the_durable_winner(
     assert json.loads((run_dir / TERMINAL_RECORD_NAME).read_text()) == reconciled
 
 
+def _valid_reconcile_run_winner() -> bytes:
+    """Canonical bytes of a schema-valid INFRA_FAILURE terminal record bound to
+    the reconcile fixture's run (see _write_reconcile_evidence) — a VALID raced
+    terminal, distinct from a malformed squatter."""
+
+    record = {
+        "schema_version": 1,
+        "record_kind": "diagnostic",
+        "status": "INFRA_FAILURE",
+        "run_id": "m2cr-reconcile-test",
+        "launch_attempt_id": LAUNCH_ATTEMPT_ID,
+        "chain": dict(CHAIN),
+        "fault": {
+            "fault_class": "capture_fault",
+            "detail": "a racing valid reconstruction",
+            "reconstructed": True,
+            "payload_started": False,
+        },
+        "evidence": {
+            "raw_manifest_sha256": "0" * 64,
+            "node_evidence_digests": [],
+            "event_stream_balanced": False,
+        },
+        "not_a_result": True,
+    }
+    validate_terminal_record(record)
+    return canonical_dumps(record).encode("utf-8")
+
+
+@pytest.mark.parametrize(
+    "occupant",
+    [_valid_reconcile_run_winner(), b'{"a":1}', b"NOT-JSON-SQUATTER"],
+    ids=["valid_winner", "schema_invalid", "non_json"],
+)
 def test_reconcile_run_refuses_on_a_racing_terminal_valid_or_squatter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, occupant: bytes
+) -> None:
+    """Codex hardening round 2/3: reconcile_run's contract is REFUSE on any
+    pre-existing terminal, so when a terminal appears in the window between its
+    precheck and its own publish it raises TerminalAlreadyExists (a
+    RecordAssemblyError refusal) and never returns an un-published reconstructed
+    record — for a VALID raced winner as well as a malformed squatter.  Distinct
+    from the capture race-loser contract (which returns a valid winner);
+    reconcile does not reconstruct over an occupied name, so a regression that
+    returned a valid raced terminal would fail the valid_winner case here."""
+
+    run_dir = tmp_path / "reconcile"
+    _write_reconcile_evidence(run_dir)
+    real_write = capture_module._write_terminal
+
+    def racing_write(rd: Path, record: dict) -> str:
+        # A racing writer occupies the terminal name between reconcile's
+        # precheck and its publish.
+        (rd / TERMINAL_RECORD_NAME).write_bytes(occupant)
+        return real_write(rd, record)
+
+    monkeypatch.setattr(capture_module, "_write_terminal", racing_write)
+    with pytest.raises(RecordAssemblyError, match="already exists"):
+        reconcile_run(run_dir)
+    # The occupant is preserved; reconcile never clobbered it and never returned.
+    assert (run_dir / TERMINAL_RECORD_NAME).read_bytes() == occupant
+
+
+def test_race_winner_directory_fsync_failure_is_durability_uncertain(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Codex hardening round 2: reconcile_run's contract is REFUSE on any
-    pre-existing terminal, so when a terminal appears in the window between its
-    precheck and its own publish — whether a valid winner or a malformed squatter
-    — it raises TerminalAlreadyExists (a RecordAssemblyError refusal) and never
-    returns an un-published reconstructed record.  Distinct from the capture
-    race-loser contract (which returns the valid winner); reconcile does not
-    reconstruct over an occupied name."""
+    """Codex hardening round 3: _race_winner_or_raise fsyncs the run directory
+    before returning a valid winner (a racing publisher may have linked the name
+    but not yet fsync'd), so a directory-fsync failure surfaces as
+    TerminalDurabilityUncertain carrying the winner + digest — this directly
+    exercises the durability branch that a fully-published planted winner cannot
+    (the winner's own _write_terminal already fsync'd), so removing the helper's
+    fsync would fail this test."""
 
-    for occupant in (b'{"a":1}', b"NOT-JSON-SQUATTER"):
-        run_dir = tmp_path / f"reconcile-{len(occupant)}"
-        _write_reconcile_evidence(run_dir)
-        real_write = capture_module._write_terminal
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    winner = {
+        "schema_version": 1,
+        "record_kind": "diagnostic",
+        "status": "INFRA_FAILURE",
+        "run_id": "m2cr-capture-test",
+        "launch_attempt_id": LAUNCH_ATTEMPT_ID,
+        "chain": dict(CHAIN),
+        "fault": {
+            "fault_class": "capture_fault",
+            "detail": "a valid racing winner",
+            "reconstructed": True,
+            "payload_started": False,
+        },
+        "evidence": {
+            "raw_manifest_sha256": "0" * 64,
+            "node_evidence_digests": [],
+            "event_stream_balanced": False,
+        },
+        "not_a_result": True,
+    }
+    validate_terminal_record(winner)
+    # Plant the winner directly (no _write_terminal, so its directory is NOT
+    # pre-fsync'd) — the helper's own fsync is the only one that runs.
+    (run_dir / TERMINAL_RECORD_NAME).write_bytes(
+        canonical_dumps(winner).encode("utf-8")
+    )
+    attempted = dict(winner, status="COMPLETED")  # same identity, our own record
 
-        def racing_write(rd: Path, record: dict, _bytes=occupant) -> str:
-            # A racing writer occupies the terminal name between reconcile's
-            # precheck and its publish.
-            (rd / TERMINAL_RECORD_NAME).write_bytes(_bytes)
-            return real_write(rd, record)
+    def failing_fsync(fd: int) -> None:
+        raise OSError("simulated run-directory fsync EIO")
 
-        monkeypatch.setattr(capture_module, "_write_terminal", racing_write)
-        with pytest.raises(RecordAssemblyError, match="already exists"):
-            reconcile_run(run_dir)
-        # The occupant is preserved; reconcile never clobbered it.
-        assert (run_dir / TERMINAL_RECORD_NAME).read_bytes() == occupant
-        monkeypatch.undo()
+    monkeypatch.setattr(capture_module.os, "fsync", failing_fsync)
+    with pytest.raises(
+        capture_module.TerminalDurabilityUncertain, match="could not be confirmed durable"
+    ) as excinfo:
+        capture_module._race_winner_or_raise(run_dir, attempted)
+    assert excinfo.value.record == winner
+    assert excinfo.value.digest == hashlib.sha256(
+        canonical_dumps(winner).encode("utf-8")
+    ).hexdigest()
+    assert isinstance(excinfo.value.cause, OSError)
