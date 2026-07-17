@@ -21,6 +21,9 @@ __all__ = [
     "measure_event_bytes",
     "measure_record_bytes",
     "derive_bundle_projection",
+    "RUN_DIR_EVIDENCE_CLASSES",
+    "classify_run_dir_layout",
+    "measure_run_dir_fixed_evidence",
 ]
 
 
@@ -219,3 +222,136 @@ def derive_bundle_projection(
         "allowances": allowances,
         "derived": derived,
     }
+
+
+# External-audit finding 5: every RUN_DIR_LAYOUT evidence class is classified
+# EXPLICITLY here, with a reason, so a "complete bundle" figure cannot silently
+# omit a component.  A class is exactly one of:
+#   fixed_runtime    — a bounded one-shot runtime envelope file measured per run
+#   per_event_stream — the event stream, scaled by node/event count (not fixed)
+#   per_node_subtree — the nodes/ subtree, scaled per node (not fixed)
+#   stream_allowance — an unbounded stream represented only as a labeled allowance
+#   run_local_dir    — a run-local scratch directory carrying no certification bytes
+#   conditional      — emitted only on a specific outcome (payload vs failure),
+#                      measured as a fixed_runtime class when present
+# The classification is validated to cover RUN_DIR_LAYOUT exactly (see
+# classify_run_dir_layout), and the per-run evidence-bundle projection consumes
+# the fixed_runtime + stream_allowance + per-event/per-node components — never
+# only the static committed freeze artifacts, which are separate one-time storage.
+RUN_DIR_EVIDENCE_CLASSES: dict[str, tuple[str, str]] = {
+    "bootstrap_config.json": ("fixed_runtime", "consumed bootstrap config"),
+    "prelaunch.json": ("fixed_runtime", "pre-fork launch provenance"),
+    "spawned.json": ("fixed_runtime", "child hello confirmation"),
+    "payload_started.json": ("fixed_runtime", "hash-bound payload marker"),
+    "effect_proofs.json": ("fixed_runtime", "§4.5.8 effect proofs"),
+    "stage_a.json": ("fixed_runtime", "Stage A path/env attestation"),
+    "bytecode.json": ("fixed_runtime", "bytecode scan attestation"),
+    "audit_canary.json": ("fixed_runtime", "audit-hook canary"),
+    "stage_b_os.json": ("fixed_runtime", "Stage B os.environ baseline"),
+    "stage_b_raw.json": ("fixed_runtime", "Stage B raw environ baseline"),
+    "native_stack.json": ("fixed_runtime", "native-stack attestation"),
+    "manifest_pre.json": ("fixed_runtime", "pre-import manifest re-walk"),
+    "manifest_post.json": ("fixed_runtime", "post-execution manifest re-walk"),
+    "sourceless.json": ("fixed_runtime", "sourceless-loader attestation"),
+    "import_inventory.json": ("fixed_runtime", "import inventory + worktree hashes"),
+    "stage_c.json": ("fixed_runtime", "Stage C re-attestation"),
+    "payload.json": ("fixed_runtime", "protocol payload (present on a protocol exit)"),
+    "bootstrap_failure.json": (
+        "conditional",
+        "child failure evidence; mutually exclusive with a clean payload exit",
+    ),
+    "RAW_MANIFEST.sha256": ("fixed_runtime", "Layer-3 raw manifest"),
+    "terminal_record.json": ("fixed_runtime", "Layer-4 terminal record"),
+    "events.jsonl": (
+        "per_event_stream",
+        "write-ahead event stream; scales with node/event count, not fixed",
+    ),
+    "stdout.txt": (
+        "stream_allowance",
+        "unbounded child stdout; represented only as a caller-supplied allowance",
+    ),
+    "stderr.txt": (
+        "stream_allowance",
+        "unbounded child stderr; represented only as a caller-supplied allowance",
+    ),
+    "nodes/": (
+        "per_node_subtree",
+        "per-node record subtree; scales per node, projected not fixed",
+    ),
+    "home/": ("run_local_dir", "run-local HOME; scratch, no certification bytes"),
+    "tmp/": ("run_local_dir", "run-local TMPDIR; scratch, no certification bytes"),
+    "xdg/": ("run_local_dir", "run-local XDG base; scratch, no certification bytes"),
+    "pycache/": (
+        "run_local_dir",
+        "run-local empty pycache prefix; asserted empty, no certification bytes",
+    ),
+}
+
+_RUN_DIR_EVIDENCE_CLASS_NAMES = frozenset(
+    {
+        "fixed_runtime",
+        "per_event_stream",
+        "per_node_subtree",
+        "stream_allowance",
+        "run_local_dir",
+        "conditional",
+    }
+)
+
+
+def classify_run_dir_layout(run_dir_layout: Iterable[str]) -> dict[str, tuple[str, str]]:
+    """Return the explicit (class, reason) for every RUN_DIR_LAYOUT member,
+    failing closed if any member is unclassified or any classification is for a
+    path not in the layout (external-audit finding 5).
+
+    This is the completeness guard: a new run-directory evidence file cannot be
+    added to RUN_DIR_LAYOUT without an explicit measurement classification and a
+    reason, so the per-run evidence-bundle projection can never silently omit it.
+    """
+
+    layout = list(run_dir_layout)
+    layout_set = set(layout)
+    missing = sorted(name for name in layout_set if name not in RUN_DIR_EVIDENCE_CLASSES)
+    if missing:
+        raise ValueError(
+            "RUN_DIR_LAYOUT members lack an explicit evidence classification: "
+            + ", ".join(missing)
+        )
+    stray = sorted(name for name in RUN_DIR_EVIDENCE_CLASSES if name not in layout_set)
+    if stray:
+        raise ValueError(
+            "evidence classification names paths absent from RUN_DIR_LAYOUT: "
+            + ", ".join(stray)
+        )
+    for name, (klass, reason) in RUN_DIR_EVIDENCE_CLASSES.items():
+        if klass not in _RUN_DIR_EVIDENCE_CLASS_NAMES:
+            raise ValueError(f"unknown evidence class {klass!r} for {name!r}")
+        if not isinstance(reason, str) or not reason:
+            raise ValueError(f"evidence class for {name!r} lacks a reason")
+    return {name: RUN_DIR_EVIDENCE_CLASSES[name] for name in layout}
+
+
+def measure_run_dir_fixed_evidence(
+    run_dir: str | os.PathLike[str],
+) -> dict[str, int]:
+    """Measure, from a real (hermetic) run directory, the exact bytes of every
+    ``fixed_runtime``/``conditional`` evidence file that is present.
+
+    Returns ``{relpath: bytes}`` for the bounded one-shot runtime envelope
+    classes only; the event stream, node subtree, unbounded streams, and
+    run-local scratch directories are excluded by class (they are projected or
+    allowance-declared, not fixed).  Feeds :func:`derive_bundle_projection` as
+    the ``fixed_classes`` runtime evidence, so the per-run bundle projection is
+    derived from measured runtime components rather than the static freeze
+    artifacts alone (external-audit finding 5).
+    """
+
+    root = os.fspath(run_dir)
+    measured: dict[str, int] = {}
+    for name, (klass, _reason) in RUN_DIR_EVIDENCE_CLASSES.items():
+        if klass not in {"fixed_runtime", "conditional"}:
+            continue
+        path = os.path.join(root, name)
+        if os.path.isfile(path):
+            measured[name] = measure_file(path)
+    return measured

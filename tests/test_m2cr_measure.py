@@ -148,6 +148,90 @@ def test_measure_module_exports_no_size_limit_constant():
     assert not [name for name in vars(measure) if "CEILING" in name.upper()]
 
 
+def test_run_dir_layout_evidence_is_fully_classified():
+    """Finding 5: every RUN_DIR_LAYOUT evidence class is explicitly classified
+    with a reason, so the per-run bundle projection cannot silently omit a
+    component; an unclassified layout member or a stray classification fails
+    closed."""
+
+    from bistar_gp.m2cr.capture import RUN_DIR_LAYOUT
+
+    classified = measure.classify_run_dir_layout(RUN_DIR_LAYOUT)
+    assert set(classified) == set(RUN_DIR_LAYOUT)
+    # Every runtime envelope, the event stream, both unbounded streams, the node
+    # subtree, and the run-local dirs are all accounted for with a reason.
+    classes = {klass for klass, _reason in classified.values()}
+    assert {
+        "fixed_runtime",
+        "per_event_stream",
+        "per_node_subtree",
+        "stream_allowance",
+        "run_local_dir",
+    } <= classes
+    assert all(reason for _klass, reason in classified.values())
+    # A new layout member with no classification fails closed.
+    with pytest.raises(ValueError, match="lack an explicit evidence classification"):
+        measure.classify_run_dir_layout(list(RUN_DIR_LAYOUT) + ["brand_new.json"])
+
+
+def test_per_run_bundle_projection_includes_measured_runtime_envelopes(tmp_path):
+    """Finding 5: the per-run evidence-bundle projection is derived from MEASURED
+    runtime envelope classes (prelaunch, marker, attestations, terminal record,
+    raw manifest, ...) plus the per-node/per-event scaled classes plus the
+    stdout/stderr allowances — never the static freeze artifacts alone.
+    measure_run_dir_fixed_evidence measures only the bounded runtime files and
+    excludes the stream, node subtree, and run-local scratch by class."""
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    # Bounded fixed_runtime envelope files.
+    (run_dir / "prelaunch.json").write_bytes(b'{"a":1}')  # 7
+    (run_dir / "payload_started.json").write_bytes(b'{"marker":true}')  # 15
+    (run_dir / "terminal_record.json").write_bytes(b'{"status":"COMPLETED"}')  # 22
+    (run_dir / "RAW_MANIFEST.sha256").write_bytes(b"deadbeef  x\n")  # 12
+    # Excluded-by-class artifacts that must NOT appear in the fixed measurement.
+    (run_dir / "events.jsonl").write_bytes(b'{"e":1}\n' * 5)  # per_event_stream
+    (run_dir / "stdout.txt").write_bytes(b"x" * 1000)  # stream_allowance
+    (run_dir / "stderr.txt").write_bytes(b"y" * 40)  # stream_allowance
+    (run_dir / "nodes").mkdir()  # per_node_subtree
+    (run_dir / "nodes" / "node_000000.json").write_bytes(b'{"node_index":0}')
+    (run_dir / "home").mkdir()  # run_local_dir
+
+    fixed = measure.measure_run_dir_fixed_evidence(run_dir)
+    assert fixed == {
+        "prelaunch.json": 7,
+        "payload_started.json": 15,
+        "terminal_record.json": 22,
+        "RAW_MANIFEST.sha256": 12,
+    }
+    # None of the excluded-by-class files leaked into the fixed measurement.
+    for excluded in ("events.jsonl", "stdout.txt", "stderr.txt", "nodes/", "home/"):
+        assert excluded not in fixed
+
+    fixed_total = sum(fixed.values())
+    projection = measure.derive_bundle_projection(
+        {
+            "node_record": {"bytes": 3179, "worst_case": "clean accepted-node record"},
+            "event_bytes": {"bytes": 6088, "worst_case": "worst-case event line"},
+        },
+        {
+            **fixed,
+            "stdout": {"allowance_bytes": 1_000_000},
+            "stderr": {"allowance_bytes": 100_000},
+        },
+        node_count=1481,
+    )
+    # The complete bundle DERIVES from the measured runtime envelopes + the
+    # allowances + the scaled per-node/per-event components — the runtime
+    # envelope bytes are genuinely included, not dropped.
+    assert projection["derived"]["complete_bundle"]["bytes"] == (
+        fixed_total + 1_000_000 + 100_000 + 1481 * (3179 + 6088)
+    )
+    assert projection["derived"]["complete_bundle"]["bytes"] > fixed_total
+    for name in fixed:
+        assert projection["fixed"][name]["bytes"] == fixed[name]
+
+
 def test_evidence_size_report_figures_reproduce():
     """External audit F8: the report's measured-exemplar byte figures are
     reproducible from committed code, not free-floating numbers."""

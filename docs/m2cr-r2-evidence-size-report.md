@@ -77,23 +77,42 @@ restarted, retry fired), not a proven maximum over all string content.
 The B7 probe closure has at most about 1,481 unique nodes (plan §6.1); the node count enters every
 projection as a parameter with that default, not a constant.
 
-| Quantity | Bytes | Derivation (labeled derived) |
+**Two distinct storage classes (external-audit finding 5).** The committed freeze artifacts above are
+**static, one-time** repository storage. The **per-run evidence bundle** is what each launch emits
+under `docs/m2c_evidence/<run_id>/` (§4.4), and it is a *separate* quantity: the earlier revision of
+this report labelled a figure "complete bundle" that summed the static freeze total with the per-node
+and per-event products while **omitting** the runtime envelope classes and the stdout/stderr
+allowances — a mislabel corrected here. Every RUN_DIR_LAYOUT evidence class is now explicitly
+classified in `bistar_gp/m2cr/measure.py` (`RUN_DIR_EVIDENCE_CLASSES`), and a CI check fails closed if
+any layout member lacks a measurement classification, so the per-run projection cannot silently omit a
+component.
+
+**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,833,024 bytes**
+(the table above); it is NOT part of the per-run evidence bundle.
+
+**Per-run evidence bundle (per launch) — components:**
+
+| Component | Bytes | Basis (labeled) |
 |---|---|---|
+| Runtime envelope classes (17 `fixed_runtime` files: prelaunch, spawned, marker, effect proofs, Stage A/B/C, bytecode, canary, native-stack, manifest pre/post, sourceless, inventory, payload, `RAW_MANIFEST.sha256`, terminal record) | 61,340 | measured (hermetic capture via `measure_run_dir_fixed_evidence`; `import_inventory.json` dominates at 31,927 and scales with the real import closure) |
 | Per-node records, all nodes at the structural worst case | 8,729,014 | derived: 5,894 × 1,481 |
 | Event stream, all nodes at the structural worst case | 9,016,328 | derived: 6,088 × 1,481 |
-| Fixed freeze artifacts | 8,833,024 | measured (sum above) |
-| Complete bundle, evidence classes with measured bases | 26,578,366 | derived: fixed total + both per-node products |
+| stdout / stderr | (allowance) | caller-supplied allowance, labeled `measured: false`; no hermetic basis, never a measured claim |
+| **Per-run evidence bundle, measured-basis subtotal** | **17,806,682** | derived: runtime envelopes + per-node product + per-event product |
+| Per-run evidence bundle, complete | 17,806,682 + allowances | derived: measured-basis subtotal + caller-supplied stdout/stderr allowances |
 
-The projection prices every node at the structural worst-case exemplar (both starts restarted, retry
-fired). It is **not** a proven upper bound over all runs, because the `message` string is unbounded
-(external audit F8); R2a sets each ceiling with headroom over these figures so an enlarged `message`
-cannot collide with a limit, and if any future measurement exceeds a figure the resolution is a
-larger ceiling, never reduced completeness. Runtime envelope files (prelaunch, spawned, marker,
-attestations, inventory, `RAW_MANIFEST.sha256`, terminal record) measure a few kilobytes each in
-hermetic capture runs and enter `derive_bundle_projection` as explicit fixed classes. stdout/stderr
-have no hermetic measurement basis; the measurement API represents them only as a caller-supplied
-allowance labeled as such, never as a measured claim, and the R2a addendum should set that allowance
-on structural grounds.
+The complete per-run bundle is exactly `derive_bundle_projection`'s `complete_bundle` = sum(measured
+fixed runtime bytes) + sum(caller-supplied allowance bytes) + sum(per-node worst-case bytes ×
+node_count); the runtime envelope classes and the allowances are genuine components of it, not
+omitted. The projection prices every node at the structural worst-case exemplar (both starts
+restarted, retry fired). It is **not** a proven upper bound over all runs, because the `message`
+string is unbounded (external audit F8); R2a sets each ceiling with headroom over these figures so an
+enlarged `message` cannot collide with a limit, and if any future measurement exceeds a figure the
+resolution is a larger ceiling, never reduced completeness. stdout/stderr have no hermetic measurement
+basis; the measurement API represents them only as a caller-supplied allowance labeled as such, and
+the R2a addendum should set that allowance on structural grounds. The runtime envelope total is
+measured per run (the hermetic figure here uses a fake payload; the inventory class grows with the
+real import closure), never frozen as a single constant.
 
 ## Proposed per-class ceilings — NOT FROZEN, no force
 
