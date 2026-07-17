@@ -1041,6 +1041,25 @@ def _freeze_fixture(tmp_path: Path) -> dict[str, Path]:
             },
         },
     )
+    # F1 (round-3): a committed native-stack expectations artifact carries the
+    # mandatory attestation directives; the factory derives them from here.
+    expectations_path = artifacts_dir / "native_stack_expectations.json"
+    atomic_write_canonical_json(
+        expectations_path,
+        {
+            "kind": "m2cr_native_stack_expectations",
+            "schema_version": 1,
+            "native_stack_modules": ["numpy", "torch"],
+            "expected_profile_integration_sha256": "a" * 64,
+            "torch_build_expected": ["BLAS_INFO=accelerate"],
+            "numpy_build_expected": ["name: accelerate"],
+            "stage_b_expected": {},
+            "loaded_image_allowlist": [],
+            "expected_loaded_images": [
+                {"path": "/frozen/libexample.dylib", "sha256": "b" * 64}
+            ],
+        },
+    )
     infrastructure_path = tmp_path / "infrastructure_manifest.json"
     atomic_write_canonical_json(
         infrastructure_path,
@@ -1052,21 +1071,23 @@ def _freeze_fixture(tmp_path: Path) -> dict[str, Path]:
                 "environment_freeze_manifest": {
                     "path": os.fspath(freeze_path),
                     "sha256": sha256_file(freeze_path),
-                }
+                },
+                "native_stack_expectations": {
+                    "path": os.fspath(expectations_path),
+                    "sha256": sha256_file(expectations_path),
+                },
             },
             "r1_schemas": {},
         },
     )
     template_path = tmp_path / "bootstrap_template.json"
-    # A COMPLETE template: F1 requires a non-empty allow-listed native stack and
-    # a well-formed expected_profile_integration_sha256 so the factory cannot
-    # build a config that skips a pre-scientific attestation.
+    # A lean template: F1 (round-3) derives the mandatory attestation directives
+    # from the committed expectations artifact, so the caller template carries
+    # none of them (a caller-substituted value would be rejected).
     atomic_write_canonical_json(
         template_path,
         {
             "expected_sentinel_hash": -2671292046718125608,
-            "native_stack_modules": ["numpy", "torch"],
-            "expected_profile_integration_sha256": "a" * 64,
             "payload": {"entry": "fake_payload:run", "pass_context": True},
         },
     )
@@ -1074,6 +1095,7 @@ def _freeze_fixture(tmp_path: Path) -> dict[str, Path]:
         "freeze": freeze_path,
         "infrastructure": infrastructure_path,
         "template": template_path,
+        "expectations": expectations_path,
         "worktree": worktree,
         "manifest": manifest_path,
         "attestation_set": attestation_path,
@@ -1096,51 +1118,45 @@ def _bound_chain(env_freeze_path, infrastructure_path):
 
 
 @pytest.mark.parametrize(
-    "template, match",
+    "substitution, match",
     [
+        ({"native_stack_modules": ["scipy"]}, "substitutes the committed native_stack_modules"),
+        ({"native_stack_modules": []}, "substitutes the committed native_stack_modules"),
         (
-            {
-                "expected_sentinel_hash": -2671292046718125608,
-                "native_stack_modules": [],
-                "expected_profile_integration_sha256": "a" * 64,
-                "payload": {"entry": "fake_payload:run", "pass_context": True},
-            },
-            "non-empty native_stack_modules",
+            {"expected_profile_integration_sha256": "c" * 64},
+            "substitutes the committed expected_profile_integration_sha256",
         ),
         (
-            {
-                "expected_sentinel_hash": -2671292046718125608,
-                "native_stack_modules": ["numpy"],
-                "payload": {"entry": "fake_payload:run", "pass_context": True},
-            },
-            "expected_profile_integration_sha256",
+            {"expected_loaded_images": []},
+            "substitutes the committed expected_loaded_images",
         ),
         (
-            {
-                "expected_sentinel_hash": -2671292046718125608,
-                "native_stack_modules": ["bistar_gp.profile_integration"],
-                "expected_profile_integration_sha256": "a" * 64,
-                "payload": {"entry": "fake_payload:run", "pass_context": True},
-            },
-            "outside the frozen",
+            {"torch_build_expected": ["FAKE=1"]},
+            "substitutes the committed torch_build_expected",
         ),
     ],
 )
-def test_launch_config_from_freeze_rejects_degenerate_template(
-    tmp_path: Path, template: dict, match: str
+def test_launch_config_from_freeze_rejects_caller_substituted_directives(
+    tmp_path: Path, substitution: dict, match: str
 ) -> None:
-    """F1: the factory refuses any template that would let the bootstrap skip a
-    pre-scientific attestation (empty native stack, missing profile hash, or a
-    non-allow-listed native module)."""
+    """F1 (round-3): the mandatory attestation directives are DERIVED from the
+    committed expectations artifact; a caller template that substitutes any of
+    them (a different native stack, profile hash, loaded-image set, or build
+    marker) is rejected before payload start."""
 
     fixture = _freeze_fixture(tmp_path)
+    template = {
+        "expected_sentinel_hash": -2671292046718125608,
+        "payload": {"entry": "fake_payload:run", "pass_context": True},
+        **substitution,
+    }
     atomic_write_canonical_json(fixture["template"], template)
     with pytest.raises(ValueError, match=match):
         launch_config_from_freeze(
             fixture["freeze"],
             fixture["infrastructure"],
             run_dir=fixture["run_dir"],
-            run_id="m2cr-degenerate-test",
+            run_id="m2cr-substitution-test",
             authorization_id=AUTHORIZATION_ID,
             launch_attempt_id=LAUNCH_ATTEMPT_ID,
             record_kind="diagnostic",
@@ -1148,6 +1164,40 @@ def test_launch_config_from_freeze_rejects_degenerate_template(
             bootstrap_template_path=fixture["template"],
             worktree_root=fixture["worktree"],
         )
+
+
+def test_launch_config_from_freeze_derives_mandatory_directives(
+    tmp_path: Path,
+) -> None:
+    """F1 (round-3): the derived config's bootstrap_config.json carries exactly
+    the committed expectations' mandatory directives, regardless of the lean
+    caller template."""
+
+    fixture = _freeze_fixture(tmp_path)
+    launch_config_from_freeze(
+        fixture["freeze"],
+        fixture["infrastructure"],
+        run_dir=fixture["run_dir"],
+        run_id="m2cr-derive-directives",
+        authorization_id=AUTHORIZATION_ID,
+        launch_attempt_id=LAUNCH_ATTEMPT_ID,
+        record_kind="diagnostic",
+        chain=_bound_chain(fixture["freeze"], fixture["infrastructure"]),
+        bootstrap_template_path=fixture["template"],
+        worktree_root=fixture["worktree"],
+    )
+    written = json.loads(
+        (fixture["run_dir"] / BOOTSTRAP_CONFIG_NAME).read_text()
+    )
+    expectations = json.loads(fixture["expectations"].read_text())
+    for key in (
+        "native_stack_modules",
+        "expected_profile_integration_sha256",
+        "expected_loaded_images",
+        "torch_build_expected",
+        "stage_b_expected",
+    ):
+        assert written[key] == expectations[key]
 
 
 def test_launch_config_from_freeze_derives_all_pins(tmp_path: Path) -> None:
@@ -1251,15 +1301,11 @@ def test_committed_freeze_artifacts_derive_the_ratified_pins(
     """FIX C11: read-only derivation from the COMMITTED artifacts, no launch."""
 
     template_path = tmp_path / "template.json"
-    # A COMPLETE template: F1 requires the factory to see a non-empty native
-    # stack and a well-formed profile-hash directive.
+    # A lean template: F1 (round-3) derives the mandatory directives from the
+    # committed native-stack expectations artifact.
     atomic_write_canonical_json(
         template_path,
-        {
-            "native_stack_modules": ["numpy", "torch"],
-            "expected_profile_integration_sha256": "a" * 64,
-            "payload": {"entry": "fake_payload:run", "pass_context": True},
-        },
+        {"payload": {"entry": "fake_payload:run", "pass_context": True}},
     )
     config = launch_config_from_freeze(
         _COMMITTED_FREEZE,

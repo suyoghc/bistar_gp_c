@@ -808,6 +808,42 @@ def test_loaded_image_hashing_detects_on_disk_byte_drift(tmp_path: Path) -> None
         os.fspath(image)
     ]
 
+
+def test_loaded_image_authentication_against_committed_expected_set() -> None:
+    """F2 (round-3): every on-disk loaded image is authenticated against the
+    committed expected (path, sha256) set BEFORE payload start — a same-path
+    pre-launch mutation (mismatch), an image with no committed expectation, and
+    a committed-expected image that did not load each fail closed."""
+
+    expected = [
+        {"path": "/frozen/a.dylib", "sha256": "a" * 64},
+        {"path": "/frozen/b.dylib", "sha256": "b" * 64},
+    ]
+    # Happy path: exact (path, sha256) match authenticates.
+    bootstrap_module.authenticate_loaded_images(
+        {"/frozen/a.dylib": "a" * 64, "/frozen/b.dylib": "b" * 64}, expected
+    )
+    # Same-path pre-launch mutation: the on-disk sha256 differs from committed.
+    with pytest.raises(SystemExit, match="sha256 does not match its committed"):
+        bootstrap_module.authenticate_loaded_images(
+            {"/frozen/a.dylib": "f" * 64, "/frozen/b.dylib": "b" * 64}, expected
+        )
+    # An image with no committed expectation fails closed.
+    with pytest.raises(SystemExit, match="has no committed"):
+        bootstrap_module.authenticate_loaded_images(
+            {
+                "/frozen/a.dylib": "a" * 64,
+                "/frozen/b.dylib": "b" * 64,
+                "/frozen/rogue.dylib": "c" * 64,
+            },
+            expected,
+        )
+    # A committed-expected image that did not load fails closed.
+    with pytest.raises(SystemExit, match="did not"):
+        bootstrap_module.authenticate_loaded_images(
+            {"/frozen/a.dylib": "a" * 64}, expected
+        )
+
     fake_torch = ModuleType("torch")
     fake_torch.get_num_threads = lambda: 10
     fake_torch.get_num_interop_threads = lambda: 10

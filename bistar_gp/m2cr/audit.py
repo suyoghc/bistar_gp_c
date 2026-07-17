@@ -108,6 +108,7 @@ _INFRASTRUCTURE_ARTIFACT_KEYS = {
     "preboundary_attestation_set",
     "environment_freeze_manifest",
     "dependency_lock",
+    "native_stack_expectations",
 }
 _INFRASTRUCTURE_R1_SCHEMA_KEYS = {
     "execution_record",

@@ -27,7 +27,7 @@ import tempfile
 import threading
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 __all__ = [
     "classify_new_loaded_images",
@@ -418,6 +418,56 @@ def hash_loaded_images(paths: Iterable[str]) -> dict[str, str]:
             # as unreadable so it surfaces as drift rather than being dropped.
             hashes[path] = "unreadable"
     return hashes
+
+
+def authenticate_loaded_images(
+    measured: Mapping[str, str],
+    expected: Sequence[Mapping[str, str]],
+) -> None:
+    """Authenticate on-disk loaded native images against the committed expected
+    set BEFORE payload start (external audit round-3 revision of F2).
+
+    Baseline+exit self-comparison alone cannot catch same-path mutation that
+    happened BEFORE launch, so every on-disk regular-file loaded image is
+    checked against the frozen `(path, sha256)` expectation set: an image with
+    no committed expectation, an expected image that did not load, or a sha256
+    mismatch each fail closed.  The sha256 subsumes the Mach-O linkage identity
+    (load commands are hashed bytes).
+    """
+
+    expected_map: dict[str, str] = {}
+    for entry in expected:
+        if (
+            not isinstance(entry, Mapping)
+            or not isinstance(entry.get("path"), str)
+            or not isinstance(entry.get("sha256"), str)
+        ):
+            raise SystemExit(
+                "attestation_fault: expected_loaded_images entry is malformed"
+            )
+        expected_map[entry["path"]] = entry["sha256"]
+    measured_paths = set(measured)
+    expected_paths = set(expected_map)
+    unexpected = sorted(measured_paths - expected_paths)
+    if unexpected:
+        raise SystemExit(
+            "attestation_fault: loaded native image has no committed "
+            f"expectation: {unexpected}"
+        )
+    missing = sorted(expected_paths - measured_paths)
+    if missing:
+        raise SystemExit(
+            "attestation_fault: a committed-expected native image did not "
+            f"load: {missing}"
+        )
+    mismatched = sorted(
+        path for path in measured_paths if measured[path] != expected_map[path]
+    )
+    if mismatched:
+        raise SystemExit(
+            "attestation_fault: loaded native image sha256 does not match its "
+            f"committed expectation: {mismatched}"
+        )
 
 
 def loaded_image_hash_drift(
@@ -1387,6 +1437,18 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
     stage_b_image_hashes = hash_loaded_images(stage_b_images)
     native_attestation["loaded_images_stage_b"] = stage_b_images
     native_attestation["loaded_images_stage_b_sha256"] = stage_b_image_hashes
+    # F2 (round-3 revision): authenticate the on-disk loaded images against the
+    # committed expected set BEFORE the payload marker; an image with no
+    # committed expectation, or any sha256 mismatch (a same-path pre-launch
+    # mutation), fails closed here.
+    expected_loaded_images = config.get("expected_loaded_images")
+    if expected_loaded_images is not None:
+        if not isinstance(expected_loaded_images, list):
+            raise SystemExit(
+                "attestation_fault: expected_loaded_images must be a list"
+            )
+        authenticate_loaded_images(stage_b_image_hashes, expected_loaded_images)
+        native_attestation["loaded_images_authenticated"] = True
     native_stack_digest = _atomic_write_json(
         paths["native_stack"], native_attestation
     )

@@ -509,6 +509,88 @@ def test_committed_dependency_lock_reproduces_at_head() -> None:
     assert recomputed["pip_freeze"] == committed["pip_freeze"]
 
 
+def test_stable_dependency_lock_signature_excludes_volatile_fields() -> None:
+    """F4 (round-3): the stable semantic signature excludes the volatile
+    editable-filtered pip_freeze; a RECORD-digest or extension-aggregate drift
+    IS a signature change."""
+
+    from bistar_gp.m2cr.environment_freeze import stable_dependency_lock_signature
+
+    lock = {
+        "pip_freeze": "numpy==1\n",
+        "excluded_editable_installs": ["bistar_gp"],
+        "dists": [{"name": "numpy", "version": "1", "record_sha256": "a" * 64}],
+        "binary_extension_count": 1,
+        "binary_extensions_sha256": "b" * 64,
+    }
+    sig = stable_dependency_lock_signature(lock)
+    assert "pip_freeze" not in sig and "excluded_editable_installs" not in sig
+    assert stable_dependency_lock_signature({**lock, "pip_freeze": "x\n"}) == sig
+    drifted = {**lock, "binary_extensions_sha256": "0" * 64}
+    assert stable_dependency_lock_signature(drifted) != sig
+
+
+def test_verify_dependency_lock_semantics_detects_committed_drift() -> None:
+    """F4 (round-3): recompute + compare returns None when the committed lock
+    matches the live environment, and a fault when a semantic field is
+    tampered."""
+
+    from bistar_gp.m2cr.environment_freeze import verify_dependency_lock_semantics
+
+    interpreter = "/opt/homebrew/Caskroom/miniconda/base/bin/python3.13"
+    site_packages = Path(
+        "/opt/homebrew/Caskroom/miniconda/base/lib/python3.13/site-packages"
+    )
+    if not Path(interpreter).exists() or not site_packages.is_dir():
+        pytest.skip("Miniconda base environment not present")
+    committed = build_dependency_lock(interpreter, site_packages)
+    assert (
+        verify_dependency_lock_semantics(committed, interpreter, site_packages)
+        is None
+    )
+    tampered = {**committed, "binary_extensions_sha256": "0" * 64}
+    assert (
+        verify_dependency_lock_semantics(tampered, interpreter, site_packages)
+        is not None
+    )
+
+
+def test_build_native_stack_expectations_measures_and_verifies() -> None:
+    """F1/F2 (round-3): the expectations artifact freezes the native stack,
+    profile hash, backend build markers, Stage-B delta, and the on-disk loaded
+    native-image set; a frozen build marker absent from the measured build
+    fails closed."""
+
+    from bistar_gp.m2cr.environment_freeze import build_native_stack_expectations
+
+    interpreter = "/opt/homebrew/Caskroom/miniconda/base/bin/python3.13"
+    if not Path(interpreter).exists():
+        pytest.skip("Miniconda base interpreter not present")
+    profile_sha = "20b553f803f3b355aefe4d27fcf15417ed1053bf75f7bb782b5de679dbdf9fc6"
+    art = build_native_stack_expectations(
+        interpreter,
+        native_stack_modules=["numpy", "torch"],
+        profile_integration_sha256=profile_sha,
+        torch_build_expected=["BLAS_INFO=accelerate", "USE_MKL=OFF"],
+        numpy_build_expected=["name: accelerate"],
+        stage_b_expected={"__CF_USER_TEXT_ENCODING": "0x1F5:0x0:0x0"},
+    )
+    assert art["kind"] == "m2cr_native_stack_expectations"
+    assert art["expected_loaded_images"]
+    assert all(
+        "path" in e and "sha256" in e for e in art["expected_loaded_images"]
+    )
+    with pytest.raises(ValueError, match="not present in the measured build"):
+        build_native_stack_expectations(
+            interpreter,
+            native_stack_modules=["numpy", "torch"],
+            profile_integration_sha256=profile_sha,
+            torch_build_expected=["BOGUS_MARKER=1"],
+            numpy_build_expected=[],
+            stage_b_expected={"__CF_USER_TEXT_ENCODING": "0x1F5:0x0:0x0"},
+        )
+
+
 @pytest.mark.skipif(
     not os.environ.get("M2CR_FULL_FREEZE_TESTS"),
     reason="set M2CR_FULL_FREEZE_TESTS to walk the real multi-gigabyte freeze roots",

@@ -31,6 +31,24 @@ from bistar_gp.m2cr.serialization import (
     sha256_file,
 )
 
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
+
+# Frozen R2 native-stack attestation spec (external audit round-3 F1/F2). These
+# are committed R2 values, NOT deferred to R2a (which is only the numeric
+# evidence-ceiling addendum): the native import list, the backend build markers
+# that attest Accelerate, and the single frozen Stage-B environment delta. The
+# expected loaded-image set and the profile hash are measured/read at generation
+# time by build_native_stack_expectations.
+R2_NATIVE_STACK_MODULES = ("numpy", "torch")
+R2_TORCH_BUILD_EXPECTED = (
+    "BLAS_INFO=accelerate",
+    "USE_MKL=OFF",
+    "USE_MKLDNN=OFF",
+    "USE_OPENMP=ON",
+)
+R2_NUMPY_BUILD_EXPECTED = ("name: accelerate",)
+R2_STAGE_B_EXPECTED = {"__CF_USER_TEXT_ENCODING": "0x1F5:0x0:0x0"}
+
 __all__ = [
     "R2_CODE_RELPATHS",
     "R1_SCHEMA_RELPATHS",
@@ -80,6 +98,7 @@ _FREEZE_ARTIFACT_KEYS = (
 _INFRASTRUCTURE_ARTIFACT_KEYS = _FREEZE_ARTIFACT_KEYS + (
     "environment_freeze_manifest",
     "dependency_lock",
+    "native_stack_expectations",
 )
 _INFRASTRUCTURE_R1_SCHEMA_KEYS = (
     "execution_record",
@@ -691,6 +710,120 @@ def _distribution_identity(dist_info: Path) -> tuple[str, str]:
     return tuple(stem.rsplit("-", 1))  # type: ignore[return-value]
 
 
+_NATIVE_STACK_MEASURE = r"""
+import sys, os, ctypes, json, io, contextlib, hashlib
+
+def _dyld_images():
+    libc = ctypes.CDLL(None)
+    count = libc._dyld_image_count; count.restype = ctypes.c_uint32
+    name = libc._dyld_get_image_name; name.restype = ctypes.c_char_p
+    name.argtypes = [ctypes.c_uint32]
+    return sorted({os.fsdecode(name(i)) for i in range(count()) if name(i)})
+
+def _sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+native_modules = json.loads(sys.argv[1])
+for module_name in native_modules:
+    __import__(module_name)
+loaded = sys.modules
+images = [
+    {"path": path, "sha256": _sha256(path)}
+    for path in _dyld_images()
+    if os.path.isfile(path)
+]
+torch_cfg = ""
+if "torch" in loaded:
+    torch_cfg = str(loaded["torch"].__config__.show())
+numpy_cfg = ""
+if "numpy" in loaded:
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        loaded["numpy"].show_config()
+    numpy_cfg = buffer.getvalue()
+print(json.dumps({
+    "torch_config_show": torch_cfg,
+    "numpy_config_show": numpy_cfg,
+    "stage_b_env": {
+        key: os.environ[key]
+        for key in ("__CF_USER_TEXT_ENCODING",)
+        if key in os.environ
+    },
+    "expected_loaded_images": images,
+}))
+"""
+
+
+def build_native_stack_expectations(
+    interpreter_path: str | os.PathLike[str],
+    *,
+    native_stack_modules: Sequence[str],
+    profile_integration_sha256: str,
+    torch_build_expected: Sequence[str],
+    numpy_build_expected: Sequence[str],
+    stage_b_expected: Mapping[str, str],
+) -> dict[str, Any]:
+    """Build the committed R2 native-stack expectation set (external audit
+    round-3 revision of F1/F2).
+
+    The mandatory pre-scientific attestation VALUES are frozen here as committed
+    R2 artifacts (not deferred to R2a, which is only the numeric evidence-ceiling
+    addendum): the native import list, the frozen `bistar_gp.profile_integration`
+    hash, the torch/numpy backend build markers, the Stage-B environment delta,
+    and — for F2 — the complete set of on-disk regular-file native images loaded
+    by the frozen stack, each pinned by `(path, sha256)` (the sha256 subsumes the
+    Mach-O linkage identity, since load commands are part of the hashed bytes).
+    Measured by importing the stack in the frozen interpreter in a subprocess
+    (no scientific evaluation); the author-frozen build/Stage-B markers are
+    verified to hold against the measurement before they are committed.
+    """
+
+    if _SHA256_RE.fullmatch(profile_integration_sha256) is None:
+        raise ValueError("profile_integration_sha256 must be a lowercase sha256")
+    completed = subprocess.run(
+        [os.fspath(interpreter_path), "-c", _NATIVE_STACK_MEASURE,
+         canonical_dumps(list(native_stack_modules))],
+        check=True, capture_output=True, text=True,
+    )
+    measured = json.loads(completed.stdout)
+    for marker in torch_build_expected:
+        if marker not in measured["torch_config_show"]:
+            raise ValueError(
+                f"frozen torch_build_expected marker not present in the "
+                f"measured build: {marker!r}"
+            )
+    for marker in numpy_build_expected:
+        if marker not in measured["numpy_config_show"]:
+            raise ValueError(
+                f"frozen numpy_build_expected marker not present in the "
+                f"measured build: {marker!r}"
+            )
+    if dict(stage_b_expected) != measured["stage_b_env"]:
+        raise ValueError(
+            "frozen stage_b_expected does not match the measured Stage-B "
+            f"environment delta: frozen {dict(stage_b_expected)}, measured "
+            f"{measured['stage_b_env']}"
+        )
+    images = sorted(
+        measured["expected_loaded_images"], key=lambda item: item["path"]
+    )
+    return {
+        "kind": "m2cr_native_stack_expectations",
+        "schema_version": 1,
+        "native_stack_modules": list(native_stack_modules),
+        "expected_profile_integration_sha256": profile_integration_sha256,
+        "torch_build_expected": list(torch_build_expected),
+        "numpy_build_expected": list(numpy_build_expected),
+        "stage_b_expected": dict(stage_b_expected),
+        "loaded_image_allowlist": [],
+        "expected_loaded_images": images,
+    }
+
+
 def _filter_volatile_pip_freeze(freeze_text: str) -> tuple[str, list[str]]:
     """Drop editable-install lines (and their ``# Editable`` comments) from
     pip-freeze output so the supplementary lock is reproducible across commits.
@@ -768,6 +901,47 @@ def build_dependency_lock(
             "Editable installs are excluded from pip_freeze (they embed a per-checkout VCS commit and are covered by the importable-artifact manifest); their egg names are listed in excluded_editable_installs.",
         ],
     }
+
+
+def stable_dependency_lock_signature(lock: Mapping[str, Any]) -> dict[str, Any]:
+    """The reproducible semantic fields of the dependency lock (external audit
+    round-3 F4).
+
+    The dist-info RECORD digests and the binary-extension aggregate reproduce
+    across commits and identify the third-party stack; the editable-filtered
+    ``pip_freeze`` text and ``excluded_editable_installs`` are informational and
+    excluded from the runtime comparison, and the project's own code is bound
+    through the worktree/importable-artifact and infrastructure manifests, not
+    this lock (avoiding a self-staling embedded commit SHA).
+    """
+
+    return {
+        "dists": lock.get("dists"),
+        "binary_extension_count": lock.get("binary_extension_count"),
+        "binary_extensions_sha256": lock.get("binary_extensions_sha256"),
+    }
+
+
+def verify_dependency_lock_semantics(
+    committed_lock: Mapping[str, Any],
+    interpreter_path: str | os.PathLike[str],
+    site_packages: str | os.PathLike[str],
+) -> str | None:
+    """Recompute the stable semantic dependency-lock fields from the live frozen
+    environment and compare to the committed lock (F4 runtime enforcement,
+    §4.5.11 "lock metadata").  Returns a fault string on any mismatch, else
+    ``None``.
+    """
+
+    recomputed = build_dependency_lock(interpreter_path, site_packages)
+    if stable_dependency_lock_signature(recomputed) != (
+        stable_dependency_lock_signature(committed_lock)
+    ):
+        return (
+            "dependency-lock semantic fields (dist RECORD digests / "
+            "binary-extension aggregate) do not match the committed lock"
+        )
+    return None
 
 
 def _display_code_path(
@@ -886,8 +1060,15 @@ def _parser() -> argparse.ArgumentParser:
             "preboundary-attestation-set",
             "environment-freeze-manifest",
             "dependency-lock",
+            "native-stack-expectations",
             "infrastructure-manifest",
         ),
+    )
+    parser.add_argument(
+        "--v117-freeze",
+        default=None,
+        help="path to gtoy_profile_freeze_v1.17.json (source of the frozen "
+        "profile_integration_sha256 for native-stack-expectations)",
     )
     parser.add_argument("--out", required=True)
     parser.add_argument("--root", action="append", default=[], metavar="ID=PATH")
@@ -951,6 +1132,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not args.site_packages:
             raise SystemExit("--site-packages is required")
         artifact = build_dependency_lock(args.interpreter, args.site_packages)
+    elif kind == "native-stack-expectations":
+        if not args.v117_freeze:
+            raise SystemExit("--v117-freeze is required")
+        v117 = json.loads(Path(args.v117_freeze).read_text(encoding="utf-8"))
+        profile_sha = v117["algorithm"]["profile_integration_sha256"]
+        artifact = build_native_stack_expectations(
+            args.interpreter,
+            native_stack_modules=R2_NATIVE_STACK_MODULES,
+            profile_integration_sha256=profile_sha,
+            torch_build_expected=R2_TORCH_BUILD_EXPECTED,
+            numpy_build_expected=R2_NUMPY_BUILD_EXPECTED,
+            stage_b_expected=R2_STAGE_B_EXPECTED,
+        )
     else:
         artifact = build_infrastructure_manifest(
             {

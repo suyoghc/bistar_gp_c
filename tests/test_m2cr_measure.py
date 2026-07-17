@@ -232,6 +232,7 @@ def test_evidence_size_report_fixed_total_matches_committed_artifacts():
         "m2cr_environment_freeze_manifest_v1.json",
         "m2cr_child_env_mapping_v1.json",
         "m2cr_interpreter_pin_v1.json",
+        "m2cr_native_stack_expectations_v1.json",
     ]
     freeze = root / "docs/m2c_freeze"
     if not all((freeze / name).exists() for name in artifacts):

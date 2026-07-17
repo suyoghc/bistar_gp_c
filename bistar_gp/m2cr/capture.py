@@ -220,6 +220,11 @@ class LaunchConfig:
     # Hermetic-test escape hatches only ("interpreter", "dyld"); the
     # bootstrap-closure entries are never skippable.
     preboundary_skip: Sequence[str] = ()
+    # F4 (round-3 revision): the committed dependency lock + the frozen
+    # site-packages, so the stable semantic lock fields can be recomputed and
+    # compared parent-side after exit.
+    dependency_lock_path: str | None = None
+    site_packages: str | None = None
 
 
 class RecordAssemblyError(ValueError):
@@ -765,6 +770,67 @@ def _prelaunch(
 
 def _write_terminal(run_dir: Path, record: Mapping[str, Any]) -> str:
     return atomic_write_canonical_json(run_dir / TERMINAL_RECORD_NAME, dict(record))
+
+
+def _dependency_lock_fault(config: LaunchConfig) -> str | None:
+    """Recompute the stable semantic dependency-lock fields from the live frozen
+    environment and compare to the committed lock (external audit round-3
+    revision of F4).  Returns a fault string on any mismatch or recompute
+    failure, else ``None``.  A no-op when the lock/site-packages are unbound.
+    """
+
+    if config.dependency_lock_path is None or config.site_packages is None:
+        return None
+    from bistar_gp.m2cr.environment_freeze import verify_dependency_lock_semantics
+
+    try:
+        committed = _read_json_object(Path(config.dependency_lock_path))
+    except (OSError, ValueError) as exc:
+        return f"committed dependency lock unreadable: {exc}"
+    try:
+        return verify_dependency_lock_semantics(
+            committed, config.interpreter_path, config.site_packages
+        )
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+        return f"dependency-lock recompute failed: {exc}"
+
+
+def _reauthenticate_loaded_images_parent_side(run_dir: Path) -> str | None:
+    """Re-hash the committed expected loaded-image set parent-side after exit
+    (external audit round-3 revision of F2).  The parent (not the payload)
+    re-verifies the on-disk native-library bytes against the frozen
+    expectations, so payload code cannot replace this check.  Returns a fault
+    string on any mismatch/unreadable image, else ``None``.  Absent expectations
+    (a lean hermetic launch, or a pre-spawn failure with no config) are a no-op.
+    """
+
+    try:
+        template = _read_json_object(run_dir / BOOTSTRAP_CONFIG_NAME)
+    except (OSError, ValueError):
+        return None
+    expected = template.get("expected_loaded_images")
+    if not isinstance(expected, list):
+        return None
+    for entry in expected:
+        if (
+            not isinstance(entry, Mapping)
+            or not isinstance(entry.get("path"), str)
+            or not isinstance(entry.get("sha256"), str)
+        ):
+            return "post-exit loaded-image re-attestation: malformed expectation"
+        try:
+            actual = sha256_file(entry["path"])
+        except OSError as exc:
+            return (
+                "post-exit loaded-image re-attestation: "
+                f"{entry['path']} unreadable: {exc}"
+            )
+        if actual != entry["sha256"]:
+            return (
+                "post-exit loaded-image re-attestation: "
+                f"{entry['path']} sha256 changed during run"
+            )
+    return None
 
 
 def _bootstrap_fault(run_dir: Path) -> tuple[str, str] | None:
@@ -1338,6 +1404,14 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                 worktree_root=worktree_root,
                 skip=config.preboundary_skip,
             )
+        if config.dependency_lock_path is not None:
+            # F4 (round-3 revision): recompute the stable semantic dependency-lock
+            # fields from the live environment and compare to the committed lock
+            # BEFORE launch; a third-party-stack drift refuses the launch.
+            pre_spawn_phase = "attestation"
+            lock_fault = _dependency_lock_fault(config)
+            if lock_fault is not None:
+                raise ValueError(lock_fault)
         # CP-4: prelaunch provenance and the event-pipe setup precede the spawn,
         # so a failure here (e.g. the bootstrap source vanishing during
         # _prelaunch, or the event pipe failing to start) must also commit an
@@ -1523,6 +1597,19 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                 )
             except ValueError as exc:
                 capture_fault = f"post-exit pre-boundary re-attestation failed: {exc}"
+        # F2 (round-3 revision): re-hash the committed expected loaded-image set
+        # parent-side after exit, so a native-library mutation during the run is
+        # caught by the trusted parent (the payload cannot replace this check).
+        if capture_fault is None:
+            fault = _reauthenticate_loaded_images_parent_side(run_dir)
+            if fault is not None:
+                capture_fault = fault
+        # F4 (round-3 revision): recompute + compare the stable semantic
+        # dependency-lock fields parent-side after exit (§4.5.11 "lock metadata").
+        if capture_fault is None and config.dependency_lock_path is not None:
+            fault = _dependency_lock_fault(config)
+            if fault is not None:
+                capture_fault = f"post-exit {fault}"
 
     spawned = (run_dir / "spawned.json").is_file()
     balance = _event_balance(events_path)
@@ -1905,6 +1992,48 @@ def _require_complete_attestation_directives(template: Mapping[str, Any]) -> Non
         )
 
 
+_MANDATORY_ATTESTATION_KEYS = (
+    "native_stack_modules",
+    "expected_profile_integration_sha256",
+    "torch_build_expected",
+    "numpy_build_expected",
+    "stage_b_expected",
+    "loaded_image_allowlist",
+    "expected_loaded_images",
+)
+
+
+def _bind_attestation_directives(
+    template: dict[str, Any], expectations: Mapping[str, Any]
+) -> None:
+    """Canonically DERIVE the mandatory pre-scientific attestation directives
+    from the committed, infra-pinned native-stack expectations artifact and
+    inject them into the template (external audit round-3 revision of F1).
+
+    Every mandatory directive — the native import list, the frozen
+    profile_integration hash, the torch/numpy backend build markers, the
+    Stage-B environment delta, the loaded-image allowlist, and the F2 expected
+    loaded-image set — comes from the committed artifact, not the caller.  A
+    caller template that carries a CONFLICTING value for any mandatory directive
+    is rejected (caller substitution); a missing directive is injected; the
+    committed values are authoritative and cannot be caller-substituted before
+    payload start.
+    """
+
+    for key in _MANDATORY_ATTESTATION_KEYS:
+        if key not in expectations:
+            raise ValueError(
+                f"native-stack expectations artifact lacks mandatory {key}"
+            )
+        if key in template and template[key] != expectations[key]:
+            raise ValueError(
+                f"bootstrap template substitutes the committed {key}; the "
+                "mandatory attestation directives are frozen and may not be "
+                "caller-supplied"
+            )
+        template[key] = expectations[key]
+
+
 def _read_manifest_v2_header(path: Path) -> dict[str, str]:
     """Read the importable-manifest format-v2 header's frozen roots.
 
@@ -2014,6 +2143,13 @@ def launch_config_from_freeze(
     attestation_set_path = _pinned_artifact(
         freeze, "preboundary_attestation_set", base
     )
+    # F1 (round-3 revision): the mandatory attestation directives are DERIVED
+    # from the committed native-stack expectations artifact, authenticated
+    # against its Layer-1a infrastructure pin.
+    expectations_path = _pinned_artifact(
+        infrastructure, "native_stack_expectations", base
+    )
+    expectations = _read_json_object(expectations_path)
 
     pin = _read_json_object(interpreter_pin_path)
     interpreter_path = pin.get("path")
@@ -2073,12 +2209,12 @@ def launch_config_from_freeze(
     template = _load_bootstrap_template(
         Path(bootstrap_template_path).resolve(strict=True)
     )
-    # F1: refuse any template that would let the bootstrap skip a pre-scientific
-    # attestation (empty native stack, absent profile-hash directive), so a
-    # marker can never be emitted with no native-stack attestation or no
-    # §4.5.10 profile-hash comparison ("all pre-scientific attestations complete
-    # before the marker", HARD R2 OBLIGATION §4.3).
-    _require_complete_attestation_directives(template)
+    # F1 (round-3 revision): inject the mandatory attestation directives from
+    # the authenticated committed expectations artifact, rejecting caller
+    # substitution — so a marker can never be emitted with a caller-chosen
+    # native stack, profile hash, backend markers, or loaded-image set ("all
+    # pre-scientific attestations complete before the marker", HARD §4.3).
+    _bind_attestation_directives(template, expectations)
     template["four_roots"] = [roots[name] for name in _FOUR_ROOT_IDS]
     template["importable_artifact_manifest"] = os.fspath(manifest_path.resolve())
     run_root = Path(run_dir).resolve()
@@ -2100,6 +2236,13 @@ def launch_config_from_freeze(
         "wall_clock_ceiling_hours": WALL_CLOCK_CEILING_HOURS,
         "preboundary_attestation_set": os.fspath(attestation_set_path.resolve()),
     }
+    # F4 (round-3 revision): bind the committed dependency lock + frozen
+    # site-packages so capture_run recomputes and compares the stable semantic
+    # lock fields before spawn and after exit.
+    if "dependency_lock" in infra_artifacts:
+        lock_path = _pinned_artifact(infrastructure, "dependency_lock", base)
+        arguments["dependency_lock_path"] = os.fspath(lock_path)
+        arguments["site_packages"] = roots["site-packages"]
     if waiter is not None:
         arguments["waiter"] = waiter
     return LaunchConfig(**arguments)
