@@ -166,9 +166,19 @@ def test_run_dir_layout_evidence_is_fully_classified():
         "per_event_stream",
         "per_node_subtree",
         "stream_allowance",
+        "run_local_scratch",
         "run_local_dir",
     } <= classes
     assert all(reason for _klass, reason in classified.values())
+    # The writable run-local dirs (HOME/TMPDIR/XDG) are NOT dismissed as
+    # zero-byte scratch — their payload-written contents are Layer-3
+    # raw-manifested, so they are an allowance-bearing class, distinct from the
+    # asserted-empty pycache prefix (external-audit finding: run-local contents
+    # are manifested).
+    assert classified["home/"][0] == "run_local_scratch"
+    assert classified["tmp/"][0] == "run_local_scratch"
+    assert classified["xdg/"][0] == "run_local_scratch"
+    assert classified["pycache/"][0] == "run_local_dir"
     # A new layout member with no classification fails closed.
     with pytest.raises(ValueError, match="lack an explicit evidence classification"):
         measure.classify_run_dir_layout(list(RUN_DIR_LAYOUT) + ["brand_new.json"])

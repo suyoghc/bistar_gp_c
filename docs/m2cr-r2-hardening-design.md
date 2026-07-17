@@ -32,7 +32,13 @@ before coding, per the cycle instructions.
   from terminal publication and return an in-memory record as though it were
   durably committed.
 
-## Shared redesign — one authenticated launch authority
+## Shared redesign — one authenticated launch authority (PROPOSED; only partly built this cycle)
+
+> **Status:** this section describes the TARGET redesign for findings 1–3. As of this cycle only
+> WI3 (the sentinel, a static fact already flowing through the existing derive/bind path) is
+> implemented; the `AuthenticatedLaunchSpec` mechanism below is NOT yet built (finding 2 remains
+> open, finding 1 deferred — see "Landed this cycle" and the cost finding). Read this as the plan
+> for the next cycle, not a description of the current code.
 
 Findings 1–3 are fixed together by a single target invariant:
 
@@ -41,7 +47,7 @@ Findings 1–3 are fixed together by a single target invariant:
 > boundary. The caller supplies run-specific identity and routing inputs, not
 > expected security values.
 
-Mechanism: a new frozen `AuthenticatedLaunchSpec` produced by
+Proposed mechanism (not yet built): a new frozen `AuthenticatedLaunchSpec` produced by
 `_authenticate_launch_spec(worktree_root, chain)`, which extends the existing
 `_derive_authenticated_bundle` scaffolding. From the chain-bound infrastructure
 manifest under the launch worktree it authenticates **every** Layer-0 pin
@@ -162,20 +168,30 @@ Consequence for sequencing: the importable-manifest **child re-walk/origin bindi
 launches), so it is the natural next cycle. Every OTHER static-authority fact —
 frozen environment, interpreter, four roots (header only, cheap), pre-boundary set
 (fixture-sized dyld stand-ins, cheap), sentinel hash, expectations, dependency lock —
-is derivable and enforceable in the fast battery WITHOUT the real-root walk. This
-cycle therefore lands the launch-authority redesign for all of those (closing
-findings 2 and 3), plus findings 4, 5, 6, and defers finding 1's mandatory child
-binding to an explicitly-planned follow-up with the cost analysis above.
+is derivable and enforceable WITHOUT the real-root walk, but the full env/interpreter/
+pre-boundary derivation (WI2) is a bounded harness rebuild that shares the launch-spec
+machinery with WI1, so this cycle lands the self-contained items and schedules WI1+WI2
+together for the next cycle.
 
-**Landed this cycle:** WI4 (retry clarification), WI6 (truthful publication states),
-WI3 (build-pinned sentinel), WI2 (authenticated environment + interpreter +
-pre-boundary set; skip tokens removed), WI5 (evidence-bundle measurement).
-**Deferred (documented next cycle):** WI1's child-side mandatory importable-manifest
-re-walk + origin/loader binding on the production launch path, and its isolated
-real-root integration tests. The parent-side derivation of the manifest path + roots
-is landed as part of the launch spec (authenticated, substitution-rejected); only the
-child's unconditional consumption + the expensive real-root positive/negative launch
-tests are deferred.
+**Landed this cycle (accurate — corrected after the hardening-review round):**
+- **WI4 / finding 4** — retry-candidate clarification (records.py comment + asymmetric test).
+- **WI6 / finding 6** — truthful terminal-publication states (typed publication hierarchy).
+- **WI3 / finding 3** — build-pinned sentinel hash derived from the committed expectations.
+- **WI5 / finding 5** — complete per-run evidence-bundle measurement + RUN_DIR_LAYOUT coverage.
+
+**ADVANCED but NOT landed — finding 2 (BLOCKER) is still OPEN:** the parent already derives the
+native-stack expectations, dependency lock, importable-manifest header roots, and (this cycle)
+the sentinel from the chain-bound committed infrastructure manifest. But `capture_run` STILL
+trusts the caller `LaunchConfig` for `frozen_env`, `interpreter_path`/`interpreter_flags`, and
+`preboundary_attestation_set` (which still defaults to `None`/skippable with the
+`{"interpreter","dyld"}` skip tokens present). So WI2's authenticated environment/interpreter/
+pre-boundary derivation is NOT implemented, the skip tokens are NOT removed, and the
+`AuthenticatedLaunchSpec` / `_authenticate_launch_spec` described in the "Shared redesign" section
+above is a **PROPOSED mechanism for the next cycle, not yet built**. Finding 2 is not closed.
+
+**Deferred (documented next cycle) — finding 1 (BLOCKER):** WI1's child-side mandatory
+importable-manifest re-walk + origin/loader binding on the production launch path, and its
+isolated real-root integration tests; landed together with the full WI2 harness rebuild.
 
 ## Contract questions
 

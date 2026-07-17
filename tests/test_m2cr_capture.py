@@ -454,7 +454,7 @@ def _manifest_entries(run_dir: Path) -> dict[str, str]:
 def test_happy_path_real_subprocess_and_frozen_write_order(tmp_path: Path) -> None:
     """The positive fake-bundle launch reaches COMPLETED through the exact
     unconditional production path: capture_run derives + authenticates the
-    committed bundle from the worktree manifests, binds all seven mandatory
+    committed bundle from the worktree manifests, binds all eight mandatory
     directives, verifies the semantic dependency lock, spawns the REAL
     bootstrap (which attests the fake native stack and authenticates the
     measured loaded images before the marker), then publishes the marker-bound
@@ -2129,14 +2129,16 @@ def test_mid_run_config_mutation_cannot_redirect_the_failure_record(
     validate_terminal_record(record)
 
 
-def test_race_loser_with_unreadable_squatter_returns_in_memory_record(
+def test_race_loser_with_unreadable_squatter_raises_write_error(
     tmp_path: Path,
 ) -> None:
-    """Round-4 (Codex round 2): when the terminal name is occupied by a
-    non-protocol writer's unreadable bytes, the race loser preserves them as
-    evidence (no clobber), returns its own assembled in-memory record, and the
-    read failure never escapes capture_run — the same fallback semantics as
-    the pre-spawn race loser."""
+    """Finding 6 (hardening-cycle correction): when the terminal name is occupied
+    by a non-protocol writer's unreadable/noncanonical bytes, nothing of ours was
+    durably published, so capture_run raises TerminalWriteError (carrying the
+    attempted record) rather than returning a never-published record — the
+    finding-6 return-only-authoritative-durable-record contract. The squatter is
+    preserved on disk, never clobbered. (This supersedes the round-4 behavior of
+    returning the in-memory record, which contradicted the WI6 contract.)"""
 
     config = _make_launch(
         tmp_path,
@@ -2146,11 +2148,14 @@ def test_race_loser_with_unreadable_squatter_returns_in_memory_record(
             "'wb').write(b'NOT-JSON-SQUATTER')"
         ),
     )
-    record = capture_run(config)
+    with pytest.raises(capture_module.TerminalWriteError) as excinfo:
+        capture_run(config)
     run_dir = Path(config.run_dir)
+    # The squatter is preserved (never clobbered); our record carried by the
+    # exception was COMPLETED but was not published.
     assert (run_dir / TERMINAL_RECORD_NAME).read_bytes() == b"NOT-JSON-SQUATTER"
-    assert record["status"] == "COMPLETED", record.get("fault")
-    validate_terminal_record(record)
+    assert excinfo.value.attempted_record["status"] == "COMPLETED"
+    assert "occupied by a non-authoritative or unreadable file" in str(excinfo.value)
 
 
 def test_write_terminal_mode_honors_the_caller_umask(tmp_path: Path) -> None:

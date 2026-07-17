@@ -95,12 +95,13 @@ component.
 
 | Component | Bytes | Basis (labeled) |
 |---|---|---|
-| Runtime envelope classes (17 `fixed_runtime` files: prelaunch, spawned, marker, effect proofs, Stage A/B/C, bytecode, canary, native-stack, manifest pre/post, sourceless, inventory, payload, `RAW_MANIFEST.sha256`, terminal record) | 61,340 | measured (hermetic capture via `measure_run_dir_fixed_evidence`; `import_inventory.json` dominates at 31,927 and scales with the real import closure) |
+| Runtime envelope classes (`RUN_DIR_EVIDENCE_CLASSES` marks 19 `fixed_runtime` + the `conditional` `bootstrap_failure.json`; 17 were present in this hermetic run — `manifest_pre.json`/`manifest_post.json` are absent here because the fake bundle omits the importable-manifest directive, the deferred finding 1) | 61,340 | measured (hermetic capture via `measure_run_dir_fixed_evidence`; `import_inventory.json` dominates at 31,927 and scales with the real import closure) |
+| Run-local scratch (`home/`, `tmp/`, `xdg/`) | (allowance) | any payload-written contents are Layer-3 raw-manifested, so represented as a caller-supplied allowance (unbounded, no hermetic basis), NOT assumed zero; `pycache/` alone is asserted empty (zero) |
 | Per-node records, all nodes at the structural worst case | 8,729,014 | derived: 5,894 × 1,481 |
 | Event stream, all nodes at the structural worst case | 9,016,328 | derived: 6,088 × 1,481 |
 | stdout / stderr | (allowance) | caller-supplied allowance, labeled `measured: false`; no hermetic basis, never a measured claim |
 | **Per-run evidence bundle, measured-basis subtotal** | **17,806,682** | derived: runtime envelopes + per-node product + per-event product |
-| Per-run evidence bundle, complete | 17,806,682 + allowances | derived: measured-basis subtotal + caller-supplied stdout/stderr allowances |
+| Per-run evidence bundle, complete | 17,806,682 + allowances | derived: measured-basis subtotal + caller-supplied stdout/stderr + run-local-scratch allowances |
 
 The complete per-run bundle is exactly `derive_bundle_projection`'s `complete_bundle` = sum(measured
 fixed runtime bytes) + sum(caller-supplied allowance bytes) + sum(per-node worst-case bytes ×

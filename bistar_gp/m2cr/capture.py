@@ -955,6 +955,34 @@ def _write_terminal(run_dir: Path, record: Mapping[str, Any]) -> str:
     return digest
 
 
+def _race_winner_or_raise(
+    run_dir: Path, attempted_record: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Resolve a no-clobber publication that lost to an existing terminal.
+
+    If the occupying file is a valid canonical record it is the authoritative
+    durable winner (a reconciliation of this run, or a racing writer) and is
+    returned verbatim.  If it is unreadable or noncanonical — a §4.5.13
+    adversarial squatter — then NOTHING of ours was durably published, so under
+    the finding-6 contract (return only an authoritative durable record) a
+    :class:`TerminalWriteError` is raised carrying the attempted record; the
+    squatter is preserved on disk, never clobbered.  This is the single point
+    both publication sites share, so the valid-winner and malformed-occupant
+    states are distinguished identically.
+    """
+
+    try:
+        return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
+    except (OSError, ValueError, RecursionError) as exc:
+        raise TerminalWriteError(
+            f"the terminal name at {run_dir / TERMINAL_RECORD_NAME} is occupied "
+            "by a non-authoritative or unreadable file and this record could "
+            f"not be published: {exc}",
+            attempted_record=attempted_record,
+            cause=exc,
+        ) from exc
+
+
 def _reauthenticate_loaded_images_parent_side(
     expected: Sequence[Mapping[str, Any]],
 ) -> str | None:
@@ -1609,8 +1637,12 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         # pre-payload infrastructure fault (INFRA_FAILURE), never NOT_STARTED
         # (which is reserved for a spawn attempted at Popen but never
         # confirmed).  Codex round-3 F5(C3): the whole pre-spawn phase catches
-        # ordinary Exception (e.g. a RuntimeError from pipe.start()), so no
-        # pre-spawn failure can escape capture_run without a terminal record.
+        # ordinary Exception (e.g. a RuntimeError from pipe.start()) and commits
+        # a terminal record.  (Finding 6 refinement: if committing that terminal
+        # record itself cannot be published, the typed publication exception
+        # propagates — a terminal record is always ASSEMBLED, but capture_run now
+        # surfaces a publication failure truthfully rather than returning an
+        # unpublished record.)
         pre_spawn_phase = "setup"
         # Round-4 (Codex delta review): the canonical digest of the exact
         # config bytes written here is handed to the child THROUGH ARGV — a
@@ -1658,29 +1690,28 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
             fault_class=fault_class,
         )
         try:
+            # run_dir.mkdir is isolated so its OSError (nothing on disk yet)
+            # is the only failure this handler wraps as a write failure; a
+            # publication exception from _write_terminal below is never
+            # misattributed to directory creation (GLM hardening finding).
             run_dir.mkdir(parents=True, exist_ok=True)
-            _write_terminal(run_dir, record)
-            return record
-        except TerminalAlreadyExists:
-            # A terminal already exists (a reconciliation won the publish
-            # race).  Exactly like the normal-capture race loser, the durable
-            # record is the one on disk — return it verbatim, or the in-memory
-            # record for an unreadable/malformed §4.5.13 squatter (round-4 GLM;
-            # RecursionError guards a pathologically nested squatter).
-            try:
-                return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
-            except (OSError, ValueError, RecursionError):
-                return record
         except OSError as exc:
-            # run_dir.mkdir itself failed before any publication was attempted:
-            # nothing is on disk, so this is a truthful write failure, surfaced
-            # rather than returning an uncommitted record (finding 6).
             raise TerminalWriteError(
                 f"pre-spawn terminal publication could not create {run_dir}: "
                 f"{exc}",
                 attempted_record=record,
                 cause=exc,
             ) from exc
+        try:
+            _write_terminal(run_dir, record)
+            return record
+        except TerminalAlreadyExists:
+            # A terminal already exists (a reconciliation won the publish race).
+            # Return the authoritative durable winner, or — for an unreadable/
+            # malformed §4.5.13 squatter — surface a TerminalWriteError rather
+            # than returning a never-published record (finding-6 contract); the
+            # squatter is preserved, never clobbered.
+            return _race_winner_or_raise(run_dir, record)
         # External-audit finding 6: TerminalWriteError (nothing published) and
         # TerminalDurabilityUncertain (visible but durability unconfirmed) from
         # _write_terminal propagate — the pre-spawn INFRA_FAILURE outcome is
@@ -2093,17 +2124,11 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     except TerminalAlreadyExists:
         # Codex round-3 C4: a terminal already exists (a reconciliation of this
         # run won the publish race).  Nothing vanishes — the durable record is
-        # the one already on disk; return it verbatim rather than overwrite it.
-        # Round-4 unification: if the occupying file is unreadable or not a
-        # canonical record (a non-protocol writer squatted the name — §4.5.13
-        # residual class, including a pathologically nested squatter raising
-        # RecursionError), it is preserved as evidence and the in-memory record
-        # is returned, exactly like the pre-spawn race loser; the publication
-        # never clobbers and the failure never escapes.
-        try:
-            return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
-        except (OSError, ValueError, RecursionError):
-            return record
+        # the one already on disk; return that authoritative winner rather than
+        # overwrite it.  For an unreadable/noncanonical §4.5.13 squatter, nothing
+        # of ours was published, so a TerminalWriteError is surfaced instead of a
+        # never-published record (finding-6 contract); the squatter is preserved.
+        return _race_winner_or_raise(run_dir, record)
     # External-audit finding 6: TerminalWriteError (nothing published) and
     # TerminalDurabilityUncertain (visible but crash-durability unconfirmed)
     # PROPAGATE — capture_run raises a typed publication exception rather than
@@ -2219,10 +2244,11 @@ def _require_complete_attestation_directives(template: Mapping[str, Any]) -> Non
     """Fail closed unless the bootstrap template carries EVERY mandatory
     pre-scientific attestation directive, well-formed (Codex round-3 C1).
 
-    All seven directives are validated unconditionally (no profile-hash gate):
-    a non-empty allow-listed native stack, a lowercase profile-hash, non-empty
-    torch/numpy build-marker lists, a Stage-B object, a loaded-image allowlist,
-    and a non-empty expected loaded-image set.  A missing, empty, or malformed
+    All eight directives are validated unconditionally (no profile-hash gate):
+    a non-empty allow-listed native stack, a lowercase profile-hash, the
+    build-pinned bound sentinel __hash__ (finding 3), non-empty torch/numpy
+    build-marker lists, a Stage-B object, a loaded-image allowlist, and a
+    non-empty expected loaded-image set.  A missing, empty, or malformed
     directive raises ``ValueError`` so capture_run commits a pre-payload
     INFRA_FAILURE before the marker.
     """

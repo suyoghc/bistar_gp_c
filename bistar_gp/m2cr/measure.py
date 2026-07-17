@@ -231,7 +231,12 @@ def derive_bundle_projection(
 #   per_event_stream — the event stream, scaled by node/event count (not fixed)
 #   per_node_subtree — the nodes/ subtree, scaled per node (not fixed)
 #   stream_allowance — an unbounded stream represented only as a labeled allowance
-#   run_local_dir    — a run-local scratch directory carrying no certification bytes
+#   run_local_scratch — a writable run-local directory (HOME/TMPDIR/XDG) whose
+#                       payload-written contents ARE Layer-3 raw-manifested, so
+#                       represented as a caller-supplied allowance (unbounded, no
+#                       hermetic basis), NEVER assumed to carry zero bytes
+#   run_local_dir    — a run-local directory asserted empty (pycache prefix),
+#                       genuinely zero certification bytes
 #   conditional      — emitted only on a specific outcome (payload vs failure),
 #                      measured as a fixed_runtime class when present
 # The classification is validated to cover RUN_DIR_LAYOUT exactly (see
@@ -278,12 +283,25 @@ RUN_DIR_EVIDENCE_CLASSES: dict[str, tuple[str, str]] = {
         "per_node_subtree",
         "per-node record subtree; scales per node, projected not fixed",
     ),
-    "home/": ("run_local_dir", "run-local HOME; scratch, no certification bytes"),
-    "tmp/": ("run_local_dir", "run-local TMPDIR; scratch, no certification bytes"),
-    "xdg/": ("run_local_dir", "run-local XDG base; scratch, no certification bytes"),
+    "home/": (
+        "run_local_scratch",
+        "run-local HOME; any payload-written contents are Layer-3 raw-manifested "
+        "and represented as a caller-supplied allowance, not zero bytes",
+    ),
+    "tmp/": (
+        "run_local_scratch",
+        "run-local TMPDIR (torch OpenMP may write here, §4.5.14); contents are "
+        "Layer-3 raw-manifested and represented as a caller-supplied allowance",
+    ),
+    "xdg/": (
+        "run_local_scratch",
+        "run-local XDG base; any payload-written contents are Layer-3 "
+        "raw-manifested and represented as a caller-supplied allowance",
+    ),
     "pycache/": (
         "run_local_dir",
-        "run-local empty pycache prefix; asserted empty, no certification bytes",
+        "run-local pycache prefix; asserted empty at Stage C, zero certification "
+        "bytes",
     ),
 }
 
@@ -293,6 +311,7 @@ _RUN_DIR_EVIDENCE_CLASS_NAMES = frozenset(
         "per_event_stream",
         "per_node_subtree",
         "stream_allowance",
+        "run_local_scratch",
         "run_local_dir",
         "conditional",
     }

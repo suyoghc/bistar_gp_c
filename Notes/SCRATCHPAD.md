@@ -4,12 +4,13 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 
 ## M2cR R2 — CONTINUOUS HARDENING; external audit bd1d0f9 findings 3/4/5/6 CLOSED, 2 advanced, 1 deferred (D48 Updates 7–10, 2026-07-17); another three-reviewer delta review pending — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR #16, HARD STOP
 
-- **Shipped (hermetic, plan §8 R2 exactly):** `bistar_gp/m2cr/` (12 modules) + **15** `tests/test_m2cr_*`
-  files; v2 gates byte-equivalent with full attempt/retry evidence; write-ahead events; capture driver +
-  B14-stack v5 bootstrap; fail-closed `payload_started.json` boundary; **8** committed freeze artifacts
-  under `docs/m2c_freeze/m2cr_*` (importable manifest v2: 39,955 entries / **8,743,892 B** / 0 orphans;
-  the 8th = the D48-Update-8 native-stack expectations artifact); audit tooling; B15(ii) measurement
-  report (NO ceilings; proposals non-binding). Suite at head: **774 passed / 2 skipped**, exit 0.
+- **Shipped (hermetic, plan §8 R2 exactly), at HEAD:** `bistar_gp/m2cr/` (12 modules) + **15**
+  `tests/test_m2cr_*` files; v2 gates byte-equivalent with full attempt/retry evidence; write-ahead
+  events; capture driver + B14-stack v5 bootstrap; fail-closed `payload_started.json` boundary; **8**
+  committed freeze artifacts under `docs/m2c_freeze/m2cr_*` (importable manifest v2: 39,955 entries /
+  **8,743,895 B** / 0 orphans; the 8th = the native-stack expectations artifact, which since finding 3
+  also carries the build-pinned sentinel hash); audit tooling; B15(ii) measurement report (NO ceilings;
+  proposals non-binding). Suite at HEAD: **792 passed / 2 skipped**, exit 0.
 - **Review-gate history (compressed):** original three-reviewer gate + external Codex round-3 F1–F6 +
   CP-1..CP-5 + author-directed F1/F2/F4 strengthening = D48 main entry + Updates 7–8 (heads eeefeef,
   8c24b1f, dcefefd). Then the fresh Codex delta review at dcefefd returned **C1–C4 (REVISE)**; the

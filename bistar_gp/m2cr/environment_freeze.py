@@ -772,6 +772,18 @@ def measure_expected_sentinel_hash(
     property, not a caller-chosen value.  The bound-method call bypasses a
     shadowable ``builtins.hash``, mirroring the child's own attestation."""
 
+    # Fail closed in code (not only in a test) if this generator's sentinel
+    # string ever drifts from the child bootstrap's _SENTINEL: otherwise the
+    # committed artifact would freeze a hash for the wrong string and every
+    # launch would fail the child's bound-hash proof (GLM hardening finding).
+    from bistar_gp.m2cr.bootstrap import _SENTINEL as _child_sentinel
+
+    if _SENTINEL_STRING != _child_sentinel:
+        raise ValueError(
+            "environment_freeze._SENTINEL_STRING has drifted from "
+            "bistar_gp.m2cr.bootstrap._SENTINEL; the measured sentinel hash "
+            "would be frozen for the wrong string"
+        )
     completed = subprocess.run(
         [
             os.fspath(interpreter_path),
