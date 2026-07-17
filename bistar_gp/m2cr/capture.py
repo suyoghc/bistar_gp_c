@@ -2255,6 +2255,11 @@ def _require_complete_attestation_directives(template: Mapping[str, Any]) -> Non
             "bootstrap template must carry a lowercase "
             "expected_profile_integration_sha256"
         )
+    sentinel = template["expected_sentinel_hash"]
+    if not isinstance(sentinel, int) or isinstance(sentinel, bool):
+        raise ValueError(
+            "bootstrap template expected_sentinel_hash must be an integer"
+        )
     for key in ("torch_build_expected", "numpy_build_expected"):
         value = template[key]
         if (
@@ -2281,6 +2286,7 @@ def _require_complete_attestation_directives(template: Mapping[str, Any]) -> Non
 _MANDATORY_ATTESTATION_KEYS = (
     "native_stack_modules",
     "expected_profile_integration_sha256",
+    "expected_sentinel_hash",
     "torch_build_expected",
     "numpy_build_expected",
     "stage_b_expected",

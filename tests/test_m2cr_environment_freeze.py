@@ -12,7 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 
+import bistar_gp.m2cr.bootstrap as bootstrap_module
 from bistar_gp.m2cr.environment_freeze import (
+    _SENTINEL_STRING,
     build_child_env_mapping,
     build_dependency_lock,
     build_environment_freeze_manifest,
@@ -20,6 +22,7 @@ from bistar_gp.m2cr.environment_freeze import (
     build_interpreter_pin,
     build_preboundary_attestation_set,
     classify_pyc_candidate,
+    measure_expected_sentinel_hash,
     read_manifest_header,
     walk_importable_artifacts,
 )
@@ -31,10 +34,31 @@ from bistar_gp.m2cr.serialization import (
 )
 
 
+MINICONDA_PYTHON = "/opt/homebrew/Caskroom/miniconda/base/bin/python3.13"
+
+
 def _write(path: Path, data: bytes = b"x") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
     return path
+
+
+def test_sentinel_string_matches_bootstrap_and_measures_the_build_pinned_hash():
+    """Finding 3: the generator's sentinel string equals the child bootstrap's
+    _SENTINEL, and measuring its bound __hash__ under PYTHONHASHSEED=0 in the
+    frozen interpreter yields the build-pinned value the child attests — the
+    same regardless of the caller's own hash seed."""
+
+    assert _SENTINEL_STRING == bootstrap_module._SENTINEL
+    measured = measure_expected_sentinel_hash(MINICONDA_PYTHON)
+    assert isinstance(measured, int) and not isinstance(measured, bool)
+    # Deterministic across repeated measurement (the seed-0 bound-method hash).
+    assert measure_expected_sentinel_hash(MINICONDA_PYTHON) == measured
+    # Equals the documented build-pinned seed-0 value the child attests; the
+    # child's own _BOUND_SENTINEL_HASH() depends on the child's PYTHONHASHSEED=0,
+    # not this test process's seed, so the authoritative measured-vs-child
+    # equality is exercised end-to-end by the capture sentinel test.
+    assert measured == -2671292046718125608
 
 
 def _synthetic_import_tree(root: Path) -> None:
@@ -580,6 +604,12 @@ def test_build_native_stack_expectations_measures_and_verifies() -> None:
     assert all(
         "path" in e and "sha256" in e for e in art["expected_loaded_images"]
     )
+    # Finding 3: the build-pinned bound sentinel __hash__ value is measured and
+    # frozen here (an int, not a bool), so the child derives it rather than a
+    # caller supplying it.
+    assert isinstance(art["expected_sentinel_hash"], int)
+    assert not isinstance(art["expected_sentinel_hash"], bool)
+    assert art["expected_sentinel_hash"] == -2671292046718125608
     with pytest.raises(ValueError, match="not present in the measured build"):
         build_native_stack_expectations(
             interpreter,

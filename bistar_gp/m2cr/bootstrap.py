@@ -423,6 +423,7 @@ def hash_loaded_images(paths: Iterable[str]) -> dict[str, str]:
 MANDATORY_ATTESTATION_KEYS = (
     "native_stack_modules",
     "expected_profile_integration_sha256",
+    "expected_sentinel_hash",
     "torch_build_expected",
     "numpy_build_expected",
     "stage_b_expected",
@@ -464,6 +465,12 @@ def require_mandatory_attestation_directives(config: Mapping[str, Any]) -> None:
         raise SystemExit(
             "attestation_fault: expected_profile_integration_sha256 must be a "
             "lowercase sha256"
+        )
+    sentinel = config["expected_sentinel_hash"]
+    if not isinstance(sentinel, int) or isinstance(sentinel, bool):
+        raise SystemExit(
+            "attestation_fault: expected_sentinel_hash must be an integer "
+            "(the build-pinned bound sentinel __hash__ value)"
         )
     for key in ("torch_build_expected", "numpy_build_expected"):
         value = config[key]

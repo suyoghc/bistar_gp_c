@@ -40,6 +40,7 @@ from tests.test_m2cr_bootstrap import (
     FAKE_STAGE_B_EXPECTED,
     FAKE_TORCH_BUILD_MARKERS,
     MANDATORY_DIRECTIVES,
+    SENTINEL_HASH,
     measured_expected_loaded_images,
     write_fake_native_stack,
 )
@@ -318,6 +319,7 @@ def _make_launch(
         "schema_version": 1,
         "native_stack_modules": ["torch", "numpy"],
         "expected_profile_integration_sha256": sha256_file(profile_path),
+        "expected_sentinel_hash": SENTINEL_HASH,
         "torch_build_expected": list(FAKE_TORCH_BUILD_MARKERS),
         "numpy_build_expected": list(FAKE_NUMPY_BUILD_MARKERS),
         "stage_b_expected": dict(FAKE_STAGE_B_EXPECTED),
@@ -379,7 +381,9 @@ def _make_launch(
 
     bootstrap_config = {
         "four_roots": roots,
-        "expected_sentinel_hash": -2671292046718125608,
+        # expected_sentinel_hash is now a mandatory attestation directive DERIVED
+        # from the committed native-stack expectations artifact and bound by
+        # capture_run (finding 3) — the caller template no longer carries it.
         "payload": {"entry": "fake_payload:run", "pass_context": True},
         "payload_entry_path": os.fspath(payload_path),
         "attestation_paths": {
@@ -1442,6 +1446,7 @@ def _freeze_fixture(tmp_path: Path) -> dict[str, Path]:
             "schema_version": 1,
             "native_stack_modules": ["numpy", "torch"],
             "expected_profile_integration_sha256": "a" * 64,
+            "expected_sentinel_hash": SENTINEL_HASH,
             "torch_build_expected": ["BLAS_INFO=accelerate"],
             "numpy_build_expected": ["name: accelerate"],
             "stage_b_expected": {},
@@ -1913,10 +1918,10 @@ def test_bundle_derivation_failures_commit_infra_pre_spawn(
 def test_expectations_artifact_missing_any_directive_fails_closed(
     tmp_path: Path, directive: str
 ) -> None:
-    """Codex round-3 C1: a committed expectations artifact that lacks ANY of
-    the seven mandatory directives (including the profile hash and the
-    expected loaded-image set) cannot bind a launch — INFRA_FAILURE before any
-    spawn, never a directive default."""
+    """Codex round-3 C1 + finding 3: a committed expectations artifact that lacks
+    ANY of the eight mandatory directives (including the profile hash, the
+    build-pinned sentinel hash, and the expected loaded-image set) cannot bind a
+    launch — INFRA_FAILURE before any spawn, never a directive default."""
 
     def drop(expectations: dict) -> None:
         del expectations[directive]
@@ -1938,15 +1943,17 @@ def test_expectations_artifact_missing_any_directive_fails_closed(
             "expected_loaded_images",
             [{"path": "/caller/substituted.dylib", "sha256": "d" * 64}],
         ),
+        ("expected_sentinel_hash", 123456789),
     ],
 )
 def test_caller_substituted_authority_value_is_rejected(
     tmp_path: Path, directive: str, value: object
 ) -> None:
-    """Codex round-3 C1 / F1: a caller template that carries its own value for
-    a mandatory directive — a substituted profile hash or a caller-chosen
-    expected loaded-image set — is rejected against the committed derivation
-    before payload start."""
+    """Codex round-3 C1 / F1 / finding 3: a caller template that carries its own
+    value for a mandatory directive — a substituted profile hash, a caller-chosen
+    expected loaded-image set, or a template-selected sentinel hash — is rejected
+    against the committed derivation before payload start, so changing only the
+    caller expectation can never make the check pass."""
 
     config = _make_launch(tmp_path, template_extra={directive: value})
     record = capture_run(config)
@@ -1955,6 +1962,57 @@ def test_caller_substituted_authority_value_is_rejected(
         Path(config.run_dir),
         detail=f"substitutes the committed {directive}",
     )
+
+
+def test_sentinel_hash_is_build_pinned_derived_and_enforced(tmp_path: Path) -> None:
+    """Finding 3: the build-pinned bound sentinel __hash__ value (§4.5.8) is
+    derived from the committed native-stack expectations, bound into the consumed
+    config, and enforced by the child's effect proofs — a malformed committed
+    value is rejected pre-spawn, a wrong committed value fails the child's
+    bound-hash proof, and the positive launch carries the derived value."""
+
+    # Positive: the consumed config carries the sentinel derived from the
+    # committed expectations (not a caller value), and the launch reaches
+    # COMPLETED through the real bound-hash effect proof.
+    config = _make_launch(tmp_path)
+    record = capture_run(config)
+    assert record["status"] == "COMPLETED", record.get("fault")
+    consumed = json.loads(
+        (Path(config.run_dir) / BOOTSTRAP_CONFIG_NAME).read_text()
+    )
+    assert consumed["expected_sentinel_hash"] == SENTINEL_HASH
+    proofs = json.loads((Path(config.run_dir) / "effect_proofs.json").read_text())
+    assert proofs["checks"]["bound_hash"] is True
+    assert proofs["sentinel_hash"] == SENTINEL_HASH
+
+    # Malformed committed value: rejected pre-spawn by the directive validator.
+    malformed = _make_launch(
+        tmp_path / "malformed",
+        expectations_mutator=lambda e: e.update(expected_sentinel_hash="nope"),
+    )
+    rec = capture_run(malformed)
+    _assert_pre_spawn_attestation_infra(
+        rec,
+        Path(malformed.run_dir),
+        detail="expected_sentinel_hash must be an integer",
+    )
+
+    # Wrong committed value: well-formed but not the build-pinned hash, so the
+    # child's bound-hash effect proof fails closed with no marker.
+    wrong = _make_launch(
+        tmp_path / "wrong",
+        expectations_mutator=lambda e: e.update(
+            expected_sentinel_hash=SENTINEL_HASH + 1
+        ),
+    )
+    rec = capture_run(wrong)
+    assert rec["status"] == "INFRA_FAILURE"
+    assert not (Path(wrong.run_dir) / "payload_started.json").exists()
+    failure = json.loads(
+        (Path(wrong.run_dir) / "bootstrap_failure.json").read_text()
+    )
+    assert failure["fault_class"] == "attestation_fault"
+    assert "bound_hash" in failure["detail"]
 
 
 def test_dependency_lock_semantic_mismatch_refuses_launch(tmp_path: Path) -> None:

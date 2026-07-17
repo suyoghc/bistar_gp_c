@@ -67,6 +67,7 @@ FAKE_PROFILE_SOURCE = "FROZEN_PROFILE_MARKER = 1\n"
 MANDATORY_DIRECTIVES = (
     "native_stack_modules",
     "expected_profile_integration_sha256",
+    "expected_sentinel_hash",
     "torch_build_expected",
     "numpy_build_expected",
     "stage_b_expected",
@@ -733,17 +734,24 @@ def test_empty_native_stack_declaration_fails_closed(tmp_path: Path) -> None:
 def test_each_mandatory_directive_omitted_individually_fails_closed(
     tmp_path: Path, directive: str
 ) -> None:
-    """Codex round-3 C1 (requirement 1): every production marker path requires
-    ALL seven mandatory attestation directives — omitting any single one fails
-    closed before any native import, with no marker and no Stage-B evidence."""
+    """Codex round-3 C1 (requirement 1) + finding 3: every production marker path
+    requires ALL eight mandatory attestation directives — omitting any single one
+    fails closed before any native import, with no marker and no Stage-B
+    evidence."""
 
     completed, run_dir, events = _launch_bootstrap(
         tmp_path, omit_directives=(directive,)
     )
     assert completed.returncode not in (0, 3)
     stderr = completed.stderr.decode()
-    assert "missing mandatory attestation directives" in stderr
-    assert directive in stderr
+    if directive == "expected_sentinel_hash":
+        # The bound-hash effect proof (§4.5.8) runs before the mandatory-directive
+        # gate, so an omitted sentinel fails closed even earlier, at the effect
+        # proofs — still no marker, still no Stage-B evidence.
+        assert "failed effect proofs" in stderr and "bound_hash" in stderr
+    else:
+        assert "missing mandatory attestation directives" in stderr
+        assert directive in stderr
     assert [event["event"] for event in events] == ["HELLO"]
     assert not (run_dir / "payload_started.json").exists()
     assert not (run_dir / "native_stack.json").exists()

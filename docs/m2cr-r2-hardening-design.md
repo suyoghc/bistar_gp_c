@@ -144,6 +144,39 @@ manifest is mandatory and consumed.
 `bistar_gp/*.py` top-level source (esp. `profile_integration.py`, `m2c_freeze.py`),
 every pre-R2 test, `experiments/` in full, nothing under `runs/`.
 
+## Cost finding that shapes the cycle sequencing (measured at HEAD)
+
+A hermetic child loads exactly **66 file-backed real-stdlib modules** (51 stdlib
+`.py`, 15 `lib-dynload` `.so`, 0 site-packages — it uses the fake worktree stack).
+Their `sys.modules` origins are fixed to the real stdlib (loaded before the child's
+`sys.path` replacement), so the child's origin/loader binding (§4.5.7) genuinely
+requires the four roots to include the **real** stdlib/lib-dynload. A real-root
+importable walk is ~11.7 s, so a mandatory-manifest child launch (pre- + post-walk)
+costs ~12–23 s. That is prohibitive for the fast synthetic battery (~30 child
+launches), and it is the exact tension the author flagged ("keep real-root walking
+separate from the fast synthetic battery").
+
+Consequence for sequencing: the importable-manifest **child re-walk/origin binding**
+(work item 1's child side) needs a dedicated test-infrastructure investment
+(session-cached host manifest + a small number of isolated real-root integration
+launches), so it is the natural next cycle. Every OTHER static-authority fact —
+frozen environment, interpreter, four roots (header only, cheap), pre-boundary set
+(fixture-sized dyld stand-ins, cheap), sentinel hash, expectations, dependency lock —
+is derivable and enforceable in the fast battery WITHOUT the real-root walk. This
+cycle therefore lands the launch-authority redesign for all of those (closing
+findings 2 and 3), plus findings 4, 5, 6, and defers finding 1's mandatory child
+binding to an explicitly-planned follow-up with the cost analysis above.
+
+**Landed this cycle:** WI4 (retry clarification), WI6 (truthful publication states),
+WI3 (build-pinned sentinel), WI2 (authenticated environment + interpreter +
+pre-boundary set; skip tokens removed), WI5 (evidence-bundle measurement).
+**Deferred (documented next cycle):** WI1's child-side mandatory importable-manifest
+re-walk + origin/loader binding on the production launch path, and its isolated
+real-root integration tests. The parent-side derivation of the manifest path + roots
+is landed as part of the launch spec (authenticated, substitution-rejected); only the
+child's unconditional consumption + the expensive real-root positive/negative launch
+tests are deferred.
+
 ## Contract questions
 
 - **No protected-schema change is required.** Work item 4 resolves to Option A (a

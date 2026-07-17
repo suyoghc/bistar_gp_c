@@ -758,6 +758,35 @@ print(json.dumps({
 """
 
 
+# The bootstrap's bound-hash sentinel string (must equal bistar_gp.m2cr.
+# bootstrap._SENTINEL); the build-pinned frozen bound ``sentinel.__hash__()``
+# value (plan §4.5.8) is measured from it under the frozen ``PYTHONHASHSEED=0``.
+_SENTINEL_STRING = "m2cr-hash-sentinel"
+
+
+def measure_expected_sentinel_hash(
+    interpreter_path: str | os.PathLike[str],
+) -> int:
+    """Measure the build-pinned bound ``sentinel.__hash__()`` value (plan §4.5.8)
+    in the frozen interpreter under ``PYTHONHASHSEED=0`` — an interpreter/build
+    property, not a caller-chosen value.  The bound-method call bypasses a
+    shadowable ``builtins.hash``, mirroring the child's own attestation."""
+
+    completed = subprocess.run(
+        [
+            os.fspath(interpreter_path),
+            "-c",
+            "import sys;sys.stdout.write(str(("
+            f"{_SENTINEL_STRING!r}).__hash__()))",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONHASHSEED": "0"},
+    )
+    return int(completed.stdout.strip())
+
+
 def build_native_stack_expectations(
     interpreter_path: str | os.PathLike[str],
     *,
@@ -768,15 +797,16 @@ def build_native_stack_expectations(
     stage_b_expected: Mapping[str, str],
 ) -> dict[str, Any]:
     """Build the committed R2 native-stack expectation set (external audit
-    round-3 revision of F1/F2).
+    round-3 revision of F1/F2; external-audit finding 3 adds the sentinel hash).
 
     The mandatory pre-scientific attestation VALUES are frozen here as committed
     R2 artifacts (not deferred to R2a, which is only the numeric evidence-ceiling
     addendum): the native import list, the frozen `bistar_gp.profile_integration`
     hash, the torch/numpy backend build markers, the Stage-B environment delta,
-    and — for F2 — the complete set of on-disk regular-file native images loaded
-    by the frozen stack, each pinned by `(path, sha256)` (the sha256 subsumes the
-    Mach-O linkage identity, since load commands are part of the hashed bytes).
+    the build-pinned bound sentinel `__hash__` value (§4.5.8), and — for F2 — the
+    complete set of on-disk regular-file native images loaded by the frozen
+    stack, each pinned by `(path, sha256)` (the sha256 subsumes the Mach-O
+    linkage identity, since load commands are part of the hashed bytes).
     Measured by importing the stack in the frozen interpreter in a subprocess
     (no scientific evaluation); the author-frozen build/Stage-B markers are
     verified to hold against the measurement before they are committed.
@@ -784,6 +814,7 @@ def build_native_stack_expectations(
 
     if _SHA256_RE.fullmatch(profile_integration_sha256) is None:
         raise ValueError("profile_integration_sha256 must be a lowercase sha256")
+    expected_sentinel_hash = measure_expected_sentinel_hash(interpreter_path)
     completed = subprocess.run(
         [os.fspath(interpreter_path), "-c", _NATIVE_STACK_MEASURE,
          canonical_dumps(list(native_stack_modules))],
@@ -816,6 +847,7 @@ def build_native_stack_expectations(
         "schema_version": 1,
         "native_stack_modules": list(native_stack_modules),
         "expected_profile_integration_sha256": profile_integration_sha256,
+        "expected_sentinel_hash": expected_sentinel_hash,
         "torch_build_expected": list(torch_build_expected),
         "numpy_build_expected": list(numpy_build_expected),
         "stage_b_expected": dict(stage_b_expected),
