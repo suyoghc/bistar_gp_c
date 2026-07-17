@@ -468,8 +468,33 @@ def build_child_env_mapping() -> dict[str, Any]:
     }
 
 
-def _attestation_entry(path: Path, include_hashes: bool) -> dict[str, Any]:
-    entry: dict[str, Any] = {"path": os.fspath(path)}
+def _attestation_entry(
+    path: Path, include_hashes: bool, *, worktree_root: Path | None = None
+) -> dict[str, Any]:
+    """One pre-boundary pin entry.
+
+    A pin that resolves INSIDE ``worktree_root`` is stored worktree-relative
+    (``{"root": "worktree", "relpath": ...}``) so the committed set stays
+    launch-invariant and is re-verified against each launch's own fresh
+    detached worktree, not the freeze-time worktree path (external audit
+    round-3 F3).  Host-global pins (interpreter, dyld, stdlib/site-packages
+    closure members) keep their absolute path, which is stable across launches.
+    """
+
+    if worktree_root is not None:
+        try:
+            relpath = Path(path).resolve().relative_to(worktree_root)
+        except ValueError:
+            relpath = None
+        if relpath is not None:
+            entry: dict[str, Any] = {
+                "root": "worktree",
+                "relpath": relpath.as_posix(),
+            }
+            if include_hashes:
+                entry["sha256"] = sha256_file(path)
+            return entry
+    entry = {"path": os.fspath(path)}
     if include_hashes:
         entry["sha256"] = sha256_file(path)
     return entry
@@ -481,6 +506,7 @@ def build_preboundary_attestation_set(
     dyld_path: str | os.PathLike[str] = "/usr/lib/dyld",
     dyld_cache_dir: str | os.PathLike[str] = _DYLD_CACHE_DIR,
     bootstrap_closure_paths: Iterable[str | os.PathLike[str]] = (),
+    worktree_root: str | os.PathLike[str] | None = None,
     include_hashes: bool = True,
     declared_subcache_count: int = 12,
 ) -> dict[str, Any]:
@@ -523,6 +549,7 @@ def build_preboundary_attestation_set(
             f"declared {declared_subcache_count}, discovered {len(subcaches)}"
         )
     closure = sorted((Path(path) for path in bootstrap_closure_paths), key=os.fspath)
+    worktree = Path(worktree_root).resolve() if worktree_root is not None else None
     artifact = {
         "kind": "m2cr_preboundary_attestation_set",
         "schema_version": 1,
@@ -539,7 +566,8 @@ def build_preboundary_attestation_set(
             ],
         },
         "bootstrap_closure": [
-            _attestation_entry(path, include_hashes) for path in closure
+            _attestation_entry(path, include_hashes, worktree_root=worktree)
+            for path in closure
         ],
     }
     if not include_hashes:
@@ -663,6 +691,37 @@ def _distribution_identity(dist_info: Path) -> tuple[str, str]:
     return tuple(stem.rsplit("-", 1))  # type: ignore[return-value]
 
 
+def _filter_volatile_pip_freeze(freeze_text: str) -> tuple[str, list[str]]:
+    """Drop editable-install lines (and their ``# Editable`` comments) from
+    pip-freeze output so the supplementary lock is reproducible across commits.
+
+    An editable install embeds a per-checkout VCS commit
+    (``-e git+...@<commit>#egg=<name>``), which made the committed lock stale at
+    HEAD (external audit round-3 F4).  Editable installs — the payload's own
+    ``bistar_gp`` checkout and other projects' editables — are the volatile
+    payload/source layer, and their bytes are carried by the importable-artifact
+    manifest and worktree closure, not by this supplementary lock.  The excluded
+    egg names are returned for transparency.
+    """
+
+    kept: list[str] = []
+    excluded: list[str] = []
+    for line in freeze_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# Editable install"):
+            continue
+        if stripped.startswith("-e "):
+            excluded.append(
+                stripped.split("#egg=", 1)[1] if "#egg=" in stripped else stripped
+            )
+            continue
+        kept.append(line)
+    filtered = "\n".join(kept)
+    if freeze_text.endswith("\n") and filtered:
+        filtered += "\n"
+    return filtered, sorted(set(excluded))
+
+
 def build_dependency_lock(
     interpreter_path: str | os.PathLike[str],
     site_packages: str | os.PathLike[str],
@@ -674,6 +733,9 @@ def build_dependency_lock(
         check=True,
         capture_output=True,
         text=True,
+    )
+    filtered_freeze, excluded_editables = _filter_volatile_pip_freeze(
+        completed.stdout
     )
     site_path = Path(site_packages)
     dists: list[dict[str, str]] = []
@@ -694,7 +756,8 @@ def build_dependency_lock(
     ]
     extension_hashes = sorted(entry["sha256"] for entry in extensions)
     return {
-        "pip_freeze": completed.stdout,
+        "pip_freeze": filtered_freeze,
+        "excluded_editable_installs": excluded_editables,
         "dists": dists,
         "binary_extension_count": len(extension_hashes),
         "binary_extensions_sha256": canonical_sha256(extension_hashes),
@@ -702,6 +765,7 @@ def build_dependency_lock(
             "RECORD proves listed files' bytes only; it is not a completeness manifest.",
             "RECORD does not cover .pyc (torch's RECORD lists .pyc entries with blank hashes).",
             "This dependency lock is supplementary to the importable-artifact manifest, which carries completeness.",
+            "Editable installs are excluded from pip_freeze (they embed a per-checkout VCS commit and are covered by the importable-artifact manifest); their egg names are listed in excluded_editable_installs.",
         ],
     }
 
@@ -833,6 +897,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--code", action="append", default=[], metavar="RELPATH=PATH")
     parser.add_argument("--r1-schema", action="append", default=[], metavar="NAME=PATH")
     parser.add_argument("--bootstrap-closure", action="append", default=[])
+    parser.add_argument(
+        "--worktree-root",
+        default=None,
+        help=(
+            "worktree root; closure pins resolving inside it are stored "
+            "worktree-relative so the set stays launch-invariant (F3)"
+        ),
+    )
     parser.add_argument("--dyld", default="/usr/lib/dyld")
     parser.add_argument("--dyld-cache-dir", default=_DYLD_CACHE_DIR)
     parser.add_argument(
@@ -867,6 +939,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             dyld_path=args.dyld,
             dyld_cache_dir=args.dyld_cache_dir,
             bootstrap_closure_paths=args.bootstrap_closure,
+            worktree_root=args.worktree_root,
             include_hashes=args.include_hashes,
         )
     elif kind == "environment-freeze-manifest":

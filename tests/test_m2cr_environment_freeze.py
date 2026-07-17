@@ -456,6 +456,57 @@ def test_dependency_lock_hashes_records_and_sorted_extension_hashes(
     assert "not a completeness manifest" in caveats
     assert "does not cover .pyc" in caveats
     assert "supplementary to the importable-artifact manifest" in caveats
+    assert lock["excluded_editable_installs"] == []
+
+
+def test_editable_installs_are_excluded_from_pip_freeze() -> None:
+    """F4: editable installs embed a per-checkout VCS commit, so they are
+    dropped from the lock's pip_freeze (making it reproducible) and reported by
+    egg name; the scientific-stack pins remain."""
+
+    from bistar_gp.m2cr.environment_freeze import _filter_volatile_pip_freeze
+
+    freeze = (
+        "numpy==1.26.4\n"
+        "-e git+https://example.com/bistar_gp_c.git@1cdb08a8#egg=bistar_gp\n"
+        "# Editable install with no version control (other==0.1.0)\n"
+        "-e /path/to/other\n"
+        "torch==2.10.0\n"
+        "-e git+https://example.com/ac.git@15e6c36#egg=antagonistic_collab\n"
+    )
+    filtered, excluded = _filter_volatile_pip_freeze(freeze)
+    assert filtered == "numpy==1.26.4\ntorch==2.10.0\n"
+    assert "-e " not in filtered and "@1cdb08a8" not in filtered
+    assert excluded == ["-e /path/to/other", "antagonistic_collab", "bistar_gp"]
+
+
+def test_committed_dependency_lock_reproduces_at_head() -> None:
+    """F4: the committed dependency lock recomputes from the frozen
+    environment — its reproducible signature (dists RECORD digests, binary
+    extension aggregate, editable-free pip_freeze) matches — so a stale lock
+    (external audit round-3 F4a) is caught by CI."""
+
+    interpreter = "/opt/homebrew/Caskroom/miniconda/base/bin/python3.13"
+    site_packages = Path(
+        "/opt/homebrew/Caskroom/miniconda/base/lib/python3.13/site-packages"
+    )
+    committed_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs/m2c_freeze/m2cr_dependency_lock_v1.json"
+    )
+    if not Path(interpreter).exists() or not site_packages.is_dir():
+        pytest.skip("Miniconda base environment not present")
+    if not committed_path.is_file():
+        pytest.skip("committed dependency lock not present")
+    committed = json.loads(committed_path.read_text(encoding="utf-8"))
+    assert "-e " not in committed["pip_freeze"]  # no volatile editable line
+    recomputed = build_dependency_lock(interpreter, site_packages)
+    assert recomputed["dists"] == committed["dists"]
+    assert (
+        recomputed["binary_extensions_sha256"]
+        == committed["binary_extensions_sha256"]
+    )
+    assert recomputed["pip_freeze"] == committed["pip_freeze"]
 
 
 @pytest.mark.skipif(

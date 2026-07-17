@@ -381,25 +381,75 @@ def test_parent_death_reconciliation_marks_only_envelope_reconstructed(
     tmp_path: Path,
 ) -> None:
     run_dir = tmp_path / "reconcile"
+    _write_reconcile_evidence(run_dir)
+    # F6: identity is derived from the CAPTURED prelaunch provenance, so no
+    # caller config is required and the reconstructed record carries the
+    # run's real identity, not a freshly supplied one.
+    record = reconcile_run(run_dir)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["reconstructed"] is True
+    assert record["fault"]["payload_started"] is False
+    assert record["run_id"] == "m2cr-reconcile-test"
+    assert record["launch_attempt_id"] == LAUNCH_ATTEMPT_ID
+    assert record["chain"] == CHAIN
+    validate_terminal_record(record)
+
+
+def _write_reconcile_evidence(run_dir: Path) -> None:
+    """Write the raw evidence a parent-death reconciliation reconstructs over,
+    including a prelaunch.json carrying the run's real identity provenance."""
+
     run_dir.mkdir()
-    (run_dir / "prelaunch.json").write_text(canonical_dumps({"launch": 1}))
+    prelaunch = {
+        "schema_version": 1,
+        "config": {
+            "record_kind": "diagnostic",
+            "run_id": "m2cr-reconcile-test",
+            "launch_attempt_id": LAUNCH_ATTEMPT_ID,
+            "chain": CHAIN,
+        },
+    }
+    (run_dir / "prelaunch.json").write_text(canonical_dumps(prelaunch))
     (run_dir / "spawned.json").write_text(canonical_dumps({"pid": 123}))
     (run_dir / "events.jsonl").write_text(
         canonical_dumps({"seq": 0, "event": "HELLO"}) + "\n"
     )
     (run_dir / "stdout.txt").write_bytes(b"partial stdout")
     (run_dir / "stderr.txt").write_bytes(b"")
-    config = {
+
+
+def test_reconciliation_refuses_a_config_that_disagrees_with_provenance(
+    tmp_path: Path,
+) -> None:
+    """F6: a caller config whose identity contradicts the captured
+    prelaunch.json provenance refuses reconciliation rather than silently
+    relabelling one run's raw evidence with another run's identity."""
+
+    run_dir = tmp_path / "reconcile"
+    _write_reconcile_evidence(run_dir)
+    wrong_config = {
         "record_kind": "diagnostic",
-        "run_id": "m2cr-reconcile-test",
+        "run_id": "m2cr-some-other-run",
         "launch_attempt_id": LAUNCH_ATTEMPT_ID,
         "chain": CHAIN,
     }
-    record = reconcile_run(run_dir, config)
-    assert record["status"] == "INFRA_FAILURE"
-    assert record["fault"]["reconstructed"] is True
-    assert record["fault"]["payload_started"] is False
-    validate_terminal_record(record)
+    with pytest.raises(RecordAssemblyError, match="disagrees with captured"):
+        reconcile_run(run_dir, wrong_config)
+    assert not (run_dir / TERMINAL_RECORD_NAME).exists()
+
+
+def test_reconciliation_is_idempotent_and_never_overwrites_a_terminal(
+    tmp_path: Path,
+) -> None:
+    """F6: reconciliation never overwrites an existing terminal record
+    (plan §4.3 "Nothing vanishes and no state is silently reclassified")."""
+
+    run_dir = tmp_path / "reconcile"
+    _write_reconcile_evidence(run_dir)
+    first = reconcile_run(run_dir)
+    validate_terminal_record(first)
+    with pytest.raises(RecordAssemblyError, match="already exists"):
+        reconcile_run(run_dir)
 
 
 def test_protocol_exit_with_unbalanced_stream_becomes_capture_fault(
@@ -599,8 +649,11 @@ def test_stale_run_dir_evidence_refuses_launch(tmp_path: Path, blocker: str) -> 
         assert not (run_dir / "prelaunch.json").exists()
 
 
-def test_escaping_attestation_path_refuses_launch_pre_spawn(tmp_path: Path) -> None:
-    """FIX C6: every attestation path must resolve inside run_dir."""
+def test_escaping_attestation_path_commits_infra_pre_spawn(tmp_path: Path) -> None:
+    """FIX C6 + F5: an attestation path escaping run_dir is a pre-spawn
+    infrastructure failure; it now COMMITS an INFRA_FAILURE terminal record
+    with no child spawned (plan §4.3 "Nothing vanishes"), rather than escaping
+    capture_run."""
 
     config = _make_launch(tmp_path)
     run_dir = Path(config.run_dir)
@@ -611,11 +664,14 @@ def test_escaping_attestation_path_refuses_launch_pre_spawn(tmp_path: Path) -> N
     (run_dir / BOOTSTRAP_CONFIG_NAME).write_text(
         canonical_dumps(template), encoding="utf-8"
     )
-    with pytest.raises(ValueError, match="escapes the self-contained run"):
-        capture_run(config)
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "capture_fault"
+    assert "pre-spawn infrastructure failure" in record["fault"]["detail"]
+    assert "escapes the self-contained run" in record["fault"]["detail"]
+    assert (run_dir / TERMINAL_RECORD_NAME).is_file()
     assert not (run_dir / "prelaunch.json").exists()
     assert not (run_dir / "spawned.json").exists()
-    assert not (run_dir / TERMINAL_RECORD_NAME).exists()
 
 
 def test_bootstrap_closure_enumeration_is_import_only(tmp_path: Path) -> None:
@@ -714,8 +770,13 @@ def test_preboundary_mutation_during_run_forces_infra_at_post_exit(
     validate_terminal_record(record)
 
 
-def test_tampered_preboundary_attestation_refuses_launch(tmp_path: Path) -> None:
-    """FIX C7(b): a digest mismatch refuses launch with no spawn."""
+def test_tampered_preboundary_attestation_commits_infra_without_spawn(
+    tmp_path: Path,
+) -> None:
+    """F5 (supersedes C7(b) "refuses with no spawn"): a pre-spawn digest
+    mismatch COMMITS an INFRA_FAILURE terminal record + launch-attempt
+    evidence with no child spawned, rather than escaping capture_run
+    (plan §4.3 "Nothing vanishes"; author decision F5 = INFRA_FAILURE)."""
 
     attestation_path, closure_file = _preboundary_attestation_document(
         tmp_path, tampered=True
@@ -725,16 +786,112 @@ def test_tampered_preboundary_attestation_refuses_launch(tmp_path: Path) -> None
         preboundary_attestation_set=os.fspath(attestation_path),
         preboundary_skip=("interpreter", "dyld"),
     )
-    with pytest.raises(ValueError, match="preboundary attestation mismatch"):
-        capture_run(config)
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "attestation_fault"
+    assert "pre-spawn attestation failure" in record["fault"]["detail"]
+    assert "preboundary attestation mismatch" in record["fault"]["detail"]
     run_dir = Path(config.run_dir)
-    assert not (run_dir / "prelaunch.json").exists()
+    # The terminal record is durably committed; no child was ever spawned.
+    assert (run_dir / TERMINAL_RECORD_NAME).is_file()
     assert not (run_dir / "spawned.json").exists()
-    assert not (run_dir / TERMINAL_RECORD_NAME).exists()
+    validate_terminal_record(record)
     # The closure entries are never skippable: no such token exists.
     with pytest.raises(ValueError, match="unknown preboundary skip tokens"):
         verify_preboundary_attestation_set(
             attestation_path, skip=("interpreter", "dyld", "closure")
+        )
+
+
+def test_pre_spawn_setup_failure_commits_infra_without_spawn(
+    tmp_path: Path,
+) -> None:
+    """F5: a pre-spawn INFRASTRUCTURE failure (a missing bootstrap source, a
+    resolve(strict=True) error) also commits an INFRA_FAILURE terminal record
+    rather than escaping capture_run; it is classed capture_fault, not
+    attestation_fault."""
+
+    config = dataclasses.replace(
+        _make_launch(tmp_path),
+        bootstrap_path=os.fspath(tmp_path / "does-not-exist" / "bootstrap.py"),
+    )
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "capture_fault"
+    assert "pre-spawn infrastructure failure" in record["fault"]["detail"]
+    assert (Path(config.run_dir) / TERMINAL_RECORD_NAME).is_file()
+    assert not (Path(config.run_dir) / "spawned.json").exists()
+    validate_terminal_record(record)
+
+
+def test_preboundary_worktree_entry_verifies_against_the_launch_worktree(
+    tmp_path: Path,
+) -> None:
+    """F3: a worktree-origin closure pin is verified by (relpath, sha256)
+    against THIS launch's worktree, so a content-matching per-launch worktree
+    at a DIFFERENT absolute path passes, and a content mismatch fails closed —
+    the freeze-time absolute path is never trusted."""
+
+    from bistar_gp.m2cr.environment_freeze import _attestation_entry
+
+    freeze_worktree = tmp_path / "freeze_worktree"
+    (freeze_worktree / "bistar_gp/m2cr").mkdir(parents=True)
+    member = freeze_worktree / "bistar_gp/m2cr/probe_closure.py"
+    member.write_text("PROBE = 1\n", encoding="utf-8")
+    # The generator classifies a pin inside the worktree as worktree-relative
+    # and retains no freeze-time absolute path; a host pin keeps its path.
+    entry = _attestation_entry(
+        member, True, worktree_root=freeze_worktree.resolve()
+    )
+    assert entry["root"] == "worktree"
+    assert entry["relpath"] == "bistar_gp/m2cr/probe_closure.py"
+    assert "path" not in entry
+    host_entry = _attestation_entry(member, True)
+    assert host_entry["path"] == os.fspath(member) and "root" not in host_entry
+    artifact = {
+        "kind": "m2cr_preboundary_attestation_set",
+        "schema_version": 1,
+        "interpreter_binary": {"path": "/nonexistent/python", "sha256": "1" * 64},
+        "dyld": {"path": "/nonexistent/dyld", "sha256": "2" * 64},
+        "dyld_shared_cache": {
+            "main": {"path": "/nonexistent/cache", "sha256": "3" * 64},
+            "declared_subcache_count": 0,
+            "discovered_subcache_count": 0,
+            "subcaches": [],
+        },
+        "bootstrap_closure": [entry],
+    }
+    attestation_path = tmp_path / "set.json"
+    atomic_write_canonical_json(attestation_path, artifact)
+
+    # A DIFFERENT worktree with byte-identical content passes.
+    launch_worktree = tmp_path / "launch_worktree"
+    (launch_worktree / "bistar_gp/m2cr").mkdir(parents=True)
+    (launch_worktree / "bistar_gp/m2cr/probe_closure.py").write_text(
+        "PROBE = 1\n", encoding="utf-8"
+    )
+    outcome = verify_preboundary_attestation_set(
+        attestation_path,
+        worktree_root=os.fspath(launch_worktree),
+        skip=("interpreter", "dyld"),
+    )
+    assert outcome["closure"] == 1
+
+    # A content mismatch in the launch worktree fails closed.
+    (launch_worktree / "bistar_gp/m2cr/probe_closure.py").write_text(
+        "PROBE = 2\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="preboundary attestation mismatch"):
+        verify_preboundary_attestation_set(
+            attestation_path,
+            worktree_root=os.fspath(launch_worktree),
+            skip=("interpreter", "dyld"),
+        )
+
+    # A worktree-relative entry with no worktree_root supplied fails closed.
+    with pytest.raises(ValueError, match="no worktree_root was supplied"):
+        verify_preboundary_attestation_set(
+            attestation_path, skip=("interpreter", "dyld")
         )
 
 
@@ -841,11 +998,15 @@ def _freeze_fixture(tmp_path: Path) -> dict[str, Path]:
         },
     )
     template_path = tmp_path / "bootstrap_template.json"
+    # A COMPLETE template: F1 requires a non-empty allow-listed native stack and
+    # a well-formed expected_profile_integration_sha256 so the factory cannot
+    # build a config that skips a pre-scientific attestation.
     atomic_write_canonical_json(
         template_path,
         {
             "expected_sentinel_hash": -2671292046718125608,
-            "native_stack_modules": [],
+            "native_stack_modules": ["numpy", "torch"],
+            "expected_profile_integration_sha256": "a" * 64,
             "payload": {"entry": "fake_payload:run", "pass_context": True},
         },
     )
@@ -872,6 +1033,61 @@ def _bound_chain(env_freeze_path, infrastructure_path):
         "infrastructure_manifest_sha256": sha256_file(infrastructure_path),
         "authorization_id": AUTHORIZATION_ID,
     }
+
+
+@pytest.mark.parametrize(
+    "template, match",
+    [
+        (
+            {
+                "expected_sentinel_hash": -2671292046718125608,
+                "native_stack_modules": [],
+                "expected_profile_integration_sha256": "a" * 64,
+                "payload": {"entry": "fake_payload:run", "pass_context": True},
+            },
+            "non-empty native_stack_modules",
+        ),
+        (
+            {
+                "expected_sentinel_hash": -2671292046718125608,
+                "native_stack_modules": ["numpy"],
+                "payload": {"entry": "fake_payload:run", "pass_context": True},
+            },
+            "expected_profile_integration_sha256",
+        ),
+        (
+            {
+                "expected_sentinel_hash": -2671292046718125608,
+                "native_stack_modules": ["bistar_gp.profile_integration"],
+                "expected_profile_integration_sha256": "a" * 64,
+                "payload": {"entry": "fake_payload:run", "pass_context": True},
+            },
+            "outside the frozen",
+        ),
+    ],
+)
+def test_launch_config_from_freeze_rejects_degenerate_template(
+    tmp_path: Path, template: dict, match: str
+) -> None:
+    """F1: the factory refuses any template that would let the bootstrap skip a
+    pre-scientific attestation (empty native stack, missing profile hash, or a
+    non-allow-listed native module)."""
+
+    fixture = _freeze_fixture(tmp_path)
+    atomic_write_canonical_json(fixture["template"], template)
+    with pytest.raises(ValueError, match=match):
+        launch_config_from_freeze(
+            fixture["freeze"],
+            fixture["infrastructure"],
+            run_dir=fixture["run_dir"],
+            run_id="m2cr-degenerate-test",
+            authorization_id=AUTHORIZATION_ID,
+            launch_attempt_id=LAUNCH_ATTEMPT_ID,
+            record_kind="diagnostic",
+            chain=_bound_chain(fixture["freeze"], fixture["infrastructure"]),
+            bootstrap_template_path=fixture["template"],
+            worktree_root=fixture["worktree"],
+        )
 
 
 def test_launch_config_from_freeze_derives_all_pins(tmp_path: Path) -> None:

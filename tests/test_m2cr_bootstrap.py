@@ -775,6 +775,31 @@ def test_native_stack_helpers_are_hermetic_and_injectable(
     assert real_images and real_images == sorted(real_images)
     assert all(isinstance(path, str) for path in real_images)
 
+
+def test_loaded_image_hashing_detects_on_disk_byte_drift(tmp_path: Path) -> None:
+    """F2 (§4.5.7 'enumeration AND hashing', §4.5.11 rehash at exit): on-disk
+    loaded images are hashed and an on-disk byte change between Stage B and
+    Stage C is caught as drift; non-file entries are skipped (they are covered
+    by the §4.5.2 dyld-cache hash)."""
+
+    image = tmp_path / "fake.dylib"
+    image.write_bytes(b"MACH-O-A")
+    stable = tmp_path / "stable.dylib"
+    stable.write_bytes(b"STABLE")
+    paths = [os.fspath(image), os.fspath(stable), "/nonexistent/skip.dylib"]
+
+    stage_b = bootstrap_module.hash_loaded_images(paths)
+    assert os.fspath(image) in stage_b and os.fspath(stable) in stage_b
+    assert "/nonexistent/skip.dylib" not in stage_b  # non-file skipped
+    # No drift when bytes are unchanged.
+    assert bootstrap_module.loaded_image_hash_drift(stage_b, dict(stage_b)) == []
+    # A byte change to one image between Stage B and Stage C is drift.
+    image.write_bytes(b"MACH-O-B")
+    stage_c = bootstrap_module.hash_loaded_images(paths)
+    assert bootstrap_module.loaded_image_hash_drift(stage_b, stage_c) == [
+        os.fspath(image)
+    ]
+
     fake_torch = ModuleType("torch")
     fake_torch.get_num_threads = lambda: 10
     fake_torch.get_num_interop_threads = lambda: 10

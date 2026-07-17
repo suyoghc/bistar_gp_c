@@ -488,6 +488,14 @@ def _ensure_inside(root: Path, candidate: Path) -> None:
         raise ValueError(f"run-local directory escapes run root: {candidate}") from exc
 
 
+def _is_safe_relpath(relpath: str) -> bool:
+    """A forward-slashed, non-absolute relpath with no traversal component."""
+
+    if not relpath or relpath.startswith("/") or "\\" in relpath:
+        return False
+    return all(part not in ("", ".", "..") for part in relpath.split("/"))
+
+
 def _prepare_run_directories(run_dir: Path) -> dict[str, str]:
     run_dir.mkdir(parents=True, exist_ok=True)
     root = run_dir.resolve(strict=True)
@@ -923,9 +931,18 @@ def _child_evidence_exists(paths: Mapping[str, str], events_path: Path) -> bool:
 def verify_preboundary_attestation_set(
     attestation_set_path: str | os.PathLike[str],
     *,
+    worktree_root: str | os.PathLike[str] | None = None,
     skip: Sequence[str] = (),
 ) -> dict[str, int]:
     """Verify the §4.5.2 pre-boundary pins on disk, before any spawn.
+
+    Worktree-origin closure entries (``root == "worktree"``) are verified by
+    ``(relpath, sha256)`` against ``worktree_root`` — THIS launch's own fresh
+    detached worktree — never the freeze-time absolute path (external audit
+    round-3 F3), so a content-matching per-launch worktree passes and a
+    content mismatch fails closed.  Host-global entries (interpreter, dyld
+    family, stdlib/site-packages closure members) keep exact absolute-path
+    verification.
 
     ``skip`` accepts only ``"interpreter"`` and ``"dyld"`` (the dyld binary
     plus its shared-cache family) as hermetic-test escape hatches; the
@@ -939,11 +956,14 @@ def verify_preboundary_attestation_set(
     if unknown:
         raise ValueError(f"unknown preboundary skip tokens: {sorted(unknown)}")
     artifact = _read_json_object(Path(attestation_set_path).resolve(strict=True))
+    worktree = (
+        Path(worktree_root).resolve(strict=True)
+        if worktree_root is not None
+        else None
+    )
 
     def check_entry(entry: Any, label: str) -> None:
-        if not isinstance(entry, Mapping) or not isinstance(
-            entry.get("path"), str
-        ):
+        if not isinstance(entry, Mapping):
             raise ValueError(
                 f"preboundary attestation entry {label} is malformed"
             )
@@ -952,17 +972,38 @@ def verify_preboundary_attestation_set(
             raise ValueError(
                 f"preboundary attestation entry {label} lacks a frozen sha256"
             )
+        if entry.get("root") == "worktree":
+            relpath = entry.get("relpath")
+            if not isinstance(relpath, str) or not _is_safe_relpath(relpath):
+                raise ValueError(
+                    f"preboundary attestation entry {label} has a missing or "
+                    "unsafe worktree relpath"
+                )
+            if worktree is None:
+                raise ValueError(
+                    f"preboundary attestation entry {label} is worktree-relative "
+                    "but no worktree_root was supplied"
+                )
+            target = worktree / relpath
+            display = f"worktree:{relpath}"
+        elif isinstance(entry.get("path"), str):
+            target = Path(entry["path"])
+            display = entry["path"]
+        else:
+            raise ValueError(
+                f"preboundary attestation entry {label} is malformed"
+            )
         try:
-            actual = sha256_file(entry["path"])
+            actual = sha256_file(target)
         except OSError as exc:
             raise ValueError(
                 f"preboundary attestation entry {label} is unreadable: "
-                f"{entry['path']}: {exc}"
+                f"{display}: {exc}"
             ) from exc
         if actual != expected:
             raise ValueError(
                 f"preboundary attestation mismatch at {label}: "
-                f"{entry['path']} expected {expected}, actual {actual}"
+                f"{display} expected {expected}, actual {actual}"
             )
 
     checked = {"interpreter": 0, "dyld": 0, "closure": 0}
@@ -1117,6 +1158,11 @@ def enumerate_bootstrap_closure(
     return sorted(closure, key=lambda entry: entry["module"])
 
 
+_LAST_RESORT_FAULT_CLASSES = frozenset(
+    {"capture_fault", "attestation_fault", "missing_postcheck", "other"}
+)
+
+
 def _last_resort_terminal_record(
     *,
     record_kind: str,
@@ -1126,6 +1172,7 @@ def _last_resort_terminal_record(
     evidence: Mapping[str, Any],
     detail: str,
     payload_started: bool,
+    fault_class: str = "other",
 ) -> dict[str, Any]:
     """Minimal always-schema-valid INFRA_FAILURE fallback (plan §4.3).
 
@@ -1184,7 +1231,12 @@ def _last_resort_terminal_record(
         "launch_attempt_id": launch_attempt_id,
         "chain": dict(chain),
         "fault": {
-            "fault_class": "other",
+            # Guarded so this cannot-fail path never emits an out-of-enum class.
+            "fault_class": (
+                fault_class
+                if fault_class in _LAST_RESORT_FAULT_CLASSES
+                else "other"
+            ),
             "detail": text,
             "reconstructed": False,
             "payload_started": bool(payload_started),
@@ -1212,43 +1264,82 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     _require_pattern(config.launch_attempt_id, _LAUNCH_ID_RE, "launch_attempt_id")
     _require_pattern(config.authorization_id, _AUTH_ID_RE, "authorization_id")
     _require_fresh_run_dir(run_dir)
-    local = _prepare_run_directories(run_dir)
-    environment, bootstrap_environment = _realize_environment(
-        config.frozen_env, run_dir, local
-    )
-    bootstrap_path = Path(config.bootstrap_path).resolve(strict=True)
-    worktree_root = Path(config.worktree_root).resolve(strict=True)
-    bootstrap_config_path = run_dir / BOOTSTRAP_CONFIG_NAME
-    template = _load_bootstrap_template(bootstrap_config_path)
-    payload_path = _payload_entry_path(template, worktree_root)
-    template.pop("event_fd", None)
-    template.update(
-        frozen_env=template.pop("expected_frozen_env", bootstrap_environment),
-        expected_pycache_prefix=local["PYCACHE_PREFIX"],
-        worktree_root=os.fspath(worktree_root),
-        boundary={
-            "authorization_id": config.authorization_id,
-            "launch_attempt_id": config.launch_attempt_id,
-            "execution_commit": config.chain.get("execution_commit"),
-            "chain": dict(config.chain),
-        },
-    )
-    paths = dict(template.get("attestation_paths", {}))
-    paths.setdefault("payload_started", os.fspath(run_dir / "payload_started.json"))
-    for name in _ATTESTATION_NAMES:
-        paths.setdefault(name, os.fspath(run_dir / f"{name}.json"))
-    paths["payload"] = os.fspath(run_dir / "payload.json")
-    paths["failure"] = os.fspath(run_dir / "bootstrap_failure.json")
-    paths["stage_c"] = os.fspath(run_dir / "stage_c.json")
-    template["attestation_paths"] = paths
-    _require_contained_attestation_paths(run_dir, paths)
-    if config.preboundary_attestation_set is not None:
-        # Plan §4.5.2: a pre-boundary digest mismatch refuses the launch;
-        # the raised reason records the exact failing entry and no child is
-        # ever spawned.
-        verify_preboundary_attestation_set(
-            config.preboundary_attestation_set, skip=config.preboundary_skip
+    # Plan §4.3 / author decision F5: once the identity shapes are valid, any
+    # pre-spawn infrastructure or attestation failure must still COMMIT an
+    # INFRA_FAILURE terminal record + launch-attempt evidence rather than
+    # escaping capture_run ("Nothing vanishes and no state is silently
+    # reclassified").  A pre-spawn attestation mismatch is INFRA_FAILURE, not
+    # NOT_STARTED; NOT_STARTED remains reserved for a spawn that was attempted
+    # but never confirmed (precedence rule 1, resolved after the supervised
+    # block below).
+    pre_spawn_phase = "infrastructure"
+    try:
+        local = _prepare_run_directories(run_dir)
+        environment, bootstrap_environment = _realize_environment(
+            config.frozen_env, run_dir, local
         )
+        bootstrap_path = Path(config.bootstrap_path).resolve(strict=True)
+        worktree_root = Path(config.worktree_root).resolve(strict=True)
+        bootstrap_config_path = run_dir / BOOTSTRAP_CONFIG_NAME
+        template = _load_bootstrap_template(bootstrap_config_path)
+        payload_path = _payload_entry_path(template, worktree_root)
+        template.pop("event_fd", None)
+        template.update(
+            frozen_env=template.pop("expected_frozen_env", bootstrap_environment),
+            expected_pycache_prefix=local["PYCACHE_PREFIX"],
+            worktree_root=os.fspath(worktree_root),
+            boundary={
+                "authorization_id": config.authorization_id,
+                "launch_attempt_id": config.launch_attempt_id,
+                "execution_commit": config.chain.get("execution_commit"),
+                "chain": dict(config.chain),
+            },
+        )
+        paths = dict(template.get("attestation_paths", {}))
+        paths.setdefault(
+            "payload_started", os.fspath(run_dir / "payload_started.json")
+        )
+        for name in _ATTESTATION_NAMES:
+            paths.setdefault(name, os.fspath(run_dir / f"{name}.json"))
+        paths["payload"] = os.fspath(run_dir / "payload.json")
+        paths["failure"] = os.fspath(run_dir / "bootstrap_failure.json")
+        paths["stage_c"] = os.fspath(run_dir / "stage_c.json")
+        template["attestation_paths"] = paths
+        _require_contained_attestation_paths(run_dir, paths)
+        if config.preboundary_attestation_set is not None:
+            # Plan §4.5.2: a pre-boundary digest mismatch refuses the launch
+            # with no child spawned; F3 verifies the worktree-origin pins
+            # against THIS launch's worktree by (relpath, sha256).
+            pre_spawn_phase = "attestation"
+            verify_preboundary_attestation_set(
+                config.preboundary_attestation_set,
+                worktree_root=worktree_root,
+                skip=config.preboundary_skip,
+            )
+    except (OSError, ValueError) as exc:
+        fault_class = (
+            "attestation_fault"
+            if pre_spawn_phase == "attestation"
+            else "capture_fault"
+        )
+        record = _last_resort_terminal_record(
+            record_kind=config.record_kind,
+            run_id=config.run_id,
+            launch_attempt_id=config.launch_attempt_id,
+            chain=config.chain,
+            evidence={},
+            detail=f"pre-spawn {pre_spawn_phase} failure: {exc}",
+            payload_started=False,
+            fault_class=fault_class,
+        )
+        try:
+            run_dir.mkdir(parents=True, exist_ok=True)
+            _write_terminal(run_dir, record)
+        except OSError:
+            # run_dir itself is unwritable; the record is still returned so the
+            # caller sees a terminal outcome rather than an escaped exception.
+            pass
+        return record
     prelaunch = _prelaunch(config, bootstrap_path, payload_path, environment)
     prelaunch_sha256 = atomic_write_canonical_json(
         run_dir / "prelaunch.json", prelaunch
@@ -1395,7 +1486,9 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         if capture_fault is None and config.preboundary_attestation_set is not None:
             try:
                 verify_preboundary_attestation_set(
-                    config.preboundary_attestation_set, skip=config.preboundary_skip
+                    config.preboundary_attestation_set,
+                    worktree_root=worktree_root,
+                    skip=config.preboundary_skip,
                 )
             except ValueError as exc:
                 capture_fault = f"post-exit pre-boundary re-attestation failed: {exc}"
@@ -1639,14 +1732,62 @@ def _config_value(config: LaunchConfig | Mapping[str, Any], name: str) -> Any:
 
 
 def reconcile_run(
-    run_dir: str | os.PathLike[str], config: LaunchConfig | Mapping[str, Any]
+    run_dir: str | os.PathLike[str],
+    config: LaunchConfig | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Assemble a reconstructed INFRA_FAILURE after parent death."""
+    """Assemble a reconstructed INFRA_FAILURE after parent death.
+
+    Identity (record kind, run id, launch-attempt id, chain) is derived from
+    the CAPTURED ``prelaunch.json`` provenance, never from a fresh caller
+    config (plan §4.3: "raw content was runtime-captured; only envelope
+    assembly is late").  A caller config, if supplied, must MATCH that
+    provenance; a disagreement refuses reconciliation rather than silently
+    relabelling one run's raw evidence with another run's identity.
+    Reconciliation is idempotent: it never overwrites an existing terminal
+    record (§4.3 "Nothing vanishes and no state is silently reclassified").
+    """
 
     root = Path(run_dir).resolve()
-    prelaunch = root / "prelaunch.json"
-    if not prelaunch.is_file():
+    prelaunch_path = root / "prelaunch.json"
+    if not prelaunch_path.is_file():
         raise RecordAssemblyError("reconciliation requires prelaunch.json")
+    if (root / TERMINAL_RECORD_NAME).is_file():
+        raise RecordAssemblyError(
+            "reconciliation refused: a terminal record already exists at "
+            f"{root / TERMINAL_RECORD_NAME}"
+        )
+    prelaunch = _read_json_object(prelaunch_path)
+    provenance = prelaunch.get("config")
+    if not isinstance(provenance, Mapping):
+        raise RecordAssemblyError(
+            "prelaunch.json lacks a config provenance block; cannot bind a "
+            "reconstructed envelope to the captured run"
+        )
+    try:
+        record_kind = provenance["record_kind"]
+        run_id = provenance["run_id"]
+        launch_attempt_id = provenance["launch_attempt_id"]
+        chain = provenance["chain"]
+    except KeyError as exc:
+        raise RecordAssemblyError(
+            f"prelaunch.json provenance lacks identity member {exc}"
+        ) from exc
+    if not isinstance(chain, Mapping):
+        raise RecordAssemblyError(
+            "prelaunch.json provenance chain is malformed"
+        )
+    if config is not None:
+        for name in ("record_kind", "run_id", "launch_attempt_id"):
+            if _config_value(config, name) != provenance[name]:
+                raise RecordAssemblyError(
+                    f"reconcile config {name} disagrees with captured "
+                    "prelaunch provenance"
+                )
+        if dict(_config_value(config, "chain")) != dict(chain):
+            raise RecordAssemblyError(
+                "reconcile config chain disagrees with captured prelaunch "
+                "provenance"
+            )
     balance = _event_balance(root / "events.jsonl")
     node_evidence = _node_evidence(root)
     raw_manifest_sha256 = write_raw_manifest(root)
@@ -1656,11 +1797,11 @@ def reconcile_run(
         "event_stream_balanced": bool(balance["balanced"]),
     }
     record = assemble_terminal_record(
-        record_kind=_config_value(config, "record_kind"),
+        record_kind=record_kind,
         status="INFRA_FAILURE",
-        run_id=_config_value(config, "run_id"),
-        launch_attempt_id=_config_value(config, "launch_attempt_id"),
-        chain=_config_value(config, "chain"),
+        run_id=run_id,
+        launch_attempt_id=launch_attempt_id,
+        chain=dict(chain),
         evidence=evidence,
         infra_fault={
             "fault_class": "capture_fault",
@@ -1674,6 +1815,44 @@ def reconcile_run(
 
 
 _FOUR_ROOT_IDS = ("worktree", "stdlib", "lib-dynload", "site-packages")
+
+
+def _require_complete_attestation_directives(template: Mapping[str, Any]) -> None:
+    """Fail closed unless the bootstrap template mandates the full
+    pre-scientific attestation set (external audit round-3 F1).
+
+    A real launch must import and attest a non-empty, allow-listed native stack
+    and must carry a well-formed ``expected_profile_integration_sha256`` so the
+    §4.5.10 explicit hash comparison is never skipped.  The specific frozen
+    values ride on the R4-supplied template; R2 enforces their presence and
+    well-formedness (author decision F1: fail-closed now, frozen values to R2a).
+    """
+
+    from bistar_gp.m2cr.bootstrap import disallowed_native_modules
+
+    native = template.get("native_stack_modules")
+    if (
+        not isinstance(native, list)
+        or not native
+        or not all(isinstance(name, str) for name in native)
+    ):
+        raise ValueError(
+            "bootstrap template must declare a non-empty native_stack_modules "
+            "list (F1: pre-scientific attestations are mandatory)"
+        )
+    disallowed = disallowed_native_modules(native)
+    if disallowed:
+        raise ValueError(
+            "bootstrap template native_stack_modules outside the frozen "
+            f"allowlist: {disallowed}"
+        )
+    profile = template.get("expected_profile_integration_sha256")
+    if not isinstance(profile, str) or _SHA256_RE.fullmatch(profile) is None:
+        raise ValueError(
+            "bootstrap template must carry a frozen "
+            "expected_profile_integration_sha256 (F1: the §4.5.10 profile-hash "
+            "comparison is mandatory)"
+        )
 
 
 def _read_manifest_v2_header(path: Path) -> dict[str, str]:
@@ -1844,6 +2023,12 @@ def launch_config_from_freeze(
     template = _load_bootstrap_template(
         Path(bootstrap_template_path).resolve(strict=True)
     )
+    # F1: refuse any template that would let the bootstrap skip a pre-scientific
+    # attestation (empty native stack, absent profile-hash directive), so a
+    # marker can never be emitted with no native-stack attestation or no
+    # §4.5.10 profile-hash comparison ("all pre-scientific attestations complete
+    # before the marker", HARD R2 OBLIGATION §4.3).
+    _require_complete_attestation_directives(template)
     template["four_roots"] = [roots[name] for name in _FOUR_ROOT_IDS]
     template["importable_artifact_manifest"] = os.fspath(manifest_path.resolve())
     run_root = Path(run_dir).resolve()

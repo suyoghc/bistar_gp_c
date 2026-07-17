@@ -27,7 +27,7 @@ import tempfile
 import threading
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 __all__ = [
     "classify_new_loaded_images",
@@ -395,6 +395,41 @@ def classify_new_loaded_images(
     """Return every newly loaded image that the frozen allowlist rejects."""
 
     return sorted(set(current) - set(baseline) - set(allowlist))
+
+
+def hash_loaded_images(paths: Iterable[str]) -> dict[str, str]:
+    """Sha256 every dyld-loaded image that is a regular file on disk.
+
+    Plan §4.5.7 keeps "enumeration AND hashing" for native libraries loaded
+    outside normal module imports; §4.5.11 re-attests them at exit.  Only
+    on-disk regular files are hashed here — dyld-shared-cache pseudo-entries
+    (framework paths that are not standalone files) are covered by the §4.5.2
+    dyld-cache hash and are skipped.  In-memory-only native mutation is a
+    disclosed out-of-scope residual (§4.5.14).
+    """
+
+    hashes: dict[str, str] = {}
+    for path in paths:
+        try:
+            if os.path.isfile(path):
+                hashes[path] = _sha256_file(path)
+        except OSError:
+            # A path that vanishes between enumeration and hashing is recorded
+            # as unreadable so it surfaces as drift rather than being dropped.
+            hashes[path] = "unreadable"
+    return hashes
+
+
+def loaded_image_hash_drift(
+    stage_b_hashes: Mapping[str, str], stage_c_hashes: Mapping[str, str]
+) -> list[str]:
+    """Return every image whose on-disk bytes changed between Stage B and C."""
+
+    return sorted(
+        path
+        for path, digest in stage_b_hashes.items()
+        if path in stage_c_hashes and stage_c_hashes[path] != digest
+    )
 
 
 def _loaded_image_allowlist(config: dict[str, Any]) -> list[str]:
@@ -1248,6 +1283,14 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
         raise SystemExit(
             "attestation_fault: native_stack_modules must be a string list"
         )
+    # F1: completeness of the pre-scientific attestation set (a non-empty
+    # native stack imported/attested alongside the mandatory
+    # expected_profile_integration_sha256) is enforced at the real-launch
+    # construction point, launch_config_from_freeze._require_complete_
+    # attestation_directives, so a degenerate template can never build a launch
+    # config.  The bootstrap keeps its per-module allowlist gate below and its
+    # explicit profile-hash comparison, and continues to serve hermetic tests
+    # (which exercise, e.g., the profile check in isolation with a lean stack).
     # Fail closed on any module outside the frozen native-stack allowlist: a
     # bistar_gp.* module or the payload smuggled here would execute before the
     # marker, violating the §4.3 boundary (external audit round-2 F3).
@@ -1334,7 +1377,9 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
         },
     )
     stage_b_images = list(_image_enumerator())
+    stage_b_image_hashes = hash_loaded_images(stage_b_images)
     native_attestation["loaded_images_stage_b"] = stage_b_images
+    native_attestation["loaded_images_stage_b_sha256"] = stage_b_image_hashes
     native_stack_digest = _atomic_write_json(
         paths["native_stack"], native_attestation
     )
@@ -1521,6 +1566,19 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
             "environment_fault: unapproved native images loaded during "
             f"payload: {new_images}"
         )
+    # F2/§4.5.7 "enumeration AND hashing", §4.5.11 rehash at exit: re-hash the
+    # on-disk native images and fail closed if any image loaded at Stage B had
+    # its on-disk bytes changed during payload execution (an ordinary
+    # native-library mutation, in scope per §4.5.13).
+    stage_c_image_hashes = hash_loaded_images(stage_c_images)
+    image_hash_drift = loaded_image_hash_drift(
+        stage_b_image_hashes, stage_c_image_hashes
+    )
+    if image_hash_drift:
+        raise SystemExit(
+            "attestation_fault: loaded native image bytes changed during "
+            f"payload: {image_hash_drift}"
+        )
     if any(prefix.iterdir()):
         raise SystemExit("attestation_fault: pycache prefix was not empty at Stage C")
     _atomic_write_json(
@@ -1543,6 +1601,9 @@ def main(config_path: str | os.PathLike[str], event_fd: int) -> int:
                     (set(stage_c_images) - set(stage_b_images))
                     & set(image_allowlist)
                 ),
+                "stage_b_hashed_count": len(stage_b_image_hashes),
+                "stage_c_hashed_count": len(stage_c_image_hashes),
+                "hash_drift": image_hash_drift,
             },
             "payload_marker_sha256": marker_sha256,
             "import_inventory_sha256": inventory_digest,

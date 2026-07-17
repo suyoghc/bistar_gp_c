@@ -1555,14 +1555,30 @@ def verify_preboundary_closure_complete(
             return real[index + len(os.sep):]
         return real
 
+    def committed_key(entry: Mapping[str, Any]) -> str | None:
+        # F3: worktree-origin entries store a package-relative ``relpath``
+        # (e.g. ``bistar_gp/m2cr/bootstrap.py``), which already matches the
+        # normalized form of an enumerated worktree origin.  Host-global
+        # entries keep an absolute ``path`` and are normalized to their
+        # realpath.
+        if entry.get("root") == "worktree" and isinstance(
+            entry.get("relpath"), str
+        ):
+            return entry["relpath"]
+        if isinstance(entry.get("path"), str):
+            return normalize(entry["path"])
+        return None
+
     artifact = json.loads(
         Path(attestation_set_path).resolve(strict=True).read_text(encoding="utf-8")
     )
     closure = artifact.get("bootstrap_closure")
     committed = {
-        normalize(entry["path"])
+        key
         for entry in closure
-        if isinstance(entry, Mapping) and isinstance(entry.get("path"), str)
+        if isinstance(entry, Mapping)
+        for key in (committed_key(entry),)
+        if key is not None
     } if isinstance(closure, list) else set()
 
     enumerated = enumerate_bootstrap_closure(
