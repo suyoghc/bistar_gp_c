@@ -1282,8 +1282,6 @@ def main(
             "consumed config does not match the parent's authenticated "
             "derivation"
         )
-    global _CONFIG_AUTHENTICATED
-    _CONFIG_AUTHENTICATED = True
     config = json.loads(raw_config.decode("utf-8"))
     if not isinstance(config, dict):
         raise SystemExit("attestation_fault: bootstrap config is malformed")
@@ -1316,6 +1314,13 @@ def main(
                 raise SystemExit(f"attestation_fault: {fault}")
 
     run_dir, paths = _attestation_paths(config)
+    # Cache the failure route from the IN-MEMORY authenticated config exactly
+    # once (round-4 delta review, Codex round 3): _persist_failure must never
+    # re-read the mutable on-disk config at failure time, so a mutation AFTER
+    # the startup digest verification can neither redirect the failure record
+    # nor influence it in any way.
+    global _AUTHENTICATED_FAILURE_PATH
+    _AUTHENTICATED_FAILURE_PATH = os.fspath(paths["failure"])
     proof_digest = _atomic_write_json(paths["effect_proofs"], proofs)
     expected_environment = _realized_frozen_environment(config.get("frozen_env"))
     if "LC_CTYPE" in expected_environment:
@@ -1788,32 +1793,27 @@ def main(
     raise SystemExit("schema_invalid_payload: payload status is not a protocol verdict")
 
 
-# Set by main() exactly once, immediately after the consumed config bytes have
-# been verified against the parent's argv-bound digest.  While False, no field
-# of the on-disk config may be trusted for ANY purpose — including choosing
-# where failure evidence is written (round-4 delta review, Codex round 2: a
-# digest-REJECTED config must not be able to redirect the failure record to a
-# path it names).
-_CONFIG_AUTHENTICATED = False
+# Set by main() exactly once, from the IN-MEMORY authenticated config,
+# immediately after its attestation paths are derived.  The on-disk config is
+# NEVER re-read at failure time (round-4 delta review, Codex rounds 2+3): a
+# digest-REJECTED config cannot route the failure record at all, and a config
+# mutated AFTER the startup digest verification cannot redirect it either —
+# the only trusted route is the one captured from the bytes the parent bound.
+_AUTHENTICATED_FAILURE_PATH: str | None = None
 
 
 def _persist_failure(config_path: str, reason: Any) -> None:
     text = str(reason) if reason is not None else "bootstrap exited"
     fault_class = text.split(":", 1)[0] if ":" in text else "other"
-    failure_path = Path(config_path).resolve().parent / "bootstrap_failure.json"
-    if _CONFIG_AUTHENTICATED:
-        # Only an authenticated config may route the failure record through its
-        # attestation_paths (the parent already contained those paths inside
-        # the run dir before binding the digest).
-        try:
-            with open(config_path, "r", encoding="utf-8") as handle:
-                config = json.load(handle)
-            _, paths = _attestation_paths(config)
-            failure_path = paths["failure"]
-        except BaseException:
-            failure_path = (
-                Path(config_path).resolve().parent / "bootstrap_failure.json"
-            )
+    if _AUTHENTICATED_FAILURE_PATH is not None:
+        failure_path = Path(_AUTHENTICATED_FAILURE_PATH)
+    else:
+        # No authenticated route exists (the failure precedes the digest
+        # verification or the attestation-path derivation): the evidence lands
+        # beside the consumed config, inside the run directory in production.
+        failure_path = (
+            Path(config_path).resolve().parent / "bootstrap_failure.json"
+        )
     try:
         _atomic_write_json(failure_path, {"fault_class": fault_class, "detail": text})
     except BaseException:

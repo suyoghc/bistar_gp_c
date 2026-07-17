@@ -2027,6 +2027,50 @@ def test_write_terminal_fsyncs_the_record_and_directory(
     assert len(calls) == 2, "one file fsync before link, one directory fsync after"
 
 
+def test_mid_run_config_mutation_cannot_redirect_the_failure_record(
+    tmp_path: Path,
+) -> None:
+    """Round-4 (Codex round 3): the failure route is cached from the IN-MEMORY
+    authenticated config at startup, never re-read from disk — so a payload
+    that rewrites bootstrap_config.json's attestation_paths.failure DURING the
+    run and then provokes a post-marker fault cannot redirect the failure
+    evidence; it lands at the parent-contained route, and the mutation itself
+    voids certification at post-exit."""
+
+    outside = tmp_path / "outside" / "hijacked_failure.json"
+    run_dir_path = tmp_path / "run"
+    extra = (
+        "import json as _json\n"
+        f"    _cfg_path = os.path.join({os.fspath(run_dir_path)!r}, "
+        "'bootstrap_config.json')\n"
+        "    _cfg = _json.loads(open(_cfg_path).read())\n"
+        f"    _cfg['attestation_paths']['failure'] = {os.fspath(outside)!r}\n"
+        "    open(_cfg_path, 'w').write(_json.dumps(_cfg, sort_keys=True, "
+        "separators=(',', ':')))"
+    )
+    config = _make_launch(
+        tmp_path, mode="delete_marker", extra_payload_code=extra
+    )
+    record = capture_run(config)
+    run_dir = Path(config.run_dir)
+    # The child's post-payload Stage-C marker failure persisted its evidence
+    # at the route cached from the authenticated startup bytes — never at the
+    # path the mid-run mutation named.
+    assert not outside.exists()
+    assert not outside.parent.exists()
+    failure = json.loads((run_dir / "bootstrap_failure.json").read_text())
+    assert failure["fault_class"] == "attestation_fault"
+    assert "payload marker" in failure["detail"]
+    # The mutation itself independently voids certification at post-exit.
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "capture_fault"
+    assert (
+        "bootstrap config changed between write and post-exit attestation"
+        in record["fault"]["detail"]
+    )
+    validate_terminal_record(record)
+
+
 def test_race_loser_with_unreadable_squatter_returns_in_memory_record(
     tmp_path: Path,
 ) -> None:

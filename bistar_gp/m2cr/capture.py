@@ -774,10 +774,12 @@ def _write_terminal(run_dir: Path, record: Mapping[str, Any]) -> str:
     """Atomically publish the terminal record with no-clobber semantics + fsync
     (Codex round-3 C4; round-4 durability strengthening).
 
-    A fully-written, fsync'd temp with a per-call unique name (``mkstemp``, so
-    concurrent same-process publishers can never unlink or link each other's
-    in-flight temp) is hard-linked to the final name — an atomic, no-replace
-    publication that fails ``EEXIST`` if a terminal already exists, so neither
+    A fully-written, fsync'd temp with a per-call unique random-suffixed name
+    (``O_EXCL``-opened with a fresh 64-bit suffix, retried on the improbable
+    collision, so concurrent same-process publishers can never unlink or link
+    each other's in-flight temp) is hard-linked to the final name — an atomic,
+    no-replace publication that fails ``EEXIST`` if a terminal already exists,
+    so neither
     normal capture nor reconciliation can overwrite the other's terminal (§4.3
     "Nothing vanishes and no state is silently reclassified"; §3.1 write-temp /
     fsync / atomic publish).  The payload is written with a full-write loop (a
@@ -792,11 +794,21 @@ def _write_terminal(run_dir: Path, record: Mapping[str, Any]) -> str:
     # A per-call-unique name (never a shared PID-derived one) with an
     # O_EXCL, umask-honoring open: concurrent publishers cannot collide on the
     # temp, and the published mode matches the historical open(0o644)-under-
-    # umask semantics rather than overriding the caller's umask.
-    tmp = os.fspath(
-        run_dir / f".{TERMINAL_RECORD_NAME}.{os.urandom(8).hex()}.tmp"
-    )
-    descriptor = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    # umask semantics rather than overriding the caller's umask.  The
+    # improbable collision with a crash-leftover temp is retried with a fresh
+    # suffix rather than escaping (round-4, Codex round 3).
+    for attempt in range(3):
+        tmp = os.fspath(
+            run_dir / f".{TERMINAL_RECORD_NAME}.{os.urandom(8).hex()}.tmp"
+        )
+        try:
+            descriptor = os.open(
+                tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644
+            )
+            break
+        except FileExistsError:
+            if attempt == 2:
+                raise
     try:
         written = 0
         while written < len(payload):
@@ -1546,9 +1558,11 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
             # race).  Exactly like the normal-capture race loser below, the
             # durable record is the one on disk — return it verbatim rather
             # than a record that was never published (round-4 GLM finding).
+            # RecursionError: a pathologically nested squatter must not let
+            # the read escape either (round-4, Codex round 3).
             try:
                 return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
-            except (OSError, ValueError):
+            except (OSError, ValueError, RecursionError):
                 pass
         except OSError:
             # Two sub-cases, both absorbed because a pre-spawn failure must
@@ -1972,12 +1986,13 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         # the one already on disk; return it verbatim rather than overwrite it.
         # Round-4 unification: if the occupying file is unreadable or not a
         # canonical record (a non-protocol writer squatted the name — §4.5.13
-        # residual class), it is preserved as evidence and the in-memory
+        # residual class, including a pathologically nested squatter raising
+        # RecursionError), it is preserved as evidence and the in-memory
         # record is returned, exactly like the pre-spawn race loser; the
         # publication never clobbers and the failure never escapes.
         try:
             return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
-        except (OSError, ValueError):
+        except (OSError, ValueError, RecursionError):
             pass
     return record
 
