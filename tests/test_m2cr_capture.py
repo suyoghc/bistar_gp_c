@@ -2138,9 +2138,11 @@ def test_write_terminal_full_write_loop_survives_short_writes(
 def test_write_terminal_surfaces_directory_fsync_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Round-4 (Codex): a directory-fsync failure PROPAGATES instead of being
-    silently swallowed — the publication is visible and byte-complete, but the
-    durability failure surfaces loudly rather than degrading the C4 claim."""
+    """Round-4 + finding 6: a directory-fsync failure surfaces as the typed
+    TerminalDurabilityUncertain state — the publication is visible and
+    byte-complete, but crash-durability is unconfirmed, so it is reported
+    explicitly (carrying the on-disk record + digest) rather than swallowed OR
+    reported as a confirmed-durable publication."""
 
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -2154,11 +2156,19 @@ def test_write_terminal_surfaces_directory_fsync_failure(
         real_fsync(fd)
 
     monkeypatch.setattr(capture_module.os, "fsync", failing_directory_fsync)
-    with pytest.raises(OSError, match="simulated directory fsync EIO"):
+    with pytest.raises(
+        capture_module.TerminalDurabilityUncertain, match="could not be fsync"
+    ) as excinfo:
         capture_module._write_terminal(run_dir, {"durable": True})
-    assert json.loads((run_dir / TERMINAL_RECORD_NAME).read_text()) == {
-        "durable": True
-    }
+    # The bytes ARE visible at the final name; the exception carries the
+    # authoritative record + digest, only durability is uncertain.
+    on_disk = json.loads((run_dir / TERMINAL_RECORD_NAME).read_text())
+    assert on_disk == {"durable": True}
+    assert excinfo.value.record == {"durable": True}
+    assert excinfo.value.digest == hashlib.sha256(
+        json.dumps({"durable": True}, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert isinstance(excinfo.value.cause, OSError)
 
 
 def test_concurrent_same_process_publishers_cannot_interfere(
@@ -2265,3 +2275,215 @@ def test_normal_and_fallback_publication_both_route_through_write_terminal(
         (Path(fallback_config.run_dir) / TERMINAL_RECORD_NAME).read_text()
     )
     assert on_disk == fallback
+
+
+# ---------------------------------------------------------------------------
+# Finding 6: truthful terminal-publication states.  _write_terminal returns a
+# digest ONLY on a confirmed-durable publication; every other outcome is a
+# distinct typed exception, so capture_run/reconcile_run never return a record
+# that misrepresents an uncommitted or not-durably-committed outcome.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["short_write_zero", "content_write_oserror", "content_fsync_oserror", "link_oserror"],
+)
+def test_write_terminal_write_failures_publish_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    """A temp-write, content-fsync, or non-EEXIST hard-link failure leaves the
+    final name untouched: TerminalWriteError is raised carrying the attempted
+    record + cause, and nothing is published."""
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    record = {"attempted": True}
+    real_write, real_fsync, real_link = os.write, os.fsync, os.link
+    if mode == "short_write_zero":
+        monkeypatch.setattr(capture_module.os, "write", lambda fd, data: 0)
+    elif mode == "content_write_oserror":
+
+        def boom_write(fd: int, data: bytes) -> int:
+            raise OSError("simulated content write EIO")
+
+        monkeypatch.setattr(capture_module.os, "write", boom_write)
+    elif mode == "content_fsync_oserror":
+        calls: list[int] = []
+
+        def boom_fsync(fd: int) -> None:
+            calls.append(fd)
+            raise OSError("simulated content fsync EIO")  # the first fsync
+
+        monkeypatch.setattr(capture_module.os, "fsync", boom_fsync)
+    else:
+
+        def boom_link(src: str, dst: str) -> None:
+            raise PermissionError("simulated hard-link EPERM")
+
+        monkeypatch.setattr(capture_module.os, "link", boom_link)
+    with pytest.raises(capture_module.TerminalWriteError) as excinfo:
+        capture_module._write_terminal(run_dir, record)
+    assert excinfo.value.attempted_record == record
+    assert isinstance(excinfo.value.cause, OSError)
+    assert not (run_dir / TERMINAL_RECORD_NAME).exists()
+    # No temp residue either.
+    assert list(run_dir.iterdir()) == []
+
+
+def test_write_terminal_directory_open_failure_is_durability_uncertain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the record is linked into place but the run-directory cannot even be
+    opened for fsync, the bytes are visible yet durability is unconfirmed —
+    TerminalDurabilityUncertain, not a confirmed publication."""
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    real_open = os.open
+
+    def failing_dir_open(path, flags, *args, **kwargs):
+        if flags == os.O_RDONLY:
+            raise OSError("simulated directory open EACCES")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(capture_module.os, "open", failing_dir_open)
+    with pytest.raises(capture_module.TerminalDurabilityUncertain):
+        capture_module._write_terminal(run_dir, {"durable": True})
+    assert json.loads((run_dir / TERMINAL_RECORD_NAME).read_text()) == {
+        "durable": True
+    }
+
+
+def test_write_terminal_eexist_is_terminal_already_exists_even_for_malformed_winner(
+    tmp_path: Path,
+) -> None:
+    """An occupied final name yields TerminalAlreadyExists regardless of whether
+    the occupant is a valid record or a malformed squatter — the no-clobber
+    protocol never overwrites, and classifying the occupant is the caller's job."""
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / TERMINAL_RECORD_NAME).write_bytes(b"NOT-JSON-SQUATTER")
+    with pytest.raises(
+        capture_module.TerminalAlreadyExists, match="already exists"
+    ):
+        capture_module._write_terminal(run_dir, {"loser": True})
+    # The squatter is preserved, never clobbered.
+    assert (run_dir / TERMINAL_RECORD_NAME).read_bytes() == b"NOT-JSON-SQUATTER"
+
+
+def test_capture_run_propagates_a_normal_publication_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding 6: when the normal terminal publication cannot commit anything,
+    capture_run raises TerminalWriteError carrying the real assembled record —
+    it does NOT return that record as though it were durably committed."""
+
+    config = _make_launch(tmp_path)
+
+    def failing_write(run_dir: Path, record: dict) -> str:
+        raise capture_module.TerminalWriteError(
+            "simulated publication failure",
+            attempted_record=record,
+            cause=OSError("ENOSPC"),
+        )
+
+    monkeypatch.setattr(capture_module, "_write_terminal", failing_write)
+    with pytest.raises(capture_module.TerminalWriteError) as excinfo:
+        capture_run(config)
+    assert excinfo.value.attempted_record["status"] == "COMPLETED"
+    assert isinstance(excinfo.value.cause, OSError)
+
+
+def test_capture_run_propagates_a_pre_spawn_publication_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding 6: a pre-spawn INFRA_FAILURE whose terminal cannot be published
+    surfaces as TerminalWriteError rather than a returned, never-committed
+    record — the ratified "never silently reclassify" invariant now fails
+    LOUDLY when there is genuinely no terminal on disk."""
+
+    # Force a pre-spawn attestation failure (missing committed infra manifest),
+    # so capture_run enters the pre-spawn publication handler.
+    config = _make_launch(tmp_path)
+    (Path(config.worktree_root) / _INFRA_RELPATH).unlink()
+
+    def failing_write(run_dir: Path, record: dict) -> str:
+        raise capture_module.TerminalWriteError(
+            "simulated pre-spawn publication failure",
+            attempted_record=record,
+            cause=OSError("EROFS"),
+        )
+
+    monkeypatch.setattr(capture_module, "_write_terminal", failing_write)
+    with pytest.raises(capture_module.TerminalWriteError) as excinfo:
+        capture_run(config)
+    assert excinfo.value.attempted_record["status"] == "INFRA_FAILURE"
+
+
+def test_reconcile_run_propagates_a_publication_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding 6: reconciliation surfaces a publication write failure truthfully
+    instead of returning a reconstructed record that was never committed."""
+
+    run_dir = tmp_path / "reconcile"
+    _write_reconcile_evidence(run_dir)
+
+    def failing_write(root: Path, record: dict) -> str:
+        raise capture_module.TerminalWriteError(
+            "simulated reconcile publication failure",
+            attempted_record=record,
+            cause=OSError("ENOSPC"),
+        )
+
+    monkeypatch.setattr(capture_module, "_write_terminal", failing_write)
+    with pytest.raises(capture_module.TerminalWriteError) as excinfo:
+        reconcile_run(run_dir)
+    assert excinfo.value.attempted_record["status"] == "INFRA_FAILURE"
+    assert excinfo.value.attempted_record["fault"]["reconstructed"] is True
+
+
+def test_normal_capture_racing_reconciliation_returns_the_durable_winner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding 6 / C4: when a reconciliation publishes this run's terminal in the
+    window before normal capture's own publication, capture hits EEXIST
+    (TerminalAlreadyExists) and returns the durable on-disk winner verbatim — it
+    never clobbers, never escapes, and never returns an un-published record."""
+
+    config = _make_launch(tmp_path)
+    run_dir = Path(config.run_dir)
+    reconciled = {
+        "schema_version": 1,
+        "record_kind": "diagnostic",
+        "status": "INFRA_FAILURE",
+        "run_id": "m2cr-capture-test",
+        "launch_attempt_id": LAUNCH_ATTEMPT_ID,
+        "chain": dict(config.chain),
+        "fault": {
+            "fault_class": "capture_fault",
+            "detail": "reconstructed after parent death",
+            "reconstructed": True,
+            "payload_started": False,
+        },
+        "evidence": {
+            "raw_manifest_sha256": "0" * 64,
+            "node_evidence_digests": [],
+            "event_stream_balanced": False,
+        },
+        "not_a_result": True,
+    }
+    real_write = capture_module._write_terminal
+
+    def racing_write(rd: Path, record: dict) -> str:
+        # A reconciler wins the publish race just before capture publishes.
+        if record.get("status") == "COMPLETED":
+            real_write(rd, reconciled)
+        return real_write(rd, record)
+
+    monkeypatch.setattr(capture_module, "_write_terminal", racing_write)
+    record = capture_run(config)
+    assert record == reconciled
+    assert json.loads((run_dir / TERMINAL_RECORD_NAME).read_text()) == reconciled

@@ -59,6 +59,10 @@ __all__ = [
     "WALL_CLOCK_CEILING_HOURS",
     "LaunchConfig",
     "RecordAssemblyError",
+    "TerminalAlreadyExists",
+    "TerminalDurabilityUncertain",
+    "TerminalPublicationError",
+    "TerminalWriteError",
     "aggregates_from_node_records",
     "assemble_terminal_record",
     "capture_run",
@@ -231,6 +235,71 @@ class LaunchConfig:
 
 class RecordAssemblyError(ValueError):
     """A terminal branch or payload could not satisfy the frozen R1 schema."""
+
+
+class TerminalPublicationError(Exception):
+    """Terminal publication did not confirm a durable authoritative record.
+
+    Base of the truthful publication-state hierarchy (external-audit finding 6).
+    ``capture_run`` (and ``reconcile_run``) return a terminal record ONLY when
+    that record is the authoritative no-clobber record and its required
+    durability has been confirmed; every other publication outcome is a typed
+    exception, so a returned record can never misrepresent an un-committed or
+    not-durably-committed record as the terminal outcome.
+    """
+
+
+class TerminalWriteError(TerminalPublicationError):
+    """Nothing was published: the temp creation, the payload write, the content
+    fsync, or the hard-link (for a reason OTHER than an existing terminal)
+    failed before the final terminal name existed on disk.
+
+    ``attempted_record`` is the record that could not be committed and ``cause``
+    the underlying error, so the caller sees a truthful non-outcome instead of a
+    record misrepresented as committed.
+    """
+
+    def __init__(
+        self, message: str, *, attempted_record: Mapping[str, Any], cause: BaseException
+    ) -> None:
+        super().__init__(message)
+        self.attempted_record = dict(attempted_record)
+        self.cause = cause
+
+
+class TerminalDurabilityUncertain(TerminalPublicationError):
+    """The record bytes are visible at the final terminal name (the atomic
+    hard-link succeeded and the content was fsync'd) but the run-directory fsync
+    failed, so crash-durability of the directory entry is unconfirmed.
+
+    ``record`` is the authoritative on-disk record and ``digest`` its sha256;
+    only durability is uncertain.  This is surfaced explicitly rather than
+    reported as a confirmed-durable publication or silently swallowed.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        record: Mapping[str, Any],
+        digest: str,
+        cause: BaseException,
+    ) -> None:
+        super().__init__(message)
+        self.record = dict(record)
+        self.digest = digest
+        self.cause = cause
+
+
+class TerminalAlreadyExists(RecordAssemblyError):
+    """The no-clobber publication lost to an existing terminal (EEXIST): a valid
+    prior or racing writer's record is the authoritative one on disk.
+
+    Kept a :class:`RecordAssemblyError` subclass so the established race-loser
+    and reconciliation-refused handling and their ``already exists`` contract are
+    preserved; distinct from the publication-FAILURE hierarchy above because an
+    existing terminal is the no-clobber protocol working, not a failure.
+    """
 
 
 def _utc_now() -> str:
@@ -771,81 +840,119 @@ def _prelaunch(
 
 
 def _write_terminal(run_dir: Path, record: Mapping[str, Any]) -> str:
-    """Atomically publish the terminal record with no-clobber semantics + fsync
-    (Codex round-3 C4; round-4 durability strengthening).
+    """Atomically publish the terminal record and return its digest ONLY on a
+    confirmed-durable publication (Codex round-3 C4; round-4 durability; external
+    -audit finding 6 truthful states).
 
-    A fully-written, fsync'd temp with a per-call unique random-suffixed name
-    (``O_EXCL``-opened with a fresh 64-bit suffix, retried on the improbable
+    A fully-written, content-fsync'd temp with a per-call unique random-suffixed
+    name (``O_EXCL``-opened with a fresh 64-bit suffix, retried on the improbable
     collision, so concurrent same-process publishers can never unlink or link
     each other's in-flight temp) is hard-linked to the final name — an atomic,
-    no-replace publication that fails ``EEXIST`` if a terminal already exists,
-    so neither
-    normal capture nor reconciliation can overwrite the other's terminal (§4.3
-    "Nothing vanishes and no state is silently reclassified"; §3.1 write-temp /
-    fsync / atomic publish).  The payload is written with a full-write loop (a
-    POSIX short write must fail closed, never publish truncated bytes), and the
-    run directory is fsync'd so the link is durable — a directory-fsync failure
-    PROPAGATES rather than silently degrading the durability claim.  Raises
-    :class:`RecordAssemblyError` on a pre-existing terminal.
+    no-replace publication that fails ``EEXIST`` if a terminal already exists, so
+    neither normal capture nor reconciliation can overwrite the other's terminal
+    (§4.3 "Nothing vanishes"; §3.1 write-temp / fsync / atomic publish).  The
+    payload is written with a full-write loop (a POSIX short write must fail
+    closed, never publish truncated bytes), and the run directory is fsync'd so
+    the entry is durable.
+
+    Outcomes are distinguished truthfully — a returned digest means the record is
+    the durable authoritative record on disk; nothing else returns:
+
+    - temp/write/content-fsync/link failure before the final name existed →
+      :class:`TerminalWriteError` (nothing published), carrying the attempted
+      record and cause;
+    - an existing terminal (EEXIST) → :class:`TerminalAlreadyExists`;
+    - link succeeded but the directory fsync failed → the bytes ARE visible but
+      durability is unconfirmed → :class:`TerminalDurabilityUncertain`, carrying
+      the on-disk record and digest.
     """
 
     final = run_dir / TERMINAL_RECORD_NAME
     payload = canonical_bytes(dict(record))
-    # A per-call-unique name (never a shared PID-derived one) with an
-    # O_EXCL, umask-honoring open: concurrent publishers cannot collide on the
-    # temp, and the published mode matches the historical open(0o644)-under-
-    # umask semantics rather than overriding the caller's umask.  The
-    # improbable collision with a crash-leftover temp is retried with a fresh
-    # suffix rather than escaping (round-4, Codex round 3).
-    for attempt in range(3):
-        tmp = os.fspath(
-            run_dir / f".{TERMINAL_RECORD_NAME}.{os.urandom(8).hex()}.tmp"
-        )
-        try:
-            descriptor = os.open(
-                tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644
-            )
-            break
-        except FileExistsError:
-            if attempt == 2:
-                raise
+    digest = hashlib.sha256(payload).hexdigest()
+    # Phase 1 — create, fully write, and content-fsync the temp.  Any failure
+    # here leaves the final name untouched: nothing was published.  A
+    # per-call-unique O_EXCL, umask-honoring open keeps concurrent publishers
+    # from colliding and matches the historical open(0o644)-under-umask mode; a
+    # collision with a crash-leftover temp is retried with a fresh suffix.
+    tmp: str | None = None
     try:
-        written = 0
-        while written < len(payload):
-            count = os.write(descriptor, payload[written:])
-            if count <= 0:
-                raise OSError(
-                    f"terminal record short write at byte {written} of "
-                    f"{len(payload)}"
+        descriptor: int | None = None
+        for attempt in range(3):
+            candidate = os.fspath(
+                run_dir / f".{TERMINAL_RECORD_NAME}.{os.urandom(8).hex()}.tmp"
+            )
+            try:
+                descriptor = os.open(
+                    candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644
                 )
-            written += count
-        os.fsync(descriptor)
-    except BaseException:
-        os.close(descriptor)
+                tmp = candidate
+                break
+            except FileExistsError:
+                if attempt == 2:
+                    raise
+        assert descriptor is not None and tmp is not None
         try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-    else:
-        os.close(descriptor)
+            written = 0
+            while written < len(payload):
+                count = os.write(descriptor, payload[written:])
+                if count <= 0:
+                    raise OSError(
+                        f"terminal record short write at byte {written} of "
+                        f"{len(payload)}"
+                    )
+                written += count
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        raise TerminalWriteError(
+            f"terminal record could not be written durably to a temp under "
+            f"{run_dir}: {exc}",
+            attempted_record=record,
+            cause=exc,
+        ) from exc
+    # Phase 2 — atomic no-clobber publish (hard-link temp -> final name).
     try:
         os.link(tmp, final)
     except FileExistsError as exc:
-        raise RecordAssemblyError(
+        raise TerminalAlreadyExists(
             f"terminal record already exists at {final}"
+        ) from exc
+    except OSError as exc:
+        raise TerminalWriteError(
+            f"terminal record hard-link publication failed at {final}: {exc}",
+            attempted_record=record,
+            cause=exc,
         ) from exc
     finally:
         try:
             os.unlink(tmp)
         except OSError:
             pass
-    dir_fd = os.open(run_dir, os.O_RDONLY)
+    # Phase 3 — the bytes are now visible at the final name.  Fsync the run
+    # directory so the entry is crash-durable; a failure here does NOT unpublish
+    # the record, it only leaves durability unconfirmed — surfaced, not swallowed.
     try:
-        os.fsync(dir_fd)
-    finally:
-        os.close(dir_fd)
-    return hashlib.sha256(payload).hexdigest()
+        dir_fd = os.open(run_dir, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError as exc:
+        raise TerminalDurabilityUncertain(
+            f"terminal record is visible at {final} but its directory entry "
+            f"could not be fsync'd: {exc}",
+            record=record,
+            digest=digest,
+            cause=exc,
+        ) from exc
+    return digest
 
 
 def _reauthenticate_loaded_images_parent_side(
@@ -1553,30 +1660,32 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         try:
             run_dir.mkdir(parents=True, exist_ok=True)
             _write_terminal(run_dir, record)
-        except RecordAssemblyError:
+            return record
+        except TerminalAlreadyExists:
             # A terminal already exists (a reconciliation won the publish
-            # race).  Exactly like the normal-capture race loser below, the
-            # durable record is the one on disk — return it verbatim rather
-            # than a record that was never published (round-4 GLM finding).
-            # RecursionError: a pathologically nested squatter must not let
-            # the read escape either (round-4, Codex round 3).
+            # race).  Exactly like the normal-capture race loser, the durable
+            # record is the one on disk — return it verbatim, or the in-memory
+            # record for an unreadable/malformed §4.5.13 squatter (round-4 GLM;
+            # RecursionError guards a pathologically nested squatter).
             try:
                 return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
             except (OSError, ValueError, RecursionError):
-                pass
-        except OSError:
-            # Two sub-cases, both absorbed because a pre-spawn failure must
-            # never escape capture_run without a terminal outcome (F5/C3):
-            # (i) nothing could be persisted (run_dir unwritable, write or
-            # content-fsync failure — no terminal exists); (ii) the record was
-            # fully written and linked but the DIRECTORY fsync failed, so the
-            # on-disk record equals the returned one and only its
-            # crash-durability is unestablished.  In (ii) the durability fault
-            # is not separately reported through the record — a disclosed
-            # residual of this last-resort path (the normal publication site
-            # propagates the same fault loudly).
-            pass
-        return record
+                return record
+        except OSError as exc:
+            # run_dir.mkdir itself failed before any publication was attempted:
+            # nothing is on disk, so this is a truthful write failure, surfaced
+            # rather than returning an uncommitted record (finding 6).
+            raise TerminalWriteError(
+                f"pre-spawn terminal publication could not create {run_dir}: "
+                f"{exc}",
+                attempted_record=record,
+                cause=exc,
+            ) from exc
+        # External-audit finding 6: TerminalWriteError (nothing published) and
+        # TerminalDurabilityUncertain (visible but durability unconfirmed) from
+        # _write_terminal propagate — the pre-spawn INFRA_FAILURE outcome is
+        # surfaced truthfully, never returned as a durably-committed record when
+        # it is not one.
 
     # The bootstrap-config write and stdout/stderr opens are now done in the
     # pre-spawn phase above (Codex round-3 F5(C2)); the supervised block spawns
@@ -1980,21 +2089,26 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         )
     try:
         _write_terminal(run_dir, record)
-    except RecordAssemblyError:
+        return record
+    except TerminalAlreadyExists:
         # Codex round-3 C4: a terminal already exists (a reconciliation of this
         # run won the publish race).  Nothing vanishes — the durable record is
         # the one already on disk; return it verbatim rather than overwrite it.
         # Round-4 unification: if the occupying file is unreadable or not a
         # canonical record (a non-protocol writer squatted the name — §4.5.13
         # residual class, including a pathologically nested squatter raising
-        # RecursionError), it is preserved as evidence and the in-memory
-        # record is returned, exactly like the pre-spawn race loser; the
-        # publication never clobbers and the failure never escapes.
+        # RecursionError), it is preserved as evidence and the in-memory record
+        # is returned, exactly like the pre-spawn race loser; the publication
+        # never clobbers and the failure never escapes.
         try:
             return _read_json_object(run_dir / TERMINAL_RECORD_NAME)
         except (OSError, ValueError, RecursionError):
-            pass
-    return record
+            return record
+    # External-audit finding 6: TerminalWriteError (nothing published) and
+    # TerminalDurabilityUncertain (visible but crash-durability unconfirmed)
+    # PROPAGATE — capture_run raises a typed publication exception rather than
+    # returning a record that misrepresents an uncommitted or not-durably-
+    # committed outcome as the authoritative terminal.
 
 
 run_capture = capture_run
@@ -2089,8 +2203,11 @@ def reconcile_run(
     # atomic-link protocol so two racing reconcilers — OR reconciliation racing
     # normal capture — cannot overwrite each other's terminal record; the loser
     # fails closed on EEXIST (§4.3 "Nothing vanishes"; §3.1 write-temp / fsync /
-    # atomic publish).  _write_terminal raises RecordAssemblyError on a
-    # pre-existing terminal, which is the reconciliation-refused signal.
+    # atomic publish).  _write_terminal raises TerminalAlreadyExists (a
+    # RecordAssemblyError) on a pre-existing terminal, which is the
+    # reconciliation-refused signal; TerminalWriteError / TerminalDurabilityUncertain
+    # propagate so a failed or durability-uncertain reconstruction is surfaced
+    # truthfully rather than returned as a durably-committed record (finding 6).
     _write_terminal(root, record)
     return record
 
