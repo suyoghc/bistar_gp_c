@@ -30,9 +30,13 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   curvature evaluation point; purity at `mode_u`, repeats 2) + D50 +
   `m2c_diagnostic_record.schema_v1.json` (`b6b60dd1…`) + `m2cr_diagnostic_protocol_v1.json`
   (`bdfac013…`).
-- **Boundaries held throughout:** hermetic only — no `--execute`, no diagnostic/scientific
-  computation, no real-model evaluation, no Mauna/holdout, no ledger event, no `runs/`, no
-  `docs/m2c_evidence/`; the v1.18 instance stays absent.
+- **Boundaries held throughout (precise wording per author direction):** no `--execute`; no
+  R3/R4 diagnostic payload or scientific model/profile computation ran; `_real_components` was
+  never executed; no Mauna/holdout computation ran; no ledger event; no `runs/`; no
+  `docs/m2c_evidence/`; the v1.18 instance stays absent. The hermetic suite exercised R3
+  classifier/protocol machinery using synthetic values and fake/rigged callables, including
+  four real-root infrastructure launches, and retained the repository's pre-existing hermetic
+  tiny-E1 sampler regression tests.
 
 ## M2cR R2a — v1.20 ceilings FROZEN + enforcement OPERATIONAL; PR #17 MERGED at `35ccc3d3e871a864b081d10e6ca7db53b0cbd5fe` (D49 + Updates 1–2, 2026-07-18) — R2a frozen
 

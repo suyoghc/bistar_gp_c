@@ -4898,9 +4898,12 @@ by the established fresh-detached-worktree recipe; focused tests then the full s
 `python -m pytest -q`; one parallel advisory findings-only panel (Opus 4.8 correctness/conformance;
 Kimi K3 artifact graph/ownership/R3-R4 boundary; GLM 5.2 adversarial schema/classifier edges) with
 Fable independently verifying every finding; at most ONE consolidated correction pass; Draft PR;
-HARD STOP before Ready/merge/R4/`--execute`. No scientific or diagnostic computation anywhere; no
-Mauna/holdout access; no ledger event; `docs/m2c_freeze/gtoy_profile_result_v1.18.json` stays
-absent.
+HARD STOP before Ready/merge/R4/`--execute`. No R3/R4 diagnostic payload or scientific
+model/profile computation; no Mauna/holdout access or computation; no ledger event;
+`docs/m2c_freeze/gtoy_profile_result_v1.18.json` stays absent. (The full suite legitimately
+exercises R3 classifier/protocol machinery on synthetic values and fake/rigged callables, runs
+the four real-root infrastructure launches, and retains the repository's pre-existing hermetic
+tiny-E1 sampler regression tests; `_real_components` is never executed.)
 
 **Status:** COMPLETE — see Update 1 below (implementation, regenerations, suite results,
 panel verdicts, final head).
@@ -4994,8 +4997,12 @@ numerically inert, recorded for transparency).
 the two A1-amended modules and the regenerated pinned artifacts D50 authorized; prereg addenda
 strictly append-only in the PR diff (zero removed lines vs `main`); ledger untouched (one D45
 line); `docs/m2c_freeze/gtoy_profile_result_v1.18.json` ABSENT; no `runs/` or `docs/m2c_evidence/`
-content; no scientific or diagnostic computation anywhere (fakes and rigged callables
-exclusively). **R4 remains unauthorized: it requires a fresh explicit author grant in the v1.19
+content. **Computation provenance, stated precisely (wording corrected by author direction,
+2026-07-18):** no R3/R4 diagnostic payload or scientific model/profile computation ran;
+`_real_components` was never executed; no Mauna/holdout computation ran. The hermetic suite
+exercised R3 classifier/protocol machinery using synthetic values and fake/rigged callables,
+including four real-root infrastructure launches, and retained the repository's pre-existing
+hermetic tiny-E1 sampler regression tests. **R4 remains unauthorized: it requires a fresh explicit author grant in the v1.19
 ledger — whose `frozen_chain` now necessarily cites the committed protocol manifest — at its own
 regenerated freeze and exact execution commit. Draft PR opened; NOT flipped Ready; NOT merged.
 HARD STOP.**
