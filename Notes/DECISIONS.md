@@ -4501,3 +4501,131 @@ under runs/ or experiments/, only bistar_gp/m2cr/* source changed across the cyc
 iterative improvement cycle — NOT a freeze, R2a, R3, execution grant, Ready, or merge. The two
 BLOCKER findings (1 and 2) remain the explicitly-documented next launch-authority cycle. PR #16
 stays Draft.
+
+### D48 — Update 12 (2026-07-18): R2 launch-authority cycle — BLOCKERs 1 and 2 CLOSED (AuthenticatedLaunchSpec + mandatory child manifest/origin binding); Kimi K3 challenge adjudicated; three-reviewer gate CLEAN over four converging delta rounds (Codex + Opus APPROVE, GLM disproven) at cf59b4c
+
+The remaining two external-audit BLOCKERs from the bd1d0f9 audit — finding 2 (one authenticated
+launch authority) and finding 1 (mandatory importable-manifest child binding + origin/loader
+authentication) — are now **CLOSED**. Sole orchestrator, one Fable 5 Max session; no Ultracode, no
+unrestricted fan-out. Startup gate verified at 46519af (branch/HEAD/origin all 46519af; clean tracked
+tree; PR #16 Draft; plan/rev-5/v1.17 hashes; ledger one D45 line; v1.18 absent; no branch-tracked
+runs/; baseline **798 passed / 2 skipped**; a full detached-worktree artifact regeneration at 46519af
+reproduced all committed artifacts byte-identically save the header worktree path).
+
+**Finding 2 — authenticated launch authority (CLOSED).** `_authenticate_launch_spec(worktree_root,
+chain)` in `capture.py` authenticates the complete committed Layer-0 graph under the launch worktree,
+chain-bound: the infrastructure manifest digest must equal `chain.infrastructure_manifest_sha256`; the
+aggregating environment-freeze manifest is infra-pinned AND required to equal the chain's own
+`environment_freeze_manifest_sha256`; the four static freeze artifacts authenticate through the
+aggregating manifest's pins; expectations + dependency lock through the infra pins; the interpreter's
+resolved-target sha is re-verified on disk. It returns one frozen `AuthenticatedLaunchSpec` carrying
+EVERY static launch fact. `LaunchConfig` is reduced to run identity/routing — `interpreter_path`,
+`interpreter_flags`, `frozen_env`, `bootstrap_path`, `preboundary_attestation_set`,
+`preboundary_skip`, `dependency_lock_path`, `site_packages` are removed (unrepresentable). Template
+substitution of any spec-authored value is rejected pre-spawn, not silently preferred. The
+`{"interpreter","dyld"}` pre-boundary skip tokens and the `preboundary_attestation_set=None` bypass
+are removed (`verify_preboundary_attestation_set` has no `skip` parameter and runs unconditionally
+pre-spawn and post-exit). The wall-clock ceiling is a validated bound (≤ the ratified 8 h). Parent and
+child are bound to one static authority via the spec digest: the bootstrap config embeds
+`authenticated_spec_sha256` (transport-bound through the argv config digest the child verifies before
+consuming any field), `prelaunch.json` records it, the child re-records it in the marker-bound
+`effect_proofs.json` and `stage_c.json`, and the parent compares at exit. `authorization_id` must
+equal `chain.authorization_id`. Any wrong worktree, chain, digest, interpreter, flags, environment
+mapping, pre-boundary set, roots, manifest, lock, or expectation fails closed BEFORE
+`payload_started.json`.
+
+**Finding 1 — mandatory child manifest (CLOSED).** Capture injects the importable-artifact manifest
+path, the four roots, and the authenticated pre-boundary closure unconditionally from the spec; the
+child (`bootstrap.py`) requires them (plus the spec digest) before anything else, treats its config as
+CLOSED-WORLD (unknown keys fail), and rejects a headerless v1 manifest. The complete pre-import
+re-walk is unconditional and marker-gated; a NEW pre-marker origin/loader authentication binds every
+file-backed loaded module (manifest clause under the four roots; authenticated pre-boundary closure
+clause outside them — the interpreter-forced pre-replacement stdlib loads); the complete
+post-execution re-walk + full origin/loader inventory validation gate every protocol exit;
+`payload_started.json` is impossible before the pre-walk succeeds, and COMPLETED is impossible without
+the post-walk and origin checks. Parent post-exit re-verifies the marker's mandatory attestation set,
+re-hashes every marker-bound evidence file, and binds the postcheck's manifest identity + import
+inventory. A planted `numpy/_distributor_init_local.py`-class artifact is caught by the pre-walk before
+execution; a removed/byte-changed artifact, origin mismatch, loader-class mismatch, post-walk drift,
+and missing postcheck all fail closed.
+
+**First real-native production-path launches (five empirical findings, none reachable before this
+cycle since every prior child ran the fake stack).** The bounded real-root integration battery
+surfaced and fixed: (1) libomp's `__KMP_REGISTERED_LIB_<pid>` registration is LAZY (first parallel
+region), so a hermetic no-compute child observes zero — the §4.5.5 accept-only classifier now admits
+0-or-1 (2+, wrong-PID, malformed still fail closed); (2) the freeze image-measurement enumerated
+BEFORE its build-config calls while the child enumerates after, and `numpy.show_config()` lazily loads
+pyyaml — the measurement now matches the child sequence (expected images 66→67); (3) the child's
+native import used `__import__(fromlist=["*"])` (expanding `__all__` into extra submodule imports incl.
+yaml) → now `importlib.import_module`, so child and measurement load the same closure; (4)
+C-extension-registered submodules (`torch._C._autograd`) and library module-object surgery
+(`torch.backends`) legitimately present a runtime loader of "none" — accepted only when the frozen
+manifest loader is the UNIQUE compulsory loader for its artifact type (source/extension), a
+`SourcelessFileLoader` (bytecode) pin is never satisfied by "none"; (5) `torch.classes` is a synthetic
+module with a bogus relative `__file__` — a fileless origin with loader "none" classifies synthetic
+(no execution), while a real-file-loader module with a missing origin fails closed. All five are sound
+plan readings (documented in `docs/m2cr-r2-hardening-design.md`), not enforcement weakenings.
+
+**Kimi K3 architecture challenge (bounded, non-gating).** One fresh OpenRouter request
+(`moonshotai/kimi-k3`, max reasoning effort); the first attempt returned an empty keep-alive body and
+was retried once, returning 14 findings. Each was independently verified against the plan and source.
+Acted on (confirmed/partial): closed-world child config (K5); import-then-evict disclosure (K4, later
+superseded); postcheck bound to the authenticated manifest identity (K9); committed-bundle CI asserting
+header roots equal the pinned interpreter's `sysconfig` paths + closure containment (K2/K3); nested-root
+launch coverage (K8); atomic keyed fixture cache with revalidation (K6/K11); stash-created candidate-tree
+provenance (K7); the reserved fourth real-root launch exercised (K14). Dismissed with rationale:
+K1 (fabricated bundle+chain is §4.5.13 out-of-scope; grant validity is the ledger/audit layer's),
+K10 (argv transport digest is the pre-consumption binding), K13 (`waiter` cannot affect any static
+fact).
+
+**Test architecture.** A session-scoped authenticated host bundle is generated independently before any
+test child starts (a `git archive`/`git stash create` of the candidate tree, the full production-shaped
+bundle built over the real four roots with the real generators), cached OUTSIDE the repository keyed by
+candidate tree id + interpreter resolved-path digest + canonical four roots + generator source digests,
+atomically populated (staging dir, `key.json` last, atomic rename) and revalidated on a hit (dependency
+-lock semantics against the live site-packages + a deterministic manifest-entry re-hash sample). The
+child only consumes and verifies; expected hashes are recomputed test-side. Exactly **FOUR** dedicated
+real-root integration child launches (all separate processes): the complete positive production path
+ending COMPLETED (~62 s incl. the walk); a pre-walk added-artifact failure before the marker (~37 s); a
+post-execution mutation failure after the marker, COMPLETED impossible (~54 s); and a manifest
+authority-substitution (a conflicting loader field), rejected at the child's parse before any import
+(~19–41 s). The fast synthetic battery (`tests/test_m2cr_launch_authority.py`, plus the rebuilt
+`_make_launch`/`_launch_bootstrap` harnesses carrying the full eight-artifact fake authority) proves the
+larger mutation matrix without claiming to prove the production path. Every WI3–WI6 regression preserved.
+
+**Three-reviewer gate — CLEAN after four converging focused-delta rounds** (Codex gpt-5.6-sol xHigh
+read-only sandbox; Opus 4.8 read-only agent; GLM 5.2 via OpenRouter — GLM run reasoning-disabled over
+subsystem chunks after its documented reasoning-channel-consumption failure). Round 1 (b97c802): REVISE
+— all three converged on the payload-image byte-authentication BLOCKER (the Stage-C image allowlist was
+path-only, so 19 transitive `.dylib` libraries were byte-unauthenticated), plus five confirmed fail-open
+/ coherence fixes; the loader-"none" acceptance was kept (Opus confirmed sound); KMP/TOCTOU/marker-race/
+spec-digest findings dismissed with recorded rationale. Round 2 delta (5282b79): Codex + Opus converged
+that the round-1 import-then-evict block was VACUOUS (the CPython audit `import` event supplies
+`filename=None` for source imports, empirically verified) — removed and disclosed as the §4.5.13
+out-of-scope residual; three more confirmed fixes (case-insensitive marker alias; package-vs-module
+precedence; loader-"none" gated on artifact type); GLM APPROVE. Round 3 delta (f4eb9e0): Codex 1 MAJOR
+(adjudicated — auto-eviction of an under-root module is authenticated by the manifest walk + artifact
+-type loader, no security gap; comment refined) + 1 MINOR (manifest loader/artifact-type consistency at
+parse, fixed); Opus + GLM APPROVE. Round 4 confirmatory (b673367): **Codex APPROVE, Opus APPROVE**, GLM
+one MAJOR disproven (the check fails CLOSED, not "silent pass"; the two loader maps match exactly). Every
+finding across all rounds was cross-verified against the plan/source/hashes/empirical probes before any
+change; false alarms were dismissed with recorded rationale, never fixed to satisfy votes. Adjudication
+detail: `docs/m2cr-r2-hardening-design.md` (three round-by-round records).
+
+**Commits (11).** c71b954 (WI1+WI2 code+tests) · b97c802 (regen) · 9ae8f13 (gate round-1 fixes) · 5282b79
+(regen + adjudication docs) · d148823 (round-2 delta fixes) · f4eb9e0 (regen) · de41461 (round-3
+refinements) · b673367 (regen) · 366b004 (launch-4 test alignment) · b4c3a00 (loader-map sync test) ·
+cf59b4c (final regen). Every regeneration used the established fresh-detached-worktree process at its
+exact code commit; the interpreter pin, child-env mapping, and dependency lock stayed byte-identical
+throughout, and the native-stack expectations changed only for the corrected 67-image set + the
+byte-authenticated 173-entry payload-image allowlist (fixed-artifact total 8,867,965 B).
+
+**Final state.** Full suite at cf59b4c: **840 passed / 2 skipped / 0 failed**; the four real-root
+integration launches pass separately. Boundaries re-verified: all 10 protected files byte-identical to
+origin/main, ledger one D45 line, v1.18 result instance absent, nothing under runs/ or experiments/,
+zero out-of-scope changes, v1.17 canonical hash 65381bc7…. No scientific, diagnostic, profile,
+optimizer/gradient/Hessian-on-model, MAP, sampler, Mauna, holdout, R2a, R3, or `--execute` computation
+occurred — every child ran fake payloads or import-only `bistar_gp.profile_integration`, and the only
+real measurements were the established freeze-time attestation measurements. Findings 1 and 2 are
+demonstrably CLOSED. This is a hardening cycle — NOT a freeze, R2a, R3, execution grant, Ready, or merge.
+PR #16 stays Draft.

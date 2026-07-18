@@ -2,7 +2,27 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## M2cR R2 — CONTINUOUS HARDENING; external audit bd1d0f9 findings 3/4/5/6 CLOSED, 2 advanced, 1 deferred; four-round three-reviewer gate returned unanimous APPROVE at 0a1a7f2 (D48 Updates 7–11, 2026-07-17) — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR #16, HARD STOP
+## M2cR R2 — CONTINUOUS HARDENING; external-audit BLOCKERs 1 AND 2 CLOSED (launch-authority cycle; findings 3/4/5/6 already closed); three-reviewer gate CLEAN over four converging delta rounds (Codex + Opus APPROVE, GLM disproven) at cf59b4c (D48 Update 12, 2026-07-18) — branch `feat/d19-m2cr-r2-infrastructure`, Draft PR #16, HARD STOP
+
+- **Launch-authority cycle (D48 Update 12, head cf59b4c):** finding 2 (one authenticated launch
+  authority) and finding 1 (mandatory importable-manifest child binding + origin/loader
+  authentication) are now CLOSED. `_authenticate_launch_spec` derives EVERY static launch fact from
+  the committed Layer-0 graph under the launch worktree (chain-bound); `LaunchConfig` is reduced to
+  run identity/routing (the former static fields are unrepresentable); skip tokens and the
+  preboundary=None bypass removed; parent/child bound to one `authenticated_spec_sha256`. The child
+  requires the manifest + four roots + closure + spec digest (closed-world config), performs the
+  complete pre-import re-walk (marker-gated), pre-marker origin/loader authentication of every
+  file-backed loaded module, and the post-execution re-walk + inventory validation (gating COMPLETED).
+  Bounded real-root integration: a session-cached authenticated host bundle + FOUR child launches
+  (positive COMPLETED ~62 s; pre-walk added ~37 s; post-exec mutation ~54 s; manifest
+  authority-substitution rejected at parse ~19–41 s). Full suite **840 passed / 2 skipped**; boundaries
+  clean (10/10 protected byte-identical, ledger 1 line, v1.18 absent, no runs/experiments, v1.17
+  canonical 65381bc7…). Kimi K3 bounded challenge adjudicated (non-gating). First real-native
+  production-path launches surfaced + fixed five empirical items (lazy KMP; image-measurement ordering;
+  fromlist import expansion; loader-"none" for source/extension; synthetic-`__file__`). Full record:
+  D48 Update 12 + `docs/m2cr-r2-hardening-design.md`. Still a hardening cycle — NOT a freeze/R2a/R3/
+  execute/Ready/merge; PR #16 Draft.
+
 
 - **Shipped (hermetic, plan §8 R2 exactly), at HEAD:** `bistar_gp/m2cr/` (12 modules) + **15**
   `tests/test_m2cr_*` files; v2 gates byte-equivalent with full attempt/retry evidence; write-ahead
@@ -60,12 +80,11 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 - **Prompt-hash note:** the R2 authorization prompt's rev-5 hash was a splice (suffix = D46 historical
   plan hash); the plan is consistent at §1 and §12 with the true `c3e9db66…d1ce3f`, which the file
   matches. Gate intent held. See D48.
-- **NEXT (each a separate author act; none authorized):** the finding-1/2 launch-authority cycle
-  (mandatory importable-manifest child binding + env/interpreter/pre-boundary derivation, with the
-  real-root integration-test strategy); then R2a versioned pre-execution addendum freezing per-class
-  evidence ceilings; then R3 (diagnostic protocol freeze, §6 verbatim, diagnostic-record schema,
-  PROTOCOL manifest, classifier goldens); R4 execution needs a fresh grant in the v1.19 ledger +
-  freeze regeneration at its own worktree/commit.
+- **NEXT (each a separate author act; none authorized):** with findings 1 and 2 now CLOSED (D48
+  Update 12), the next gate is R2a — a versioned pre-execution addendum freezing per-class evidence
+  ceilings from R2's measurement; then R3 (diagnostic protocol freeze, §6 verbatim, diagnostic-record
+  schema, PROTOCOL manifest, classifier goldens); R4 execution needs a fresh grant in the v1.19 ledger
+  + freeze regeneration at its own worktree/commit.
 
 ## M2c — v1.17 ALGORITHM FREEZE RATIFIED (branch `feat/d19-m2c` off main fcc3ce4; D40, 2026-07-13). STOPPED before compute.
 
