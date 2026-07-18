@@ -402,6 +402,74 @@ vote; nothing below expands scope.
   certification content, and a hanging waiter harms only the caller's own process. It is not a
   static-authority seam.
 
+### Three-reviewer gate — round 1 adjudication (2026-07-18, head b97c802)
+
+The WI1/WI2 candidate at `b97c802` was put through the standing three-reviewer gate — Codex
+gpt-5.6-sol xHigh (read-only sandbox, full repo), Opus 4.8 (read-only agent, full repo), GLM 5.2 via
+OpenRouter. GLM first hit its documented reasoning-channel-consumption failure (21,916 reasoning
+tokens, empty content) and was re-run in the established working configuration (reasoning disabled,
+two subsystem-scoped diff chunks). Every finding was cross-verified against the plan and source
+before any change; reviewer votes are not evidence.
+
+**Convergent, confirmed (all three): payload-image byte authentication.** The change that made the
+Stage-C `loaded_image_allowlist` MEASURED (to pass the first real production path) admitted the 19
+transitive `.dylib` libraries the payload closure loads (libgfortran, libarrow, PIL/scipy/pyarrow
+dylibs) by PATH only — disjoint from the hash-pinned Stage-B set and absent from the importable
+manifest (`.dylib` is not an importable artifact type). §4.5.7 keeps "enumeration AND hashing" for
+libraries loaded outside normal module imports and §4.5.11 re-attests at exit, so a mutation of a
+payload-time numerical library would have certified COMPLETED over unauthenticated native bytes.
+**Fixed:** the allowlist carries `(path, sha256)`, the generator measures both, and
+`authenticate_new_loaded_images` hashes every new Stage-C image against its frozen digest.
+
+**Confirmed, fixed (concrete fail-open or defect):**
+
+- **synthetic_no_file bypass (Codex C5 / GLM child-2):** a module carrying a real file loader whose
+  origin is now missing was exempted as synthetic. Fixed: synthetic classification requires loader
+  `"none"`; a file-loader module with a missing origin fails closed (unreadable origin). torch.classes
+  (loader none, bogus relative `__file__`) still classifies synthetic.
+- **Import-then-evict (GLM child-5):** the origin binding checked only resident `sys.modules`. Fixed:
+  `_inventory` authenticates every evicted module's absolute file origin against the manifest/closure
+  and fails closed on a now-absent one; synthetic (resident, relative `__file__`) modules are excluded
+  by residence and the absolute-path gate.
+- **Attestation-path aliasing the marker (Codex C3):** a caller attestation path routed to
+  `payload_started.json` could forge consumption. Fixed: reject any attestation path aliasing the
+  reserved marker or colliding with another, pre-spawn.
+- **payload_entry_path coherence (Codex C7):** the attested payload entry is now derived from the
+  EXECUTED `payload.entry`; a disagreeing explicit override is rejected (§4.5.10).
+- **authorization_id vs chain (Codex C2):** capture now requires
+  `config.authorization_id == chain.authorization_id` before any run artifact.
+
+**Kept with recorded rationale (defensible; Opus confirmed sound):**
+
+- **loader-"none" acceptance (Codex C6 / GLM child-1/4):** a runtime loader of `"none"` is accepted
+  (recorded `loader_binding`), because the bytes are sha-authenticated against the manifest and the
+  ONLY loader that changes bytes-to-execution semantics for the same file — `SourcelessFileLoader`
+  (executing bytecode instead of compiling source) — always presents its concrete class, so it is
+  caught here as a mismatch (`return None`) and by the dedicated global sourceless scan. C-extension-
+  registered submodules (`torch._C._autograd`) and library module-object surgery (`torch.backends`)
+  legitimately drop loader metadata after a genuine load. The comment now states this precisely; no
+  dead code.
+
+**Dismissed with recorded rationale (no change):**
+
+- **KMP 0-or-1 vs §4.5.5 "exactly one" (Codex C4 / GLM child-3; Opus rated MINOR):** correct for the
+  hermetic R2 milestone (libomp registers lazily; the no-compute child observes zero) and admits no
+  unauthenticated mutation — 2+, wrong-PID, malformed, or any other delta still fail closed. The
+  real-compute Stage-C KMP-appearance concern is an R4 scientific-execution matter, out of this
+  hermetic milestone's scope and gated behind a fresh authorization + freeze regeneration.
+- **GLM-capture TOCTOU on spec fields / marker-read-then-hash race / stage_c_doc NameError:** the
+  post-exit authority checks run after the child has TERMINATED (no concurrent payload); the
+  interpreter and pre-boundary set are re-hashed post-exit via `verify_preboundary_attestation_set`;
+  `stage_c_doc` is assigned in the same try whose `else` calls the check (no unbound path, verified);
+  and the child cannot forge `stage_c.json`/`manifest_post.json`/`import_inventory.json` because the
+  bootstrap OVERWRITES them with the real post-walk after the payload returns.
+- **GLM-capture spec-digest hashes the interpreter sha-string not raw bytes:** the raw interpreter
+  bytes are authenticated in the factory (`sha256_file(realpath) == pin`); embedding that digest in
+  the spec document is correct, and a sha256 preimage is out of the threat model.
+- **GLM-child closure loader-by-extension:** a `.py` cannot be loaded by `SourcelessFileLoader`
+  (that is `.pyc`), the closure bytes are sha-pinned, and the global sourceless scan fails closed on
+  any sourceless module.
+
 ## Contract questions
 
 - **No protected-schema change is required.** Work item 4 resolves to Option A (a

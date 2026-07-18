@@ -21,12 +21,12 @@ serializer with the frozen nonfinite sentinels.
 | `m2cr_dependency_lock_v1.json` | 57,451 | supplementary only; editable installs excluded from `pip_freeze` (external audit round-3 F4), reproducible at HEAD |
 | `m2cr_preboundary_attestation_set_v1.json` | 14,560 | dyld main cache plus its twelve declared subcaches, interpreter, and the 74-entry pre-boundary bootstrap closure; smaller than the prior 76 because the fabricated `bistar_gp`/`bistar_gp.m2cr` namespace packages no longer claim a never-executed `__init__.py` origin (WI1); the three worktree-origin closure pins are stored worktree-relative (F3) |
 | `m2cr_infrastructure_manifest_v1.json` | 2,872 | Layer 1a; repo-relative pins (7 artifacts incl. native-stack expectations) |
-| `m2cr_native_stack_expectations_v1.json` | 32,342 | WI1/WI2 launch-authority cycle: frozen native stack, profile hash, build-pinned bound sentinel `__hash__` (§4.5.8), backend build markers, Stage-B delta, the **67**-entry expected on-disk loaded-image set (path+sha256; +1 vs the prior 66 because the measurement now enumerates images after the config-show calls, matching the child sequence — `numpy.show_config()` lazily loads pyyaml's extension), and the newly-**measured** 173-entry Stage-C `loaded_image_allowlist` (the extension images the frozen `bistar_gp.profile_integration` payload closure loads after the Stage-B baseline) |
+| `m2cr_native_stack_expectations_v1.json` | 47,047 | WI1/WI2 launch-authority cycle: frozen native stack, profile hash, build-pinned bound sentinel `__hash__` (§4.5.8), backend build markers, Stage-B delta, the **67**-entry expected on-disk loaded-image set (path+sha256; +1 vs the prior 66 because the measurement now enumerates images after the config-show calls, matching the child sequence — `numpy.show_config()` lazily loads pyyaml's extension), and the **173-entry Stage-C `loaded_image_allowlist`, each pinned `(path, sha256)`** so the child authenticates every payload-phase native image's bytes (§4.5.7 "enumeration AND hashing"; three-reviewer gate) rather than allowlisting by path alone |
 | `m2cr_environment_freeze_manifest_v1.json` | 731 | the aggregating manifest; its file sha256 is the chain member |
 | `m2cr_child_env_mapping_v1.json` | 602 | includes the concrete frozen `PATH` |
 | `m2cr_interpreter_pin_v1.json` | 383 | version string plus resolved-target sha256 |
 
-Fixed-artifact total: **8,853,260 bytes** (measured; regenerated at the WI1/WI2 launch-authority
+Fixed-artifact total: **8,867,965 bytes** (measured; regenerated at the WI1/WI2 launch-authority
 code commit via the established fresh-detached-worktree process — the native-stack expectations
 grow for the corrected 67-image set plus the measured Stage-C image allowlist, the importable
 manifest gains the two new test files, and the preboundary/aggregating pins re-derive; the
@@ -88,7 +88,7 @@ classified in `bistar_gp/m2cr/measure.py` (`RUN_DIR_EVIDENCE_CLASSES`), and a CI
 any layout member lacks a measurement classification, so the per-run projection cannot silently omit a
 component.
 
-**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,853,260 bytes**
+**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,867,965 bytes**
 (the table above); it is NOT part of the per-run evidence bundle.
 
 **Per-run evidence bundle (per launch) — components:**
