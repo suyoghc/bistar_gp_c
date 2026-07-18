@@ -470,6 +470,50 @@ payload-time numerical library would have certified COMPLETED over unauthenticat
   (that is `.pyc`), the closure bytes are sha-pinned, and the global sourceless scan fails closed on
   any sourceless module.
 
+### Three-reviewer gate — round 2 (focused delta) adjudication (2026-07-18, head 5282b79)
+
+The fix-pass head `5282b79` went through the focused delta gate. GLM 5.2 (reasoning disabled)
+returned **APPROVE** (five NIT confirmations). Codex and Opus converged on the same load-bearing
+finding and Codex added three more, all on the fixes themselves; every one was cross-verified
+against the plan and an empirical probe of the child interpreter before adjudication.
+
+**Convergent, confirmed (Codex CD2 + Opus MAJOR): the round-1 import-then-evict block was vacuous
+for pure-Python modules.** Empirically verified on CPython 3.13.11: the audit `import` event
+supplies `filename=None` for `.py`/`.pyc` loads (an absolute path only for `.so` C-extensions), so
+the block's `os.path.isabs(filename)` gate skipped every ordinary source import, and its
+discriminating test hand-fed an absolute filename CPython never produces. **Resolved by removing the
+block and DISCLOSING the residual honestly:** a payload that imports a file, runs it, then deletes it
+from `sys.modules` before the inventory is a payload DELIBERATELY defeating attestation — explicitly
+OUT OF SCOPE per §4.5.13. The IN-SCOPE cases need no audit-event filename: a new under-root import is
+caught by the post-execution manifest re-walk (`added`), a deleted under-root file as `removed`, and
+an outside-root import is impossible through normal machinery because `sys.path` is the frozen four
+roots and Stage C fails closed on any `sys.path` drift. The over-reaching round-1 mechanism and its
+vacuous test are gone; the evicted-name evidence field is relabelled to say disclosed, not
+authenticated.
+
+**Confirmed, fixed:**
+
+- **CD1 (case-insensitive marker alias):** the marker-alias check used case-sensitive `Path`
+  equality, but macOS/APFS is case-insensitive (and `os.path.normcase` is a no-op on darwin), so
+  `PAYLOAD_STARTED.json` aliased `payload_started.json` undetected. Fixed: the containment check
+  case-folds the path keys.
+- **CD3 (package-vs-module precedence; also Opus NOTE-4):** `_payload_entry_path` checked `foo.py`
+  before `foo/__init__.py`, but CPython's FileFinder selects the package first, so with both present
+  the parent would attest a different file than the child executes. Fixed: the package is checked
+  first, mirroring the real precedence.
+- **CD4 (loader-"none" conformance):** the round-1 "unclaimed" acceptance was broad. Strengthened so
+  a "none" runtime loader is satisfied ONLY when the frozen manifest loader is the UNIQUE compulsory
+  loader for its artifact type — `SourceFileLoader` for source or `ExtensionFileLoader` for an
+  extension (a `.py` cannot load sourcelessly; an extension loads only through ExtensionFileLoader).
+  A frozen `SourcelessFileLoader` (bytecode) pin is NOT satisfied by "none", so clearing loader
+  fields cannot launder a sourceless load. This makes the acceptance provably §4.5.7-conformant while
+  keeping the legitimate `torch.backends` (source) and `torch._C._autograd` (extension) cases.
+
+**Recorded residuals (disclosed, no code change):** the deliberate import-then-evict-then-delete of
+an out-of-tree file (§4.5.13 out of scope, above); a `zipimporter`-origin module now fails the
+stricter `synthetic_no_file` gate (Opus NOTE-3 — the real torch/numpy/scipy stack does not trip it,
+verified by the passing battery).
+
 ## Contract questions
 
 - **No protected-schema change is required.** Work item 4 resolves to Option A (a

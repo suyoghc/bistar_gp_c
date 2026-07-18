@@ -748,19 +748,20 @@ def _payload_entry_path(template: Mapping[str, Any], worktree_root: Path) -> Pat
     if not isinstance(entry, str) or entry.count(":") != 1:
         raise ValueError("bootstrap payload does not name module:function")
     module_name = entry.split(":", 1)[0]
+    # Mirror CPython's FileFinder precedence: a PACKAGE (``foo/__init__.py``)
+    # is selected before a same-named module (``foo.py``), so the parent must
+    # attest the package when both are present, matching what the child's
+    # ``__import__`` actually executes (three-reviewer gate delta CD3; §4.5.10).
+    package_path = worktree_root / module_name.replace(".", "/") / "__init__.py"
     module_path = worktree_root / (module_name.replace(".", "/") + ".py")
-    if module_path.is_file():
+    if package_path.is_file():
+        derived = package_path.resolve()
+    elif module_path.is_file():
         derived = module_path.resolve()
     else:
-        package_path = (
-            worktree_root / module_name.replace(".", "/") / "__init__.py"
+        raise ValueError(
+            f"payload entry source was not found for {module_name}"
         )
-        if package_path.is_file():
-            derived = package_path.resolve()
-        else:
-            raise ValueError(
-                f"payload entry source was not found for {module_name}"
-            )
     explicit = template.get("payload_entry_path")
     if isinstance(explicit, str):
         path = Path(explicit)
@@ -1416,7 +1417,15 @@ def _require_contained_attestation_paths(
     """
 
     marker = (run_dir / "payload_started.json").resolve()
-    seen: dict[Path, str] = {}
+    # macOS/APFS is case-INSENSITIVE (and os.path.normcase is a no-op on
+    # darwin), so ``PAYLOAD_STARTED.json`` and ``payload_started.json`` are the
+    # SAME on-disk file; case-fold the path keys so a case-variant alias cannot
+    # forge the consumption marker (three-reviewer gate delta CD1).
+    def _key(path: Path) -> str:
+        return os.fspath(path).casefold()
+
+    marker_key = _key(marker)
+    seen: dict[str, str] = {}
     for name in sorted(paths):
         candidate = Path(paths[name]).resolve()
         try:
@@ -1426,17 +1435,18 @@ def _require_contained_attestation_paths(
                 f"attestation path {name!r} escapes the self-contained run "
                 f"directory: {paths[name]}"
             ) from exc
-        if name != "payload_started" and candidate == marker:
+        candidate_key = _key(candidate)
+        if name != "payload_started" and candidate_key == marker_key:
             raise ValueError(
                 f"attestation path {name!r} aliases the reserved payload-start "
                 f"marker: {paths[name]}"
             )
-        if candidate in seen:
+        if candidate_key in seen:
             raise ValueError(
-                f"attestation path {name!r} collides with {seen[candidate]!r}: "
+                f"attestation path {name!r} collides with {seen[candidate_key]!r}: "
                 f"{paths[name]}"
             )
-        seen[candidate] = name
+        seen[candidate_key] = name
 
 
 def _child_evidence_exists(paths: Mapping[str, str], events_path: Path) -> bool:

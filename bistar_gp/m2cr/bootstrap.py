@@ -1368,31 +1368,36 @@ def _inventory(
             def _loader_satisfies(expected: str) -> str | None:
                 """The pinned-loader check; returns the binding note or None.
 
-                A CONFLICTING concrete loader class fails closed — that is the
-                §4.5.7 smuggling case the pin exists for (a zipimporter or
-                SourcelessFileLoader presenting different bytes-to-execution
-                semantics always presents its class).  A runtime loader of
-                "none" carries no loading-mechanism claim at all: the first
-                real-native production-path launch showed both C-extension-
-                REGISTERED submodules (torch._C._autograd, created by the
-                parent extension's init code) and library module-object
-                surgery (torch.backends replaces its own sys.modules entry
-                with a custom module instance) legitimately drop loader
-                metadata after a genuine load.  Acceptance is safe because the
-                bytes are sha-authenticated against the manifest AND the one
-                loader that changes bytes-to-execution semantics for the same
-                file — SourcelessFileLoader (executing bytecode instead of
-                compiling source) — is NEVER "none": it always presents its
-                class, so it is caught here as a CONCRETE mismatch (return
-                None) and additionally by the dedicated global sourceless scan.
-                A genuinely "none" loader is then ACCEPTED AND RECORDED —
-                upgraded to a parent binding when a loaded ancestor with the
-                SAME resolved origin carries the pinned loader.
+                A CONFLICTING concrete loader class always fails closed — that
+                is the §4.5.7 smuggling case the pin exists for (a zipimporter
+                or SourcelessFileLoader presenting different bytes-to-execution
+                semantics always presents its class).
+
+                A runtime loader of "none" (library module-object surgery like
+                torch.backends, and C-extension-REGISTERED submodules like
+                torch._C._autograd, legitimately drop loader metadata after a
+                genuine load) is accepted ONLY when the FROZEN manifest loader
+                is the UNIQUE compulsory loader for its artifact type —
+                ``SourceFileLoader`` for a ``.py`` source or
+                ``ExtensionFileLoader`` for an extension.  For those two
+                artifact types the loader is provably the only one that could
+                have executed the frozen bytes: a ``.py`` cannot be loaded
+                sourcelessly (that requires a ``.pyc``), and an extension only
+                loads through ExtensionFileLoader.  A frozen loader of any
+                OTHER class (notably ``SourcelessFileLoader`` for a bytecode
+                artifact) is NOT satisfied by a "none" runtime loader, so
+                clearing loader fields cannot launder a sourceless load (three-
+                reviewer gate delta CD4; §4.5.7 loader-class match).  A
+                satisfied "none" is RECORDED, upgraded to a parent binding when
+                a loaded ancestor with the SAME resolved origin carries the
+                pinned loader.
                 """
 
                 if expected in loader_spellings:
                     return "direct"
                 if loader_class != "none":
+                    return None
+                if expected not in ("SourceFileLoader", "ExtensionFileLoader"):
                     return None
                 parent_name = name
                 while "." in parent_name:
@@ -1488,67 +1493,22 @@ def _inventory(
                 )
         result.append(item)
 
-    # Import-then-evict closure (three-reviewer gate): the loop above binds
-    # every module RESIDENT in sys.modules, but a payload that imports a
-    # file-backed module, executes its code, and then evicts it
-    # (``del sys.modules[name]``) would leave no resident entry to bind.  The
-    # read-only audit hook recorded EVERY import event with its filename, so
-    # authenticate each EVICTED module's file: a real file-backed import always
-    # carries an ABSOLUTE origin (a synthetic module like ``torch.classes``
-    # stays resident and uses a bogus RELATIVE ``__file__``, so it is excluded
-    # both by residence and by the absolute-path gate).  An evicted absolute
-    # origin that is now absent — the import-then-delete evasion — fails
-    # closed, and a present one must match the manifest (under roots) or the
-    # closure (outside): "every executed module" is not narrowed to "every
-    # still-resident module".
-    if manifest_entries is not None:
-        closure_map = closure_authority or {}
-        seen_evicted: set[str] = set()
-        for name, filename in import_events:
-            if (
-                name in module_map
-                or not isinstance(filename, str)
-                or not os.path.isabs(filename)
-            ):
-                continue
-            resolved = os.path.realpath(filename)
-            if resolved in seen_evicted:
-                continue
-            seen_evicted.add(resolved)
-            if not os.path.exists(resolved):
-                raise SystemExit(
-                    "attestation_fault: an imported-then-evicted module executed "
-                    f"and its origin is now absent: {name} -> {resolved}"
-                )
-            if not os.path.isfile(resolved):
-                continue
-            try:
-                digest = _sha256_file(resolved)
-            except OSError as exc:
-                raise SystemExit(
-                    "attestation_fault: an imported-then-evicted module origin "
-                    f"is unreadable: {name} -> {resolved}: {exc}"
-                ) from exc
-            under_root = False
-            for root_id, root in _manifest_roots(roots or []):
-                try:
-                    if os.path.commonpath((root, resolved)) != root:
-                        continue
-                except ValueError:
-                    continue
-                relpath = Path(resolved).relative_to(root).as_posix()
-                entry = manifest_entries.get((root_id, relpath))
-                if entry is not None and entry.get("sha256") == digest:
-                    under_root = True
-                    break
-            if under_root:
-                continue
-            pin = closure_map.get(resolved)
-            if pin is None or pin.get("sha256") != digest:
-                raise SystemExit(
-                    "attestation_fault: an imported-then-evicted file-backed "
-                    f"module is unauthenticated: {name} -> {resolved}"
-                )
+    # Import-then-evict scope note (three-reviewer gate delta CD2).  The loop
+    # above binds every module RESIDENT in sys.modules.  A payload that imports
+    # a file-backed module, runs its code, and DELETES it from sys.modules
+    # before the inventory is a payload DELIBERATELY defeating attestation —
+    # explicitly OUT OF SCOPE per plan §4.5.13 ("payload code deliberately
+    # defeating attestation") and disclosed as a residual, never a blocker.
+    # The IN-SCOPE cases are all covered without inspecting the audit "import"
+    # event's filename (which CPython supplies as None for ordinary source
+    # imports, so authenticating by it would be vacuous): a payload that
+    # imports a NEW under-root file is caught by the post-execution manifest
+    # re-walk as an ADDED artifact; deleting an under-root file is caught as a
+    # REMOVED artifact; and a payload cannot import an OUTSIDE-root file
+    # through normal machinery because ``sys.path`` is the frozen four roots
+    # and the Stage-C check fails closed on any ``sys.path`` drift.  The
+    # residual (a deliberate ``spec_from_file_location`` of an out-of-tree file
+    # then evicted and deleted) is the disclosed §4.5.13 class.
     return result
 
 
@@ -2109,20 +2069,18 @@ def main(
         closure_authority=closure_authority,
     )
     profile_check = _profile_integration_check(config)
-    # Kimi K3 finding 4 / three-reviewer gate: an import-then-evict is no
-    # longer a disclosed residual — `_inventory` authenticates every evicted
-    # module's absolute file origin against the manifest/closure and fails
-    # closed on a now-absent one.  The evicted names are recorded as evidence.
+    # Evicted import names are recorded as evidence (three-reviewer gate delta
+    # CD2).  Authenticating an evicted module by the audit "import" event's
+    # filename is impossible — CPython supplies it as None for ordinary source
+    # imports — and the deliberate import-then-delete it would target is the
+    # disclosed §4.5.13 out-of-scope class; the in-scope add/remove/path-drift
+    # cases are covered by the manifest re-walk and the Stage-C sys.path check.
     evicted_imports = sorted(
-        {
-            name
-            for name, _ in import_events
-            if name not in sys.modules
-        }
+        {name for name, _ in import_events if name not in sys.modules}
     )
     inventory_document = {
         "modules": inventory,
-        "import_events_evicted_and_authenticated": evicted_imports,
+        "import_events_evicted_disclosed": evicted_imports,
         "worktree_opens": _hashed_worktree_opens(
             set(worktree_opens), roots[0], dict(worktree_load_hashes)
         ),

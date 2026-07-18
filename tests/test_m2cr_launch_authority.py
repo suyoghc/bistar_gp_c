@@ -690,12 +690,16 @@ def test_file_backed_module_with_deleted_origin_fails_closed(
         )
 
 
-def test_import_then_evict_of_absent_absolute_origin_fails_closed(
+def test_loader_none_accepted_only_for_source_and_extension_artifacts(
     tmp_path: Path,
 ) -> None:
-    """An import event for a module no longer resident, whose absolute origin
-    is now absent (import-then-delete evasion), fails closed at the inventory —
-    'every executed module', not 'every still-resident module'."""
+    """Delta CD4: a "none" runtime loader is satisfied only when the frozen
+    manifest loader is the UNIQUE compulsory loader for its artifact type
+    (SourceFileLoader / ExtensionFileLoader).  A frozen SourcelessFileLoader
+    pin (bytecode) is NOT satisfied by a "none" loader, so clearing loader
+    fields cannot launder a sourceless load."""
+
+    from types import ModuleType
 
     from bistar_gp.m2cr.bootstrap import _inventory
 
@@ -704,12 +708,52 @@ def test_import_then_evict_of_absent_absolute_origin_fails_closed(
     ]
     for r in roots[1:]:
         Path(r).mkdir(exist_ok=True)
-    gone = os.fspath(tmp_path / "b" / "smuggled.py")  # under a root, absent
-    with pytest.raises(SystemExit, match="origin is now absent"):
+    art = tmp_path / "artifact.pyc"
+    art.write_bytes(b"m2cr-fake-bytecode\n")
+    entries = {
+        ("worktree", "artifact.pyc"): {
+            "root": "worktree",
+            "relpath": "artifact.pyc",
+            "artifact_type": "legacy_bytecode",
+            "sha256": sha256_file(art),
+            "size": art.stat().st_size,
+            "loader": "SourcelessFileLoader",
+        }
+    }
+    # A loader-"none" module whose frozen pin is SourcelessFileLoader (bytecode)
+    # is REJECTED — "none" does not launder a sourceless load.
+    loaderless = ModuleType("mod")
+    loaderless.__file__ = os.fspath(art)
+    with pytest.raises(SystemExit, match="loader class mismatch"):
         _inventory(
-            [("smuggled", gone)],
+            [],
             roots=roots,
-            manifest_entries={},
+            manifest_entries=entries,
             closure_authority={},
-            modules={},  # evicted: not resident
+            modules={"mod": loaderless},
         )
+    # The same loader-"none" module against a SourceFileLoader (source) pin IS
+    # accepted (unique compulsory loader) — proving the gate is on the artifact
+    # type, not a blanket "none" acceptance.
+    src = tmp_path / "artifact.py"
+    src.write_bytes(b"VALUE = 1\n")
+    source_entries = {
+        ("worktree", "artifact.py"): {
+            "root": "worktree",
+            "relpath": "artifact.py",
+            "artifact_type": "source",
+            "sha256": sha256_file(src),
+            "size": src.stat().st_size,
+            "loader": "SourceFileLoader",
+        }
+    }
+    source_mod = ModuleType("srcmod")
+    source_mod.__file__ = os.fspath(src)
+    inv = _inventory(
+        [],
+        roots=roots,
+        manifest_entries=source_entries,
+        closure_authority={},
+        modules={"srcmod": source_mod},
+    )
+    assert inv[0]["loader_binding"] == "unclaimed"
