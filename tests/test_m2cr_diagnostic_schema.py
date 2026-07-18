@@ -274,6 +274,16 @@ def test_hand_written_valid_instance_is_accepted() -> None:
         ),
         lambda doc: doc.update(stages=doc["stages"][:5]),
         lambda doc: doc.pop("node_evidence_digests"),
+        lambda doc: doc["g2_equivalence"]["points"][0].update(seed=5),
+        lambda doc: doc["g2_equivalence"]["points"][1].update(seed=109),
+        lambda doc: doc["g2_equivalence"]["points"].append(
+            dict(doc["g2_equivalence"]["points"][1])
+        ),
+        lambda doc: doc["coverage"].update(closure_node_count=1482),
+        lambda doc: doc["coverage"]["per_stage_node_counts"].update(level0=1482),
+        lambda doc: doc["d23_sentinel"].update(
+            per_site=[doc["d23_sentinel"]["per_site"][0]] * 3
+        ),
     ],
 )
 def test_negative_schema_surfaces(mutator) -> None:

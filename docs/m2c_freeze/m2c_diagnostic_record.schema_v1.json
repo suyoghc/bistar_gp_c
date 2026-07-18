@@ -138,7 +138,11 @@
         "per_stage_node_counts"
       ],
       "properties": {
-        "closure_node_count": { "$ref": "#/$defs/count" },
+        "closure_node_count": {
+          "$ref": "#/$defs/count",
+          "maximum": 1481,
+          "description": "The frozen B7 full-closure bound: at most 1,481 unique nodes (plan section 6.1). The builder rejects larger closures; the schema encodes the same ceiling so a drifted payload cannot bypass it (GLM panel finding F2)."
+        },
         "probe_order": {
           "const": "ascending_noise",
           "description": "Plan section 6.1: nodes are probed in ascending noise order over the full deterministic verdict closure (ballot B7)."
@@ -152,12 +156,12 @@
           "additionalProperties": false,
           "required": ["level0", "refine_1", "refine_2", "refine_3", "upper_pullback", "lower_pullback"],
           "properties": {
-            "level0": { "$ref": "#/$defs/count" },
-            "refine_1": { "$ref": "#/$defs/count" },
-            "refine_2": { "$ref": "#/$defs/count" },
-            "refine_3": { "$ref": "#/$defs/count" },
-            "upper_pullback": { "$ref": "#/$defs/count" },
-            "lower_pullback": { "$ref": "#/$defs/count" }
+            "level0": { "$ref": "#/$defs/count", "maximum": 1481 },
+            "refine_1": { "$ref": "#/$defs/count", "maximum": 1481 },
+            "refine_2": { "$ref": "#/$defs/count", "maximum": 1481 },
+            "refine_3": { "$ref": "#/$defs/count", "maximum": 1481 },
+            "upper_pullback": { "$ref": "#/$defs/count", "maximum": 1481 },
+            "lower_pullback": { "$ref": "#/$defs/count", "maximum": 1481 }
           },
           "description": "Unique nodes contributed by each stage of the closure: the sorted union of the level-0 grid with toy edges, its nested refinements to L_max=3, and both one-decade pullback grids (caps 1e3 and 1e-6) refined to L_max=3; at most about 1,481 unique nodes."
         }
@@ -251,21 +255,34 @@
         "points": {
           "type": "array",
           "minItems": 11,
-          "items": { "$ref": "#/$defs/g2_point" },
-          "description": "Prespecified points only: the MAP state, the ten prior-draw states, and every accepted conditional optimum, in that order."
+          "prefixItems": [
+            { "$ref": "#/$defs/g2_point_map" },
+            { "$ref": "#/$defs/g2_point_prior_100" },
+            { "$ref": "#/$defs/g2_point_prior_101" },
+            { "$ref": "#/$defs/g2_point_prior_102" },
+            { "$ref": "#/$defs/g2_point_prior_103" },
+            { "$ref": "#/$defs/g2_point_prior_104" },
+            { "$ref": "#/$defs/g2_point_prior_105" },
+            { "$ref": "#/$defs/g2_point_prior_106" },
+            { "$ref": "#/$defs/g2_point_prior_107" },
+            { "$ref": "#/$defs/g2_point_prior_108" },
+            { "$ref": "#/$defs/g2_point_prior_109" }
+          ],
+          "items": { "$ref": "#/$defs/g2_point_accepted" },
+          "description": "Prespecified points only, in the exact frozen order the prefixItems pin: the MAP state (seed and node_index null), the ten prior-draw states with const seeds 100-109 ascending (node_index null), then every accepted conditional optimum (seed null, node_index a count; per-kind field coherence closed per GLM panel finding F1). Ascending node_index over the accepted tail is enforced by the R3 consistency verifier, not expressible here."
         },
         "all_pass": { "type": "boolean" }
       }
     },
-    "g2_point": {
+    "g2_point_template": {
       "type": "object",
       "additionalProperties": false,
       "required": ["kind", "label", "seed", "node_index", "g_value", "g_hist", "abs_diff", "bound", "pass"],
       "properties": {
         "kind": { "type": "string", "enum": ["map", "prior_draw", "accepted_optimum"] },
         "label": { "type": "string", "minLength": 1 },
-        "seed": { "oneOf": [{ "type": "integer" }, { "type": "null" }], "description": "The prior-draw seed for kind prior_draw; null otherwise." },
-        "node_index": { "oneOf": [{ "$ref": "#/$defs/count" }, { "type": "null" }], "description": "The probed node index for kind accepted_optimum; null otherwise." },
+        "seed": { "oneOf": [{ "type": "integer" }, { "type": "null" }], "description": "The prior-draw seed for kind prior_draw; null otherwise (per-kind coherence pinned by the variant defs)." },
+        "node_index": { "oneOf": [{ "$ref": "#/$defs/count" }, { "type": "null" }], "description": "The probed node index for kind accepted_optimum; null otherwise (per-kind coherence pinned by the variant defs)." },
         "g_value": { "$ref": "#/$defs/number_or_nonfinite" },
         "g_hist": { "$ref": "#/$defs/number_or_nonfinite" },
         "abs_diff": { "$ref": "#/$defs/number_or_nonfinite" },
@@ -273,6 +290,18 @@
         "pass": { "type": "boolean" }
       }
     },
+    "g2_point_map": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "map" }, "seed": { "const": null }, "node_index": { "const": null } } },
+    "g2_point_accepted": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "accepted_optimum" }, "seed": { "const": null }, "node_index": { "$ref": "#/$defs/count" } } },
+    "g2_point_prior_100": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "prior_draw" }, "seed": { "const": 100 }, "node_index": { "const": null } } },
+    "g2_point_prior_101": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "prior_draw" }, "seed": { "const": 101 }, "node_index": { "const": null } } },
+    "g2_point_prior_102": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "prior_draw" }, "seed": { "const": 102 }, "node_index": { "const": null } } },
+    "g2_point_prior_103": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "prior_draw" }, "seed": { "const": 103 }, "node_index": { "const": null } } },
+    "g2_point_prior_104": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "prior_draw" }, "seed": { "const": 104 }, "node_index": { "const": null } } },
+    "g2_point_prior_105": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "prior_draw" }, "seed": { "const": 105 }, "node_index": { "const": null } } },
+    "g2_point_prior_106": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "prior_draw" }, "seed": { "const": 106 }, "node_index": { "const": null } } },
+    "g2_point_prior_107": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "prior_draw" }, "seed": { "const": 107 }, "node_index": { "const": null } } },
+    "g2_point_prior_108": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "prior_draw" }, "seed": { "const": 108 }, "node_index": { "const": null } } },
+    "g2_point_prior_109": { "$ref": "#/$defs/g2_point_template", "properties": { "kind": { "const": "prior_draw" }, "seed": { "const": 109 }, "node_index": { "const": null } } },
     "d23_sentinel": {
       "type": "object",
       "additionalProperties": false,
@@ -283,6 +312,7 @@
           "type": "array",
           "minItems": 3,
           "maxItems": 3,
+          "uniqueItems": true,
           "items": {
             "type": "object",
             "additionalProperties": false,

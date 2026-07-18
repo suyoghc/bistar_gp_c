@@ -698,7 +698,7 @@ def test_expected_absent_cannot_apply_to_infrastructure_members():
         "diagnostic",
         ledger_jsonl=_grant_ledger(),
     )
-    _assert_reason(report, "non-R3/R5 chain members")
+    _assert_reason(report, "not the R4/R5-produced chain members")
     assert report["checks"]["infrastructure_manifest_sha256"]["status"] == "failed"
     assert "unverifiable" in report["checks"]["infrastructure_manifest_sha256"][
         "reason"
@@ -716,7 +716,9 @@ def test_protocol_manifest_cannot_be_declared_absent_after_r3():
         "diagnostic",
         ledger_jsonl=_grant_ledger(),
     )
-    _assert_reason(report, "expected_absent contains non-R3/R5 chain members")
+    _assert_reason(
+        report, "expected_absent contains members that are not the R4/R5-produced"
+    )
 
 
 def test_result_chain_may_declare_only_r4_r5_members_absent():

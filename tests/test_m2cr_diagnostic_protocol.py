@@ -347,3 +347,73 @@ def test_payload_entry_glue_uses_injected_components(monkeypatch) -> None:
             return None
 
     assert diagnostic_payload_entry(FakeContext())["status"] == "COMPLETED"
+
+
+def test_consistency_verifier_passes_and_catches_tampering() -> None:
+    """Kimi panel finding 2: the distilled curvature_summary/raw_symmetry rows
+    and the G2 accepted tail are machine-cross-checked against the
+    authoritative per-node evidence, never left to trust."""
+
+    from bistar_gp.m2cr.diagnostic import verify_diagnostic_record_consistency
+
+    document = run_fake()
+    digests = [
+        {"node_index": row["node_index"], "record_sha256": "0" * 64}
+        for row in document["node_records"]
+    ]
+    records = copy.deepcopy(document["node_records"])
+    persisted = finalize_document_for_validation(document, digests)
+    assert verify_diagnostic_record_consistency(persisted, records) == {
+        "ok": True,
+        "errors": [],
+    }
+
+    def tampered(mutate):
+        doc = copy.deepcopy(persisted)
+        mutate(doc)
+        return verify_diagnostic_record_consistency(doc, records)
+
+    def row(doc, index):
+        return next(
+            item
+            for item in doc["per_node_diagnostics"]
+            if item["node_index"] == index
+        )
+
+    first = next(
+        item["node_index"]
+        for item in persisted["per_node_diagnostics"]
+        if item["optimizer_accepted"]
+    )
+    for label, mutate in (
+        (
+            "spd_final",
+            lambda d: row(d, first)["curvature_summary"].update(spd_final=False),
+        ),
+        (
+            "retry_fired",
+            lambda d: row(d, first)["curvature_summary"].update(
+                retry_fired=True, retry_positively_accepted=True
+            ),
+        ),
+        (
+            "final u",
+            lambda d: row(d, first)["final_evaluation_point"].update(
+                u=[9.0, 9.0, 9.0]
+            ),
+        ),
+        (
+            "symmetry_error",
+            lambda d: row(d, first)["raw_symmetry"].update(symmetry_error=0.5),
+        ),
+        (
+            "g2 tail order",
+            lambda d: d["g2_equivalence"]["points"].__setitem__(
+                slice(11, None),
+                list(reversed(d["g2_equivalence"]["points"][11:])),
+            ),
+        ),
+    ):
+        report = tampered(mutate)
+        assert report["ok"] is False, label
+        assert report["errors"], label

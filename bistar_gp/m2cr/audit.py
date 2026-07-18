@@ -972,7 +972,8 @@ def verify_chain(
     invalid_absent = expected_absent - _DECLARABLE_ABSENT
     if invalid_absent:
         errors.append(
-            "expected_absent contains non-R3/R5 chain members: "
+            "expected_absent contains members that are not the R4/R5-produced "
+            "chain members: "
             + ", ".join(sorted(invalid_absent))
         )
     expected_absent &= _DECLARABLE_ABSENT

@@ -44,6 +44,7 @@ __all__ = [
     "slope_analysis_record",
     "sweep_record",
     "evaluate_decision_table",
+    "verify_diagnostic_record_consistency",
     "canonical_bridge",
     "build_protocol_manifest",
     "verify_protocol_manifest",
@@ -203,6 +204,15 @@ def classify_slope(fit: Mapping[str, Any]) -> str:
     if fit.get("defined") is not True:
         return "UNDEFINED"
     slope = float(fit["slope"])
+    if not math.isfinite(slope):
+        # B12(c): a nonfinite fitted slope is UNDEFINED at the fit, never a
+        # window member. ols_loglog cannot produce this pairing; a caller
+        # supplying it is inconsistent and fails closed rather than being
+        # silently classified FLAT (GLM panel finding F3).
+        raise ValueError(
+            "a defined fit cannot carry a nonfinite slope; B12(c) routes "
+            "nonfinite statistics to UNDEFINED"
+        )
     if 1.5 <= slope <= 2.5:
         return "TRUNCATION_LIKE"
     if slope <= -0.5:
@@ -319,6 +329,104 @@ def evaluate_decision_table(
     ):
         return _decision_result(9)
     return _decision_result(10)
+
+
+def verify_diagnostic_record_consistency(
+    instance: Mapping[str, Any], node_records: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Cross-check the distilled rows against the authoritative node evidence.
+
+    The diagnostic-record schema's ``curvature_summary`` is a distillation of
+    the per-node curvature records in ``nodes/``; this verifier is the
+    enforcement edge the schema names (Kimi panel finding 2): every distilled
+    decision-table input (rows 4 and 7 of v1.21 section 4) must equal what the
+    Layer-2 evidence actually records, and the G2 accepted-optimum tail must
+    list exactly the accepted node indices ascending (the one ordering the
+    schema's prefixItems cannot express).  Both inputs are the PERSISTED
+    representations, so encoded sentinel values compare directly.
+    """
+
+    errors: list[str] = []
+    records = {int(item["node_index"]): item for item in node_records}
+    rows = {
+        int(item["node_index"]): item
+        for item in instance["per_node_diagnostics"]
+    }
+    if set(records) != set(rows):
+        errors.append(
+            "per_node_diagnostics and node_records cover different node sets"
+        )
+        return {"ok": False, "errors": errors}
+    gate_map = {
+        "stationary_final": "stationary",
+        "spd_final": "spd",
+        "rcond_ok_final": "conditioning_ok",
+        "directional_ok_final": "directional_ok",
+        "logdet_stable_final": "logdet_stable",
+    }
+    for node_index in sorted(rows):
+        row = rows[node_index]
+        record = records[node_index]
+        prefix = f"node {node_index}"
+        if bool(row["optimizer_accepted"]) is not bool(record["accepted"]):
+            errors.append(f"{prefix}: acceptance flags disagree")
+            continue
+        if not row["optimizer_accepted"]:
+            if "curvature" in record:
+                errors.append(f"{prefix}: failed node carries curvature evidence")
+            continue
+        curvature = record["curvature"]
+        retry = curvature["retry"]
+        summary = row["curvature_summary"]
+        fired = bool(retry["fired"])
+        if bool(summary["retry_fired"]) is not fired:
+            errors.append(f"{prefix}: retry_fired disagrees with the node record")
+        expected_accepted = bool(retry["positively_accepted"]) if fired else None
+        if summary["retry_positively_accepted"] != expected_accepted:
+            errors.append(
+                f"{prefix}: retry_positively_accepted disagrees with the node record"
+            )
+        final_key = "post_retry" if fired else "pre_retry"
+        if row["final_evaluation_point"]["phase"] != final_key:
+            errors.append(f"{prefix}: final-evaluation phase disagrees")
+        final = curvature.get(final_key)
+        if not isinstance(final, Mapping):
+            errors.append(f"{prefix}: node record lacks the {final_key} evaluation")
+            continue
+        if row["final_evaluation_point"]["u"] != final["u_star"]:
+            errors.append(f"{prefix}: final-evaluation point disagrees")
+        if row["raw_symmetry"]["symmetry_error"] != final["symmetry_error"]:
+            errors.append(f"{prefix}: raw symmetry_error disagrees")
+        if bool(row["raw_symmetry"]["symmetry_ok"]) is not bool(
+            final["symmetry_ok"]
+        ):
+            errors.append(f"{prefix}: symmetry_ok disagrees")
+        for summary_key, record_key in gate_map.items():
+            if bool(summary[summary_key]) is not bool(final[record_key]):
+                errors.append(f"{prefix}: {summary_key} disagrees")
+        pre = curvature["pre_retry"]
+        post = curvature.get("post_retry")
+        expected_nonstationarity = bool(pre["stationary"]) is not True or (
+            post is not None and bool(post["stationary"]) is not True
+        )
+        if (
+            bool(summary["nonstationarity_observed_any_evaluated_point"])
+            is not expected_nonstationarity
+        ):
+            errors.append(
+                f"{prefix}: nonstationarity_observed_any_evaluated_point disagrees"
+            )
+    tail = list(instance["g2_equivalence"]["points"])[11:]
+    tail_indices = [point["node_index"] for point in tail]
+    accepted_indices = sorted(
+        index for index, row in rows.items() if row["optimizer_accepted"]
+    )
+    if tail_indices != accepted_indices:
+        errors.append(
+            "g2 accepted-optimum tail does not list exactly the accepted node "
+            "indices ascending"
+        )
+    return {"ok": not errors, "errors": errors}
 
 
 def canonical_bridge(

@@ -139,3 +139,12 @@ def test_protocol_artifact_sweep_matches_public_tuple() -> None:
         ).read_text()
     )
     assert tuple(artifact["sweep"]["h_values"]) == SWEEP_H_VALUES
+
+
+def test_defined_fit_with_nonfinite_slope_fails_closed() -> None:
+    """GLM panel F3: an inconsistent defined-True/nonfinite-slope fit must
+    fail closed, never be silently classified into a window."""
+
+    for bad in (np.nan, np.inf, -np.inf):
+        with pytest.raises(ValueError, match="nonfinite"):
+            classify_slope({"defined": True, "slope": bad, "intercept": 0.0})
