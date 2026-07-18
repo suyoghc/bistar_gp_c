@@ -1329,8 +1329,12 @@ def verify_evidence_ceiling_compliance(
     one committed machine authority, restating no numeric value), then checks
     every artifact-table pinned file AND the infrastructure manifest file
     itself against the runtime-envelope/static-artifact per-file ceiling.
-    Static freeze artifacts are governed here, never inside any per-run
-    bundle; a breach fails regeneration/audit CI closed.
+    The manifest's kind, schema version, top-level shape, and EXACT artifact
+    key set are required first (Codex R2a review MAJOR): a stripped or
+    reshaped manifest must fail this audit on its own, never silently shrink
+    static coverage while reporting ``ok``.  Static freeze artifacts are
+    governed here, never inside any per-run bundle; a breach fails
+    regeneration/audit CI closed.
     """
 
     from bistar_gp.m2cr.environment_freeze import parse_evidence_ceilings
@@ -1343,13 +1347,32 @@ def verify_evidence_ceiling_compliance(
         manifest = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return {"ok": False, "errors": [f"cannot read manifest: {exc}"], "checks": []}
-    artifacts = manifest.get("artifacts") if isinstance(manifest, dict) else None
-    if not isinstance(artifacts, dict):
+    if not isinstance(manifest, dict):
         return {
             "ok": False,
-            "errors": ["infrastructure manifest lacks an artifacts section"],
+            "errors": ["infrastructure manifest is not an object"],
             "checks": [],
         }
+    shape_errors: list[str] = []
+    if manifest.get("kind") != "m2cr_infrastructure_manifest":
+        shape_errors.append("wrong infrastructure manifest kind")
+    if manifest.get("schema_version") != 1:
+        shape_errors.append("wrong infrastructure manifest schema_version")
+    if set(manifest) != {"kind", "schema_version", "code", "artifacts", "r1_schemas"}:
+        shape_errors.append(
+            "infrastructure manifest has a non-canonical top-level key set"
+        )
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, dict):
+        shape_errors.append("infrastructure manifest lacks an artifacts section")
+    elif set(artifacts) != _INFRASTRUCTURE_ARTIFACT_KEYS:
+        shape_errors.append(
+            "infrastructure manifest artifacts section does not have its "
+            "exact required key set; static ceiling coverage would be "
+            "incomplete"
+        )
+    if shape_errors:
+        return {"ok": False, "errors": shape_errors, "checks": []}
     pin = artifacts.get("evidence_ceilings")
     if (
         not isinstance(pin, dict)

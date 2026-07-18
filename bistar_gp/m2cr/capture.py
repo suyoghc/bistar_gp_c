@@ -924,6 +924,13 @@ def _evidence_ceiling_breaches(
     the atomic publisher would write).  The per-file class map derives from
     ``classify_run_dir_layout(RUN_DIR_LAYOUT)`` at decision time, so an
     unclassified new layout member fails closed here before any size verdict.
+    Residual, disclosed (Codex R2a review; same class as the Layer-3 hashes):
+    the decision prices the evidence AFTER Layer 2 closes and the child has
+    exited, so no capture-side writer runs afterward; growth between this
+    decision and publication would require same-user external mutation,
+    which the frozen threat model (v1.19 §5) places out of scope, and the
+    content stays digest-bound by ``RAW_MANIFEST.sha256`` so any
+    post-decision change is audit-detectable.
     The complete-bundle sum covers every regular file beneath the run
     directory (directories excluded; the root terminal-record path excluded
     from the on-disk sum in favor of the candidate's serialized bytes), so

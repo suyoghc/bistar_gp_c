@@ -183,6 +183,10 @@ def test_parse_evidence_ceilings_closed_world_negatives():
         parse_evidence_ceilings(document(schema_version=2))
     with pytest.raises(ValueError, match="addendum"):
         parse_evidence_ceilings(document(addendum=""))
+    # Codex R2a review MINOR: the exact ratifying provenance is required, not
+    # merely a non-empty string.
+    with pytest.raises(ValueError, match="v1.20"):
+        parse_evidence_ceilings(document(addendum="v1.19"))
     missing = dict(V120_EXPECTED)
     missing.pop("stderr_bytes")
     with pytest.raises(ValueError, match="exactly"):
@@ -213,43 +217,67 @@ def test_audit_static_compliance_passes_on_committed_tree():
     assert "infrastructure_manifest" in labels
 
 
-def test_audit_static_compliance_fails_on_oversized_static_artifact(tmp_path):
+_ALL_ARTIFACT_KEYS = (
+    "child_env_mapping",
+    "importable_artifact_manifest",
+    "interpreter_pin",
+    "preboundary_attestation_set",
+    "environment_freeze_manifest",
+    "dependency_lock",
+    "native_stack_expectations",
+    "evidence_ceilings",
+)
+
+
+def _synthetic_static_tree(tmp_path, *, fat_key: str, per_file: int):
+    """A full-shape synthetic infrastructure manifest over tiny artifacts,
+    with ``fat_key``'s file one byte over ``per_file`` and one artifact at
+    exact equality."""
+
     freeze = tmp_path / "docs" / "m2c_freeze"
-    freeze.mkdir(parents=True)
+    freeze.mkdir(parents=True, exist_ok=True)
     ceilings_doc = {
         "kind": EVIDENCE_CEILINGS_KIND,
         "schema_version": 1,
         "addendum": "v1.20",
         "ceilings": _ceilings(
-            runtime_envelope_static_artifact_per_file_bytes=100
+            runtime_envelope_static_artifact_per_file_bytes=per_file
         ),
     }
     ceilings_path = freeze / "m2cr_evidence_ceilings_v1.json"
     atomic_write_canonical_json(ceilings_path, ceilings_doc)
-    fat = freeze / "m2cr_dependency_lock_v1.json"
-    fat.write_bytes(b"x" * 101)
-    exact = freeze / "m2cr_child_env_mapping_v1.json"
-    exact.write_bytes(b"y" * 100)
+    pins = {}
+    for name in _ALL_ARTIFACT_KEYS:
+        if name == "evidence_ceilings":
+            target = ceilings_path
+        else:
+            target = freeze / f"{name}.json"
+            if name == fat_key:
+                target.write_bytes(b"x" * (per_file + 1))
+            elif name == "child_env_mapping":
+                target.write_bytes(b"y" * per_file)  # exact equality passes
+            else:
+                target.write_bytes(b"z" * 10)
+        pins[name] = {
+            "path": os.fspath(target.relative_to(tmp_path)),
+            "sha256": sha256_file(target),
+        }
     infra = {
         "kind": "m2cr_infrastructure_manifest",
         "schema_version": 1,
-        "artifacts": {
-            "evidence_ceilings": {
-                "path": "docs/m2c_freeze/m2cr_evidence_ceilings_v1.json",
-                "sha256": sha256_file(ceilings_path),
-            },
-            "dependency_lock": {
-                "path": "docs/m2c_freeze/m2cr_dependency_lock_v1.json",
-                "sha256": sha256_file(fat),
-            },
-            "child_env_mapping": {
-                "path": "docs/m2c_freeze/m2cr_child_env_mapping_v1.json",
-                "sha256": sha256_file(exact),
-            },
-        },
+        "code": {},
+        "artifacts": pins,
+        "r1_schemas": {},
     }
     infra_path = freeze / "m2cr_infrastructure_manifest_v1.json"
     atomic_write_canonical_json(infra_path, infra)
+    return infra_path, infra
+
+
+def test_audit_static_compliance_fails_on_oversized_static_artifact(tmp_path):
+    infra_path, _ = _synthetic_static_tree(
+        tmp_path, fat_key="dependency_lock", per_file=100
+    )
     result = verify_evidence_ceiling_compliance(infra_path, repo_root=tmp_path)
     assert result["ok"] is False
     assert any(
@@ -258,6 +286,26 @@ def test_audit_static_compliance_fails_on_oversized_static_artifact(tmp_path):
     )
     # Exact equality passes: only the one-over artifact is reported.
     assert not any("child_env_mapping" in error for error in result["errors"])
+
+
+def test_audit_static_compliance_fails_closed_on_stripped_pin(tmp_path):
+    # Codex R2a review MAJOR: removing an oversized artifact's pin must fail
+    # the audit on its own (incomplete static coverage), never return ok.
+    infra_path, infra = _synthetic_static_tree(
+        tmp_path, fat_key="dependency_lock", per_file=100
+    )
+    del infra["artifacts"]["dependency_lock"]
+    atomic_write_canonical_json(infra_path, infra)
+    result = verify_evidence_ceiling_compliance(infra_path, repo_root=tmp_path)
+    assert result["ok"] is False
+    assert any("exact required key set" in error for error in result["errors"])
+    # A reshaped manifest (missing top-level section) also fails closed.
+    del infra["r1_schemas"]
+    infra["artifacts"]["dependency_lock"] = {"path": "x", "sha256": "0" * 64}
+    atomic_write_canonical_json(infra_path, infra)
+    result = verify_evidence_ceiling_compliance(infra_path, repo_root=tmp_path)
+    assert result["ok"] is False
+    assert any("top-level key set" in error for error in result["errors"])
 
 
 # ---------------------------------------------------------------------------

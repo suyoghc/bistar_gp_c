@@ -109,7 +109,7 @@ classified in `bistar_gp/m2cr/measure.py` (`RUN_DIR_EVIDENCE_CLASSES`), and a CI
 any layout member lacks a measurement classification, so the per-run projection cannot silently omit a
 component.
 
-**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,867,965 bytes**
+**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,868,575 bytes**
 (the table above); it is NOT part of the per-run evidence bundle.
 
 **Per-run evidence bundle (per launch) — components:**
