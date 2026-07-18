@@ -548,3 +548,168 @@ def test_synthetic_module_with_nonexistent_origin_is_not_hashed(
             closure_authority={},
             modules={"real_mod": outside},
         )
+
+
+# ---------------------------------------------------------------------------
+# Three-reviewer gate — consolidated fix-pass discriminating tests.
+# ---------------------------------------------------------------------------
+
+
+def test_attestation_path_aliasing_the_marker_is_rejected(tmp_path: Path) -> None:
+    """A caller attestation path routed to payload_started.json would let the
+    child forge the consumption marker via an early attestation write; capture
+    rejects it pre-spawn with no child spawned."""
+
+    config = _make_launch(
+        tmp_path,
+        template_extra={
+            "attestation_paths": {
+                "payload_started": os.fspath(
+                    Path(tmp_path, "run", "payload_started.json")
+                ),
+                "effect_proofs": os.fspath(
+                    Path(tmp_path, "run", "payload_started.json")
+                ),
+            }
+        },
+    )
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "capture_fault"
+    assert "aliases the reserved payload-start marker" in record["fault"]["detail"]
+    run_dir = Path(config.run_dir)
+    assert not (run_dir / "spawned.json").exists()
+    assert not (run_dir / "payload_started.json").exists()
+
+
+def test_authorization_id_must_equal_the_chain_authorization_id(
+    tmp_path: Path,
+) -> None:
+    """A routing authorization id that disagrees with the chain's own
+    authorization id is refused before any run artifact exists."""
+
+    import dataclasses
+
+    config = _make_launch(tmp_path)
+    mismatched = dataclasses.replace(
+        config, authorization_id="m2cr-auth-20000101-99"
+    )
+    with pytest.raises(Exception) as excinfo:
+        capture_run(mismatched)
+    assert "authorization_id does not match" in str(excinfo.value)
+    assert not (Path(config.run_dir) / "prelaunch.json").exists()
+
+
+def test_payload_entry_path_override_disagreeing_with_entry_is_rejected(
+    tmp_path: Path,
+) -> None:
+    """An explicit payload_entry_path that resolves to a different file than
+    the executed payload.entry is rejected, so the parent cannot attest a file
+    the child does not execute (§4.5.10)."""
+
+    config = _make_launch(
+        tmp_path,
+        template_extra={
+            "payload_entry_path": os.fspath(
+                tmp_path / "worktree" / "bistar_gp/m2cr/bootstrap.py"
+            )
+        },
+    )
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert (
+        "does not resolve to the executed payload entry source"
+        in record["fault"]["detail"]
+    )
+    assert not (Path(config.run_dir) / "spawned.json").exists()
+
+
+def test_payload_image_allowlist_authenticates_bytes_not_just_path() -> None:
+    """The Stage-C payload-image allowlist authenticates each new image's
+    bytes against a frozen digest; a byte mutation or a missing entry fails
+    closed (three-reviewer gate convergent finding)."""
+
+    from bistar_gp.m2cr.bootstrap import authenticate_new_loaded_images
+
+    pinned = {"/opt/lib/libx.dylib": "a" * 64, "/opt/lib/liby.dylib": "b" * 64}
+    # Matching digest passes.
+    authenticate_new_loaded_images(
+        ["/opt/lib/base.dylib"],
+        ["/opt/lib/base.dylib", "/opt/lib/libx.dylib"],
+        [{"path": "/opt/lib/libx.dylib", "sha256": "a" * 64}],
+        hasher=lambda p: pinned[p],
+    )
+    # A mutation of an allowlisted image fails closed.
+    with pytest.raises(SystemExit, match="do not match the committed allowlist"):
+        authenticate_new_loaded_images(
+            ["/opt/lib/base.dylib"],
+            ["/opt/lib/base.dylib", "/opt/lib/libx.dylib"],
+            [{"path": "/opt/lib/libx.dylib", "sha256": "0" * 64}],
+            hasher=lambda p: pinned[p],
+        )
+    # A payload-time image with no committed entry fails closed.
+    with pytest.raises(SystemExit, match="no committed allowlist entry"):
+        authenticate_new_loaded_images(
+            ["/opt/lib/base.dylib"],
+            ["/opt/lib/base.dylib", "/opt/lib/liby.dylib"],
+            [{"path": "/opt/lib/libx.dylib", "sha256": "a" * 64}],
+            hasher=lambda p: pinned[p],
+        )
+
+
+def test_file_backed_module_with_deleted_origin_fails_closed(
+    tmp_path: Path,
+) -> None:
+    """A module carrying a REAL file loader whose origin was deleted after
+    executing does NOT qualify as synthetic_no_file; it fails closed rather
+    than being exempted (three-reviewer gate)."""
+
+    from types import ModuleType
+
+    from bistar_gp.m2cr.bootstrap import _inventory
+
+    roots = [os.fspath(tmp_path)] + [
+        os.fspath(tmp_path / n) for n in ("b", "c", "d")
+    ]
+    for r in roots[1:]:
+        Path(r).mkdir(exist_ok=True)
+
+    class SourceFileLoader:  # concrete file loader spelling
+        pass
+
+    deleted = ModuleType("evicted_mod")
+    deleted.__file__ = os.fspath(tmp_path / "gone.py")  # never created
+    deleted.__loader__ = SourceFileLoader()
+    with pytest.raises(SystemExit, match="unreadable and cannot be authenticated"):
+        _inventory(
+            [],
+            roots=roots,
+            manifest_entries={},
+            closure_authority={},
+            modules={"evicted_mod": deleted},
+        )
+
+
+def test_import_then_evict_of_absent_absolute_origin_fails_closed(
+    tmp_path: Path,
+) -> None:
+    """An import event for a module no longer resident, whose absolute origin
+    is now absent (import-then-delete evasion), fails closed at the inventory —
+    'every executed module', not 'every still-resident module'."""
+
+    from bistar_gp.m2cr.bootstrap import _inventory
+
+    roots = [os.fspath(tmp_path)] + [
+        os.fspath(tmp_path / n) for n in ("b", "c", "d")
+    ]
+    for r in roots[1:]:
+        Path(r).mkdir(exist_ok=True)
+    gone = os.fspath(tmp_path / "b" / "smuggled.py")  # under a root, absent
+    with pytest.raises(SystemExit, match="origin is now absent"):
+        _inventory(
+            [("smuggled", gone)],
+            roots=roots,
+            manifest_entries={},
+            closure_authority={},
+            modules={},  # evicted: not resident
+        )

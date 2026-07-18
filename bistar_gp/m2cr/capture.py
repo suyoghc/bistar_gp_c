@@ -732,14 +732,17 @@ def _load_bootstrap_template(path: Path) -> dict[str, Any]:
 
 
 def _payload_entry_path(template: Mapping[str, Any], worktree_root: Path) -> Path:
-    explicit = template.get("payload_entry_path")
-    if isinstance(explicit, str):
-        path = Path(explicit)
-        return (
-            (worktree_root / path).resolve()
-            if not path.is_absolute()
-            else path.resolve()
-        )
+    """Resolve the payload entry source the CHILD will execute (§4.5.10).
+
+    The path is derived ONLY from the executed ``payload.entry`` (the module
+    the child's ``_resolve_payload`` imports and runs), so the parent's
+    prelaunch attestation and post-exit re-attestation hash exactly the file
+    that runs.  An explicit ``payload_entry_path`` override is honoured only
+    when it resolves to the SAME file as the derived entry — a disagreeing
+    override (which would make the parent attest a different file than the
+    child executes) is rejected (three-reviewer gate).
+    """
+
     spec = template.get("payload")
     entry = spec.get("entry") if isinstance(spec, Mapping) else spec
     if not isinstance(entry, str) or entry.count(":") != 1:
@@ -747,11 +750,31 @@ def _payload_entry_path(template: Mapping[str, Any], worktree_root: Path) -> Pat
     module_name = entry.split(":", 1)[0]
     module_path = worktree_root / (module_name.replace(".", "/") + ".py")
     if module_path.is_file():
-        return module_path.resolve()
-    package_path = worktree_root / module_name.replace(".", "/") / "__init__.py"
-    if package_path.is_file():
-        return package_path.resolve()
-    raise ValueError(f"payload entry source was not found for {module_name}")
+        derived = module_path.resolve()
+    else:
+        package_path = (
+            worktree_root / module_name.replace(".", "/") / "__init__.py"
+        )
+        if package_path.is_file():
+            derived = package_path.resolve()
+        else:
+            raise ValueError(
+                f"payload entry source was not found for {module_name}"
+            )
+    explicit = template.get("payload_entry_path")
+    if isinstance(explicit, str):
+        path = Path(explicit)
+        resolved_explicit = (
+            (worktree_root / path).resolve()
+            if not path.is_absolute()
+            else path.resolve()
+        )
+        if resolved_explicit != derived:
+            raise ValueError(
+                "payload_entry_path does not resolve to the executed payload "
+                f"entry source: override {resolved_explicit}, executed {derived}"
+            )
+    return derived
 
 
 def _expanded_flags(flags: Sequence[str], pycache_prefix: str) -> list[str]:
@@ -1380,8 +1403,20 @@ def _require_fresh_run_dir(run_dir: Path) -> None:
 def _require_contained_attestation_paths(
     run_dir: Path, paths: Mapping[str, str]
 ) -> None:
-    """Plan §4.4: every attestation/output path resolves inside run_dir."""
+    """Plan §4.4: every attestation/output path resolves inside run_dir, none
+    aliases the reserved payload-start marker, and no two collide.
 
+    A caller-routable attestation path that resolves to
+    ``payload_started.json`` would let the child create the consumption marker
+    while writing an ordinary early attestation (e.g. effect proofs, before the
+    manifest pre-walk and origin binding), forging authorization consumption
+    with no scientific execution; a collision between two attestation paths
+    would let one child write clobber another's evidence.  Both fail closed
+    pre-spawn (three-reviewer gate).
+    """
+
+    marker = (run_dir / "payload_started.json").resolve()
+    seen: dict[Path, str] = {}
     for name in sorted(paths):
         candidate = Path(paths[name]).resolve()
         try:
@@ -1391,6 +1426,17 @@ def _require_contained_attestation_paths(
                 f"attestation path {name!r} escapes the self-contained run "
                 f"directory: {paths[name]}"
             ) from exc
+        if name != "payload_started" and candidate == marker:
+            raise ValueError(
+                f"attestation path {name!r} aliases the reserved payload-start "
+                f"marker: {paths[name]}"
+            )
+        if candidate in seen:
+            raise ValueError(
+                f"attestation path {name!r} collides with {seen[candidate]!r}: "
+                f"{paths[name]}"
+            )
+        seen[candidate] = name
 
 
 def _child_evidence_exists(paths: Mapping[str, str], events_path: Path) -> bool:
@@ -1747,6 +1793,15 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     _require_pattern(config.run_id, _RUN_ID_RE, "run_id")
     _require_pattern(config.launch_attempt_id, _LAUNCH_ID_RE, "launch_attempt_id")
     _require_pattern(config.authorization_id, _AUTH_ID_RE, "authorization_id")
+    # The routing authorization id and the chain's own authorization id must be
+    # the SAME grant: the marker names ``config.authorization_id`` while the
+    # marker's and terminal record's chain carry ``chain.authorization_id``, so
+    # a disagreement would consume one grant while certifying under another
+    # (three-reviewer gate).
+    if config.authorization_id != config.chain.get("authorization_id"):
+        raise RecordAssemblyError(
+            "config authorization_id does not match the chain's authorization_id"
+        )
     _require_fresh_run_dir(run_dir)
     # Plan §4.3 / author decision F5: once the identity shapes are valid, any
     # pre-spawn infrastructure or attestation failure must still COMMIT an

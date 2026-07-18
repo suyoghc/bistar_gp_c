@@ -765,10 +765,20 @@ payload_probe = json.loads(sys.argv[2]) if len(sys.argv) > 2 else []
 baseline_paths = {entry["path"] for entry in images}
 for module_name in payload_probe:
     __import__(module_name)
+# The Stage-C payload-image allowlist carries (path, sha256), not path only:
+# §4.5.7 keeps "enumeration AND hashing" for libraries loaded outside normal
+# module imports, and §4.5.11 re-attests them at exit.  These are the
+# transitive native .dylib/.so images the frozen payload closure loads AFTER
+# the Stage-B baseline (e.g. libgfortran, libarrow); the child authenticates
+# each new Stage-C image's bytes against this frozen digest, so an ordinary
+# mutation of a payload-time numerical library fails closed rather than
+# certifying a result computed with unauthenticated native bytes (three-
+# reviewer gate, convergent finding).
 payload_allowlist = sorted(
-    path
-    for path in _dyld_images()
-    if os.path.isfile(path) and path not in baseline_paths
+    ({"path": path, "sha256": _sha256(path)}
+     for path in _dyld_images()
+     if os.path.isfile(path) and path not in baseline_paths),
+    key=lambda entry: entry["path"],
 )
 print(json.dumps({
     "payload_image_allowlist": payload_allowlist,

@@ -30,7 +30,7 @@ from types import ModuleType
 from typing import Any, Iterable, Mapping, Sequence
 
 __all__ = [
-    "classify_new_loaded_images",
+    "authenticate_new_loaded_images",
     "classify_pyc_candidate",
     "classify_stage_b_deltas",
     "environment_delta",
@@ -397,14 +397,57 @@ def _dyld_loaded_images() -> list[str]:
 _image_enumerator = _dyld_loaded_images
 
 
-def classify_new_loaded_images(
+def authenticate_new_loaded_images(
     baseline: list[str] | tuple[str, ...],
     current: list[str] | tuple[str, ...],
-    allowlist: list[str] | tuple[str, ...],
-) -> list[str]:
-    """Return every newly loaded image that the frozen allowlist rejects."""
+    allowlist: list[Mapping[str, str]] | tuple[Mapping[str, str], ...],
+    hasher: Any = None,
+) -> None:
+    """Authenticate every payload-phase native image against the frozen
+    `(path, sha256)` allowlist (§4.5.7 "enumeration AND hashing"; §4.5.11
+    re-attests at exit).
 
-    return sorted(set(current) - set(baseline) - set(allowlist))
+    A newly loaded image (in ``current`` but not ``baseline``) must have a
+    committed allowlist entry AND its on-disk bytes must hash to that entry's
+    frozen sha256.  A new image with no allowlist entry, or a byte mismatch (an
+    ordinary mutation of a payload-time numerical library), fails closed —
+    replacing the prior path-only acceptance that certified unauthenticated
+    native bytes (three-reviewer gate, convergent finding).
+    """
+
+    hasher = _sha256_file if hasher is None else hasher
+    expected: dict[str, str] = {}
+    for entry in allowlist:
+        if (
+            not isinstance(entry, Mapping)
+            or not isinstance(entry.get("path"), str)
+            or not isinstance(entry.get("sha256"), str)
+            or _SHA256_RE.fullmatch(entry["sha256"]) is None
+        ):
+            raise SystemExit(
+                "attestation_fault: payload image allowlist entry is malformed"
+            )
+        expected[entry["path"]] = entry["sha256"]
+    new_images = sorted(set(current) - set(baseline))
+    for path in new_images:
+        pinned = expected.get(path)
+        if pinned is None:
+            raise SystemExit(
+                "attestation_fault: payload-phase native image has no "
+                f"committed allowlist entry: {path}"
+            )
+        try:
+            actual = hasher(path)
+        except OSError as exc:
+            raise SystemExit(
+                "attestation_fault: payload-phase native image unreadable at "
+                f"Stage C: {path}: {exc}"
+            ) from exc
+        if actual != pinned:
+            raise SystemExit(
+                "attestation_fault: payload-phase native image bytes do not "
+                f"match the committed allowlist digest: {path}"
+            )
 
 
 def hash_loaded_images(paths: Iterable[str]) -> dict[str, str]:
@@ -702,13 +745,25 @@ def loaded_image_hash_drift(
     )
 
 
-def _loaded_image_allowlist(config: dict[str, Any]) -> list[str]:
+def _loaded_image_allowlist(config: dict[str, Any]) -> list[dict[str, str]]:
+    """The frozen `(path, sha256)` payload-image allowlist (three-reviewer gate).
+
+    Each Stage-C new image is authenticated against this by
+    :func:`authenticate_new_loaded_images`; an entry must therefore carry both
+    a path and a lowercase sha256.
+    """
+
     allowlist = config.get("loaded_image_allowlist", [])
     if not isinstance(allowlist, list) or not all(
-        isinstance(item, str) for item in allowlist
+        isinstance(item, dict)
+        and isinstance(item.get("path"), str)
+        and isinstance(item.get("sha256"), str)
+        and _SHA256_RE.fullmatch(item["sha256"]) is not None
+        for item in allowlist
     ):
         raise SystemExit(
-            "attestation_fault: loaded_image_allowlist must be a string list"
+            "attestation_fault: loaded_image_allowlist must be a list of "
+            "{path, sha256} objects"
         )
     return allowlist
 
@@ -1251,18 +1306,23 @@ def _inventory(
             resolved_origin = None
         else:
             resolved_origin = os.path.realpath(origin)
-            # A claimed origin that is not an existing regular file backs NO
-            # file execution — nothing can have been loaded from a path that
-            # does not exist — so it carries no §4.5.7 authentication
-            # obligation.  The canonical case (first real-native
-            # production-path launch): torch installs a synthetic
-            # ``torch.classes`` module carrying the bogus RELATIVE
-            # ``__file__ = "_classes.py"``, which resolves against the child's
-            # CWD to a nonexistent ``<worktree>/_classes.py``.  A real
-            # smuggled file that DID execute exists on disk (isfile true) and
-            # is authenticated below; only genuinely fileless origins are
-            # classified here.
-            if not os.path.isfile(resolved_origin):
+            loader_class = _loader_name(module)
+            # A SYNTHETIC module — no loader object AND a claimed origin that is
+            # not an existing regular file — backs no file execution: nothing
+            # was loaded from a path that does not exist, and the absence of a
+            # loader confirms no file-loading mechanism ran.  The canonical
+            # case (first real-native production-path launch): torch installs a
+            # synthetic ``torch.classes`` (a bare ``types.ModuleType`` with no
+            # loader) carrying the bogus RELATIVE ``__file__ = "_classes.py"``,
+            # which resolves against the child's CWD to a nonexistent path.
+            #
+            # A module that carries a real FILE LOADER (SourceFileLoader,
+            # ExtensionFileLoader, …) but whose origin is now missing DID load
+            # executed bytes from disk that were then removed — an
+            # import-then-delete evasion (three-reviewer gate) — so it does NOT
+            # qualify as synthetic; it falls through to authentication, where
+            # the missing file fails closed rather than being exempted.
+            if loader_class == "none" and not os.path.isfile(resolved_origin):
                 classification = "synthetic_no_file"
                 resolved_origin = None
             else:
@@ -1287,7 +1347,19 @@ def _inventory(
                     continue
                 relpath = Path(resolved_origin).relative_to(root).as_posix()
                 containing.append((len(root), root_id, relpath))
-            actual_sha256 = _sha256_file(resolved_origin)
+            try:
+                actual_sha256 = _sha256_file(resolved_origin)
+            except OSError as exc:
+                # A file-backed loaded module whose origin is now unreadable
+                # (deleted or replaced by a non-file after executing) cannot be
+                # authenticated — fail closed rather than crash (three-reviewer
+                # gate: the import-then-delete evasion that reached this path
+                # because the module carries a real file loader).
+                raise SystemExit(
+                    "attestation_fault: loaded module origin is unreadable "
+                    f"and cannot be authenticated: {name} -> {resolved_origin}: "
+                    f"{exc}"
+                ) from exc
             # Manifest v2 pins the loader class name (walker spelling is the
             # bare class name; the runtime spelling is module-qualified).
             loader_class = item["loader_class"]
@@ -1306,12 +1378,16 @@ def _inventory(
                 parent extension's init code) and library module-object
                 surgery (torch.backends replaces its own sys.modules entry
                 with a custom module instance) legitimately drop loader
-                metadata after a genuine load.  The bytes are already
-                sha-authenticated against the manifest and sourceless
-                execution is excluded by its dedicated scan, so "none" is
-                ACCEPTED AND RECORDED — upgraded to a parent binding when a
-                loaded ancestor with the SAME resolved origin carries the
-                pinned loader.
+                metadata after a genuine load.  Acceptance is safe because the
+                bytes are sha-authenticated against the manifest AND the one
+                loader that changes bytes-to-execution semantics for the same
+                file — SourcelessFileLoader (executing bytecode instead of
+                compiling source) — is NEVER "none": it always presents its
+                class, so it is caught here as a CONCRETE mismatch (return
+                None) and additionally by the dedicated global sourceless scan.
+                A genuinely "none" loader is then ACCEPTED AND RECORDED —
+                upgraded to a parent binding when a loaded ancestor with the
+                SAME resolved origin carries the pinned loader.
                 """
 
                 if expected in loader_spellings:
@@ -1411,6 +1487,68 @@ def _inventory(
                     loader_binding=closure_binding,
                 )
         result.append(item)
+
+    # Import-then-evict closure (three-reviewer gate): the loop above binds
+    # every module RESIDENT in sys.modules, but a payload that imports a
+    # file-backed module, executes its code, and then evicts it
+    # (``del sys.modules[name]``) would leave no resident entry to bind.  The
+    # read-only audit hook recorded EVERY import event with its filename, so
+    # authenticate each EVICTED module's file: a real file-backed import always
+    # carries an ABSOLUTE origin (a synthetic module like ``torch.classes``
+    # stays resident and uses a bogus RELATIVE ``__file__``, so it is excluded
+    # both by residence and by the absolute-path gate).  An evicted absolute
+    # origin that is now absent — the import-then-delete evasion — fails
+    # closed, and a present one must match the manifest (under roots) or the
+    # closure (outside): "every executed module" is not narrowed to "every
+    # still-resident module".
+    if manifest_entries is not None:
+        closure_map = closure_authority or {}
+        seen_evicted: set[str] = set()
+        for name, filename in import_events:
+            if (
+                name in module_map
+                or not isinstance(filename, str)
+                or not os.path.isabs(filename)
+            ):
+                continue
+            resolved = os.path.realpath(filename)
+            if resolved in seen_evicted:
+                continue
+            seen_evicted.add(resolved)
+            if not os.path.exists(resolved):
+                raise SystemExit(
+                    "attestation_fault: an imported-then-evicted module executed "
+                    f"and its origin is now absent: {name} -> {resolved}"
+                )
+            if not os.path.isfile(resolved):
+                continue
+            try:
+                digest = _sha256_file(resolved)
+            except OSError as exc:
+                raise SystemExit(
+                    "attestation_fault: an imported-then-evicted module origin "
+                    f"is unreadable: {name} -> {resolved}: {exc}"
+                ) from exc
+            under_root = False
+            for root_id, root in _manifest_roots(roots or []):
+                try:
+                    if os.path.commonpath((root, resolved)) != root:
+                        continue
+                except ValueError:
+                    continue
+                relpath = Path(resolved).relative_to(root).as_posix()
+                entry = manifest_entries.get((root_id, relpath))
+                if entry is not None and entry.get("sha256") == digest:
+                    under_root = True
+                    break
+            if under_root:
+                continue
+            pin = closure_map.get(resolved)
+            if pin is None or pin.get("sha256") != digest:
+                raise SystemExit(
+                    "attestation_fault: an imported-then-evicted file-backed "
+                    f"module is unauthenticated: {name} -> {resolved}"
+                )
     return result
 
 
@@ -1971,20 +2109,20 @@ def main(
         closure_authority=closure_authority,
     )
     profile_check = _profile_integration_check(config)
-    # Kimi K3 challenge, finding 4 (recorded residual): an import audit event
-    # whose module is no longer present in sys.modules at inventory time (an
-    # import-then-evict) cannot be origin-authenticated after the fact — the
-    # audit event does not carry the resolved origin.  The names are recorded
-    # here so the evidence discloses the eviction rather than silently
-    # narrowing "every executed module" to "every still-resident module";
-    # worktree-origin reads remain independently covered by the load-time
-    # open-hashing above.
+    # Kimi K3 finding 4 / three-reviewer gate: an import-then-evict is no
+    # longer a disclosed residual — `_inventory` authenticates every evicted
+    # module's absolute file origin against the manifest/closure and fails
+    # closed on a now-absent one.  The evicted names are recorded as evidence.
     evicted_imports = sorted(
-        {name for name, _ in import_events} - set(sys.modules)
+        {
+            name
+            for name, _ in import_events
+            if name not in sys.modules
+        }
     )
     inventory_document = {
         "modules": inventory,
-        "import_events_without_module": evicted_imports,
+        "import_events_evicted_and_authenticated": evicted_imports,
         "worktree_opens": _hashed_worktree_opens(
             set(worktree_opens), roots[0], dict(worktree_load_hashes)
         ),
@@ -2070,18 +2208,17 @@ def main(
     if stage_c_os != baseline_os or stage_c_raw != baseline_raw:
         raise SystemExit("environment_fault: Stage C environment drift")
     stage_c_images = list(_image_enumerator())
-    new_images = classify_new_loaded_images(
+    # §4.5.7 "enumeration AND hashing": every payload-phase native image must
+    # have a committed allowlist entry AND its on-disk bytes must match the
+    # frozen digest — a new image with no entry, or a byte mutation of a
+    # payload-time numerical library, fails closed (three-reviewer gate).
+    authenticate_new_loaded_images(
         stage_b_images, stage_c_images, image_allowlist
     )
-    if new_images:
-        raise SystemExit(
-            "environment_fault: unapproved native images loaded during "
-            f"payload: {new_images}"
-        )
-    # F2/§4.5.7 "enumeration AND hashing", §4.5.11 rehash at exit: re-hash the
-    # on-disk native images and fail closed if any image loaded at Stage B had
-    # its on-disk bytes changed during payload execution (an ordinary
-    # native-library mutation, in scope per §4.5.13).
+    # §4.5.11 rehash at exit: re-hash the Stage-B native images and fail closed
+    # if any image loaded at Stage B had its on-disk bytes changed during
+    # payload execution (an ordinary native-library mutation, in scope
+    # per §4.5.13).
     stage_c_image_hashes = hash_loaded_images(stage_c_images)
     image_hash_drift = loaded_image_hash_drift(
         stage_b_image_hashes, stage_c_image_hashes
@@ -2109,9 +2246,8 @@ def main(
             "loaded_image_check": {
                 "stage_b_count": len(stage_b_images),
                 "stage_c_count": len(stage_c_images),
-                "new_allowed": sorted(
-                    (set(stage_c_images) - set(stage_b_images))
-                    & set(image_allowlist)
+                "new_authenticated": sorted(
+                    set(stage_c_images) - set(stage_b_images)
                 ),
                 "stage_b_hashed_count": len(stage_b_image_hashes),
                 "stage_c_hashed_count": len(stage_c_image_hashes),

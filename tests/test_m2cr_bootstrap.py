@@ -23,7 +23,7 @@ from bistar_gp.m2cr.bootstrap import (
     _inventory,
     _load_importable_artifact_manifest,
     _verify_importable_artifact_manifest,
-    classify_new_loaded_images,
+    authenticate_new_loaded_images,
     classify_pyc_candidate,
     classify_stage_b_deltas,
     parse_raw_environ_block,
@@ -1123,7 +1123,7 @@ def test_fake_torch_controls_are_automatic_and_fail_closed(tmp_path: Path) -> No
         native["loaded_images_stage_b"]
     )
     stage_c = json.loads((run_dir / "stage_c.json").read_text())
-    assert stage_c["loaded_image_check"]["new_allowed"] == []
+    assert stage_c["loaded_image_check"]["new_authenticated"] == []
     assert stage_c["loaded_image_check"]["stage_b_count"] == len(
         native["loaded_images_stage_b"]
     )
@@ -1180,9 +1180,29 @@ def test_native_stack_helpers_are_hermetic_and_injectable(
         bootstrap_module, "_image_enumerator", lambda: list(fake_images)
     )
     assert bootstrap_module._image_enumerator() == fake_images
-    assert classify_new_loaded_images(
-        ["/a.dylib"], ["/a.dylib", "/b.dylib", "/c.dylib"], ["/c.dylib"]
-    ) == ["/b.dylib"]
+    # authenticate_new_loaded_images: a new image with a matching allowlist
+    # digest passes; a byte mismatch or a missing entry fails closed.
+    fakehash = {"/a.dylib": "a" * 64, "/b.dylib": "b" * 64, "/c.dylib": "c" * 64}
+    authenticate_new_loaded_images(
+        ["/a.dylib"],
+        ["/a.dylib", "/b.dylib", "/c.dylib"],
+        [{"path": "/b.dylib", "sha256": "b" * 64}, {"path": "/c.dylib", "sha256": "c" * 64}],
+        hasher=lambda p: fakehash[p],
+    )
+    with pytest.raises(SystemExit, match="no committed allowlist entry"):
+        authenticate_new_loaded_images(
+            ["/a.dylib"],
+            ["/a.dylib", "/b.dylib"],
+            [],
+            hasher=lambda p: fakehash[p],
+        )
+    with pytest.raises(SystemExit, match="do not match the committed allowlist"):
+        authenticate_new_loaded_images(
+            ["/a.dylib"],
+            ["/a.dylib", "/b.dylib"],
+            [{"path": "/b.dylib", "sha256": "0" * 64}],
+            hasher=lambda p: fakehash[p],
+        )
     real_images = bootstrap_module._dyld_loaded_images()
     assert real_images and real_images == sorted(real_images)
     assert all(isinstance(path, str) for path in real_images)
