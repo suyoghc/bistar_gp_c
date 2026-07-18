@@ -211,3 +211,22 @@ def test_committed_importable_manifest_worktree_entries_match_tree():
     assert not stale, "stale committed importable-manifest worktree entries: " + "; ".join(
         stale
     )
+
+
+def test_child_and_generator_loader_maps_stay_in_sync():
+    """The child's restated loader map (bootstrap._LOADER_BY_ARTIFACT_TYPE, a
+    deliberate verbatim copy so the child can validate before its sys.path is
+    replaced) must never drift from the generator's authority
+    (environment_freeze.LOADER_BY_ARTIFACT_TYPE), and must cover every artifact
+    type the child accepts (three-reviewer gate round-4 NOTE)."""
+
+    from bistar_gp.m2cr.bootstrap import (
+        _ARTIFACT_TYPES,
+        _LOADER_BY_ARTIFACT_TYPE,
+    )
+    from bistar_gp.m2cr.environment_freeze import LOADER_BY_ARTIFACT_TYPE
+
+    assert _LOADER_BY_ARTIFACT_TYPE == dict(LOADER_BY_ARTIFACT_TYPE)
+    # Every accepted artifact type has a frozen loader, so the parse-time
+    # consistency check never falls through to a None comparison.
+    assert set(_ARTIFACT_TYPES) == set(_LOADER_BY_ARTIFACT_TYPE)
