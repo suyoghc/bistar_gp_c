@@ -4502,7 +4502,7 @@ iterative improvement cycle — NOT a freeze, R2a, R3, execution grant, Ready, o
 BLOCKER findings (1 and 2) remain the explicitly-documented next launch-authority cycle. PR #16
 stays Draft.
 
-### D48 — Update 12 (2026-07-18): R2 launch-authority cycle — BLOCKERs 1 and 2 CLOSED (AuthenticatedLaunchSpec + mandatory child manifest/origin binding); Kimi K3 challenge adjudicated; three-reviewer gate CLEAN over four converging delta rounds (Codex + Opus APPROVE, GLM disproven) at cf59b4c
+### D48 — Update 12 (2026-07-18): R2 launch-authority cycle — BLOCKERs 1 and 2 CLOSED (AuthenticatedLaunchSpec + mandatory child manifest/origin binding); Kimi K3 challenge adjudicated; three-reviewer gate CLEAN at reviewed code head b673367 (four converging delta rounds; Codex + Opus APPROVE, GLM disproven); behavior-neutral test/artifact/docs tail through 3071046 verified by a one-shot Codex closure audit
 
 The remaining two external-audit BLOCKERs from the bd1d0f9 audit — finding 2 (one authenticated
 launch authority) and finding 1 (mandatory importable-manifest child binding + origin/loader
@@ -4612,20 +4612,44 @@ finding across all rounds was cross-verified against the plan/source/hashes/empi
 change; false alarms were dismissed with recorded rationale, never fixed to satisfy votes. Adjudication
 detail: `docs/m2cr-r2-hardening-design.md` (three round-by-round records).
 
-**Commits (11).** c71b954 (WI1+WI2 code+tests) · b97c802 (regen) · 9ae8f13 (gate round-1 fixes) · 5282b79
-(regen + adjudication docs) · d148823 (round-2 delta fixes) · f4eb9e0 (regen) · de41461 (round-3
-refinements) · b673367 (regen) · 366b004 (launch-4 test alignment) · b4c3a00 (loader-map sync test) ·
-cf59b4c (final regen). Every regeneration used the established fresh-detached-worktree process at its
-exact code commit; the interpreter pin, child-env mapping, and dependency lock stayed byte-identical
-throughout, and the native-stack expectations changed only for the corrected 67-image set + the
-byte-authenticated 173-entry payload-image allowlist (fixed-artifact total 8,867,965 B).
+**Reviewed code head vs. behavior-neutral tail.** The three-reviewer panel's four delta rounds
+reviewed the production-code heads ending at **`b673367`** (round-4 confirmatory: Codex APPROVE, Opus
+APPROVE, GLM disproven); `b673367` is the reviewed, gate-clean code head at which findings 1 and 2 are
+closed. Everything after it is behavior-neutral and was NOT re-reviewed by the panel (it does not need
+to be): `366b004` aligns the realroot launch-4 test's assertion to the round-3 parse-level catch,
+`b4c3a00` adds a loader-map-sync test, `cf59b4c` regenerates the authenticated artifacts those two
+test files forced (`git diff b673367 3071046 -- bistar_gp/` is empty — no production source changed
+after the approved head), and `3071046` carries this D48 Update 12 + the SCRATCHPAD alignment.
 
-**Final state.** Full suite at cf59b4c: **840 passed / 2 skipped / 0 failed**; the four real-root
+**Commits (through 3071046, extended by this closure-corrections docs commit).** c71b954 (WI1+WI2
+code+tests) · b97c802 (regen) · 9ae8f13 (gate round-1 fixes) · 5282b79 (regen + adjudication docs) ·
+d148823 (round-2 delta fixes) · f4eb9e0 (regen) · de41461 (round-3 refinements) · **b673367 (regen —
+reviewed, gate-clean code head)** · 366b004 (launch-4 test alignment) · b4c3a00 (loader-map sync test)
+· cf59b4c (final regen) · 3071046 (initial D48 Update 12 + SCRATCHPAD) · and this docs-only
+closure-corrections commit (the current HEAD; docs-only, so the tail stays behavior-neutral —
+`git diff b673367 HEAD -- bistar_gp/` is empty). Every regeneration used the established
+fresh-detached-worktree process at its exact code commit; the interpreter pin, child-env mapping, and
+dependency lock stayed byte-identical throughout, and the native-stack expectations changed only for
+the corrected 67-image set + the byte-authenticated 173-entry payload-image allowlist (fixed-artifact
+total 8,867,965 B).
+
+**Final state (head 3071046).** Full suite: **840 passed / 2 skipped / 0 failed**; the four real-root
 integration launches pass separately. Boundaries re-verified: all 10 protected files byte-identical to
 origin/main, ledger one D45 line, v1.18 result instance absent, nothing under runs/ or experiments/,
 zero out-of-scope changes, v1.17 canonical hash 65381bc7…. No scientific, diagnostic, profile,
 optimizer/gradient/Hessian-on-model, MAP, sampler, Mauna, holdout, R2a, R3, or `--execute` computation
 occurred — every child ran fake payloads or import-only `bistar_gp.profile_integration`, and the only
 real measurements were the established freeze-time attestation measurements. Findings 1 and 2 are
-demonstrably CLOSED. This is a hardening cycle — NOT a freeze, R2a, R3, execution grant, Ready, or merge.
-PR #16 stays Draft.
+demonstrably CLOSED.
+
+**Closure (2026-07-18).** A single fresh Codex gpt-5.6-sol xHigh read-only closure audit of the final
+head `3071046` verified: the `b673367…3071046` tail contains only the two test corrections, the
+artifacts they forced, and this documentation; no production source changed after `b673367`; the
+regenerated manifests authenticate the final tracked tree; and every protected boundary holds. It
+raised two documentation-accuracy findings (this entry's earlier draft attributed the clean gate to
+`cf59b4c` rather than the reviewed `b673367` head, and the PR body carried stale pre-cycle counts),
+both corrected here and in the PR body; no code, artifact, or boundary issue was found. On that basis
+**PR #16 was flipped from Draft to Ready for the author's merge decision; it was NOT merged.** R2
+infrastructure is now frozen: no further hardening round is opened absent an observed production
+failure or a separate explicit author amendment. R2a, R3, and every execution remain separate future
+author acts.

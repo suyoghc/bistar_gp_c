@@ -214,7 +214,11 @@ isolated real-root integration tests; landed together with the full WI2 harness 
 Working matrix for the WI1+WI2 implementation cycle authorized against findings 1 and 2 (the two
 remaining external-audit BLOCKERs). Nothing here claims either finding closed; closure requires the
 matrix's tests green, the bounded real-root integration launches green, regenerated artifacts, and a
-clean three-reviewer gate at the final head.
+clean three-reviewer gate at the reviewed production-code head. (Outcome: the panel's round-4
+confirmatory delta was clean at code head `b673367`; the later `366b004…3071046` tail is
+behavior-neutral — two test corrections, the artifacts they forced, and D48/SCRATCHPAD docs, with no
+`bistar_gp/` change — and was verified by a separate one-shot Codex closure audit. See the round-4
+and closure records below.)
 
 ### Refined cost measurement (2026-07-18, supersedes the walk-cost reading above where they differ)
 
@@ -540,6 +544,32 @@ non-blocking NOTEs, all disclosed §4.5.13 residuals or one-line doc suggestions
   now rejects any entry whose loader disagrees with the frozen loader for its artifact type, so the
   manifest is self-consistent at parse and the CD4 exception cannot be reached by a mislabeled
   bytecode entry. Discriminating test added.
+
+### Three-reviewer gate — round 4 (confirmatory) + closure (2026-07-18, code head b673367)
+
+The round-3 fix head `b673367` went through the confirmatory delta gate. **Codex APPROVE** (4 NOTEs)
+and **Opus APPROVE** — both independently re-verified the round-3 refinements (the loader maps match
+exactly, the committed 39,957-entry manifest parses, the regenerated artifacts are faithful, no new
+defect). **GLM** returned one MAJOR that is **disproven**: it claimed the parse-time loader check
+"silently passes" on an unmapped artifact type, but the check compares against `.get(...)` and a
+non-empty loader string, so an unmapped type fails CLOSED (rejected), the opposite of a silent pass;
+and the two loader maps are currently identical (a cross-check test now asserts they stay in sync).
+`b673367` is therefore the reviewed, gate-clean production-code head; findings 1 and 2 are closed at
+it.
+
+**Behavior-neutral tail and closure (head 3071046).** After `b673367` the branch added only:
+`366b004` (the realroot launch-4 test's assertion aligned to the round-3 parse-level catch — the
+launch still fails closed with no marker, a stronger, earlier catch), `b4c3a00` (the loader-map-sync
+test), `cf59b4c` (the authenticated artifacts those two test files forced — `git diff b673367
+3071046 -- bistar_gp/` is empty), and `3071046` (the initial D48/SCRATCHPAD docs). A separate one-shot **Codex
+closure audit** of the head at audit time (`3071046`) verified: the tail contains only those items; no
+production source changed after `b673367`; the regenerated manifests authenticate the final tracked
+tree (committed-manifest CI green ungated) with the changed worktree entries being exactly the two
+test files; and every protected boundary holds. It raised two documentation-accuracy findings
+(head/tail attribution and stale pre-cycle counts), both corrected in the following docs-only commit
+(which extends the behavior-neutral tail — `git diff b673367 HEAD -- bistar_gp/` stays empty). The
+panel did NOT re-review the literal final head — it does not need to, the tail being behavior-neutral
+— and this note does not claim it did.
 
 ## Contract questions
 
