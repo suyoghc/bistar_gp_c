@@ -1,9 +1,11 @@
 # M2cR R2 — evidence-size measurement report (B15(ii))
 
-**Status: measurement report, 2026-07-16 (regenerated after the final-gate fix round). Nothing here
-is frozen.** Plan §4.4 defers every exact numeric ceiling to a versioned pre-execution addendum
-before R4 (milestone R2a, a separate author act); this report supplies the measurements and
-derivations that addendum will draw on, and the proposals at the end carry no force. Completeness is
+**Status: measurement report, 2026-07-16 (regenerated after the final-gate fix round), corrected and
+updated 2026-07-18 under R2a (v1.20 §7, D49): the static table reflects the R2a regeneration at the
+enforcement code commit plus the ninth (evidence-ceilings) artifact, and the measured-exemplar
+provenance below now states exactly which figures are test-reproduced.** Plan §4.4 deferred every
+exact numeric ceiling to a versioned pre-execution addendum before R4 (milestone R2a); **v1.20 has
+since frozen the ceilings at exactly the values proposed at the end of this report.** Completeness is
 never weakened to fit a ceiling, and overflow handling stays `INFRA_FAILURE`, never truncation
 (B15(iii)).
 
@@ -17,20 +19,22 @@ serializer with the frozen nonfinite sentinels.
 
 | Artifact | Bytes | Notes |
 |---|---|---|
-| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,744,319 | format v2 (roots header, per-entry loader); 39,957 entries: 39,391 source, 564 extension, 2 importable-archive, 0 orphan-bytecode (the +2 sources are the two new WI1/WI2 test files) |
+| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,744,521 | format v2 (roots header, per-entry loader); 39,958 entries: 39,392 source, 564 extension, 2 importable-archive, 0 orphan-bytecode (the +1 source vs the R2-close figure is `tests/test_m2cr_evidence_ceilings.py`, added by R2a) |
 | `m2cr_dependency_lock_v1.json` | 57,451 | supplementary only; editable installs excluded from `pip_freeze` (external audit round-3 F4), reproducible at HEAD |
 | `m2cr_preboundary_attestation_set_v1.json` | 14,560 | dyld main cache plus its twelve declared subcaches, interpreter, and the 74-entry pre-boundary bootstrap closure; smaller than the prior 76 because the fabricated `bistar_gp`/`bistar_gp.m2cr` namespace packages no longer claim a never-executed `__init__.py` origin (WI1); the three worktree-origin closure pins are stored worktree-relative (F3) |
-| `m2cr_infrastructure_manifest_v1.json` | 2,872 | Layer 1a; repo-relative pins (7 artifacts incl. native-stack expectations) |
+| `m2cr_infrastructure_manifest_v1.json` | 3,026 | Layer 1a; repo-relative pins (8 artifacts incl. native-stack expectations and, since R2a, the evidence-ceilings artifact) |
 | `m2cr_native_stack_expectations_v1.json` | 47,047 | WI1/WI2 launch-authority cycle: frozen native stack, profile hash, build-pinned bound sentinel `__hash__` (§4.5.8), backend build markers, Stage-B delta, the **67**-entry expected on-disk loaded-image set (path+sha256; +1 vs the prior 66 because the measurement now enumerates images after the config-show calls, matching the child sequence — `numpy.show_config()` lazily loads pyyaml's extension), and the **173-entry Stage-C `loaded_image_allowlist`, each pinned `(path, sha256)`** so the child authenticates every payload-phase native image's bytes (§4.5.7 "enumeration AND hashing"; three-reviewer gate) rather than allowlisting by path alone |
 | `m2cr_environment_freeze_manifest_v1.json` | 731 | the aggregating manifest; its file sha256 is the chain member |
 | `m2cr_child_env_mapping_v1.json` | 602 | includes the concrete frozen `PATH` |
 | `m2cr_interpreter_pin_v1.json` | 383 | version string plus resolved-target sha256 |
+| `m2cr_evidence_ceilings_v1.json` | 255 | added by R2a (v1.20): the five ratified evidence-size ceilings, the one machine-readable authority enforcement consumes; hand-authored, never regenerated |
 
-Fixed-artifact total: **8,867,965 bytes** (measured; regenerated at the WI1/WI2 launch-authority
-code commit via the established fresh-detached-worktree process — the native-stack expectations
-grow for the corrected 67-image set plus the measured Stage-C image allowlist, the importable
-manifest gains the two new test files, and the preboundary/aggregating pins re-derive; the
-interpreter pin, child-env mapping, and dependency lock stay byte-identical).
+Fixed-artifact total: **8,868,576 bytes** (measured; regenerated at the R2a enforcement code commit
+via the established fresh-detached-worktree process — the importable manifest gains the one new R2a
+test file (8,744,521 B after the final review-corrections regeneration; the header worktree path is informational and its length varies per freeze), the infrastructure manifest gains the evidence-ceilings pin, the 255-byte ceilings
+artifact joins the set, and the preboundary/aggregating pins re-derive; the interpreter pin,
+child-env mapping, dependency lock, and native-stack expectations stay byte-identical. The R2-close
+total at PR #16 merge was 8,867,965 bytes over the then-eight artifacts).
 
 Two truthfulness notes. First, the plan §4.5.12 ratification-time estimates (roughly 78,890 entries,
 about 12 MB) were explicitly "not the R2 measurement"; the measured inventory is smaller because the
@@ -56,14 +60,31 @@ family, and stdlib closure members keep absolute paths.
 ## Measured exemplars — per-node records and event stream (hermetic)
 
 These are **measured exemplars**, not proven upper bounds. Each byte figure is the canonical
-serialization of a specific rigged-oracle run, reproduced deterministically by
-`tests/test_m2cr_measure.py::test_evidence_size_report_figures_reproduce` under the hermetic
-harness; they are exemplars because one field is not length-bounded: the optimizer/retry `message`
-is schema-typed `{"type": "string"}`
-(a SciPy termination message), so a pathological minimizer could enlarge a record without changing
-its structural path. R2a freezes ceilings with headroom precisely so the unbounded `message` cannot
-collide with a limit; the derivations below therefore price a **structural worst case** (both starts
-restarted, retry fired), not a proven maximum over all string content.
+serialization of a specific rigged-oracle run. **Measurement-provenance correction (2026-07-18,
+R2a/v1.20 §7, D49):** an earlier revision of this paragraph claimed all five figures were
+"reproduced deterministically by `tests/test_m2cr_measure.py::test_evidence_size_report_figures_reproduce`";
+that test reproduces exactly **3,179** and **1,613**. The **5,894 / 3,029 / 6,088** figures were
+measured by a freeze-time rig that was never committed (its rigged message strings and marker
+serialization are not recoverable), so they are recorded exemplars, not test-reproduced values. A
+**committed corroborating rig**
+(`tests/test_m2cr_measure.py::test_structural_worst_case_and_event_figures_reproduce_from_committed_rig`)
+walks the same fixture/serializer path — the frozen v2 gates over the same rigged quadratic oracle,
+both starts restarted and the retry fired — and pins its own independently derived exemplars:
+worst-case record **5,960** bytes, clean-node gate-event stream **2,939** bytes over 7 gate events
+(the 9-event figure additionally counted the two payload-emitted node markers), and worst-case
+gate-event stream **6,184** bytes over 15 events. The committed rig corroborates the recorded
+figures' structure and magnitude; the derived projections and the v1.20-ratified ceilings stand on
+the recorded figures, whose ×3.7+ headroom absorbs the small rig-string differences. The same
+correction covers the **84,921**-byte runtime-envelope figure below: it is a one-run hermetic
+exemplar whose exact value embeds run-directory path lengths (the prelaunch/attestation provenance
+records absolute paths), so it is not a reproducible constant and no test pins it; the projection
+already treats the envelope class as measured per run, never frozen. They are
+exemplars, not maxima, because one field is not length-bounded: the optimizer/retry `message` is
+schema-typed `{"type": "string"}` (a SciPy termination message), so a pathological minimizer could
+enlarge a record without changing its structural path. R2a froze ceilings with headroom precisely so
+the unbounded `message` cannot collide with a limit; the derivations below therefore price a
+**structural worst case** (both starts restarted, retry fired), not a proven maximum over all string
+content.
 
 | Item | Bytes | Basis |
 |---|---|---|
@@ -88,7 +109,7 @@ classified in `bistar_gp/m2cr/measure.py` (`RUN_DIR_EVIDENCE_CLASSES`), and a CI
 any layout member lacks a measurement classification, so the per-run projection cannot silently omit a
 component.
 
-**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,867,965 bytes**
+**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,868,576 bytes**
 (the table above); it is NOT part of the per-run evidence bundle.
 
 **Per-run evidence bundle (per launch) — components:**
@@ -116,11 +137,15 @@ the R2a addendum should set that allowance on structural grounds. The runtime en
 measured per run (the hermetic figure here uses a fake payload; the inventory class grows with the
 real import closure), never frozen as a single constant.
 
-## Proposed per-class ceilings — NOT FROZEN, no force
+## Proposed per-class ceilings — RATIFIED by v1.20 (2026-07-18) at exactly these values
 
-Plan §4.4 asks R2 to propose separate ceilings; freezing them is the R2a author act. Proposals, each
-holding at least threefold headroom over the corresponding measured or derived figure so a
+Plan §4.4 asked R2 to propose separate ceilings; freezing them was the R2a author act, completed in
+prereg addendum **v1.20** (D49), which ratified exactly the values proposed here as exact bytes —
+runtime-envelope/static-artifact per-file 33,554,432; event stream 33,554,432; stdout 16,777,216;
+stderr 16,777,216; complete per-run bundle 134,217,728 — and fixed each ceiling's scope, the
+counting rules, and the candidate-record overflow decision. The original proposal text, preserved:
+each holds at least threefold headroom over the corresponding measured or derived figure so a
 legitimate complete run can never collide with a ceiling: attestation manifests 32 MiB; event
 streams 32 MiB; stdout 16 MiB and stderr 16 MiB; complete bundle 128 MiB. If any future measurement
-exceeds a proposal, the resolution is a larger ceiling in the R2a addendum, never reduced
+exceeds a ceiling, the resolution is a larger ceiling in a later versioned addendum, never reduced
 completeness.

@@ -290,6 +290,7 @@ class AuthenticatedLaunchSpec:
     environment_freeze_manifest_sha256: str
     infrastructure_manifest_sha256: str
     bootstrap_path: str
+    evidence_ceilings: Mapping[str, int]
     spec_sha256: str
 
 
@@ -891,6 +892,223 @@ def write_raw_manifest(run_dir: str | os.PathLike[str]) -> str:
     manifest_path = root / RAW_MANIFEST_NAME
     atomic_write_bytes(manifest_path, "".join(lines).encode("utf-8"))
     return sha256_file(manifest_path)
+
+
+# v1.20 §2: the two stream_allowance layout members map to their dedicated
+# ratified ceiling members; a future stream_allowance member without a
+# dedicated ceiling must fail closed, never silently inherit one.
+_STREAM_CEILING_MEMBERS = {
+    "stdout.txt": ("stdout_bytes", "stdout"),
+    "stderr.txt": ("stderr_bytes", "stderr"),
+}
+_PER_FILE_CEILING_MEMBER = "runtime_envelope_static_artifact_per_file_bytes"
+_PER_FILE_CLASS_LABEL = "runtime-envelope/static-artifact per-file"
+
+
+def _ceiling_value(ceilings: Mapping[str, Any], member: str) -> int:
+    value = ceilings.get(member)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"evidence ceiling {member} is missing or malformed")
+    return value
+
+
+def _evidence_ceiling_breaches(
+    run_dir: Path,
+    candidate_record_bytes: int,
+    ceilings: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Compute every v1.20 §4 ceiling breach for the CANDIDATE bundle.
+
+    Sizes are exact on-disk byte counts (``st_size``); the candidate terminal
+    record is priced at its exact canonical serialization length (the bytes
+    the atomic publisher would write).  The per-file class map derives from
+    ``classify_run_dir_layout(RUN_DIR_LAYOUT)`` at decision time, so an
+    unclassified new layout member fails closed here before any size verdict.
+    Residual, disclosed (Codex R2a review; same class as the Layer-3 hashes):
+    the decision prices the evidence AFTER Layer 2 closes and the child has
+    exited, so no capture-side writer runs afterward; growth between this
+    decision and publication would require same-user external mutation,
+    which the frozen threat model (v1.19 §5) places out of scope, and the
+    content stays digest-bound by ``RAW_MANIFEST.sha256`` so any
+    post-decision change is audit-detectable.
+    The complete-bundle sum covers every regular file beneath the run
+    directory (directories excluded; the root terminal-record path excluded
+    from the on-disk sum in favor of the candidate's serialized bytes), so
+    ``RAW_MANIFEST.sha256``, every ``nodes/`` and scratch file, and any
+    unclassified stray file can never escape the aggregate.
+    """
+
+    from bistar_gp.m2cr.measure import classify_run_dir_layout
+
+    classes = classify_run_dir_layout(RUN_DIR_LAYOUT)
+    per_file_ceiling = _ceiling_value(ceilings, _PER_FILE_CEILING_MEMBER)
+    breaches: list[dict[str, Any]] = []
+
+    def breach(klass: str, path: str, observed: int, limit: int) -> None:
+        breaches.append(
+            {"class": klass, "path": path, "observed": observed, "ceiling": limit}
+        )
+
+    for name, (klass, _reason) in classes.items():
+        if name.endswith("/") or name == TERMINAL_RECORD_NAME:
+            # Directory members are governed by the bundle aggregate; the
+            # terminal record is priced as the candidate below.
+            continue
+        path = run_dir / name
+        if not path.is_file():
+            continue
+        observed = path.stat().st_size
+        if klass in ("fixed_runtime", "conditional"):
+            if observed > per_file_ceiling:
+                breach(_PER_FILE_CLASS_LABEL, name, observed, per_file_ceiling)
+        elif klass == "per_event_stream":
+            limit = _ceiling_value(ceilings, "event_stream_bytes")
+            if observed > limit:
+                breach("event-stream", name, observed, limit)
+        elif klass == "stream_allowance":
+            mapped = _STREAM_CEILING_MEMBERS.get(name)
+            if mapped is None:
+                raise ValueError(
+                    f"stream_allowance member {name!r} has no dedicated "
+                    "ratified ceiling"
+                )
+            member, label = mapped
+            limit = _ceiling_value(ceilings, member)
+            if observed > limit:
+                breach(label, name, observed, limit)
+        else:
+            raise ValueError(
+                f"file-shaped layout member {name!r} has unpriceable evidence "
+                f"class {klass!r}"
+            )
+    if candidate_record_bytes > per_file_ceiling:
+        breach(
+            _PER_FILE_CLASS_LABEL,
+            f"{TERMINAL_RECORD_NAME} (candidate)",
+            candidate_record_bytes,
+            per_file_ceiling,
+        )
+    total = candidate_record_bytes
+    for path in run_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.relative_to(run_dir).as_posix() == TERMINAL_RECORD_NAME:
+            continue
+        total += path.stat().st_size
+    bundle_ceiling = _ceiling_value(ceilings, "complete_bundle_bytes")
+    if total > bundle_ceiling:
+        breach("complete-bundle", "complete_bundle", total, bundle_ceiling)
+    return breaches
+
+
+def _overflow_detail(breaches: Sequence[Mapping[str, Any]], displaced: str) -> str:
+    parts = [
+        f"{item['class']} {item['path']}: observed {item['observed']} B "
+        f"exceeds ceiling {item['ceiling']} B"
+        for item in breaches
+    ]
+    return "evidence overflow: " + "; ".join(parts) + "; " + displaced
+
+
+def _apply_evidence_ceilings(
+    run_dir: Path, record: Mapping[str, Any], ceilings: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The v1.20 §4 overflow decision over one CANDIDATE terminal record.
+
+    Consumes the candidate's sizes exactly once and never reconsiders the
+    outcome because the smaller replacement record would fit (the candidate
+    rule); the replacement is not itself re-priced.  Ratified B2 precedence is
+    unamended: rule-(1) NOT_STARTED and rule-(2) ABORTED_BUDGET candidates
+    pass through unchanged; rule-(4) protocol candidates are replaced outright
+    on breach; already-INFRA_FAILURE candidates keep their status with the
+    fault class elevated to ``evidence_overflow`` and the displaced fault
+    preserved in the detail.  This function never raises: an internal
+    enforcement failure fails CLOSED for certifiable candidates (a
+    capture_fault INFRA_FAILURE via the cannot-fail last-resort builder) and
+    leaves an already-non-certifiable INFRA_FAILURE candidate unchanged.
+    """
+
+    candidate = dict(record)
+    status = candidate.get("status")
+    if status in ("NOT_STARTED", "ABORTED_BUDGET"):
+        return candidate
+    certifiable = status in ("COMPLETED", "ALGORITHM_STOP")
+    payload_started = (run_dir / "payload_started.json").is_file()
+    evidence = candidate.get("evidence")
+    evidence = dict(evidence) if isinstance(evidence, Mapping) else {}
+
+    def last_resort(detail: str, fault_class: str) -> dict[str, Any]:
+        return _last_resort_terminal_record(
+            record_kind=str(candidate.get("record_kind", "diagnostic")),
+            run_id=str(candidate.get("run_id", "")),
+            launch_attempt_id=str(candidate.get("launch_attempt_id", "")),
+            chain=(
+                candidate.get("chain")
+                if isinstance(candidate.get("chain"), Mapping)
+                else {}
+            ),
+            evidence=evidence,
+            detail=detail,
+            payload_started=payload_started,
+            fault_class=fault_class,
+        )
+
+    try:
+        candidate_bytes = len(canonical_bytes(candidate))
+        breaches = _evidence_ceiling_breaches(run_dir, candidate_bytes, ceilings)
+    except Exception as exc:
+        if certifiable:
+            return last_resort(
+                "evidence-ceiling enforcement failed for candidate "
+                f"{status}: {exc}",
+                "capture_fault",
+            )
+        return candidate
+    if not breaches:
+        return candidate
+    if certifiable:
+        displaced = f"displaced candidate outcome: {status}"
+    else:
+        fault_obj = candidate.get("fault")
+        fault_obj = dict(fault_obj) if isinstance(fault_obj, Mapping) else {}
+        displaced = (
+            "displaced candidate fault: "
+            f"{fault_obj.get('fault_class', 'unknown')}: "
+            f"{fault_obj.get('detail', '')}"
+        )
+    detail = _overflow_detail(breaches, displaced)
+    fault_obj = candidate.get("fault")
+    reconstructed = bool(
+        fault_obj.get("reconstructed", False)
+        if isinstance(fault_obj, Mapping)
+        else False
+    )
+    try:
+        # The replacement is deliberately MINIMAL (fault + the evidence digest
+        # block the schema requires): the complete information — per-node
+        # records, events, streams, payload — is retained on disk and covered
+        # by RAW_MANIFEST.sha256, and a small replacement is structurally
+        # bounded so it can never compound the overflow it reports (v1.20 §4,
+        # no recursive size semantics).
+        return assemble_terminal_record(
+            record_kind=candidate["record_kind"],
+            status="INFRA_FAILURE",
+            run_id=candidate["run_id"],
+            launch_attempt_id=candidate["launch_attempt_id"],
+            chain=candidate["chain"],
+            evidence=evidence,
+            infra_fault={
+                "fault_class": "evidence_overflow",
+                "detail": detail,
+                "reconstructed": reconstructed,
+                "payload_started": payload_started,
+            },
+        )
+    except Exception as exc:
+        return last_resort(
+            (detail + f"; replacement assembly failed: {exc}"),
+            "evidence_overflow",
+        )
 
 
 def _prelaunch(
@@ -1699,7 +1917,13 @@ def enumerate_bootstrap_closure(
 
 
 _LAST_RESORT_FAULT_CLASSES = frozenset(
-    {"capture_fault", "attestation_fault", "missing_postcheck", "other"}
+    {
+        "capture_fault",
+        "attestation_fault",
+        "missing_postcheck",
+        "evidence_overflow",
+        "other",
+    }
 )
 
 
@@ -1993,6 +2217,14 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                 attempted_record=record,
                 cause=exc,
             ) from exc
+        # v1.20 §4 coverage: enforcement is operative from successful
+        # launch-spec authentication onward; a failure BEFORE the spec exists
+        # has no authenticated ceiling values and publishes as-is (already a
+        # non-consuming INFRA_FAILURE).  The elevation path never raises.
+        if spec is not None:
+            record = _apply_evidence_ceilings(
+                run_dir, record, spec.evidence_ceilings
+            )
         try:
             _write_terminal(run_dir, record)
             return record
@@ -2421,6 +2653,15 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
             detail=f"terminal assembly failed for status {status}: {exc}",
             payload_started=(run_dir / "payload_started.json").is_file(),
         )
+    # v1.20 §4: the frozen evidence-size ceilings are applied to the CANDIDATE
+    # record after Layer 3, immediately before publication.  ``spec`` is
+    # always authenticated on this path; the empty-mapping fallback exists so
+    # an impossible None still fails CLOSED inside the decision (missing
+    # ceiling values become a capture_fault INFRA_FAILURE for certifiable
+    # candidates), never open.
+    record = _apply_evidence_ceilings(
+        run_dir, record, spec.evidence_ceilings if spec is not None else {}
+    )
     try:
         _write_terminal(run_dir, record)
         return record
@@ -2446,6 +2687,58 @@ def _config_value(config: LaunchConfig | Mapping[str, Any], name: str) -> Any:
     if isinstance(config, LaunchConfig):
         return getattr(config, name)
     return config[name]
+
+
+def _reconciliation_ceilings(
+    provenance: Mapping[str, Any],
+) -> tuple[dict[str, int] | None, str | None]:
+    """Authenticate the frozen evidence ceilings from CAPTURED provenance.
+
+    Reconciliation has no live spec; v1.20 §4 derives the ceilings the same
+    way the launch did — the committed infrastructure manifest under the
+    captured worktree root, digest-bound to the captured chain, then the
+    ``evidence_ceilings`` pin.  Returns ``(ceilings, None)`` on success and
+    ``(None, reason)`` when the pinned artifact cannot be authenticated (for
+    example the freeze-time worktree no longer exists): recovery is never
+    blocked, and the reconstructed record discloses the unavailability.
+    """
+
+    try:
+        worktree_value = provenance.get("worktree_root")
+        if not isinstance(worktree_value, str) or not worktree_value:
+            raise ValueError("prelaunch provenance lacks worktree_root")
+        chain = provenance.get("chain")
+        if not isinstance(chain, Mapping):
+            raise ValueError("prelaunch provenance lacks a chain")
+        worktree = Path(worktree_value)
+        infra_path = worktree / _COMMITTED_INFRA_RELPATH
+        if not infra_path.is_file():
+            raise ValueError(
+                f"infrastructure manifest absent under captured worktree: "
+                f"{infra_path}"
+            )
+        expected_sha = chain.get("infrastructure_manifest_sha256")
+        if (
+            not isinstance(expected_sha, str)
+            or _SHA256_RE.fullmatch(expected_sha) is None
+            or sha256_file(infra_path) != expected_sha
+        ):
+            raise ValueError(
+                "infrastructure manifest under the captured worktree does "
+                "not match the captured chain binding"
+            )
+        infra = _read_json_object(infra_path)
+        infra_artifacts = infra.get("artifacts")
+        if not isinstance(infra_artifacts, Mapping):
+            raise ValueError("infrastructure manifest lacks an artifacts section")
+        ceilings_path = _authenticated_pin_under_worktree(
+            infra_artifacts, "evidence_ceilings", worktree
+        )
+        from bistar_gp.m2cr.environment_freeze import parse_evidence_ceilings
+
+        return parse_evidence_ceilings(_read_json_object(ceilings_path)), None
+    except Exception as exc:
+        return None, str(exc)
 
 
 def reconcile_run(
@@ -2513,6 +2806,17 @@ def reconcile_run(
         "node_evidence_digests": node_evidence,
         "event_stream_balanced": bool(balance["balanced"]),
     }
+    # v1.20 §4 coverage: reconciliation applies the SAME overflow decision as
+    # normal capture, with the ceilings authenticated from the captured
+    # provenance; an unauthenticatable ceilings artifact never blocks recovery
+    # and is disclosed in the reconstructed record's detail instead.
+    ceilings, ceilings_unavailable = _reconciliation_ceilings(provenance)
+    detail = "terminal envelope reconstructed after parent death"
+    if ceilings is None:
+        detail += (
+            "; evidence-ceiling check unavailable: "
+            f"{ceilings_unavailable or 'unknown reason'}"
+        )
     record = assemble_terminal_record(
         record_kind=record_kind,
         status="INFRA_FAILURE",
@@ -2522,11 +2826,13 @@ def reconcile_run(
         evidence=evidence,
         infra_fault={
             "fault_class": "capture_fault",
-            "detail": "terminal envelope reconstructed after parent death",
+            "detail": detail,
             "reconstructed": True,
             "payload_started": (root / "payload_started.json").is_file(),
         },
     )
+    if ceilings is not None:
+        record = _apply_evidence_ceilings(root, record, ceilings)
     # CP-5 + Codex round-3 C4: publish through the shared no-clobber, fsync'd,
     # atomic-link protocol so two racing reconcilers — OR reconciliation racing
     # normal capture — cannot overwrite each other's terminal record; the loser
@@ -2874,6 +3180,15 @@ def _authenticate_launch_spec(
     lock_path = _authenticated_pin_under_worktree(
         infra_artifacts, "dependency_lock", worktree
     )
+    # v1.20 (R2a): the frozen evidence-size ceilings are a committed Layer-0
+    # artifact, infra-pinned and authenticated here so the parent-side
+    # overflow decision consumes only the one machine-readable authority.
+    ceilings_path = _authenticated_pin_under_worktree(
+        infra_artifacts, "evidence_ceilings", worktree
+    )
+    from bistar_gp.m2cr.environment_freeze import parse_evidence_ceilings
+
+    evidence_ceilings = parse_evidence_ceilings(_read_json_object(ceilings_path))
     expectations = _read_json_object(expectations_path)
     dependency_lock = _read_json_object(lock_path)
     for key in _MANDATORY_ATTESTATION_KEYS:
@@ -3008,6 +3323,7 @@ def _authenticate_launch_spec(
         "environment_freeze_manifest_sha256": env_freeze_sha,
         "infrastructure_manifest_sha256": expected_infra_sha,
         "bootstrap_path": os.fspath(bootstrap_path.resolve()),
+        "evidence_ceilings": evidence_ceilings,
     }
     return AuthenticatedLaunchSpec(
         spec_sha256=canonical_sha256(document),
@@ -3029,6 +3345,7 @@ def _authenticate_launch_spec(
         environment_freeze_manifest_sha256=env_freeze_sha,
         infrastructure_manifest_sha256=expected_infra_sha,
         bootstrap_path=document["bootstrap_path"],
+        evidence_ceilings=evidence_ceilings,
     )
 
 

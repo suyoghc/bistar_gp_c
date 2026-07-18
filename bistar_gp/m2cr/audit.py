@@ -29,6 +29,7 @@ __all__ = [
     "verify_ledger_against_evidence",
     "verify_chain",
     "verify_infrastructure_manifest",
+    "verify_evidence_ceiling_compliance",
     "band_masses_sum_identity",
     "verify_environment_freeze",
     "verify_preboundary_closure_complete",
@@ -109,6 +110,7 @@ _INFRASTRUCTURE_ARTIFACT_KEYS = {
     "environment_freeze_manifest",
     "dependency_lock",
     "native_stack_expectations",
+    "evidence_ceilings",
 }
 _INFRASTRUCTURE_R1_SCHEMA_KEYS = {
     "execution_record",
@@ -1313,6 +1315,135 @@ def verify_infrastructure_manifest(
                 checks=checks,
                 errors=errors,
             )
+    return {"ok": not errors, "errors": errors, "checks": checks}
+
+
+def verify_evidence_ceiling_compliance(
+    manifest_path: str | os.PathLike[str],
+    repo_root: str | os.PathLike[str] | None = None,
+) -> dict[str, Any]:
+    """v1.20 §2 scope 1 + §4: static-artifact ceiling enforcement (audit CI).
+
+    Authenticates the ``evidence_ceilings`` pin through the infrastructure
+    manifest, parses the artifact CLOSED-WORLD (the auditor consumes only the
+    one committed machine authority, restating no numeric value), then checks
+    every artifact-table pinned file AND the infrastructure manifest file
+    itself against the runtime-envelope/static-artifact per-file ceiling.
+    The manifest's kind, schema version, top-level shape, and EXACT artifact
+    key set are required first (Codex R2a review MAJOR): a stripped or
+    reshaped manifest must fail this audit on its own, never silently shrink
+    static coverage while reporting ``ok``.  Static freeze artifacts are
+    governed here, never inside any per-run bundle; a breach fails
+    regeneration/audit CI closed.
+    """
+
+    from bistar_gp.m2cr.environment_freeze import parse_evidence_ceilings
+
+    path = Path(manifest_path).resolve()
+    resolution_base = _pin_resolution_base(path, repo_root)
+    errors: list[str] = []
+    checks: list[dict[str, Any]] = []
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"ok": False, "errors": [f"cannot read manifest: {exc}"], "checks": []}
+    if not isinstance(manifest, dict):
+        return {
+            "ok": False,
+            "errors": ["infrastructure manifest is not an object"],
+            "checks": [],
+        }
+    shape_errors: list[str] = []
+    if manifest.get("kind") != "m2cr_infrastructure_manifest":
+        shape_errors.append("wrong infrastructure manifest kind")
+    if manifest.get("schema_version") != 1:
+        shape_errors.append("wrong infrastructure manifest schema_version")
+    if set(manifest) != {"kind", "schema_version", "code", "artifacts", "r1_schemas"}:
+        shape_errors.append(
+            "infrastructure manifest has a non-canonical top-level key set"
+        )
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, dict):
+        shape_errors.append("infrastructure manifest lacks an artifacts section")
+    elif set(artifacts) != _INFRASTRUCTURE_ARTIFACT_KEYS:
+        shape_errors.append(
+            "infrastructure manifest artifacts section does not have its "
+            "exact required key set; static ceiling coverage would be "
+            "incomplete"
+        )
+    if shape_errors:
+        return {"ok": False, "errors": shape_errors, "checks": []}
+    pin = artifacts.get("evidence_ceilings")
+    if (
+        not isinstance(pin, dict)
+        or not isinstance(pin.get("path"), str)
+        or not isinstance(pin.get("sha256"), str)
+    ):
+        return {
+            "ok": False,
+            "errors": [
+                "infrastructure manifest does not pin evidence_ceilings"
+            ],
+            "checks": [],
+        }
+    ceilings_file = _resolve_pinned_path(pin["path"], resolution_base)
+    if ceilings_file is None or not ceilings_file.is_file():
+        return {
+            "ok": False,
+            "errors": [f"pinned evidence_ceilings absent: {pin['path']}"],
+            "checks": [],
+        }
+    if sha256_file(ceilings_file) != pin["sha256"]:
+        return {
+            "ok": False,
+            "errors": [
+                "evidence_ceilings sha256 does not match its infrastructure pin"
+            ],
+            "checks": [],
+        }
+    try:
+        ceilings = parse_evidence_ceilings(
+            json.loads(ceilings_file.read_text(encoding="utf-8"))
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return {
+            "ok": False,
+            "errors": [f"evidence_ceilings artifact malformed: {exc}"],
+            "checks": [],
+        }
+    per_file = ceilings["runtime_envelope_static_artifact_per_file_bytes"]
+
+    def check_size(label: str, target: Path) -> None:
+        try:
+            observed = target.stat().st_size
+        except OSError as exc:
+            errors.append(f"{label}: unreadable for size check: {exc}")
+            return
+        checks.append(
+            {"label": label, "observed_bytes": observed, "ceiling_bytes": per_file}
+        )
+        if observed > per_file:
+            errors.append(
+                f"{label}: observed {observed} B exceeds the "
+                f"runtime-envelope/static-artifact per-file ceiling "
+                f"{per_file} B"
+            )
+
+    for name, artifact_pin in sorted(artifacts.items()):
+        if not isinstance(artifact_pin, dict) or not isinstance(
+            artifact_pin.get("path"), str
+        ):
+            errors.append(f"artifacts:{name}: malformed pin")
+            continue
+        resolved = _resolve_pinned_path(artifact_pin["path"], resolution_base)
+        if resolved is None or not resolved.is_file():
+            errors.append(
+                f"artifacts:{name}: pinned file absent for size check: "
+                f"{artifact_pin['path']}"
+            )
+            continue
+        check_size(f"artifacts:{name}", resolved)
+    check_size("infrastructure_manifest", path)
     return {"ok": not errors, "errors": errors, "checks": checks}
 
 

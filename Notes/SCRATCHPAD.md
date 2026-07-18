@@ -2,6 +2,29 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
+## M2cR R2a — v1.20 ceilings FROZEN + enforcement OPERATIONAL; Draft PR open (NOT Ready, NOT merged) (D49 + Update 1, 2026-07-18) — branch `feat/d19-m2cr-r2a-evidence-ceilings`, HARD STOP
+
+- **Ballot ratified (D49):** five exact byte ceilings — runtime-envelope/static-artifact per-file
+  33,554,432; events.jsonl 33,554,432; stdout.txt 16,777,216; stderr.txt 16,777,216; complete
+  per-run bundle 134,217,728 — frozen in prereg **v1.20** with exact scopes, counting rules, and
+  the candidate-record overflow decision. R2a amended ONCE (explicit author act) into a bounded
+  freeze+operationalization milestone; no separate R2b; R2 otherwise frozen; B2 precedence and the
+  R1 schema untouched.
+- **Enforcement shipped:** `m2cr_evidence_ceilings_v1.json` (ninth static artifact, infra-pinned,
+  spec-carried); the v1.20 §4 decision at Layer-3/terminal time in capture + last-resort +
+  reconciliation; `evidence_overflow` INFRA_FAILURE with full retention, never truncation; audit CI
+  static per-file checks (exact manifest key set required). 25 new ceiling tests + the committed
+  corroborating measurement rig (5,960 / 2,939 / 6,184); report provenance corrected per v1.20 §7.
+- **Gate:** full suite **868 passed / 2 skipped**; one Codex gpt-5.6-sol xHigh read-only exact-head
+  review (REVISE: 2 MAJOR / 2 MINOR) — one consolidated correction pass (audit shape/key-set
+  requirement; exact addendum provenance; report total), TOCTOU MAJOR dismissed with recorded
+  rationale (v1.19 §5 out-of-scope residual, digest-bound content). Regens at bfc4d0e and 3995d5c:
+  environment-derived artifacts byte-identical throughout; fixed-artifact total 8,868,576 B.
+- **NEXT (each a separate author act; none authorized):** author decides the R2a Draft PR
+  (Ready/merge). **R4 stays blocked until it merges.** Then R3 (diagnostic protocol freeze, §6
+  verbatim, diagnostic-record schema, PROTOCOL manifest, classifier goldens); R4 needs a fresh
+  grant in the v1.19 ledger + freeze regeneration at its own worktree/commit.
+
 ## M2cR R2 — CLOSED; external-audit BLOCKERs 1 AND 2 CLOSED (launch-authority cycle; findings 3/4/5/6 already closed); three-reviewer gate CLEAN at reviewed code head b673367 (four converging delta rounds; Codex + Opus APPROVE, GLM disproven); behavior-neutral tail through 3071046 verified by a one-shot Codex closure audit; PR #16 flipped Ready (NOT merged) (D48 Update 12, 2026-07-18) — branch `feat/d19-m2cr-r2-infrastructure`, HARD STOP
 
 - **Launch-authority cycle (D48 Update 12; reviewed code head b673367, final head 3071046):** finding 2

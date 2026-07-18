@@ -308,6 +308,154 @@ def test_evidence_size_report_figures_reproduce():
     assert len(canonical_bytes(failed)) == 1613  # report figure
 
 
+def test_structural_worst_case_and_event_figures_reproduce_from_committed_rig():
+    """Measurement-provenance correction (v1.20 §7, D49).
+
+    The report's 5,894 / 3,029 / 6,088 exemplars were measured by a
+    freeze-time rig that was never committed, so they are NOT reproduced by
+    any test (the report is corrected accordingly).  This COMMITTED rig walks
+    the same fixture/serializer path — the frozen v2 gates over the same
+    rigged quadratic oracle, with both starts restarted and the retry fired —
+    and pins its own independently derived exemplars against separately
+    written expected integers, corroborating the recorded figures' structure
+    and magnitude with fully derivable numbers.
+    """
+
+    import io
+    import json
+    import numpy as np
+    from scipy.optimize import OptimizeResult
+    import bistar_gp.m2cr.gates_v2 as gates
+    from bistar_gp.m2cr.events import EventSink
+    from bistar_gp.m2cr.records import (
+        build_two_start_optimizer_record,
+        build_curvature_record,
+        build_battery_record,
+        build_warm_start_ref,
+        build_per_node_record,
+    )
+    from bistar_gp.m2cr.coordinates import storage_to_canonical_permutation
+    from bistar_gp.m2cr.serialization import canonical_bytes
+    from bistar_gp.m2c_freeze import TOL_GRAD_ABS, TOL_GRAD_REL
+
+    storage = (
+        "S.outputscale", "S.base_kernel.lengthscale", "S.kernels.1.variance"
+    )
+    perm = storage_to_canonical_permutation(storage)
+
+    def quad(diag):
+        A = np.diag(np.asarray(diag, dtype=np.float64))
+        return (
+            lambda u: -0.5 * float(np.asarray(u) @ A @ np.asarray(u)),
+            lambda u: -(A @ np.asarray(u, dtype=np.float64)),
+        )
+
+    def sink_events(run):
+        buffer = io.StringIO()
+        sink = EventSink(buffer)
+        run(sink)
+        return [
+            json.loads(line)
+            for line in buffer.getvalue().splitlines()
+            if line.strip()
+        ]
+
+    g, gr = quad([1.0, 4.0, 9.0])
+    ref_in = build_warm_start_ref(
+        {"kind": "mode_u"}, [0.0, 0.0, 0.0], "initial_mode_u"
+    )
+    ref_out = build_warm_start_ref(
+        {"kind": "accepted_node", "stage_id": "level0", "node_index": 0},
+        [0.0, 0.0, 0.0],
+        "accepted_current_node",
+    )
+    battery = build_battery_record(
+        [
+            {"role": r, "fd_step": 1e-5, "reference_value": v,
+             "functional_value": v, "absolute_error": 0.0,
+             "threshold": TOL_GRAD_ABS + TOL_GRAD_REL * 1.0, "pass": True}
+            for r, v in zip(("ls", "os", "lv"), (0.1, -0.2, 0.05))
+        ]
+    )
+
+    # Clean-node gate-event stream (the report's 9-event figure additionally
+    # counted the two payload-emitted node markers around these 7 gate
+    # events; the marker serialization belonged to the uncommitted rig).
+    clean_events = sink_events(
+        lambda sink: (
+            gates.optimize_conditional_v2(
+                lambda u: -g(u), lambda u: -gr(u), np.ones(3), -np.ones(3),
+                perm=perm, event_sink=sink, node_index=0,
+            ),
+            gates.curvature_gate_v2(
+                g, gr, np.zeros(3), storage, perm=perm, event_sink=sink,
+                node_index=0,
+            ),
+        )
+    )
+    assert len(clean_events) == 7
+    assert measure.measure_event_bytes(clean_events) == 2939  # committed rig
+
+    # Structural worst case: each start's ORIGINAL minimize call returns a
+    # nonzero status (calls 1 and 3), so the frozen gate restarts both starts;
+    # a near-singular quadratic then drives the SPD/rcond retry.
+    real_minimize = gates.minimize
+    calls = {"n": 0}
+
+    def abnormal_original_per_start(fun, x0, **kwargs):
+        calls["n"] += 1
+        if calls["n"] in (1, 3):
+            return OptimizeResult(
+                x=np.asarray(x0, dtype=np.float64),
+                status=2,
+                success=False,
+                message="ABNORMAL",
+                fun=float(fun(np.asarray(x0, dtype=np.float64))),
+            )
+        return real_minimize(fun, x0, **kwargs)
+
+    g_flat, gr_flat = quad([1.0, 1e-18, 1.0])
+    try:
+        gates.minimize = abnormal_original_per_start
+        worst_opt_events = sink_events(
+            lambda sink: gates.optimize_conditional_v2(
+                lambda u: -g(u), lambda u: -gr(u), np.ones(3), -np.ones(3),
+                perm=perm, event_sink=sink, node_index=0,
+            )
+        )
+        calls["n"] = 0
+        opt_worst = gates.optimize_conditional_v2(
+            lambda u: -g(u), lambda u: -gr(u), np.ones(3), -np.ones(3),
+            perm=perm,
+        )
+    finally:
+        gates.minimize = real_minimize
+    assert opt_worst["restart_count"] == 2  # both starts restarted
+    retry_events = sink_events(
+        lambda sink: gates.curvature_gate_v2(
+            g_flat, gr_flat, np.zeros(3), storage, perm=perm,
+            event_sink=sink, node_index=0,
+        )
+    )
+    cur_worst = gates.curvature_gate_v2(
+        g_flat, gr_flat, np.zeros(3), storage, perm=perm
+    )
+    assert cur_worst["retry_evidence"]["fired"] is True
+    worst = build_per_node_record(
+        0, 0.1, storage, ref_in, ref_out,
+        build_two_start_optimizer_record(opt_worst, perm), True,
+        [0.0, 0.0, 0.0], battery, build_curvature_record(cur_worst, perm),
+        stage_id="level0",
+    )
+    # Committed-rig exemplars (separately written integers; the report's
+    # 5,894 / 6,088 came from the uncommitted freeze-time rig's different
+    # message strings and rigged values).
+    assert len(canonical_bytes(worst)) == 5960
+    worst_events = worst_opt_events + retry_events
+    assert len(worst_events) == 15
+    assert measure.measure_event_bytes(worst_events) == 6184
+
+
 def test_evidence_size_report_fixed_total_matches_committed_artifacts():
     """External audit round-2 F8: the report's fixed-artifact total must equal
     the sum of the committed artifacts' actual byte sizes, so a regenerated
@@ -327,6 +475,9 @@ def test_evidence_size_report_fixed_total_matches_committed_artifacts():
         "m2cr_child_env_mapping_v1.json",
         "m2cr_interpreter_pin_v1.json",
         "m2cr_native_stack_expectations_v1.json",
+        # v1.20 (R2a): the frozen evidence-ceilings artifact joins the
+        # committed static freeze set.
+        "m2cr_evidence_ceilings_v1.json",
     ]
     freeze = root / "docs/m2c_freeze"
     if not all((freeze / name).exists() for name in artifacts):

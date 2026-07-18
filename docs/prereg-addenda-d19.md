@@ -1681,3 +1681,165 @@ MAP, sampler, VI, `hmc_laplace`, or Mauna access, and **no `--execute`**; the 60
 SEALED (§6.6)**. **R2 is not begun and is not authorized.** The reserved v1.18 result-instance path
 stays **ABSENT** and the **v1.18 label stays permanently unused**. Every future execution requires its
 own fresh explicit author authorization, recorded in the §6 ledger.
+
+## v1.20 — M2cR R2a: exact per-class evidence-size ceilings FROZEN (B15(ii)); R2a scope amendment to one bounded operationalization milestone; enforcement semantics; measurement-provenance correction mandate (author ballot, milestone R2a) — 2026-07-18
+
+**Prereg anchor:** v1.19 (the R1 taxonomy freeze, unchanged), v1.17 (untouched), and the D45/D46/D48
+chain. Provenance: PR #16 merged R2 at `9bb246714f6c64f0a5e65e9afbc50fef627dbc54` (D48 Update 12 and
+its closure update); an independent preflight verified every figure in
+`docs/m2cr-r2-evidence-size-report.md` (arithmetic, on-disk artifact sizes, entry counts, hermetic
+measurement suite 13/13) and audited enforcement ownership; the author then cast the ballot recorded
+in **D49**, which this addendum freezes. The governing plan remains `docs/plan-post-d45-m2cr.md`,
+pinned at
+
+```
+sha256 51b8ec602bc955a619432fd1097012efbfa795e4bccb0a2cc7830d07e1aefbf7
+```
+
+**Numbering (B3).** This is **v1.20**, the next sequential number after v1.19, assigned at
+ratification per the B3 rule. The addenda sequence is v1.15, v1.17, v1.19, **v1.20**; v1.16 remains a
+run/protocol label, v1.18 remains permanently unused.
+
+**1. Frozen per-class ceilings (B15(ii) resolved; exact byte values, ratified).** Every value is an
+exact byte count; mebibyte figures appear only as parenthetical gloss.
+
+| Class | Ceiling (bytes) | Gloss |
+|---|---|---|
+| runtime-envelope/static-artifact **per-file** | **33,554,432** | 32 MiB |
+| event stream (`events.jsonl`), per run | **33,554,432** | 32 MiB |
+| `stdout.txt`, per run | **16,777,216** | 16 MiB |
+| `stderr.txt`, per run | **16,777,216** | 16 MiB |
+| complete per-run evidence bundle | **134,217,728** | 128 MiB |
+
+Basis, labeled per plan §4.4 ("say derived where it derives"): the per-file ceiling holds ×3.84 over
+the largest measured static artifact (the 8,744,319-byte importable manifest, measured); the event
+ceiling holds ×3.72 over the derived structural worst-case stream (9,016,328 = 6,088 × 1,481,
+derived from a measured exemplar); the bundle ceiling holds ×7.53 over the derived measured-basis
+subtotal (17,830,263, derived); stdout/stderr have **no measured basis by design** (caller
+allowances, set here on structural grounds). A 256 MiB bundle alternative was **rejected** (D49):
+128 MiB already provides substantial headroom while retaining useful fault detection and limiting
+committed repository growth. None of these figures is a proven maximum over all runs (the
+optimizer/retry `message` string is schema-unbounded); if a legitimate complete run ever exceeds a
+ceiling, the remedy is a **larger ceiling in a later versioned addendum**, never truncation and
+never reduced completeness.
+
+**2. Exact scope of each ceiling (the precise operational interpretation of plan §4.4's class
+list).** Plan §4.4's "attestation manifests" class is operationalized as the
+**runtime-envelope/static-artifact per-file** class, a per-file ceiling covering:
+
+1. **each committed static freeze artifact** — the artifacts pinned by the infrastructure manifest's
+   artifact table (including the evidence-ceilings artifact of §5), plus the infrastructure manifest
+   file itself — checked at **regeneration/audit time**, never counted toward any per-run bundle; and
+2. **every per-run `RUN_DIR_EVIDENCE_CLASSES` member classified `fixed_runtime` or `conditional`**,
+   including `RAW_MANIFEST.sha256` and the **candidate terminal record** (its exact serialized
+   bytes; see §3), checked at the per-run decision point.
+
+`events.jsonl`, `stdout.txt`, and `stderr.txt` use their dedicated per-run ceilings above. The
+`nodes/` subtree and the run-local `home/`, `tmp/`, and `xdg/` scratch directories carry **no
+separate class ceiling or allowance** and count toward the complete-bundle ceiling only. `pycache/`
+remains required empty (Stage C; unchanged). The complete per-run bundle is governed as one
+aggregate per run directory under `docs/m2c_evidence/<run_id>/`; static freeze artifacts are
+governed separately and are **not** part of any per-run bundle. **No chunking exists and none is
+introduced; truncation is never permitted.** Per-file and per-class-instance therefore coincide.
+
+**3. Counting and canonicalization rules.** A file's size is its exact on-disk byte count
+(`st_size`, the measurement `bistar_gp/m2cr/measure.py::measure_file` reports). The **candidate
+terminal record** is priced at the exact byte length of its canonical JSON serialization (the same
+bytes the atomic publisher writes). The **complete per-run bundle** is the sum over **every retained
+regular file beneath the run directory** (recursive; directories themselves excluded; the root
+terminal-record path excluded from the on-disk sum) **plus** the candidate terminal record's
+serialized bytes — so the count includes `RAW_MANIFEST.sha256`, the terminal record, every nested
+`nodes/` and scratch file, and any unclassified stray file (strays carry no per-file ceiling but can
+never escape the aggregate). The per-file class map is derived at decision time from
+`classify_run_dir_layout(RUN_DIR_LAYOUT)`, which **fails closed** if any layout member lacks a
+classification, so a newly introduced run-directory evidence file cannot escape classification or
+size accounting.
+
+**4. Overflow decision protocol (B15(iii) operationalized; ratified).** For every launch the parent:
+
+1. closes Layer-2 evidence (frozen write order unchanged);
+2. constructs and writes `RAW_MANIFEST.sha256` (Layer 3, unchanged);
+3. assembles the **candidate terminal record** for the outcome the ratified §4.3/B2 precedence
+   selects;
+4. computes the candidate sizes: every per-file class check of §2, the dedicated `events.jsonl` /
+   `stdout.txt` / `stderr.txt` checks, and the complete-bundle sum of §3, **including** the candidate
+   terminal record;
+5. if any class or total ceiling is exceeded, **replaces the candidate outcome with an
+   `INFRA_FAILURE` record carrying `fault_class: "evidence_overflow"`** and publishes it over the
+   complete retained evidence — **nothing is truncated, deleted, or omitted**; the oversized bundle
+   is retained and committed in full. Overflow voids certification, not retention.
+
+**Candidate rule.** The decision consumes the candidate's sizes exactly once. The
+scientific/protocol outcome is **never reconsidered** because the smaller replacement
+`evidence_overflow` record would bring the final retained directory below a ceiling: the attempted
+candidate exceeded the ceiling and remains failed. The replacement record is not itself re-priced
+(no recursive or self-referential size semantics).
+
+**Precedence interaction (B2 unchanged; first match wins).** Candidates selected by precedence rule
+(4) — a protocol exit yielding COMPLETED or ALGORITHM_STOP — are replaced outright on breach, the
+displaced candidate status recorded in the fault detail. Candidates already `INFRA_FAILURE` (rules
+(3)/(5), assembly fallback, reconciliation) keep that status with `fault_class` elevated to
+`evidence_overflow` and the displaced fault class and detail preserved in the detail text. Rule-(1)
+`NOT_STARTED` and rule-(2) `ABORTED_BUDGET` candidates keep their ratified statuses: B2's
+first-match precedence is not amended here (rule (2) explicitly survives capture faults that follow
+the kill, and the untouched closed R1 schema gives those branches no fault object); neither status
+is scientific or certifiable, and the oversized evidence remains committed and visible. Authorization
+consumption is unchanged and continues to depend **solely** on `payload_started.json` (v1.19 §6).
+
+**Fault detail contract.** The `evidence_overflow` detail identifies, for every breach, the
+applicable class, the offending path (or `complete_bundle`), the observed candidate bytes, and the
+ceiling bytes, plus the displaced candidate outcome; the breach enumeration is structurally bounded
+by the fixed class set and cannot recurse.
+
+**Coverage.** The protocol applies to the normal capture terminal path, to the post-authentication
+last-resort envelope (fault-class elevation, within the last-resort detail limit), and to
+**reconciliation** (`reconcile_run`), which authenticates the ceilings from the captured
+`prelaunch.json` provenance (worktree root plus chain-bound infrastructure-manifest digest). If
+reconciliation cannot authenticate the pinned ceilings artifact (for example the freeze-time
+worktree no longer exists), the reconstructed `INFRA_FAILURE` record is still published with that
+unavailability disclosed in its detail: recovery is never blocked, and the record is non-certifiable
+either way. Failures **before** launch-spec authentication succeed carry no authenticated ceiling
+values and publish as today; every such outcome is already a non-consuming `INFRA_FAILURE`.
+Enforcement is operative from successful launch-spec authentication onward. **Static-artifact
+overflow fails regeneration/audit CI** (the committed-tree audit checks every §2-scope static file
+against the per-file ceiling).
+
+**5. One authenticated machine-readable source of truth.** The five ceilings are frozen in a new
+committed Layer-0 artifact, `docs/m2c_freeze/m2cr_evidence_ceilings_v1.json`
+(`kind: "m2cr_evidence_ceilings"`, `schema_version: 1`, `addendum: "v1.20"`, and a closed `ceilings`
+object with exactly five integer members). The infrastructure manifest pins it as the
+`evidence_ceilings` artifact; `_authenticate_launch_spec` resolves and digest-verifies it under the
+launch worktree, validates it closed-world, and carries the values on the spec (spec-digest-bound),
+so parent-side enforcement and the audit tooling consume **only** this artifact — no independently
+editable duplicate constants exist in code. This addendum records the ratified values; the committed
+artifact is the machine authority; the audit CI asserts the two agree.
+
+**6. R2a scope amendment (explicit author act, D49).** Plan §8 defined R2a as a versioned
+pre-execution addendum only. The author **explicitly amends R2a once** so the milestone owns, as one
+bounded unit: (1) this docs-first v1.20 numerical freeze, and (2) the **narrowly scoped enforcement
+required to make these values operational** — the ceilings artifact, its infrastructure-manifest
+pin, the §4 decision protocol in the capture/reconciliation paths, the static audit checks, their
+hermetic tests, and the resulting artifact regeneration. This is an explicit amendment to the prior
+addendum-only wording, **not** a silent reinterpretation of R2 or R3; R2 remains otherwise frozen,
+and R3's charter is untouched. Within one branch and PR, **freeze-before-implementation** holds:
+v1.20 and D49 are committed first; enforcement follows in subsequent commits; **R4 remains blocked
+until the complete R2a PR merges.** No further hardening round of R2 is opened beyond this bounded
+scope.
+
+**7. Measurement-provenance correction (truthfulness).** The R2 report's claim that
+`tests/test_m2cr_measure.py::test_evidence_size_report_figures_reproduce` deterministically
+reproduces its measured exemplars presently holds only for 3,179 and 1,613. R2a must either extend
+the hermetic tests to **reproduce 5,894 / 3,029 / 6,088 / 84,921 from the fixture/serializer path**
+(compared against separately written expected integers, never by copying report constants into a
+tautology) or, for any figure that cannot be reproduced independently, **correct the current report**
+instead of freezing the unsupported value, recording the correction in D49. Historical D48 text
+remains historical.
+
+**What this addendum does NOT change or authorize.** It changes **no v1.17 value, tolerance, gate,
+reference, predicate, or algorithm**; no frozen M2bR/M2c artifact; **no R1 schema** (the
+`evidence_overflow` enum member and every closed branch stand exactly as frozen in v1.19; the
+unbounded optimizer/retry `message` field remains unbounded); **no B2 precedence row**; no gate,
+serializer, event, or record contract. It authorizes **NO** compute, recompute, diagnostic, profile,
+optimizer, gradient, Hessian, curvature, MAP, sampler, VI, or Mauna access, and **no `--execute`**;
+the 60-month **holdout stays SEALED**. **R3 is not begun and is not authorized; R4 requires its own
+fresh grant and is blocked until the R2a PR merges.** The v1.18 label stays permanently unused.
