@@ -514,6 +514,33 @@ an out-of-tree file (§4.5.13 out of scope, above); a `zipimporter`-origin modul
 stricter `synthetic_no_file` gate (Opus NOTE-3 — the real torch/numpy/scipy stack does not trip it,
 verified by the passing battery).
 
+### Three-reviewer gate — round 3 (focused delta) adjudication (2026-07-18, head f4eb9e0)
+
+The round-2 fix head `f4eb9e0` went through the focused delta gate. **GLM 5.2 APPROVE** (five NIT
+confirmations). **Opus 4.8 APPROVE** — it independently re-probed the CPython audit-event behaviour
+and confirmed all four round-2 fixes closed with no new defect and no plan contradiction (five
+non-blocking NOTEs, all disclosed §4.5.13 residuals or one-line doc suggestions). **Codex** returned
+1 MAJOR + 1 MINOR, both adjudicated below.
+
+- **r3-1 (MAJOR, adjudicated: comment imprecision, no security gap):** Codex noted that an ORDINARY
+  optional import that executes and raises is auto-evicted by CPython, so my round-2 comment calling
+  the evicted case "deliberate" was too narrow. Opus independently verified — and the source
+  confirms — that an evicted module imported through normal machinery loaded from the frozen four
+  roots, so its file is UNDER a root and its bytes are authenticated by the pre- and post-execution
+  manifest completeness re-walk (which hashes every under-root file and requires the full set to
+  equal the frozen manifest), with its loader fixed by the artifact type. §4.5.7's origin and
+  loader-class obligations are therefore met at the FILE level for an auto-evicted under-root module
+  even without a resident per-module record; the only uncovered case is a deliberate out-of-tree
+  `spec_from_file_location` (the §4.5.13 residual). The comment was refined to state this precisely;
+  no code fail-open exists.
+- **r3-2 (MINOR, confirmed, fixed):** the CD4 loader-"none" exception was gated on the loader
+  spelling, so a manifest entry with a bytecode `artifact_type` mislabeled with a source `loader`
+  would be accepted — reachable only through a TAMPERED manifest (which fails chain authentication
+  before consumption), but a real self-consistency gap. Fixed: `_load_importable_artifact_manifest`
+  now rejects any entry whose loader disagrees with the frozen loader for its artifact type, so the
+  manifest is self-consistent at parse and the CD4 exception cannot be reached by a mislabeled
+  bytecode entry. Discriminating test added.
+
 ## Contract questions
 
 - **No protected-schema change is required.** Work item 4 resolves to Option A (a

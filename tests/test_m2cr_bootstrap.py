@@ -1469,18 +1469,22 @@ def _write_v2_manifest(
 
 
 def test_manifest_v2_header_parses_and_loader_is_enforced(tmp_path: Path) -> None:
-    """FIX C9: the at-exit inventory rejects a manifest loader mismatch."""
+    """FIX C9 + delta r3-2: the manifest's per-entry loader must be the frozen
+    loader for its artifact type — a mismatch is now rejected at PARSE (a
+    stronger guarantee than the prior at-exit inventory check)."""
 
     roots = _four_manifest_roots(tmp_path)
     inside_path = roots[0][1] / "inside.py"
     inside_path.write_text("VALUE = 1\n", encoding="utf-8")
+    # The generator's frozen loader spelling for a source artifact is the bare
+    # class name (environment_freeze.LOADER_BY_ARTIFACT_TYPE).
     entry = {
         "root": "worktree",
         "relpath": "inside.py",
         "artifact_type": "source",
         "sha256": sha256_file(inside_path),
         "size": inside_path.stat().st_size,
-        "loader": SOURCE_LOADER_CLASS,
+        "loader": "SourceFileLoader",
     }
     manifest_path = tmp_path / "manifest_v2.jsonl"
     _write_v2_manifest(manifest_path, roots, [entry])
@@ -1488,7 +1492,7 @@ def test_manifest_v2_header_parses_and_loader_is_enforced(tmp_path: Path) -> Non
     assert header is not None
     assert header["schema_version"] == 2
     assert header["roots"]["worktree"] == os.fspath(roots[0][1].resolve())
-    assert frozen[("worktree", "inside.py")]["loader"] == SOURCE_LOADER_CLASS
+    assert frozen[("worktree", "inside.py")]["loader"] == "SourceFileLoader"
 
     inside = ModuleType("inside")
     inside.__file__ = os.fspath(inside_path)
@@ -1502,20 +1506,15 @@ def test_manifest_v2_header_parses_and_loader_is_enforced(tmp_path: Path) -> Non
         modules={"inside": inside},
     )
     assert inventory[0]["loader_class"] == SOURCE_LOADER_CLASS
+    assert inventory[0]["loader_binding"] == "direct"
 
+    # A loader inconsistent with the artifact type is rejected at PARSE.
     wrong = dict(entry, loader="zipimport.zipimporter")
     _write_v2_manifest(manifest_path, roots, [wrong])
-    frozen_wrong, _digest, _header = _load_importable_artifact_manifest(
-        manifest_path
-    )
-    with pytest.raises(SystemExit, match="loader class mismatch"):
-        _inventory(
-            [],
-            roots=root_paths,
-            manifest_entries=frozen_wrong,
-            closure_authority={},
-            modules={"inside": inside},
-        )
+    with pytest.raises(
+        SystemExit, match="loader does not match its artifact type"
+    ):
+        _load_importable_artifact_manifest(manifest_path)
 
 
 def test_manifest_v2_entries_require_the_loader_field(tmp_path: Path) -> None:
@@ -1763,3 +1762,34 @@ def test_native_stack_allowlist_rejects_bistar_gp_and_payload_modules():
     ]
     assert disallowed_native_modules(["fake_payload"]) == ["fake_payload"]
     assert disallowed_native_modules(["os", "torch"]) == ["os"]
+
+
+def test_manifest_rejects_loader_inconsistent_with_artifact_type(
+    tmp_path: Path,
+) -> None:
+    """Delta r3-2: a manifest entry whose loader disagrees with its artifact
+    type (a bytecode artifact mislabeled with a source loader — which the CD4
+    loader-'none' exception would otherwise accept) is rejected at parse."""
+
+    art = tmp_path / "artifact.pyc"
+    art.write_bytes(b"m2cr-bytecode\n")
+    header = {
+        "kind": "m2cr_importable_artifact_manifest",
+        "schema_version": 2,
+        "roots": {"worktree": os.fspath(tmp_path.resolve())},
+    }
+    entry = {
+        "root": "worktree",
+        "relpath": "artifact.pyc",
+        "artifact_type": "legacy_bytecode",
+        "sha256": sha256_file(art),
+        "size": art.stat().st_size,
+        "loader": "SourceFileLoader",  # mislabeled: should be SourcelessFileLoader
+    }
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text(
+        canonical_dumps(header) + "\n" + canonical_dumps(entry) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit, match="loader does not match its artifact type"):
+        _load_importable_artifact_manifest(manifest)

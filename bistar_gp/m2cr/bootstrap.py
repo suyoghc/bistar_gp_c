@@ -66,6 +66,21 @@ _ARTIFACT_TYPES = {
     "legacy_bytecode",
     "importable_archive",
 }
+# The frozen loader class each artifact type resolves through (mirrors
+# environment_freeze.LOADER_BY_ARTIFACT_TYPE, restated here so the child
+# validates it without importing the generator before its sys.path is
+# replaced).  A manifest whose per-entry loader disagrees with its artifact
+# type is self-inconsistent and rejected at parse (three-reviewer gate delta
+# CD4/r3-2), so the CD4 loader-"none" exception — gated on the SourceFileLoader
+# / ExtensionFileLoader spelling — cannot be reached by a bytecode entry
+# mislabeled with a source loader.
+_LOADER_BY_ARTIFACT_TYPE = {
+    "source": "SourceFileLoader",
+    "extension": "ExtensionFileLoader",
+    "legacy_bytecode": "SourcelessFileLoader",
+    "orphan_bytecode": "SourcelessFileLoader",
+    "importable_archive": "zipimporter",
+}
 # Stdlib dependencies of the post-path-replacement project imports
 # (payload_boundary, serialization, and the shared environment_freeze
 # classifier) must already be loaded before the child replaces sys.path with
@@ -999,6 +1014,16 @@ def _load_importable_artifact_manifest(
                 raise SystemExit(
                     f"attestation_fault: invalid manifest loader at line {line_number}"
                 )
+            # The loader must be the frozen loader for its artifact type, so a
+            # self-inconsistent entry (e.g. a legacy_bytecode artifact
+            # mislabeled with a source loader, which the CD4 loader-"none"
+            # exception would otherwise accept) is rejected at parse
+            # (three-reviewer gate delta r3-2).
+            if loader != _LOADER_BY_ARTIFACT_TYPE.get(entry["artifact_type"]):
+                raise SystemExit(
+                    "attestation_fault: manifest loader does not match its "
+                    f"artifact type at line {line_number}"
+                )
         key = (root_id, relpath)
         if key in entries:
             raise SystemExit(
@@ -1493,22 +1518,32 @@ def _inventory(
                 )
         result.append(item)
 
-    # Import-then-evict scope note (three-reviewer gate delta CD2).  The loop
-    # above binds every module RESIDENT in sys.modules.  A payload that imports
-    # a file-backed module, runs its code, and DELETES it from sys.modules
-    # before the inventory is a payload DELIBERATELY defeating attestation —
-    # explicitly OUT OF SCOPE per plan §4.5.13 ("payload code deliberately
-    # defeating attestation") and disclosed as a residual, never a blocker.
-    # The IN-SCOPE cases are all covered without inspecting the audit "import"
-    # event's filename (which CPython supplies as None for ordinary source
-    # imports, so authenticating by it would be vacuous): a payload that
-    # imports a NEW under-root file is caught by the post-execution manifest
-    # re-walk as an ADDED artifact; deleting an under-root file is caught as a
-    # REMOVED artifact; and a payload cannot import an OUTSIDE-root file
-    # through normal machinery because ``sys.path`` is the frozen four roots
-    # and the Stage-C check fails closed on any ``sys.path`` drift.  The
-    # residual (a deliberate ``spec_from_file_location`` of an out-of-tree file
-    # then evicted and deleted) is the disclosed §4.5.13 class.
+    # Evicted-module coverage (three-reviewer gate delta CD2 + r3-1).  The loop
+    # above binds every module RESIDENT in sys.modules.  A module can also be
+    # ABSENT from sys.modules at inventory time — either an ORDINARY optional
+    # import that executed and raised (CPython auto-evicts the partially
+    # initialized module) or a DELIBERATE ``del sys.modules[name]``.  The
+    # authenticity of what such a module executed does NOT depend on inspecting
+    # the audit "import" event's filename (which CPython supplies as None for
+    # ordinary source imports, so authenticating by it would be vacuous):
+    #
+    #  - An evicted module imported through normal machinery loaded from the
+    #    frozen four roots (``sys.path`` is those roots and Stage C fails closed
+    #    on any drift), so its source/extension file is UNDER a root and its
+    #    bytes are authenticated by the pre- AND post-execution manifest
+    #    completeness re-walk, which hashes every under-root file and requires
+    #    the full set to equal the frozen manifest.  Its loader is fixed by the
+    #    artifact type (a ``.py`` loads only through SourceFileLoader, an
+    #    extension only through ExtensionFileLoader), so both the §4.5.7 origin
+    #    and loader-class obligations are met at the FILE level even without a
+    #    per-module resident record.  A NEW under-root file appears as ``added``
+    #    drift; a DELETED one as ``removed`` drift — both fail closed.
+    #
+    #  - The only uncovered case is a payload that DELIBERATELY loads an
+    #    out-of-tree file via an explicit ``spec_from_file_location`` (bypassing
+    #    ``sys.path``), then evicts and deletes it.  That is payload code
+    #    deliberately defeating attestation — explicitly OUT OF SCOPE per plan
+    #    §4.5.13 and disclosed as a residual, never a blocker.
     return result
 
 
