@@ -317,6 +317,11 @@ def _finalize_bundle_manifests(worktree: Path) -> None:
                     "native_stack_expectations": (
                         freeze / "m2cr_native_stack_expectations_v1.json"
                     ),
+                    # v1.20: the ceilings artifact is committed content in the
+                    # archived candidate tree, never regenerated here.
+                    "evidence_ceilings": (
+                        freeze / "m2cr_evidence_ceilings_v1.json"
+                    ),
                 },
                 "r1_schemas": {
                     "execution_record": worktree / R1_SCHEMA_RELPATHS[0],

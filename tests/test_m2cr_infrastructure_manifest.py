@@ -36,6 +36,7 @@ def _inputs(tmp_path: Path):
         "environment_freeze_manifest",
         "dependency_lock",
         "native_stack_expectations",
+        "evidence_ceilings",
     )
     artifacts = {}
     for name in artifact_names:

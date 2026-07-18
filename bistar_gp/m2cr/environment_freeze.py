@@ -65,6 +65,10 @@ __all__ = [
     "build_environment_freeze_manifest",
     "build_dependency_lock",
     "build_infrastructure_manifest",
+    "EVIDENCE_CEILINGS_RELPATH",
+    "EVIDENCE_CEILINGS_KIND",
+    "EVIDENCE_CEILING_MEMBERS",
+    "parse_evidence_ceilings",
     "main",
 ]
 
@@ -99,7 +103,73 @@ _INFRASTRUCTURE_ARTIFACT_KEYS = _FREEZE_ARTIFACT_KEYS + (
     "environment_freeze_manifest",
     "dependency_lock",
     "native_stack_expectations",
+    "evidence_ceilings",
 )
+
+# v1.20 (R2a): the five ratified evidence-size ceilings are frozen in ONE
+# committed machine-readable artifact, pinned by the infrastructure manifest
+# and carried on the authenticated launch spec.  Capture-side enforcement and
+# the audit tooling consume ONLY that artifact — no independently editable
+# duplicate numeric constants exist in code; this module defines the closed
+# structural contract, never the values.
+EVIDENCE_CEILINGS_RELPATH = "docs/m2c_freeze/m2cr_evidence_ceilings_v1.json"
+EVIDENCE_CEILINGS_KIND = "m2cr_evidence_ceilings"
+EVIDENCE_CEILING_MEMBERS = (
+    "runtime_envelope_static_artifact_per_file_bytes",
+    "event_stream_bytes",
+    "stdout_bytes",
+    "stderr_bytes",
+    "complete_bundle_bytes",
+)
+
+
+def parse_evidence_ceilings(document: Any) -> dict[str, int]:
+    """Parse the committed evidence-ceilings artifact CLOSED-WORLD (v1.20 §5).
+
+    Requires exactly ``{kind, schema_version, addendum, ceilings}`` at the top
+    level, the frozen kind and schema version, a non-empty addendum string
+    (the versioned addendum that ratified the values), and a ``ceilings``
+    object with exactly :data:`EVIDENCE_CEILING_MEMBERS`, each a positive
+    non-bool integer.  Unknown keys, missing keys, and malformed values all
+    fail closed.  Returns the five values as a plain dict.
+    """
+
+    if not isinstance(document, Mapping):
+        raise ValueError("evidence-ceilings artifact is not an object")
+    expected_top = {"kind", "schema_version", "addendum", "ceilings"}
+    if set(document) != expected_top:
+        raise ValueError(
+            "evidence-ceilings artifact must carry exactly "
+            f"{sorted(expected_top)}"
+        )
+    if document["kind"] != EVIDENCE_CEILINGS_KIND:
+        raise ValueError("evidence-ceilings artifact has the wrong kind")
+    if document["schema_version"] != 1:
+        raise ValueError(
+            "evidence-ceilings artifact has the wrong schema_version"
+        )
+    addendum = document["addendum"]
+    if not isinstance(addendum, str) or not addendum:
+        raise ValueError(
+            "evidence-ceilings artifact must name its ratifying addendum"
+        )
+    ceilings = document["ceilings"]
+    if not isinstance(ceilings, Mapping) or set(ceilings) != set(
+        EVIDENCE_CEILING_MEMBERS
+    ):
+        raise ValueError(
+            "evidence-ceilings artifact ceilings object must carry exactly "
+            f"{sorted(EVIDENCE_CEILING_MEMBERS)}"
+        )
+    parsed: dict[str, int] = {}
+    for member in EVIDENCE_CEILING_MEMBERS:
+        value = ceilings[member]
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(
+                f"evidence ceiling {member} must be a positive integer"
+            )
+        parsed[member] = value
+    return parsed
 _INFRASTRUCTURE_R1_SCHEMA_KEYS = (
     "execution_record",
     "authorization_ledger",

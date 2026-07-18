@@ -291,6 +291,7 @@ _FREEZE_RELPATHS = {
     "native_stack_expectations": (
         "docs/m2c_freeze/m2cr_native_stack_expectations_v1.json"
     ),
+    "evidence_ceilings": "docs/m2c_freeze/m2cr_evidence_ceilings_v1.json",
 }
 
 
@@ -361,6 +362,7 @@ def _make_launch(
     interpreter_pin_mutator=None,
     preboundary_mutator=None,
     worktree_mutator=None,
+    ceilings_mutator=None,
 ) -> LaunchConfig:
     """Build a complete, self-consistent hermetic launch (Codex round-3 C1
     Stage C; extended for the WI1/WI2 launch-authority cycle).
@@ -482,6 +484,27 @@ def _make_launch(
         interpreter_pin_mutator(interpreter_pin)
     atomic_write_canonical_json(
         worktree / _FREEZE_RELPATHS["interpreter_pin"], interpreter_pin
+    )
+
+    # v1.20: the fake bundle carries the ratified ceilings by default so a
+    # normal hermetic launch never trips a limit; overflow tests shrink one
+    # member through the mutator and exercise the full authenticated path.
+    ceilings_doc = {
+        "kind": "m2cr_evidence_ceilings",
+        "schema_version": 1,
+        "addendum": "v1.20",
+        "ceilings": {
+            "runtime_envelope_static_artifact_per_file_bytes": 33_554_432,
+            "event_stream_bytes": 33_554_432,
+            "stdout_bytes": 16_777_216,
+            "stderr_bytes": 16_777_216,
+            "complete_bundle_bytes": 134_217_728,
+        },
+    }
+    if ceilings_mutator is not None:
+        ceilings_mutator(ceilings_doc)
+    atomic_write_canonical_json(
+        worktree / _FREEZE_RELPATHS["evidence_ceilings"], ceilings_doc
     )
 
     host_dir = tmp_path / "host"
