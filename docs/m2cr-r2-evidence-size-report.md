@@ -19,7 +19,7 @@ serializer with the frozen nonfinite sentinels.
 
 | Artifact | Bytes | Notes |
 |---|---|---|
-| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,744,520 | format v2 (roots header, per-entry loader); 39,958 entries: 39,392 source, 564 extension, 2 importable-archive, 0 orphan-bytecode (the +1 source vs the R2-close figure is `tests/test_m2cr_evidence_ceilings.py`, added by R2a) |
+| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,744,521 | format v2 (roots header, per-entry loader); 39,958 entries: 39,392 source, 564 extension, 2 importable-archive, 0 orphan-bytecode (the +1 source vs the R2-close figure is `tests/test_m2cr_evidence_ceilings.py`, added by R2a) |
 | `m2cr_dependency_lock_v1.json` | 57,451 | supplementary only; editable installs excluded from `pip_freeze` (external audit round-3 F4), reproducible at HEAD |
 | `m2cr_preboundary_attestation_set_v1.json` | 14,560 | dyld main cache plus its twelve declared subcaches, interpreter, and the 74-entry pre-boundary bootstrap closure; smaller than the prior 76 because the fabricated `bistar_gp`/`bistar_gp.m2cr` namespace packages no longer claim a never-executed `__init__.py` origin (WI1); the three worktree-origin closure pins are stored worktree-relative (F3) |
 | `m2cr_infrastructure_manifest_v1.json` | 3,026 | Layer 1a; repo-relative pins (8 artifacts incl. native-stack expectations and, since R2a, the evidence-ceilings artifact) |
@@ -29,9 +29,9 @@ serializer with the frozen nonfinite sentinels.
 | `m2cr_interpreter_pin_v1.json` | 383 | version string plus resolved-target sha256 |
 | `m2cr_evidence_ceilings_v1.json` | 255 | added by R2a (v1.20): the five ratified evidence-size ceilings, the one machine-readable authority enforcement consumes; hand-authored, never regenerated |
 
-Fixed-artifact total: **8,868,575 bytes** (measured; regenerated at the R2a enforcement code commit
+Fixed-artifact total: **8,868,576 bytes** (measured; regenerated at the R2a enforcement code commit
 via the established fresh-detached-worktree process — the importable manifest gains the one new R2a
-test file, the infrastructure manifest gains the evidence-ceilings pin, the 255-byte ceilings
+test file (8,744,521 B after the final review-corrections regeneration; the header worktree path is informational and its length varies per freeze), the infrastructure manifest gains the evidence-ceilings pin, the 255-byte ceilings
 artifact joins the set, and the preboundary/aggregating pins re-derive; the interpreter pin,
 child-env mapping, dependency lock, and native-stack expectations stay byte-identical. The R2-close
 total at PR #16 merge was 8,867,965 bytes over the then-eight artifacts).
@@ -109,7 +109,7 @@ classified in `bistar_gp/m2cr/measure.py` (`RUN_DIR_EVIDENCE_CLASSES`), and a CI
 any layout member lacks a measurement classification, so the per-run projection cannot silently omit a
 component.
 
-**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,868,575 bytes**
+**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,868,576 bytes**
 (the table above); it is NOT part of the per-run evidence bundle.
 
 **Per-run evidence bundle (per launch) — components:**

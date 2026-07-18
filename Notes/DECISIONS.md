@@ -4732,3 +4732,61 @@ correction pass; open a **Draft** PR and STOP before Ready or merge.
 
 **Status:** v1.20 + this entry are the docs-first commit; implementation, regeneration, suite
 results, review outcome, and the final head will be appended here on completion.
+
+### D49 — Update 1 (2026-07-18): R2a implemented, reviewed, and corrected; Draft PR opened; HARD STOP before Ready/merge
+
+**Commits** (branch `feat/d19-m2cr-r2a-evidence-ceilings` off `origin/main` 9bb2467):
+`9e8ce5a` (v1.20 + D49, docs-first) · `bfc4d0e` (enforcement code + ceilings artifact + tests) ·
+`0a5eedc` (regen at bfc4d0e) · `2b66c6b` (report corrections) · `3995d5c` (Codex-review
+corrections, one consolidated pass) · `dc4c9f6` (regen at 3995d5c) · this docs commit (final head).
+
+**Implementation, exactly the v1.20 scope:** `m2cr_evidence_ceilings_v1.json` (255 B, the one
+machine authority; `addendum: "v1.20"` provenance now enforced exactly);
+`_authenticate_launch_spec` authenticates the ninth infra pin and carries the five values on the
+spec (spec-digest-bound); `_evidence_ceiling_breaches` + `_apply_evidence_ceilings` implement the
+§4 candidate decision at Layer-3/terminal time (per-file classes incl. `RAW_MANIFEST.sha256` and
+the candidate record's canonical serialization; dedicated events/stdout/stderr ceilings; the
+complete-bundle sum over every regular file beneath the run dir; class map derived fail-closed from
+`classify_run_dir_layout`); wired into normal capture, the post-authentication last-resort path,
+and `reconcile_run` (provenance-authenticated ceilings; unavailability disclosed, recovery never
+blocked); rule-(1)/(2) statuses pass through per unamended B2; internal enforcement errors fail
+closed for certifiable candidates; the minimal replacement (fault + evidence digests) is never
+re-priced. `verify_evidence_ceiling_compliance` (audit CI) requires the manifest kind/schema/shape
+and the EXACT artifact key set, then checks every pinned static file and the manifest itself.
+
+**Measurement-provenance correction (v1.20 §7):** the report no longer claims one test reproduces
+all five exemplars. Test-pinned: 3,179 / 1,613 (original rig) and the NEW committed corroborating
+rig (same fixture path, both starts restarted + retry fired): worst-case record **5,960 B**,
+clean gate-event stream **2,939 B** / 7 gate events, worst-case gate-event stream **6,184 B** / 15
+events. Recorded-only exemplars (uncommitted freeze-time rig; event counts 9/17 included the two
+payload node markers): 5,894 / 3,029 / 6,088; 84,921 is path-length-dependent per run. Derived
+projections and the ratified ceilings stand on the recorded figures.
+
+**Regenerations** (established fresh-detached-worktree recipe, both cycles): interpreter pin,
+child-env mapping, dependency lock, native-stack expectations byte-identical throughout; importable
+manifest 8,744,521 B / 39,958 entries (+1 source: the new test file; final +1 B is the
+informational header worktree path); infra manifest 3,026 B with the ninth pin; fixed-artifact
+total **8,868,576 B** (R2-close: 8,867,965 B over eight artifacts).
+
+**Suite:** full run at 2b66c6b: **868 passed / 2 skipped / 0 failed** (3:59), incl. the four
+real-root integration launches over a regenerated candidate bundle; all correction-affected
+batteries re-run green after 3995d5c/dc4c9f6; final-head full suite recorded in the PR.
+
+**Review (author-directed: exactly one fresh Codex gpt-5.6-sol xHigh read-only, exact-head diff at
+2b66c6b) returned REVISE — 2 MAJOR / 2 MINOR, each independently verified:** MAJOR
+audit-compliance-accepts-stripped-manifest CONFIRMED and fixed (exact key-set/shape requirement +
+stripped-pin and reshaped-manifest negatives); MAJOR size-decision/publication TOCTOU DISMISSED
+with recorded rationale (post-exit, no capture-side writer; same-user external mutation is the
+v1.19 §5 out-of-scope residual, same class as the Layer-3 hashes; content stays digest-bound so
+post-decision growth is audit-detectable; disclosure comment added); MINOR any-addendum-string
+CONFIRMED and fixed (`EVIDENCE_CEILINGS_ADDENDUM` provenance constant; not a numeric duplicate);
+MINOR stale second fixed-total CONFIRMED and fixed (8,868,576). One consolidated correction pass,
+as authorized; no second review round was needed (both MAJORs resolved by fix or recorded
+rationale; no author-level scientific decision arose).
+
+**Boundaries at the final head:** protected files byte-identical to origin/main (R1 schemas, v1.17
+freeze, v1.18 schema, ledger, plan, `profile_integration.py`); prereg addenda strictly append-only
+(zero removed lines); ledger one D45 line; v1.18 instance absent; no `runs/`/`experiments/`
+content; no scientific/model computation anywhere (hermetic fake payloads and import-only children
+exclusively). **R4 remains blocked until this PR merges; R3 and every `--execute` stay separate
+author acts. Draft PR opened; NOT flipped Ready; NOT merged. HARD STOP.**
