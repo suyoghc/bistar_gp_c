@@ -2,7 +2,21 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## M2cR R3 — IN PROGRESS: diagnostic protocol + decision-rule freeze (D50, prereg v1.21, 2026-07-18) — branch `feat/d19-m2cr-r3-diagnostic-protocol` off `35ccc3d`
+## M2cR R3 — COMPLETE: diagnostic protocol + decision-rule freeze; Draft PR open (NOT Ready, NOT merged) (D50 + Update 1, 2026-07-18) — branch `feat/d19-m2cr-r3-diagnostic-protocol` off `35ccc3d`, HARD STOP
+
+- **Shipped (v1.21 scope exactly; D50 Update 1 is the full record):** docs-first freeze
+  (`0bbc69d`), implementation (`365d7b3`: diagnostic.py + diagnostic_payload.py + capture/audit
+  A1 + six test files), regen (`0071fd4`), report currency (`c855d5f`), the single
+  panel-correction pass (`9c4452f`: Kimi F1-F2 + GLM F1-F4), regen + Layer-1b re-pin
+  (`c038f47`). Full suite at the final code head: **957 passed / 2 skipped / 0 failed**.
+- **Panel (one bounded parallel pass at `c855d5f`):** Opus 4.8 APPROVE; GLM 5.2 APPROVE;
+  Kimi K3 REVISE (two MINORs, both fixed); no BLOCKER/MAJOR anywhere; every finding
+  independently verified by Fable; three dismissals recorded with evidence.
+- **NEXT (each a separate author act; none authorized):** author decides the R3 Draft PR
+  (Ready/merge). **R4 needs a fresh grant in the v1.19 ledger** — its `frozen_chain` now
+  necessarily cites the committed protocol manifest — plus freeze regeneration at its own
+  worktree/commit and the `--execute` boundary. v1.18 instance stays absent; D45 stays
+  UNVALIDATED_ATTEMPT.
 
 - **Ballot ratified (D50):** A1 (Layer-1b enforcement closed inside R3 — capture authenticates the
   committed protocol manifest chain-bound at launch; parent validates the exact persisted
@@ -16,17 +30,9 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   curvature evaluation point; purity at `mode_u`, repeats 2) + D50 +
   `m2c_diagnostic_record.schema_v1.json` (`b6b60dd1…`) + `m2cr_diagnostic_protocol_v1.json`
   (`bdfac013…`).
-- **Owed next in this milestone:** R3 modules (`bistar_gp/m2cr/diagnostic.py`,
-  `bistar_gp/m2cr/diagnostic_payload.py`), bounded capture/audit amendments per A1, new hermetic
-  test files (schema, classifier, protocol/orchestrator with fakes, coordinate goldens, protocol
-  manifest, protocol authentication), regeneration (importable → env-freeze → infra manifests +
-  protocol manifest at final Layer-1a digest), full suite, one advisory panel
-  (Opus 4.8 / Kimi K3 / GLM 5.2, Fable adjudicates), at most one consolidated correction pass,
-  Draft PR, **HARD STOP**.
-- **Boundaries:** hermetic only — no `--execute`, no diagnostic/scientific computation, no
-  real-model evaluation, no Mauna/holdout, no ledger event, no `runs/`, no `docs/m2c_evidence/`,
-  v1.18 instance stays absent. R4 needs a fresh grant (its ledger `frozen_chain` now necessarily
-  carries the committed protocol-manifest digest) at its own regenerated freeze.
+- **Boundaries held throughout:** hermetic only — no `--execute`, no diagnostic/scientific
+  computation, no real-model evaluation, no Mauna/holdout, no ledger event, no `runs/`, no
+  `docs/m2c_evidence/`; the v1.18 instance stays absent.
 
 ## M2cR R2a — v1.20 ceilings FROZEN + enforcement OPERATIONAL; PR #17 MERGED at `35ccc3d3e871a864b081d10e6ca7db53b0cbd5fe` (D49 + Updates 1–2, 2026-07-18) — R2a frozen
 

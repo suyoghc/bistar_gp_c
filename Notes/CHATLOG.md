@@ -631,3 +631,34 @@ computation (no model/profile/optimizer/gradient/Hessian/sampler run); no v1.18 
 reserved `…gtoy_profile_result_v1.18.json` stays ABSENT; rev-5 `c3e9db66…` and v1.17 `65381bc7…` unchanged;
 no new preregistration version; no tolerance/algorithm decision; no rerun authorization; nothing called
 superseded or validated. Committed on a docs branch; Draft documentation PR opened, held before Ready/merge.
+
+## 2026-07-18 — M2cR R3: diagnostic protocol + decision-rule freeze (D50, prereg v1.21) (Fable session, branch feat/d19-m2cr-r3-diagnostic-protocol)
+
+**Done:**
+- Read-only R3 preflight at `origin/main` = `35ccc3d` (PR #17/R2a merge): startup gate, a
+  requirement-to-artifact map over plan §6/§8, v1.17–v1.20, D47–D49, and the merged R2/R2a
+  source; surfaced the Layer-1b enforcement gap and the instance-residence determination; one
+  compact author ballot. Author ratified A1 (close Layer-1b enforcement inside R3), B (rows
+  evaluator), C (literal §3.1 protocol-manifest key set), and corrected the PR #17 merge SHA
+  used in all durable records.
+- Docs-first freeze, then bounded implementation delegated to Codex gpt-5.6-sol xHigh; Fable
+  read every change and applied four pre-commit corrections (exact B12(b) windows with no ULP
+  slack; `expected_noise` provenance to the true frozen constant `0.061867347763041584` after
+  Codex flagged the rounded fixture value; `map_fitted` seed placement; launch-side addendum
+  check). Two fresh-detached-worktree regenerations (environment-derived artifacts and the
+  preboundary set byte-identical both cycles); the R2a F8 report cross-check failed closed on
+  the stale fixed total and the report was updated truthfully (8,870,266 B).
+- One bounded advisory panel at `c855d5f`: Opus 4.8 APPROVE, GLM 5.2 APPROVE, Kimi K3 REVISE
+  (no BLOCKER/MAJOR anywhere). Six findings confirmed against source and fixed in the single
+  authorized pass (`9c4452f`), three dismissed with evidence — all recorded in D50 Update 1.
+
+**Committed:** `0bbc69d` (v1.21 + D50 + schema + parameters) · `365d7b3` (implementation +
+interim Layer-1b manifest) · `0071fd4` (regen) · `c855d5f` (report currency) · `9c4452f`
+(panel corrections) · `c038f47` (regen + Layer-1b re-pin) · final docs commit. Full suite at
+`c038f47`: **957 passed / 2 skipped / 0 failed**. Draft PR opened and left NOT Ready.
+
+**Key points:** the diagnostic-record instance is the diagnostic run's persisted
+`payload.json` (no R2a layout amendment needed); every R4 diagnostic launch now requires the
+committed, chain-bound protocol manifest and schema-valid persisted payload; R4 stays blocked
+on a fresh author grant; the v1.18 label/instance stay permanently unused/absent; D45 stays
+UNVALIDATED_ATTEMPT.
