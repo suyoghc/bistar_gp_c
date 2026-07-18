@@ -34,11 +34,13 @@ before coding, per the cycle instructions.
 
 ## Shared redesign — one authenticated launch authority (PROPOSED; only partly built this cycle)
 
-> **Status:** this section describes the TARGET redesign for findings 1–3. As of this cycle only
-> WI3 (the sentinel, a static fact already flowing through the existing derive/bind path) is
-> implemented; the `AuthenticatedLaunchSpec` mechanism below is NOT yet built (finding 2 remains
-> open, finding 1 deferred — see "Landed this cycle" and the cost finding). Read this as the plan
-> for the next cycle, not a description of the current code.
+> **Status:** this section describes the TARGET redesign for findings 1–3. As of the previous cycle
+> only WI3 (the sentinel, a static fact already flowing through the existing derive/bind path) was
+> implemented; the `AuthenticatedLaunchSpec` mechanism below was NOT yet built (finding 2 remained
+> open, finding 1 deferred — see "Landed this cycle" and the cost finding). The 2026-07-18
+> launch-authority cycle implements WI1+WI2 against the derived matrix in "R2 launch-authority
+> cycle (2026-07-18)" below; neither finding is claimed closed until its discriminating tests,
+> real-root integration launches, regenerated artifacts, and the three-reviewer gate are complete.
 
 Findings 1–3 are fixed together by a single target invariant:
 
@@ -67,7 +69,11 @@ and routing: `run_dir`, `run_id`, `launch_attempt_id`, `authorization_id`,
 launch from — the chain's infra digest fails closed on the wrong one), the
 test-only `waiter`, and payload selection via the template. The spec is **not** a
 freely constructible trust token: it is only ever produced by deriving and checking
-committed bytes.
+committed bytes. Layering note: the spec factory enforces worktree/chain AGREEMENT;
+whether a given chain was ever legitimately granted is the authorization-ledger and
+audit-CI layer's determination (§5.2 verifies every chain member against the committed
+artifacts at the authorized commit), and a caller who fabricates a complete bundle
+plus a matching chain is performing a deliberate act outside the §4.5.13 threat model.
 
 - **Work item 1 (mandatory manifest):** the importable-artifact manifest path and
   the four roots are derived from the authenticated graph and injected into the
@@ -202,6 +208,199 @@ above is a **PROPOSED mechanism for the next cycle, not yet built**. Finding 2 i
 **Deferred (documented next cycle) — finding 1 (BLOCKER):** WI1's child-side mandatory
 importable-manifest re-walk + origin/loader binding on the production launch path, and its
 isolated real-root integration tests; landed together with the full WI2 harness rebuild.
+
+## R2 launch-authority cycle (2026-07-18) — derived requirement/implementation/test matrix
+
+Working matrix for the WI1+WI2 implementation cycle authorized against findings 1 and 2 (the two
+remaining external-audit BLOCKERs). Nothing here claims either finding closed; closure requires the
+matrix's tests green, the bounded real-root integration launches green, regenerated artifacts, and a
+clean three-reviewer gate at the final head.
+
+### Refined cost measurement (2026-07-18, supersedes the walk-cost reading above where they differ)
+
+The ~11.7 s four-root walk is site-packages-dominated. Measured at HEAD `46519af` with the frozen
+walker semantics: real stdlib excluding the site-packages and lib-dynload subtrees, plus lib-dynload,
+is **1,624 entries in 0.24 s**; the same walk with site-packages inside the stdlib root is **39,812
+entries in 14.19 s**. Because the walker's nested-root exclusion is derived from the declared root
+list, ANY child whose four roots include the real stdlib pays the site-packages walk (declared, it is
+walked as its own root; undeclared, it is walked inside the stdlib root). Consequence: the fast
+synthetic battery keeps fully synthetic four roots (walks in milliseconds), and the real-root cost is
+confined to the dedicated integration launches.
+
+### Origin/loader authority for modules outside the four roots (new derived rule)
+
+Plan §4.5.7 binds every executed module's resolved origin and loader class to a frozen manifest
+entry. A child of the pinned interpreter unavoidably loads ~66 real-stdlib file-backed modules before
+`sys.path` replacement, so the strict all-under-roots form holds exactly when the four roots include
+the real stdlib, which is the production configuration and the real-root integration configuration.
+The enforcement rule is therefore split by scope, with no skip and no test-only branch:
+
+- a file-backed loaded module whose resolved origin is under one of the four roots must match a
+  manifest entry by `(root, relpath, sha256)` and loader class, else the child fails closed;
+- a file-backed loaded module outside all four roots must match an entry of the authenticated
+  pre-boundary bootstrap closure by exact path and sha256, with its loader class required to equal
+  the frozen loader for its artifact type, else the child fails closed.
+
+In production both clauses are backed by committed chain-bound artifacts and the second clause is
+structurally redundant (the closure members are under the real stdlib root, so they also match the
+manifest); in the synthetic battery the second clause is what authenticates the interpreter-forced
+real-stdlib preloads without weakening either authority. The production manifest remains complete
+over every importable artifact under all allowed roots; nothing narrows to "modules observed as
+loaded".
+
+### WI2 — authenticated launch spec
+
+| Requirement | Implementation | Discriminating tests |
+|---|---|---|
+| One trusted-parent factory authenticates the complete committed Layer-0 graph under `worktree_root` and `chain` | `_authenticate_launch_spec(worktree_root, chain)` in capture.py, extending `_derive_authenticated_bundle`: infra manifest digest must equal `chain.infrastructure_manifest_sha256`; env-freeze manifest authenticated via its infra pin AND required to equal `chain.environment_freeze_manifest_sha256`; child-env mapping, importable manifest, interpreter pin, pre-boundary set authenticated via env-freeze pins; expectations + dependency lock via infra pins; returns one frozen `AuthenticatedLaunchSpec` | wrong worktree (no bundle), wrong chain digest, each artifact pin corrupted one at a time (7 artifacts), env-freeze vs chain disagreement; every failure is a pre-spawn INFRA_FAILURE with no marker |
+| Spec carries every static fact | Spec fields: frozen env mapping; interpreter path + resolved-target digest + frozen flags; canonical four roots; importable-manifest path; pre-boundary set path + closure entries; all 8 attestation directives incl. sentinel; dependency lock + site-packages authority; bootstrap path; `spec_sha256` = canonical digest of the spec document | positive fake-bundle derivation asserts each field equals the committed artifact's value |
+| Interpreter authenticated, not asserted | factory hashes `realpath(pin.path)` and requires equality with `pin.sha256` before any spawn | interpreter pin sha mismatch fails pre-spawn; missing interpreter fails pre-spawn (INFRA_FAILURE, not NOT_STARTED) |
+| Caller cannot author expected security values | `LaunchConfig` loses `interpreter_path`, `interpreter_flags`, `frozen_env`, `bootstrap_path`, `preboundary_attestation_set`, `preboundary_skip`, `dependency_lock_path`, `site_packages`; remaining fields are identity/routing (`run_dir`, `run_id`, `launch_attempt_id`, `authorization_id`, `record_kind`, `chain`, `worktree_root`, ceiling, test-only `waiter`) | constructing `LaunchConfig` with any removed field raises `TypeError`; non-consumption is structural (the fields do not exist on the config, so no code path — direct, `asdict`, or `getattr` — can read them), proven by the field-set equality test |
+| Caller substitutions rejected, not silently preferred | spec-authored template keys (`frozen_env`/`expected_frozen_env`, `four_roots`, `importable_artifact_manifest`, `authenticated_spec_sha256`, pre-boundary closure directive, all 8 directives) are compared against the template before injection; a conflicting value raises, a missing value is injected | one test per substitutable key: conflicting template value refuses the launch pre-spawn |
+| Skip tokens and absent pre-boundary set unrepresentable | `verify_preboundary_attestation_set` loses its `skip` parameter; capture verifies the spec's set unconditionally pre-spawn and post-exit | signature test (no skip parameter); fixture-authored stand-in sets make every launch verify genuinely; absent/malformed set fails closed |
+| Wall-clock ceiling bounded by the ratified constant | `wall_clock_ceiling_hours` stays caller-visible for tests but is validated: finite, positive, and at most `WALL_CLOCK_CEILING_HOURS` | ceiling above 8.0 h refused |
+| Parent and child cannot consume different static authorities | template gains mandatory `authenticated_spec_sha256`; the parent writes it from the spec, records it in `prelaunch.json`, and the child records it in `effect_proofs.json` (an attestation whose digest the marker already binds); post-exit the parent re-reads `effect_proofs.json`, requires the recorded digest to equal the derived spec digest, and re-hashes every marker-listed attestation evidence file against the marker's digest list | doctored template spec digest refused pre-spawn; child launched with a mismatching argv config digest refuses; payload that rewrites a marker-bound attestation file is caught by the parent's post-exit evidence re-hash |
+
+### WI1 — mandatory child manifest
+
+| Requirement | Implementation | Discriminating tests |
+|---|---|---|
+| Manifest path + four roots derived only from the authenticated graph and injected unconditionally | capture injects `four_roots` (worktree slot = the launch worktree, host slots = manifest header) and `importable_artifact_manifest` from the spec into every template; conflicts rejected | template substitution of either key refused; roots reordered or duplicated fail (`_canonical_four_roots`, header comparison) |
+| Bootstrap requires them before the payload marker | `main()` fails closed when `importable_artifact_manifest` or `four_roots` is missing, non-absolute, or (for the manifest) headerless v1; the optional `manifest_path is not None` branch is removed | config without the manifest directive exits `attestation_fault` before any native import and emits no marker |
+| Complete pre-import re-walk gates the marker | existing `_verify_importable_artifact_manifest(..., phase="pre_audit")` becomes unconditional; its attestation joins the marker's required set | added, removed, and byte-changed artifact each fail before the marker (synthetic roots); marker file proven absent |
+| Origin/loader authentication before payload start | new pre-marker check over current `sys.modules`: under-roots modules bind to manifest entries (sha + loader), outside-roots modules bind to the authenticated closure (path + sha + type-derived loader); recorded as a marker-required attestation | closure entry sha mismatch, module with no authority, loader-class mismatch each fail with no marker |
+| Complete post-execution re-walk + origin/loader validation gate COMPLETED | existing post-walk + `_inventory` binding become unconditional, extended with the outside-roots closure clause; the child returns a protocol exit only after both | payload that mutates a root, loads an unlisted file-backed module, or strips the postcheck ends INFRA_FAILURE, never COMPLETED |
+| Manifest omission/substitution/incomplete postcheck fail closed parent-side too | parent post-exit requires: the marker's attestation names to include the manifest pre-walk and origin-binding attestations, `manifest_post.json` present with its digest recorded in `stage_c.json`, and every marker-listed evidence file re-hashed | stripped `manifest_post.json`, doctored `stage_c.json` reference, and marker missing the mandatory names each yield INFRA_FAILURE |
+| `numpy/_distributor_init_local.py`-style additions caught before execution | covered by the pre-walk completeness clause | synthetic site-packages plant of `numpy/_distributor_init_local.py` fails the pre-walk before any import of the planted file; real-root worktree plant covered by integration launch 2 |
+
+### Test architecture (bounded real-root integration + fast synthetic battery)
+
+| Requirement | Implementation |
+|---|---|
+| Session-scoped authenticated host-manifest fixture, generated independently before any test child starts | a pytest session fixture materializes a detached copy of the candidate tree (`git archive` of the current tracked tree), generates the full production-shaped bundle over the real four roots with the real generators, and caches it outside the repository |
+| Cache keyed at least by candidate HEAD, interpreter digest, four roots, generator digest | cache directory keyed by sha256 over: the git tree id of the archived tree (equals the HEAD tree when the working tree is clean, so candidate HEAD is captured content-exactly), `sha256(realpath(interpreter))`, the canonical four-root list, and the sha256 of `environment_freeze.py` + `serialization.py`; any key mismatch regenerates |
+| Child only consumes and verifies; it never generates its own expectation | manifests/expectations are generated by the fixture process (parent side, before any child starts); children re-walk and compare; loaded-image expectations keep the established two-probe unauthenticated measurement with test-side re-hashing |
+| Positive and negative invocations are separate processes | each integration case is its own `capture_run` child launch in its own run directory |
+| At most FOUR real-root integration launches | (1) complete positive production path over the real four roots ending COMPLETED; (2) pre-walk added-artifact failure before the marker (worktree plant); (3) post-execution mutation failure after the marker (COMPLETED impossible); (4) exercised as the real-root origin/loader negative: a manifest loader pin doctored to a conflicting concrete class over a consistently re-pinned bundle copy, surviving the parent's verification and the completeness re-walk (whose drift core excludes the loader annotation) and caught only by the child's pre-marker origin binding |
+| Fast synthetic battery carries the mutation matrix without claiming the production path | `_make_launch` / `_launch_bootstrap` bundles gain the full eight-artifact fake authority (fake child-env mapping, interpreter pin naming the real interpreter with its genuine digest, fixture-sized pre-boundary set with genuine hashes and the genuine closure, entry-complete synthetic manifests); all mutation-matrix negatives run over synthetic roots in milliseconds |
+
+### First real-native production-path launch — Stage-B KMP finding (2026-07-18)
+
+The real-root integration battery's positive launch is the first time the complete production
+path has ever executed with the real native stack (every prior child ran the fake torch/numpy
+stack, whose fake torch SIMULATES the libomp registration). It immediately surfaced an empirical
+over-read in the Stage-B classifier: on the frozen host, importing numpy+torch and running the
+thread controls adds ONLY `__CF_USER_TEXT_ENCODING` to the raw C environment — libomp performs
+its `__KMP_REGISTERED_LIB_<pid>` registration lazily, at its first parallel region, which a
+hermetic no-computation child never reaches. The classifier required exactly one KMP entry and
+therefore classified every genuine production-path launch as `environment_fault`.
+
+Plan §4.5.5 Stage B is an ACCEPT-ONLY allowlist ("Accept **only** explicitly frozen
+native-runtime deltas … **Any other delta is `INFRA_FAILURE`**"): it admits the PID-bound entry;
+it does not mandate its occurrence, and the fail-closed direction is extra or malformed deltas,
+not the non-occurrence of a lazy registration. `classify_stage_b_deltas` now accepts zero or one
+PID-bound format-valid entry; two entries, a wrong-PID name, a malformed value, and any other
+addition still fail closed, and the frozen `__CF_USER_TEXT_ENCODING` value rule is unchanged.
+The plan's rationale sentence ("torch's libomp registers a PID-scoped …") recorded the 2026-07-15
+probe's observation — that probe evidently reached a parallel region; the hermetic child does
+not. No plan text changes; the classifier now implements the frozen acceptance rule exactly.
+
+The same launches also fixed the loader-binding semantics against runtime reality. Two legitimate
+CPython/library behaviors present a runtime loader of "none" on file-backed modules: C-extension
+init code REGISTERS submodules that share the parent `.so`'s origin with no loader object
+(`torch._C._autograd`), and libraries perform module-object surgery that replaces their own
+`sys.modules` entries with custom module instances (`torch.backends`). The pinned loader class
+exists to defeat a CONFLICTING loader (zipimport or sourceless smuggling always presents its
+concrete class), so the rule is now: a concrete mismatch fails closed; a runtime "none" is
+accepted AND recorded (`loader_binding: "unclaimed"`), upgraded to `"parent:<name>"` when a loaded
+ancestor with the same resolved origin carries the pinned loader; the bytes remain
+sha-authenticated either way and sourceless execution stays excluded by its dedicated scan. The
+Stage-C image allowlist is now MEASURED rather than empty: the frozen payload class imports
+`bistar_gp.profile_integration`, whose closure loads additional extension images after the Stage-B
+baseline; the expectations generator enumerates exactly that delta with the same probe.
+
+A second empirical finding from the same launch: `numpy.show_config()` — called by the child's
+build-marker attestation BEFORE the Stage-B image measurement — lazily imports pyyaml, loading
+`yaml/_yaml.cpython-313-darwin.so`; the freeze-time measurement probe enumerated its image set
+BEFORE its own config-show calls, so the committed 66-image expectation was measured at the wrong
+point in the sequence and every real child (67 images) failed authentication. The measurement now
+replicates the child's exact pre-Stage-B sequence (build-configuration calls, then image
+enumeration); the regenerated expectations artifact carries 67 images. Additionally, the child's
+native import used `__import__(name, fromlist=["*"])`, whose `__all__` expansion imported extra
+submodules the plain-importing measurement never loads; it now uses `importlib.import_module`, so
+the child and the measurement load the same closure and the pre-marker import surface is strictly
+smaller.
+
+### Kimi K3 architecture challenge (2026-07-18) — adjudication record
+
+One bounded fresh OpenRouter request (`moonshotai/kimi-k3`, maximum reasoning effort) challenged
+the complete WI1/WI2 design plus the controlling plan sections; the first attempt returned an
+empty keep-alive body (transport failure) and was retried exactly once. The retry returned 14
+findings, each independently verified against the plan and source before any change. Kimi has no
+vote; nothing below expands scope.
+
+**Confirmed or partially confirmed, acted on:**
+
+- **K2/K3 (split origin rule vs §4.5.7):** the outside-roots closure clause could admit the
+  interpreter-forced preloads under an erroneously rooted freeze, and the production redundancy of
+  the clause was asserted in prose only. Standing CI now ASSERTS the redundancy over the committed
+  bundle: the committed manifest header's stdlib/lib-dynload/site-packages roots must equal the
+  pinned interpreter's own `sysconfig` paths, and every committed closure member must resolve
+  under the committed roots — so in the committed configuration the strict all-under-roots §4.5.7
+  form is structural, the closure clause is unreachable, and an erroneously rooted freeze fails CI
+  before any launch. The positive real-root launch additionally asserts `closure_bound == 0`.
+- **K4 (import-then-evict):** a module imported and evicted from `sys.modules` between checkpoints
+  cannot be origin-authenticated after the fact (the CPython import audit event does not carry the
+  resolved origin). Recorded as a disclosed residual of the same §4.5.13 class as in-memory
+  mutation; the inventory now records `import_events_without_module` so an eviction is visible in
+  evidence rather than silently absorbed, and worktree reads remain covered by load-time
+  open-hashing.
+- **K5 (open-world config):** the child's consumed configuration is now CLOSED-WORLD
+  (`KNOWN_CONFIG_KEYS`): any key outside the enumerated set — a legacy alias such as
+  `preboundary_skip`, or a future directive the parent's substitution comparison does not yet
+  cover — fails closed child-side before any consumption.
+- **K6/K11 (fixture cache):** the session bundle cache is populated atomically (staging directory,
+  `key.json` written last, atomic rename), and a cache hit is revalidated against live-host drift
+  (dependency-lock semantics recomputed against the live site-packages plus a deterministic
+  manifest-entry re-hash sample); every real-root negative asserts its SPECIFIC planted artifact
+  so unrelated host drift cannot masquerade as a pass.
+- **K7 (candidate provenance):** the fixture archives the `git stash create` tree, so uncommitted
+  TRACKED changes are part of both the cache key and the launched code; the key document records
+  head/dirty state explicitly.
+- **K8 (nested-root coverage):** the production nesting geometry (site-packages physically inside
+  the stdlib root) now has launch-level synthetic coverage: a positive nested-root launch and a
+  boundary plant caught by the pre-walk under the inner root id, plus the existing walker unit
+  test.
+- **K9 (post-marker self-consistency):** the parent's exit checks now bind the postcheck CONTENT
+  to the authenticated authority: `manifest_post.json` must attest exactly the spec's manifest
+  digest with `entry_sets_identical` true, beyond the stage-C digest linkage. A payload
+  consistently rewriting the whole post-marker pair remains the disclosed §4.5.13
+  hostile-payload residual; parent-side full re-walking was rejected as duplicating the child
+  walk at real-root cost.
+- **K12 (grep-test weakness):** the matrix wording was replaced — non-consumption of caller
+  static fields is structural (the fields no longer exist), not grep-asserted.
+- **K14 (reserved launch):** the fourth real-root launch is now exercised as a loader-class
+  corruption that survives the parent's verification and the completeness re-walk (whose drift
+  core deliberately excludes the loader annotation) and is caught ONLY by the child's pre-marker
+  origin/loader binding.
+
+**Dismissed with rationale (no change):**
+
+- **K1 (fabricated bundle+chain pair):** a caller who authors a complete self-consistent worktree
+  bundle AND its matching chain is performing a deliberate §4.5.13 out-of-scope act, and the
+  grant-validity of a chain is the authorization-ledger/audit layer's job (§5.2: audit CI
+  verifies every chain member against the committed artifacts at the authorized commit); the
+  capture layer's obligation — refusing any worktree/chain DISAGREEMENT — is implemented and
+  tested. A clarifying sentence was added here instead of a code change.
+- **K10 (child spec-digest self-reference):** the pre-consumption binding is the argv transport
+  digest — the child refuses, before consuming any field, a config whose bytes differ from what
+  the parent derived from the spec; the `authenticated_spec_sha256` echo in the marker-bound
+  effect proofs is the post-hoc audit trail, not the enforcement point. The discriminating tests
+  cover both: argv digest mismatch refusal (pre-consumption) and parent-side echo comparison.
+- **K13 (`waiter` seam):** the waiter is consulted only between SIGTERM and SIGKILL of a run
+  already classified ABORTED_BUDGET; it cannot influence any static fact, attestation, or
+  certification content, and a hanging waiter harms only the caller's own process. It is not a
+  static-authority seam.
 
 ## Contract questions
 

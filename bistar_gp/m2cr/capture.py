@@ -43,6 +43,7 @@ from bistar_gp.m2cr.serialization import (
     atomic_write_bytes,
     atomic_write_canonical_json,
     canonical_bytes,
+    canonical_sha256,
     sha256_file,
 )
 
@@ -110,12 +111,31 @@ _ATTESTATION_NAMES = (
     "native_stack",
     "manifest_pre",
     "manifest_post",
+    "origin_binding_pre",
     "sourceless",
     "import_inventory",
     "stage_c",
     "payload",
     "failure",
 )
+# The marker-bound attestation names every protocol exit must carry, mapped to
+# the attestation-path key holding each one's evidence file (external-audit
+# findings 1 and 2: the parent re-verifies the marker's evidence set at exit,
+# so a protocol claim cannot ride a marker missing the mandatory pre-walk,
+# origin-binding, or spec-binding attestations, and a payload cannot rewrite a
+# marker-bound evidence file undetected).
+_MANDATORY_MARKER_ATTESTATIONS = {
+    "effect_proofs": "effect_proofs",
+    "path_and_stage_a": "stage_a",
+    "bytecode_scan": "bytecode",
+    "audit_canary": "audit_canary",
+    "stage_b_os": "stage_b_os",
+    "stage_b_raw": "stage_b_raw",
+    "native_stack": "native_stack",
+    "sourceless_check": "sourceless",
+    "importable_manifest_pre": "manifest_pre",
+    "origin_binding_pre": "origin_binding_pre",
+}
 # Frozen self-contained run-directory layout (plan §4.4): every artifact one
 # launch attempt may produce, relative to run_dir.  Trailing "/" marks a
 # directory subtree.
@@ -136,6 +156,7 @@ RUN_DIR_LAYOUT = (
     "native_stack.json",
     "manifest_pre.json",
     "manifest_post.json",
+    "origin_binding_pre.json",
     "sourceless.json",
     "import_inventory.json",
     "stage_c.json",
@@ -204,33 +225,72 @@ def _default_waiter(process: subprocess.Popen[Any], timeout: float) -> int:
 
 @dataclass(frozen=True)
 class LaunchConfig:
-    interpreter_path: str
-    interpreter_flags: Sequence[str]
-    bootstrap_path: str
+    """Run identity and routing ONLY (external-audit finding 2).
+
+    Every static fact capable of affecting pre-boundary execution or
+    certification — the frozen environment mapping, the interpreter path,
+    resolved-target digest and flags, the bootstrap path, the four roots, the
+    importable-artifact manifest, the pre-boundary attestation set, the
+    attestation directives, and the dependency lock — is derived by
+    :func:`_authenticate_launch_spec` from the committed artifact graph under
+    ``worktree_root``, chain-bound.  The caller cannot author an expected
+    security value: the former static fields are no longer representable on
+    this config at all, so a directly-constructed ``LaunchConfig`` carries no
+    authority beyond naming which worktree to launch from (where the chain's
+    infrastructure digest fails closed on the wrong one), where to put the run,
+    and the run's identity.
+
+    ``wall_clock_ceiling_hours`` is a safety bound, not a security value: the
+    caller may only shorten it; capture refuses any value above the ratified
+    :data:`WALL_CLOCK_CEILING_HOURS`.  ``waiter`` is the established test-only
+    grace-period hook.
+    """
+
     worktree_root: str
     run_dir: str
-    frozen_env: Mapping[str, Any]
     authorization_id: str
     launch_attempt_id: str
     run_id: str
     record_kind: str
     chain: dict[str, Any]
-    wall_clock_ceiling_hours: float
+    wall_clock_ceiling_hours: float = WALL_CLOCK_CEILING_HOURS
     waiter: Callable[[subprocess.Popen[Any], float], Any] = field(
         default=_default_waiter, compare=False, repr=False
     )
-    # Plan §4.5.2: path of the frozen pre-boundary attestation set; when set,
-    # capture verifies every pinned digest on disk before any spawn.
-    preboundary_attestation_set: str | None = None
-    # Hermetic-test escape hatches only ("interpreter", "dyld"); the
-    # bootstrap-closure entries are never skippable.
-    preboundary_skip: Sequence[str] = ()
-    # Informational provenance only (round-4 Codex C1): capture_run recomputes
-    # the semantic lock against the bundle DERIVED from the committed worktree
-    # manifests, never against these caller-supplied fields; they merely record
-    # what launch_config_from_freeze authenticated for downstream provenance.
-    dependency_lock_path: str | None = None
-    site_packages: str | None = None
+
+
+@dataclass(frozen=True)
+class AuthenticatedLaunchSpec:
+    """The single static launch authority (external-audit finding 2).
+
+    Only ever produced by :func:`_authenticate_launch_spec`, which derives and
+    digest-authenticates every member from the committed Layer-0 artifact graph
+    under the launch worktree, bound to the authorized chain.  It is not a
+    freely constructible trust token: ``capture_run`` derives its own instance
+    and never accepts one from the caller.  ``spec_sha256`` is the canonical
+    digest of the complete static document; the bootstrap config embeds it
+    (transport-bound through argv), ``prelaunch.json`` records it, and the
+    child re-records it in the marker-bound ``effect_proofs.json`` attestation,
+    so the parent and the child cannot consume different static authorities.
+    """
+
+    worktree_root: str
+    frozen_env: Mapping[str, Any]
+    interpreter_path: str
+    interpreter_realpath: str
+    interpreter_sha256: str
+    interpreter_flags: tuple[str, ...]
+    four_roots: Mapping[str, str]
+    importable_manifest_path: str
+    preboundary_attestation_set_path: str
+    preboundary_closure: tuple[Mapping[str, Any], ...]
+    attestation_directives: Mapping[str, Any]
+    dependency_lock: Mapping[str, Any]
+    site_packages: str
+    environment_freeze_manifest_sha256: str
+    infrastructure_manifest_sha256: str
+    bootstrap_path: str
+    spec_sha256: str
 
 
 class RecordAssemblyError(ValueError):
@@ -811,16 +871,21 @@ def write_raw_manifest(run_dir: str | os.PathLike[str]) -> str:
 
 def _prelaunch(
     config: LaunchConfig,
+    spec: AuthenticatedLaunchSpec,
     bootstrap_path: Path,
     payload_path: Path,
     environment: Mapping[str, str],
 ) -> dict[str, Any]:
+    """Prelaunch provenance: identity from the caller config, every static
+    fact from the authenticated spec (finding 2), including the spec digest
+    that the marker-bound child attestation must re-record."""
+
     return {
         "schema_version": 1,
         "created_utc": _utc_now(),
         "config": {
-            "interpreter_path": os.fspath(Path(config.interpreter_path).resolve()),
-            "interpreter_flags": list(config.interpreter_flags),
+            "interpreter_path": spec.interpreter_realpath,
+            "interpreter_flags": list(spec.interpreter_flags),
             "bootstrap_path": os.fspath(bootstrap_path),
             "worktree_root": os.fspath(Path(config.worktree_root).resolve()),
             "run_dir": os.fspath(Path(config.run_dir).resolve()),
@@ -829,9 +894,10 @@ def _prelaunch(
             "run_id": config.run_id,
             "record_kind": config.record_kind,
             "wall_clock_ceiling_hours": config.wall_clock_ceiling_hours,
-            "preboundary_attestation_set": config.preboundary_attestation_set,
+            "preboundary_attestation_set": spec.preboundary_attestation_set_path,
             "frozen_environment": dict(sorted(environment.items())),
             "chain": dict(config.chain),
+            "authenticated_spec_sha256": spec.spec_sha256,
         },
         "bootstrap_sha256": sha256_file(bootstrap_path),
         "payload_entry_path": os.fspath(payload_path),
@@ -1041,7 +1107,7 @@ def _reauthenticate_loaded_images_parent_side(
     (external audit round-3 revision of F2; round-4 Codex delta review).  The
     parent (not the payload) re-verifies the on-disk native-library bytes
     against the DERIVED committed expectations — the in-memory bundle from
-    ``_derive_authenticated_bundle``, never the mutable run-dir config a
+    ``_authenticate_launch_spec``, never the mutable run-dir config a
     payload could rewrite — so payload code can replace neither this check nor
     its input.  Returns a fault string on any mismatch/unreadable image, else
     ``None``.
@@ -1171,6 +1237,115 @@ def _protocol_claim_is_valid(
     return stages, recomputed
 
 
+def _post_exit_authority_checks(
+    run_dir: Path,
+    paths: Mapping[str, str],
+    spec: AuthenticatedLaunchSpec,
+    stage_c_doc: Mapping[str, Any],
+) -> str | None:
+    """Parent-side post-exit verification that a protocol claim rode the
+    complete mandatory attestation set and the SAME static authority the
+    parent derived (external-audit findings 1 and 2).
+
+    Returns a fault string (INFRA_FAILURE, attestation_fault) or ``None``:
+
+    - the marker must carry every mandatory attestation name, and each named
+      evidence file's on-disk bytes must still hash to the marker's recorded
+      digest (a payload that rewrites marker-bound evidence is caught here);
+    - ``effect_proofs.json`` must re-record the derived authenticated-spec
+      digest, so the child demonstrably consumed the parent's static
+      authority;
+    - ``stage_c.json`` must bind the post-execution importable-manifest
+      re-walk and the origin/loader inventory by digest, and both evidence
+      files must exist with exactly those bytes (a missing or stripped
+      postcheck fails closed).
+    """
+
+    try:
+        marker = _read_json_object(run_dir / "payload_started.json")
+    except (OSError, ValueError) as exc:
+        return f"payload marker unreadable during authority checks: {exc}"
+    entries = marker.get("attestation_evidence_digests")
+    if not isinstance(entries, list):
+        return "payload marker attestation evidence is malformed"
+    digests: dict[str, str] = {}
+    for item in entries:
+        if (
+            not isinstance(item, Mapping)
+            or not isinstance(item.get("name"), str)
+            or not isinstance(item.get("evidence_sha256"), str)
+        ):
+            return "payload marker attestation evidence entry is malformed"
+        digests[item["name"]] = item["evidence_sha256"]
+    missing = sorted(set(_MANDATORY_MARKER_ATTESTATIONS) - set(digests))
+    if missing:
+        return f"payload marker lacks mandatory attestation evidence: {missing}"
+    for name, path_key in sorted(_MANDATORY_MARKER_ATTESTATIONS.items()):
+        evidence_path = Path(paths[path_key])
+        try:
+            actual = sha256_file(evidence_path)
+        except OSError as exc:
+            return f"marker-bound attestation evidence {name} unreadable: {exc}"
+        if actual != digests[name]:
+            return (
+                f"marker-bound attestation evidence {name} does not match its "
+                "marker digest"
+            )
+    try:
+        proofs = _read_json_object(Path(paths["effect_proofs"]))
+    except (OSError, ValueError) as exc:
+        return f"effect proofs unreadable during authority checks: {exc}"
+    if proofs.get("authenticated_spec_sha256") != spec.spec_sha256:
+        return (
+            "child effect proofs did not re-record the derived "
+            "authenticated-spec digest (parent and child static authorities "
+            "disagree)"
+        )
+    post_path = Path(paths["manifest_post"])
+    try:
+        post_actual = sha256_file(post_path)
+    except OSError as exc:
+        return (
+            f"post-execution importable-manifest attestation is missing: {exc}"
+        )
+    if stage_c_doc.get("importable_manifest_post_sha256") != post_actual:
+        return (
+            "stage C does not bind the post-execution importable-manifest "
+            "attestation"
+        )
+    # Kimi K3 challenge, finding 9: bind the postcheck CONTENT to the
+    # authenticated manifest identity, parent-side — the post-walk evidence
+    # must claim completeness against exactly the spec's manifest bytes, so a
+    # consistent rewrite of the post-marker pair still has to name the real
+    # authenticated authority to pass.
+    try:
+        post_doc = _read_json_object(post_path)
+    except (OSError, ValueError) as exc:
+        return f"post-execution importable-manifest attestation malformed: {exc}"
+    try:
+        authenticated_manifest_sha = sha256_file(spec.importable_manifest_path)
+    except OSError as exc:
+        return f"authenticated importable manifest unreadable at exit: {exc}"
+    if post_doc.get("frozen_manifest_sha256") != authenticated_manifest_sha:
+        return (
+            "post-execution re-walk does not attest the authenticated "
+            "importable manifest"
+        )
+    if (
+        post_doc.get("phase") != "post_execution"
+        or post_doc.get("entry_sets_identical") is not True
+    ):
+        return "post-execution re-walk attestation is incomplete"
+    inventory_path = Path(paths["import_inventory"])
+    try:
+        inventory_actual = sha256_file(inventory_path)
+    except OSError as exc:
+        return f"import-inventory attestation is missing: {exc}"
+    if stage_c_doc.get("import_inventory_sha256") != inventory_actual:
+        return "stage C does not bind the import-inventory attestation"
+    return None
+
+
 def _verify_protocol_marker(config: LaunchConfig, run_dir: Path) -> None:
     """Parent-side canonical marker validation for every protocol exit claim."""
 
@@ -1234,7 +1409,6 @@ def verify_preboundary_attestation_set(
     attestation_set_path: str | os.PathLike[str],
     *,
     worktree_root: str | os.PathLike[str] | None = None,
-    skip: Sequence[str] = (),
 ) -> dict[str, int]:
     """Verify the §4.5.2 pre-boundary pins on disk, before any spawn.
 
@@ -1246,17 +1420,14 @@ def verify_preboundary_attestation_set(
     family, stdlib/site-packages closure members) keep exact absolute-path
     verification.
 
-    ``skip`` accepts only ``"interpreter"`` and ``"dyld"`` (the dyld binary
-    plus its shared-cache family) as hermetic-test escape hatches; the
-    bootstrap-closure entries are never skippable.  Any mismatch, missing
+    Every member class is always verified: there is no skip parameter and no
+    partial mode (external-audit finding 2 removed the former
+    ``{"interpreter", "dyld"}`` hermetic-test escape hatches; hermetic tests
+    supply fixture-sized sets whose pins are genuine).  Any mismatch, missing
     digest, or unreadable pinned file raises ``ValueError`` with the exact
     reason, refusing the launch with no child spawned.
     """
 
-    skip_tokens = set(skip)
-    unknown = skip_tokens - {"interpreter", "dyld"}
-    if unknown:
-        raise ValueError(f"unknown preboundary skip tokens: {sorted(unknown)}")
     artifact = _read_json_object(Path(attestation_set_path).resolve(strict=True))
     worktree = (
         Path(worktree_root).resolve(strict=True)
@@ -1320,25 +1491,23 @@ def verify_preboundary_attestation_set(
             )
 
     checked = {"interpreter": 0, "dyld": 0, "closure": 0}
-    if "interpreter" not in skip_tokens:
-        check_entry(artifact.get("interpreter_binary"), "interpreter_binary")
-        checked["interpreter"] = 1
-    if "dyld" not in skip_tokens:
-        check_entry(artifact.get("dyld"), "dyld")
-        cache = artifact.get("dyld_shared_cache")
-        if not isinstance(cache, Mapping):
-            raise ValueError(
-                "preboundary attestation dyld_shared_cache is malformed"
-            )
-        check_entry(cache.get("main"), "dyld_shared_cache.main")
-        subcaches = cache.get("subcaches")
-        if not isinstance(subcaches, list):
-            raise ValueError(
-                "preboundary attestation subcaches must be a list"
-            )
-        for index, entry in enumerate(subcaches):
-            check_entry(entry, f"dyld_shared_cache.subcaches[{index}]")
-        checked["dyld"] = 2 + len(subcaches)
+    check_entry(artifact.get("interpreter_binary"), "interpreter_binary")
+    checked["interpreter"] = 1
+    check_entry(artifact.get("dyld"), "dyld")
+    cache = artifact.get("dyld_shared_cache")
+    if not isinstance(cache, Mapping):
+        raise ValueError(
+            "preboundary attestation dyld_shared_cache is malformed"
+        )
+    check_entry(cache.get("main"), "dyld_shared_cache.main")
+    subcaches = cache.get("subcaches")
+    if not isinstance(subcaches, list):
+        raise ValueError(
+            "preboundary attestation subcaches must be a list"
+        )
+    for index, entry in enumerate(subcaches):
+        check_entry(entry, f"dyld_shared_cache.subcaches[{index}]")
+    checked["dyld"] = 2 + len(subcaches)
     closure = artifact.get("bootstrap_closure")
     if not isinstance(closure, list):
         raise ValueError(
@@ -1364,15 +1533,16 @@ stdlib = os.path.realpath(sysconfig.get_path("stdlib"))
 dynload = os.path.realpath(os.path.join(stdlib, "lib-dynload"))
 site_packages = os.path.realpath(sysconfig.get_path("purelib"))
 sys.path[:] = [worktree, stdlib, dynload, site_packages]
+# The fabricated packages carry NO __file__, mirroring the bootstrap's own
+# namespace installation: their initializers never execute pre-boundary, so
+# they are not closure members (claiming them would be false provenance).
 package = ModuleType("bistar_gp")
 package.__path__ = [os.path.join(worktree, "bistar_gp")]
 package.__package__ = "bistar_gp"
-package.__file__ = os.path.join(worktree, "bistar_gp", "__init__.py")
 sys.modules["bistar_gp"] = package
 subpackage = ModuleType("bistar_gp.m2cr")
 subpackage.__path__ = [os.path.join(worktree, "bistar_gp", "m2cr")]
 subpackage.__package__ = "bistar_gp.m2cr"
-subpackage.__file__ = os.path.join(worktree, "bistar_gp", "m2cr", "__init__.py")
 sys.modules["bistar_gp.m2cr"] = subpackage
 module = importlib.import_module("bistar_gp.m2cr.bootstrap")
 if os.path.realpath(getattr(module, "__file__", "")) != os.path.realpath(
@@ -1590,37 +1760,54 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     pipe = None
     stdout_handle: Any = None
     stderr_handle: Any = None
-    derived_lock: dict[str, Any] | None = None
-    derived_site_packages: str | None = None
-    derived_images: list[Any] | None = None
+    spec: AuthenticatedLaunchSpec | None = None
     bootstrap_config_sha256: str | None = None
     try:
+        worktree_root = Path(config.worktree_root).resolve(strict=True)
+        # The B10 safety ceiling is a bound, not a caller-authored security
+        # value: a caller may shorten it but never exceed the ratified ceiling.
+        ceiling = config.wall_clock_ceiling_hours
+        if (
+            not isinstance(ceiling, (int, float))
+            or isinstance(ceiling, bool)
+            or not math.isfinite(float(ceiling))
+            or float(ceiling) <= 0.0
+            or float(ceiling) > WALL_CLOCK_CEILING_HOURS
+        ):
+            raise ValueError(
+                "wall_clock_ceiling_hours must be finite, positive, and at "
+                f"most the ratified {WALL_CLOCK_CEILING_HOURS} h ceiling"
+            )
+        # External-audit finding 2: EVERY static launch fact is derived from
+        # the committed artifact graph under the launch worktree, chain-bound,
+        # through the single authenticated-spec factory.  The caller config
+        # carries no static authority; a missing/unbindable/mismatched
+        # artifact fails closed here, before any run artifact exists.
+        pre_spawn_phase = "attestation"
+        spec = _authenticate_launch_spec(worktree_root, config.chain)
+        pre_spawn_phase = "infrastructure"
         local = _prepare_run_directories(run_dir)
         environment, bootstrap_environment = _realize_environment(
-            config.frozen_env, run_dir, local
+            spec.frozen_env, run_dir, local
         )
-        bootstrap_path = Path(config.bootstrap_path).resolve(strict=True)
-        worktree_root = Path(config.worktree_root).resolve(strict=True)
+        bootstrap_path = Path(spec.bootstrap_path).resolve(strict=True)
         bootstrap_config_path = run_dir / BOOTSTRAP_CONFIG_NAME
         template = _load_bootstrap_template(bootstrap_config_path)
-        # Codex round-3 C1 (requirement 2): capture_run INDEPENDENTLY derives and
-        # authenticates the mandatory native-stack expectations and dependency
-        # lock from the committed manifests UNDER the launch worktree, bound to
-        # the authorized chain — it never trusts the caller-injected template
-        # directives, a caller path, or a caller-created bundle as its trust
-        # root.  A missing/unbindable/mismatched artifact fails closed before the
-        # marker.  The derived expectations are bound into the template (any
-        # caller substitution rejected) and re-validated in full.
+        # Every spec-authored static directive is bound into the template with
+        # caller substitution REJECTED (a conflicting template value refuses
+        # the launch; a missing one is injected).  The caller template keeps
+        # only payload selection and run routing.
         pre_spawn_phase = "attestation"
-        expectations, derived_lock, derived_site_packages = (
-            _derive_authenticated_bundle(config, worktree_root)
+        _bind_attestation_directives(template, spec.attestation_directives)
+        _bind_spec_static_directives(
+            template,
+            spec,
+            bootstrap_environment=bootstrap_environment,
+            pycache_prefix=local["PYCACHE_PREFIX"],
+            worktree_root=worktree_root,
+            config=config,
         )
-        _bind_attestation_directives(template, expectations)
         _require_complete_attestation_directives(template)
-        # The post-exit image re-attestation consumes the DERIVED committed
-        # expectations (round-4 Codex delta review) — never a re-read of the
-        # mutable run-dir config a payload could rewrite.
-        derived_images = list(expectations["expected_loaded_images"])
         # After the derive/bind/require attestation block, the remaining
         # pre-Popen work (payload-path resolution, template plumbing, run-dir
         # containment) is infrastructure setup again, so its failures keep the
@@ -1629,17 +1816,6 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         pre_spawn_phase = "infrastructure"
         payload_path = _payload_entry_path(template, worktree_root)
         template.pop("event_fd", None)
-        template.update(
-            frozen_env=template.pop("expected_frozen_env", bootstrap_environment),
-            expected_pycache_prefix=local["PYCACHE_PREFIX"],
-            worktree_root=os.fspath(worktree_root),
-            boundary={
-                "authorization_id": config.authorization_id,
-                "launch_attempt_id": config.launch_attempt_id,
-                "execution_commit": config.chain.get("execution_commit"),
-                "chain": dict(config.chain),
-            },
-        )
         paths = dict(template.get("attestation_paths", {}))
         paths.setdefault(
             "payload_started", os.fspath(run_dir / "payload_started.json")
@@ -1651,23 +1827,20 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         paths["stage_c"] = os.fspath(run_dir / "stage_c.json")
         template["attestation_paths"] = paths
         _require_contained_attestation_paths(run_dir, paths)
-        if config.preboundary_attestation_set is not None:
-            # Plan §4.5.2: a pre-boundary digest mismatch refuses the launch
-            # with no child spawned; F3 verifies the worktree-origin pins
-            # against THIS launch's worktree by (relpath, sha256).
-            pre_spawn_phase = "attestation"
-            verify_preboundary_attestation_set(
-                config.preboundary_attestation_set,
-                worktree_root=worktree_root,
-                skip=config.preboundary_skip,
-            )
+        # Plan §4.5.2: the pre-boundary set is REQUIRED before spawn — derived
+        # from the authenticated graph, never caller-supplied, with no skip
+        # mode; a digest mismatch refuses the launch with no child spawned.
+        pre_spawn_phase = "attestation"
+        verify_preboundary_attestation_set(
+            spec.preboundary_attestation_set_path,
+            worktree_root=worktree_root,
+        )
         # F4 + Codex round-3 C1: recompute the stable semantic dependency-lock
         # fields from the live environment and compare to the DERIVED committed
-        # lock (authenticated from the worktree manifest, not a caller path) —
-        # unconditionally, before launch; a third-party-stack drift refuses it.
-        pre_spawn_phase = "attestation"
+        # lock — unconditionally, before launch; a third-party-stack drift
+        # refuses it.
         lock_fault = _lock_semantic_fault(
-            derived_lock, config.interpreter_path, derived_site_packages
+            spec.dependency_lock, spec.interpreter_path, spec.site_packages
         )
         if lock_fault is not None:
             raise ValueError(lock_fault)
@@ -1676,7 +1849,9 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
         # _prelaunch, or the event pipe failing to start) must also commit an
         # INFRA_FAILURE record rather than escape capture_run.
         pre_spawn_phase = "prelaunch"
-        prelaunch = _prelaunch(config, bootstrap_path, payload_path, environment)
+        prelaunch = _prelaunch(
+            config, spec, bootstrap_path, payload_path, environment
+        )
         prelaunch_sha256 = atomic_write_canonical_json(
             run_dir / "prelaunch.json", prelaunch
         )
@@ -1783,8 +1958,8 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
     spawn_confirm_errors: list[BaseException] = []
     try:
         argv = [
-            os.fspath(Path(config.interpreter_path).resolve()),
-            *_expanded_flags(config.interpreter_flags, local["PYCACHE_PREFIX"]),
+            spec.interpreter_realpath,
+            *_expanded_flags(spec.interpreter_flags, local["PYCACHE_PREFIX"]),
             os.fspath(bootstrap_path),
             os.fspath(bootstrap_config_path),
             str(pipe.write_fd),
@@ -1911,35 +2086,37 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                 )
         # Plan §4.5.11: repeat every pre-run static class at exit, parent-side.
         # The pre-boundary set (interpreter, dyld family, and the FULL bootstrap
-        # closure) is re-verified here so an ordinary mutation to any of those
-        # during execution forces INFRA_FAILURE rather than yielding COMPLETED
-        # (external audit F3). The child re-walks the importable-artifact
-        # manifest at Stage C; together they cover §4.5.11's classes.
-        if capture_fault is None and config.preboundary_attestation_set is not None:
+        # closure) is re-verified here — unconditionally, from the spec — so an
+        # ordinary mutation to any of those during execution forces
+        # INFRA_FAILURE rather than yielding COMPLETED (external audit F3).
+        # The child re-walks the importable-artifact manifest at Stage C;
+        # together they cover §4.5.11's classes.
+        if capture_fault is None:
             try:
                 verify_preboundary_attestation_set(
-                    config.preboundary_attestation_set,
+                    spec.preboundary_attestation_set_path,
                     worktree_root=worktree_root,
-                    skip=config.preboundary_skip,
                 )
             except ValueError as exc:
                 capture_fault = f"post-exit pre-boundary re-attestation failed: {exc}"
         # F2 (round-3 revision) + round-4 (Codex delta review): re-hash the
         # committed expected loaded-image set parent-side after exit, against
-        # the DERIVED in-memory expectations — never a re-read of the mutable
+        # the spec's DERIVED expectations — never a re-read of the mutable
         # run-dir config — so a native-library mutation during the run is
         # caught by the trusted parent (the payload can replace neither the
         # check nor its input).
-        if capture_fault is None and derived_images is not None:
-            fault = _reauthenticate_loaded_images_parent_side(derived_images)
+        if capture_fault is None:
+            fault = _reauthenticate_loaded_images_parent_side(
+                list(spec.attestation_directives["expected_loaded_images"])
+            )
             if fault is not None:
                 capture_fault = fault
         # F4 (round-3 revision) + Codex C1: recompute + compare the stable
         # semantic dependency-lock fields parent-side after exit against the
-        # DERIVED committed lock (§4.5.11 "lock metadata").
-        if capture_fault is None and derived_lock is not None:
+        # spec's DERIVED committed lock (§4.5.11 "lock metadata").
+        if capture_fault is None:
             fault = _lock_semantic_fault(
-                derived_lock, config.interpreter_path, derived_site_packages
+                spec.dependency_lock, spec.interpreter_path, spec.site_packages
             )
             if fault is not None:
                 capture_fault = f"post-exit {fault}"
@@ -2016,7 +2193,7 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                     )
                 else:
                     try:
-                        _read_json_object(stage_c_path)
+                        stage_c_doc = _read_json_object(stage_c_path)
                     except (
                         OSError,
                         ValueError,
@@ -2029,7 +2206,17 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                             f"malformed Stage C attestation: {exc}",
                         )
                     else:
-                        if not balance["balanced"]:
+                        # Findings 1+2: a protocol claim must ride the complete
+                        # mandatory marker-bound attestation set, re-record the
+                        # derived spec digest, and bind the post-execution
+                        # re-walk + origin inventory — verified parent-side.
+                        authority_fault = _post_exit_authority_checks(
+                            run_dir, paths, spec, stage_c_doc
+                        )
+                        if authority_fault is not None:
+                            status = "INFRA_FAILURE"
+                            fault = ("attestation_fault", authority_fault)
+                        elif not balance["balanced"]:
                             status = "INFRA_FAILURE"
                             fault = (
                                 "capture_fault",
@@ -2403,6 +2590,67 @@ def _bind_attestation_directives(
         template[key] = expectations[key]
 
 
+def _bind_spec_static_directives(
+    template: dict[str, Any],
+    spec: AuthenticatedLaunchSpec,
+    *,
+    bootstrap_environment: Mapping[str, Any],
+    pycache_prefix: str,
+    worktree_root: Path,
+    config: LaunchConfig,
+) -> None:
+    """Bind every remaining spec-derived static directive into the template,
+    rejecting caller substitution (external-audit findings 1 and 2).
+
+    The four roots (worktree slot = THIS launch's worktree), the
+    importable-artifact manifest path, the pre-boundary closure, the frozen
+    environment, the run-local pycache prefix, the worktree root, the boundary
+    identity, and the authenticated-spec digest are all parent-derived.  A
+    template that carries a CONFLICTING value for any of them is rejected —
+    never silently preferred and never silently overwritten; a missing value
+    is injected.
+    """
+
+    four_roots = [
+        os.fspath(worktree_root.resolve()),
+        spec.four_roots["stdlib"],
+        spec.four_roots["lib-dynload"],
+        spec.four_roots["site-packages"],
+    ]
+    frozen_env_value = dict(bootstrap_environment)
+    bound: dict[str, Any] = {
+        "four_roots": four_roots,
+        "importable_artifact_manifest": spec.importable_manifest_path,
+        "preboundary_closure": [dict(entry) for entry in spec.preboundary_closure],
+        "authenticated_spec_sha256": spec.spec_sha256,
+        "frozen_env": frozen_env_value,
+        "expected_pycache_prefix": pycache_prefix,
+        "worktree_root": os.fspath(worktree_root.resolve()),
+        "boundary": {
+            "authorization_id": config.authorization_id,
+            "launch_attempt_id": config.launch_attempt_id,
+            "execution_commit": config.chain.get("execution_commit"),
+            "chain": dict(config.chain),
+        },
+    }
+    # The legacy expected_frozen_env spelling is an alias for frozen_env; a
+    # conflicting alias is a substitution attempt and is rejected the same way.
+    alias = template.pop("expected_frozen_env", None)
+    if alias is not None and alias != frozen_env_value:
+        raise ValueError(
+            "bootstrap template substitutes the derived frozen environment "
+            "(expected_frozen_env); static launch facts may not be "
+            "caller-supplied"
+        )
+    for key, value in bound.items():
+        if key in template and template[key] != value:
+            raise ValueError(
+                f"bootstrap template substitutes the derived {key}; static "
+                "launch facts may not be caller-supplied"
+            )
+        template[key] = value
+
+
 _COMMITTED_INFRA_RELPATH = "docs/m2c_freeze/m2cr_infrastructure_manifest_v1.json"
 
 
@@ -2435,22 +2683,60 @@ def _authenticated_pin_under_worktree(
     return path
 
 
-def _derive_authenticated_bundle(
-    config: LaunchConfig, worktree_root: Path
-) -> tuple[dict[str, Any], dict[str, Any], str]:
-    """Derive + authenticate the mandatory native-stack expectations and the
-    dependency lock from the committed infrastructure manifest UNDER the launch
-    worktree, bound to the authorized chain (Codex round-3 C1, requirement 2).
+def _env_freeze_pin_under_worktree(
+    freeze: Mapping[str, Any], name: str, worktree: Path
+) -> Path:
+    """Resolve one aggregating environment-freeze pin under the launch worktree
+    and authenticate its sha256 (external-audit finding 2: the four static
+    freeze artifacts are authenticated through the committed aggregating
+    manifest, itself infra-pinned and chain-bound)."""
+
+    artifacts = freeze.get("artifacts")
+    if not isinstance(artifacts, Mapping):
+        raise ValueError("environment freeze manifest lacks an artifacts section")
+    pin = artifacts.get(name)
+    if (
+        not isinstance(pin, Mapping)
+        or not isinstance(pin.get("path"), str)
+        or not isinstance(pin.get("sha256"), str)
+        or _SHA256_RE.fullmatch(pin["sha256"]) is None
+    ):
+        raise ValueError(f"environment freeze manifest does not pin {name}")
+    if not _is_safe_relpath(pin["path"]):
+        raise ValueError(
+            f"environment freeze pin for {name} must be a safe repo-relative "
+            "path"
+        )
+    path = (worktree / pin["path"]).resolve()
+    try:
+        path.relative_to(worktree.resolve())
+    except ValueError as exc:
+        raise ValueError(
+            f"pinned {name} resolves outside the launch worktree"
+        ) from exc
+    if not path.is_file():
+        raise ValueError(f"pinned {name} not found under the worktree: {path}")
+    if sha256_file(path) != pin["sha256"]:
+        raise ValueError(
+            f"pinned {name} sha256 does not match the environment freeze "
+            "manifest"
+        )
+    return path
+
+
+def _authenticate_launch_spec(
+    worktree_root: Path, chain: Mapping[str, Any]
+) -> AuthenticatedLaunchSpec:
+    """Authenticate the complete committed Layer-0 graph under the launch
+    worktree, chain-bound, and derive the single static launch authority
+    (external-audit finding 2).
 
     capture_run's trust root is the committed manifests inside the launch
-    worktree, authenticated against ``config.chain`` — never a caller-supplied
-    path, boolean, or an internally consistent caller-created bundle.  Returns
-    ``(expectations, dependency_lock, site_packages)``; raises ``ValueError`` on
-    any missing, unbindable, or mismatched artifact so capture_run commits a
-    pre-payload INFRA_FAILURE before the marker.
+    worktree, authenticated against ``chain`` — never a caller-supplied path,
+    field, or an internally consistent caller-created bundle.  Raises
+    ``ValueError`` on any missing, unbindable, or mismatched artifact so
+    capture_run commits a pre-payload INFRA_FAILURE before the marker.
     """
-
-    from bistar_gp.m2cr.environment_freeze import read_manifest_header
 
     worktree = Path(worktree_root)
     infra_path = worktree / _COMMITTED_INFRA_RELPATH
@@ -2459,7 +2745,7 @@ def _derive_authenticated_bundle(
             "committed infrastructure manifest not found under the launch "
             f"worktree: {infra_path}"
         )
-    expected_infra_sha = config.chain.get("infrastructure_manifest_sha256")
+    expected_infra_sha = chain.get("infrastructure_manifest_sha256")
     if (
         not isinstance(expected_infra_sha, str)
         or _SHA256_RE.fullmatch(expected_infra_sha) is None
@@ -2477,25 +2763,208 @@ def _derive_authenticated_bundle(
     infra_artifacts = infra.get("artifacts")
     if not isinstance(infra_artifacts, Mapping):
         raise ValueError("infrastructure manifest lacks an artifacts section")
+
+    # The aggregating environment-freeze manifest: infra-pinned under the
+    # worktree AND required to equal the chain's own static binding, so the
+    # B18-sub chain member and the artifact the launch actually consumes can
+    # never disagree.
+    env_freeze_path = _authenticated_pin_under_worktree(
+        infra_artifacts, "environment_freeze_manifest", worktree
+    )
+    env_freeze_sha = sha256_file(env_freeze_path)
+    if chain.get("environment_freeze_manifest_sha256") != env_freeze_sha:
+        raise ValueError(
+            "authorized chain environment_freeze_manifest_sha256 does not "
+            "match the committed aggregating manifest under the worktree"
+        )
+    env_freeze = _read_json_object(env_freeze_path)
+
+    # The four static freeze artifacts, each authenticated via the aggregating
+    # manifest's pins.
+    env_mapping_path = _env_freeze_pin_under_worktree(
+        env_freeze, "child_env_mapping", worktree
+    )
+    interpreter_pin_path = _env_freeze_pin_under_worktree(
+        env_freeze, "interpreter_pin", worktree
+    )
+    manifest_path = _env_freeze_pin_under_worktree(
+        env_freeze, "importable_artifact_manifest", worktree
+    )
+    attestation_set_path = _env_freeze_pin_under_worktree(
+        env_freeze, "preboundary_attestation_set", worktree
+    )
+    # The infrastructure manifest pins the importable manifest as well; both
+    # authorities must name the same authenticated bytes.
+    infra_manifest_path = _authenticated_pin_under_worktree(
+        infra_artifacts, "importable_artifact_manifest", worktree
+    )
+    if infra_manifest_path != manifest_path:
+        raise ValueError(
+            "infrastructure and environment-freeze manifests pin different "
+            "importable-artifact manifests"
+        )
     expectations_path = _authenticated_pin_under_worktree(
         infra_artifacts, "native_stack_expectations", worktree
     )
     lock_path = _authenticated_pin_under_worktree(
         infra_artifacts, "dependency_lock", worktree
     )
-    manifest_path = _authenticated_pin_under_worktree(
-        infra_artifacts, "importable_artifact_manifest", worktree
-    )
     expectations = _read_json_object(expectations_path)
     dependency_lock = _read_json_object(lock_path)
-    roots = read_manifest_header(manifest_path).get("roots")
-    if not isinstance(roots, Mapping) or not isinstance(
-        roots.get("site-packages"), str
+    for key in _MANDATORY_ATTESTATION_KEYS:
+        if key not in expectations:
+            raise ValueError(
+                f"native-stack expectations artifact lacks mandatory {key}"
+            )
+
+    # Frozen child environment mapping (plan §4.5.5 Stage A).
+    mapping = _read_json_object(env_mapping_path)
+    fixed = mapping.get("fixed")
+    run_local_keys = mapping.get("run_local_keys")
+    if (
+        not isinstance(fixed, Mapping)
+        or not fixed
+        or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in fixed.items()
+        )
+        or not isinstance(run_local_keys, list)
+        or not all(isinstance(key, str) for key in run_local_keys)
     ):
         raise ValueError(
-            "importable manifest header lacks a site-packages root binding"
+            "child environment mapping lacks well-formed fixed/run_local_keys "
+            "members"
         )
-    return expectations, dependency_lock, roots["site-packages"]
+    frozen_env: dict[str, Any] = {
+        "fixed": dict(fixed),
+        "run_local_keys": list(run_local_keys),
+    }
+
+    # Interpreter pin (plan §4.5.1): absolute path, and the resolved target's
+    # sha256 re-verified on disk before any spawn.
+    pin = _read_json_object(interpreter_pin_path)
+    interpreter_path = pin.get("path")
+    pinned_realpath = pin.get("realpath")
+    pinned_sha = pin.get("sha256")
+    if not isinstance(interpreter_path, str) or not os.path.isabs(
+        interpreter_path
+    ):
+        raise ValueError("interpreter pin lacks an absolute interpreter path")
+    if not isinstance(pinned_sha, str) or _SHA256_RE.fullmatch(pinned_sha) is None:
+        raise ValueError("interpreter pin lacks a frozen sha256")
+    actual_realpath = os.path.realpath(interpreter_path)
+    if not isinstance(pinned_realpath, str) or actual_realpath != pinned_realpath:
+        raise ValueError(
+            "interpreter resolved path does not match the frozen interpreter "
+            f"pin: pinned {pinned_realpath!r}, resolved {actual_realpath!r}"
+        )
+    try:
+        actual_sha = sha256_file(actual_realpath)
+    except OSError as exc:
+        raise ValueError(
+            f"pinned interpreter target is unreadable: {actual_realpath}: {exc}"
+        ) from exc
+    if actual_sha != pinned_sha:
+        raise ValueError(
+            "interpreter resolved-target sha256 does not match the frozen "
+            "interpreter pin"
+        )
+
+    # Canonical four roots from the importable-manifest v2 header; the worktree
+    # slot is per-launch by definition (plan §4.5.1 pins the CWD to the run's
+    # own fresh detached worktree) while the three host-global roots derive
+    # from the header.
+    header_roots = _read_manifest_v2_header(manifest_path)
+    four_roots = {
+        **{name: os.path.realpath(header_roots[name]) for name in _FOUR_ROOT_IDS},
+        "worktree": os.fspath(worktree.resolve()),
+    }
+
+    # Pre-boundary closure entries become a child directive so the child can
+    # authenticate outside-root file-backed modules against the same committed
+    # authority the parent verifies (finding 1's origin/loader rule).
+    attestation_doc = _read_json_object(attestation_set_path)
+    closure_raw = attestation_doc.get("bootstrap_closure")
+    if not isinstance(closure_raw, list) or not closure_raw:
+        raise ValueError(
+            "preboundary attestation set lacks a non-empty bootstrap_closure"
+        )
+    closure: list[dict[str, Any]] = []
+    for index, entry in enumerate(closure_raw):
+        if (
+            not isinstance(entry, Mapping)
+            or not isinstance(entry.get("sha256"), str)
+            or _SHA256_RE.fullmatch(entry["sha256"]) is None
+        ):
+            raise ValueError(
+                f"preboundary bootstrap_closure[{index}] lacks a frozen sha256"
+            )
+        if entry.get("root") == "worktree":
+            relpath = entry.get("relpath")
+            if not isinstance(relpath, str) or not _is_safe_relpath(relpath):
+                raise ValueError(
+                    f"preboundary bootstrap_closure[{index}] has an unsafe "
+                    "worktree relpath"
+                )
+            closure.append(
+                {
+                    "root": "worktree",
+                    "relpath": relpath,
+                    "sha256": entry["sha256"],
+                }
+            )
+        elif isinstance(entry.get("path"), str) and os.path.isabs(entry["path"]):
+            closure.append({"path": entry["path"], "sha256": entry["sha256"]})
+        else:
+            raise ValueError(
+                f"preboundary bootstrap_closure[{index}] is malformed"
+            )
+
+    bootstrap_path = worktree / "bistar_gp/m2cr/bootstrap.py"
+    if not bootstrap_path.is_file():
+        raise ValueError(f"derived bootstrap is missing: {bootstrap_path}")
+
+    document = {
+        "worktree_root": os.fspath(worktree.resolve()),
+        "frozen_env": frozen_env,
+        "interpreter_path": interpreter_path,
+        "interpreter_realpath": actual_realpath,
+        "interpreter_sha256": pinned_sha,
+        "interpreter_flags": list(FROZEN_INTERPRETER_FLAGS),
+        "four_roots": four_roots,
+        "importable_manifest_path": os.fspath(manifest_path),
+        "preboundary_attestation_set_path": os.fspath(attestation_set_path),
+        "preboundary_closure": closure,
+        "attestation_directives": {
+            key: expectations[key] for key in _MANDATORY_ATTESTATION_KEYS
+        },
+        "dependency_lock": dependency_lock,
+        "site_packages": four_roots["site-packages"],
+        "environment_freeze_manifest_sha256": env_freeze_sha,
+        "infrastructure_manifest_sha256": expected_infra_sha,
+        "bootstrap_path": os.fspath(bootstrap_path.resolve()),
+    }
+    return AuthenticatedLaunchSpec(
+        spec_sha256=canonical_sha256(document),
+        worktree_root=document["worktree_root"],
+        frozen_env=frozen_env,
+        interpreter_path=interpreter_path,
+        interpreter_realpath=actual_realpath,
+        interpreter_sha256=pinned_sha,
+        interpreter_flags=FROZEN_INTERPRETER_FLAGS,
+        four_roots=four_roots,
+        importable_manifest_path=document["importable_manifest_path"],
+        preboundary_attestation_set_path=document[
+            "preboundary_attestation_set_path"
+        ],
+        preboundary_closure=tuple(closure),
+        attestation_directives=document["attestation_directives"],
+        dependency_lock=dependency_lock,
+        site_packages=document["site_packages"],
+        environment_freeze_manifest_sha256=env_freeze_sha,
+        infrastructure_manifest_sha256=expected_infra_sha,
+        bootstrap_path=document["bootstrap_path"],
+    )
 
 
 def _lock_semantic_fault(
@@ -2535,30 +3004,6 @@ def _read_manifest_v2_header(path: Path) -> dict[str, str]:
     return {name: roots[name] for name in _FOUR_ROOT_IDS}
 
 
-def _pinned_artifact(freeze: Mapping[str, Any], name: str, base: Path) -> Path:
-    """Resolve and digest-authenticate one environment-freeze artifact pin."""
-
-    artifacts = freeze.get("artifacts")
-    if not isinstance(artifacts, Mapping) or name not in artifacts:
-        raise ValueError(f"environment freeze manifest lacks artifact {name!r}")
-    entry = artifacts[name]
-    if not isinstance(entry, Mapping) or not isinstance(entry.get("path"), str):
-        raise ValueError(f"environment freeze pin for {name!r} is malformed")
-    path = Path(entry["path"])
-    if not path.is_absolute():
-        path = (base / path).resolve()
-    expected = entry.get("sha256")
-    if not isinstance(expected, str) or _SHA256_RE.fullmatch(expected) is None:
-        raise ValueError(f"environment freeze pin for {name!r} lacks a sha256")
-    actual = sha256_file(path)
-    if actual != expected:
-        raise ValueError(
-            f"environment freeze pin mismatch for {name!r}: expected "
-            f"{expected}, actual {actual}"
-        )
-    return path
-
-
 def launch_config_from_freeze(
     env_freeze_manifest_path: str | os.PathLike[str],
     infrastructure_manifest_path: str | os.PathLike[str],
@@ -2573,156 +3018,65 @@ def launch_config_from_freeze(
     worktree_root: str | os.PathLike[str],
     waiter: Callable[[subprocess.Popen[Any], float], Any] | None = None,
 ) -> LaunchConfig:
-    """Derive a :class:`LaunchConfig` from the frozen artifacts (plan §3.1/§4.5).
+    """Validate the committed launch authority early and return the slim
+    identity/routing :class:`LaunchConfig` (external-audit finding 2).
 
-    Authenticates the aggregating environment-freeze manifest against its
-    Layer-1a infrastructure pin, authenticates each of the four freeze
-    artifacts against the aggregating manifest, then derives: the interpreter
-    path from the interpreter pin, the frozen ``-S -s -P -B`` flag set plus
-    the per-run pycache prefix, the frozen child environment from the
-    child-env mapping artifact, the four roots from the importable-manifest
-    format-v2 header, and the attestation-set/manifest paths.  The B10
-    safety ceiling (:data:`WALL_CLOCK_CEILING_HOURS`) is applied.  The
-    bootstrap template is materialized as ``run_dir/bootstrap_config.json``
-    with the derived ``four_roots`` and manifest path injected.
+    Every static launch fact is derived by ``capture_run`` itself through
+    :func:`_authenticate_launch_spec` under the launch worktree; this factory
+    no longer authors or forwards any of them.  It (i) runs the SAME
+    authentication factory (fail-fast for callers, one derivation authority,
+    no drift between two implementations), (ii) requires the caller's explicit
+    freeze/infrastructure manifest paths to hold exactly the bytes the
+    worktree-derived spec authenticated — a caller pointing at a different
+    bundle than the launch worktree's committed one is refused, (iii) binds
+    the chain's authorization id, and (iv) materializes the caller's
+    payload-selection template as ``run_dir/bootstrap_config.json``.
     """
 
     freeze_path = Path(env_freeze_manifest_path).resolve(strict=True)
     infrastructure_path = Path(infrastructure_manifest_path).resolve(strict=True)
-    infrastructure = _read_json_object(infrastructure_path)
-    infra_artifacts = infrastructure.get("artifacts")
-    if not isinstance(infra_artifacts, Mapping):
-        raise ValueError("infrastructure manifest lacks an artifacts section")
-    freeze_pin = infra_artifacts.get("environment_freeze_manifest")
-    if not isinstance(freeze_pin, Mapping):
-        raise ValueError(
-            "infrastructure manifest does not pin the environment freeze "
-            "manifest"
-        )
-    actual_freeze_sha = sha256_file(freeze_path)
-    if actual_freeze_sha != freeze_pin.get("sha256"):
-        raise ValueError(
-            "environment freeze manifest does not match its infrastructure "
-            f"pin: expected {freeze_pin.get('sha256')}, actual "
-            f"{actual_freeze_sha}"
-        )
-    freeze = _read_json_object(freeze_path)
-    # Repo-contained pins are stored repo-relative (audit A9 contract); they
-    # resolve against the repository root discovered from the manifest, never
-    # against the manifest's own directory.
-    base = freeze_path.parent
-    probe = freeze_path.parent
-    while probe != probe.parent:
-        if (probe / ".git").exists():
-            base = probe
-            break
-        probe = probe.parent
-    interpreter_pin_path = _pinned_artifact(freeze, "interpreter_pin", base)
-    env_mapping_path = _pinned_artifact(freeze, "child_env_mapping", base)
-    manifest_path = _pinned_artifact(freeze, "importable_artifact_manifest", base)
-    attestation_set_path = _pinned_artifact(
-        freeze, "preboundary_attestation_set", base
-    )
-    # F1 (round-3 revision): the mandatory attestation directives are DERIVED
-    # from the committed native-stack expectations artifact, authenticated
-    # against its Layer-1a infrastructure pin.
-    expectations_path = _pinned_artifact(
-        infrastructure, "native_stack_expectations", base
-    )
-    expectations = _read_json_object(expectations_path)
-
-    pin = _read_json_object(interpreter_pin_path)
-    interpreter_path = pin.get("path")
-    if not isinstance(interpreter_path, str) or not os.path.isabs(
-        interpreter_path
-    ):
-        raise ValueError("interpreter pin lacks an absolute interpreter path")
-
-    mapping = _read_json_object(env_mapping_path)
-    fixed = mapping.get("fixed")
-    run_local_keys = mapping.get("run_local_keys")
-    if not isinstance(fixed, Mapping) or not isinstance(run_local_keys, list):
-        raise ValueError(
-            "child environment mapping lacks fixed/run_local_keys members"
-        )
-    frozen_env: dict[str, Any] = {
-        "fixed": dict(fixed),
-        "run_local_keys": list(run_local_keys),
-    }
-
-    roots = _read_manifest_v2_header(manifest_path)
-    # The worktree root is per-launch by definition (plan §4.5.1 pins the
-    # CWD to the run's own fresh detached worktree); the manifest header
-    # documents the freeze-time walk root, and the manifest's worktree
-    # ENTRIES stay content-verified against the launch worktree by the
-    # bootstrap's pre-import re-walk, which compares (root id, relpath,
-    # sha256) independent of the physical path. Only the three host-global
-    # roots derive from the header.
-    worktree_root = os.fspath(Path(worktree_root).resolve(strict=True))
-    roots = {**roots, "worktree": worktree_root}
-    bootstrap_path = Path(worktree_root) / "bistar_gp/m2cr/bootstrap.py"
-    if not bootstrap_path.is_file():
-        raise ValueError(f"derived bootstrap is missing: {bootstrap_path}")
-
-    # Bind the caller-supplied chain to the artifacts actually authenticated
-    # here, so a launch cannot pair correct frozen files with an unrelated
-    # chain (external audit round-2 F2). The static members are required to
-    # equal the authenticated digests, and the authorization id must be
-    # consistent between the config and the chain. (The execution_commit and
-    # the prospective-grant/consumption checks are resolved by the R4 launch
-    # against a real ledger and worktree HEAD, which do not exist in R2.)
     if not isinstance(chain, Mapping):
         raise ValueError("chain must be a mapping")
+    worktree = Path(worktree_root).resolve(strict=True)
+    spec = _authenticate_launch_spec(worktree, chain)
+    actual_freeze_sha = sha256_file(freeze_path)
+    if actual_freeze_sha != spec.environment_freeze_manifest_sha256:
+        raise ValueError(
+            "environment freeze manifest does not match the worktree's "
+            "committed authority: expected "
+            f"{spec.environment_freeze_manifest_sha256}, actual "
+            f"{actual_freeze_sha}"
+        )
     actual_infra_sha = sha256_file(infrastructure_path)
-    chain_bindings = {
-        "environment_freeze_manifest_sha256": actual_freeze_sha,
-        "infrastructure_manifest_sha256": actual_infra_sha,
-        "authorization_id": authorization_id,
-    }
-    for member, expected in chain_bindings.items():
-        if chain.get(member) != expected:
-            raise ValueError(
-                f"chain {member} does not match the authenticated artifact: "
-                f"expected {expected}, chain carries {chain.get(member)}"
-            )
+    if actual_infra_sha != spec.infrastructure_manifest_sha256:
+        raise ValueError(
+            "infrastructure manifest does not match the worktree's committed "
+            f"authority: expected {spec.infrastructure_manifest_sha256}, "
+            f"actual {actual_infra_sha}"
+        )
+    if chain.get("authorization_id") != authorization_id:
+        raise ValueError(
+            "chain authorization_id does not match the requested "
+            "authorization"
+        )
 
     template = _load_bootstrap_template(
         Path(bootstrap_template_path).resolve(strict=True)
     )
-    # F1 (round-3 revision): inject the mandatory attestation directives from
-    # the authenticated committed expectations artifact, rejecting caller
-    # substitution — so a marker can never be emitted with a caller-chosen
-    # native stack, profile hash, backend markers, or loaded-image set ("all
-    # pre-scientific attestations complete before the marker", HARD §4.3).
-    _bind_attestation_directives(template, expectations)
-    template["four_roots"] = [roots[name] for name in _FOUR_ROOT_IDS]
-    template["importable_artifact_manifest"] = os.fspath(manifest_path.resolve())
     run_root = Path(run_dir).resolve()
     run_root.mkdir(parents=True, exist_ok=True)
     atomic_write_canonical_json(run_root / BOOTSTRAP_CONFIG_NAME, template)
 
     arguments: dict[str, Any] = {
-        "interpreter_path": interpreter_path,
-        "interpreter_flags": FROZEN_INTERPRETER_FLAGS,
-        "bootstrap_path": os.fspath(bootstrap_path),
-        "worktree_root": worktree_root,
+        "worktree_root": os.fspath(worktree),
         "run_dir": os.fspath(run_root),
-        "frozen_env": frozen_env,
         "authorization_id": authorization_id,
         "launch_attempt_id": launch_attempt_id,
         "run_id": run_id,
         "record_kind": record_kind,
         "chain": dict(chain),
         "wall_clock_ceiling_hours": WALL_CLOCK_CEILING_HOURS,
-        "preboundary_attestation_set": os.fspath(attestation_set_path.resolve()),
     }
-    # F4 (round-3 revision): bind the committed dependency lock + frozen
-    # site-packages so capture_run recomputes and compares the stable semantic
-    # lock fields before spawn and after exit.
-    if "dependency_lock" in infra_artifacts:
-        lock_path = _pinned_artifact(infrastructure, "dependency_lock", base)
-        arguments["dependency_lock_path"] = os.fspath(lock_path)
-        arguments["site_packages"] = roots["site-packages"]
     if waiter is not None:
         arguments["waiter"] = waiter
     return LaunchConfig(**arguments)

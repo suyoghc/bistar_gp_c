@@ -41,6 +41,18 @@ MINICONDA_ROOT = Path("/opt/homebrew/Caskroom/miniconda/base")
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = REPOSITORY_ROOT / "bistar_gp/m2cr/bootstrap.py"
 SENTINEL_HASH = -2671292046718125608
+# The real child-side m2cr modules copied byte-identically into every synthetic
+# launch worktree, so the REAL bootstrap and its project closure run from the
+# worktree exactly as in production (the child spawns the WORKTREE copy).
+M2CR_CHILD_MODULES = (
+    "bootstrap.py",
+    "environment_freeze.py",
+    "payload_boundary.py",
+    "serialization.py",
+)
+# Fixture digest standing in for the parent's authenticated-spec derivation in
+# child-only launches (the capture suite exercises the real parent-side value).
+FIXTURE_SPEC_SHA256 = hashlib.sha256(b"m2cr-fixture-spec").hexdigest()
 AUTHORIZATION_ID = "m2cr-auth-20260716-01"
 LAUNCH_ATTEMPT_ID = "m2cr-launch-20260716-01"
 EXECUTION_COMMIT = "a" * 40
@@ -162,6 +174,70 @@ def write_fake_native_stack(worktree: Path, *, torch_variant: str = "ok") -> Pat
     )
     (worktree / "numpy.py").write_text(_fake_numpy_source(), encoding="utf-8")
     return thread_log
+
+
+_session_closure_directive: list[dict[str, str]] | None = None
+
+
+def session_closure_directive() -> list[dict[str, str]]:
+    """Session-cached pre-boundary closure directive for synthetic launches.
+
+    The interpreter-forced pre-replacement stdlib closure is enumerated ONCE
+    per session with the established import-only probe
+    (``enumerate_bootstrap_closure`` against the repository tree), and every
+    on-disk origin is re-hashed HERE, test-side — the probe reports paths
+    only, never the hashes the child later verifies.  Repository-contained
+    origins (the m2cr modules) become worktree-relative pins, mirroring the
+    committed production set, and resolve against each synthetic launch
+    worktree's byte-identical copies; host-global stdlib origins keep their
+    absolute paths.
+    """
+
+    global _session_closure_directive
+    if _session_closure_directive is None:
+        from bistar_gp.m2cr.capture import enumerate_bootstrap_closure
+
+        closure = enumerate_bootstrap_closure(
+            MINICONDA_PYTHON, BOOTSTRAP, REPOSITORY_ROOT
+        )
+        origins = sorted({entry["origin"] for entry in closure})
+        directive: list[dict[str, str]] = []
+        for origin in origins:
+            with open(origin, "rb") as handle:
+                digest = hashlib.file_digest(handle, "sha256").hexdigest()
+            try:
+                relpath = Path(origin).resolve().relative_to(REPOSITORY_ROOT)
+            except ValueError:
+                directive.append({"path": origin, "sha256": digest})
+            else:
+                directive.append(
+                    {
+                        "root": "worktree",
+                        "relpath": relpath.as_posix(),
+                        "sha256": digest,
+                    }
+                )
+        assert directive, "closure enumeration must report at least one origin"
+        _session_closure_directive = directive
+    return [dict(entry) for entry in _session_closure_directive]
+
+
+def write_importable_manifest(
+    manifest_path: Path, roots: list[str]
+) -> None:
+    """Generate the synthetic bundle's v2 importable manifest with the REAL
+    generator over the four launch roots (parent-side generation; the child
+    only consumes and re-walks)."""
+
+    build_importable_artifact_manifest(
+        [
+            ("worktree", roots[0]),
+            ("stdlib", roots[1]),
+            ("lib-dynload", roots[2]),
+            ("site-packages", roots[3]),
+        ],
+        manifest_path,
+    )
 
 
 _measured_expected_loaded_images: list[dict[str, str]] | None = None
@@ -325,6 +401,13 @@ def _payload_source(
         )
     elif mode == "open_worktree" and data_path is not None:
         lines.append(f"open({os.fspath(data_path)!r}, 'rb').read()")
+    elif mode == "plant_source":
+        # The payload plants a NEW importable artifact under the worktree root
+        # (its own CWD) during execution: the post-execution re-walk must fail
+        # closed, so COMPLETED is impossible after the plant.
+        lines.append(
+            "open('m2cr_postdrift_plant.py', 'w').write('PLANT = 1\\n')"
+        )
     if thread_log is not None:
         lines.append(
             f"assert open({os.fspath(thread_log)!r}, encoding='utf-8').read() "
@@ -418,6 +501,9 @@ def _launch_bootstrap(
     omit_directives: tuple[str, ...] = (),
     config_sha256: str | None = None,
     attestation_path_overrides: dict[str, str] | None = None,
+    worktree_mutator=None,
+    config_mutator=None,
+    nested_roots: bool = False,
 ) -> tuple[subprocess.CompletedProcess[bytes], Path, list[dict[str, object]]]:
     """Launch the REAL bootstrap in a synthetic four-root worktree.
 
@@ -435,13 +521,17 @@ def _launch_bootstrap(
     run_dir = worktree / "run"
     worktree.mkdir(parents=True)
     run_dir.mkdir()
-    # The profile check needs a hashable in-worktree fake module; only the
-    # m2cr subpackage is shared with the repository.
+    # Byte-identical COPIES of the child-side m2cr modules (a symlink to the
+    # repository would escape the walked worktree root and fail the
+    # completeness walk); the child spawns the WORKTREE bootstrap copy,
+    # exactly as production capture does.
     package_dir = worktree / "bistar_gp"
-    package_dir.mkdir()
-    (package_dir / "m2cr").symlink_to(
-        REPOSITORY_ROOT / "bistar_gp" / "m2cr", target_is_directory=True
-    )
+    (package_dir / "m2cr").mkdir(parents=True)
+    for module_name in M2CR_CHILD_MODULES:
+        shutil.copy2(
+            REPOSITORY_ROOT / "bistar_gp" / "m2cr" / module_name,
+            package_dir / "m2cr" / module_name,
+        )
     fake_profile_path = package_dir / "profile_integration.py"
     fake_profile_path.write_text(FAKE_PROFILE_SOURCE, encoding="utf-8")
     data_path: Path | None = None
@@ -501,23 +591,43 @@ def _launch_bootstrap(
         (run_dir / "prelaunch.json").write_text(
             canonical_dumps({"launch": 1}), encoding="utf-8"
         )
-    extra_roots = [
-        tmp_path / "stdlib",
-        tmp_path / "lib-dynload",
-        tmp_path / "site-packages",
-    ]
+    if nested_roots:
+        # Production geometry: lib-dynload and site-packages physically nested
+        # inside the stdlib root (Kimi K3 challenge, finding 8 — the walker's
+        # nested-root exclusion gets launch-level coverage too).
+        extra_roots = [
+            tmp_path / "stdlib",
+            tmp_path / "stdlib" / "lib-dynload",
+            tmp_path / "stdlib" / "site-packages",
+        ]
+    else:
+        extra_roots = [
+            tmp_path / "stdlib",
+            tmp_path / "lib-dynload",
+            tmp_path / "site-packages",
+        ]
     for root in extra_roots:
-        root.mkdir()
+        root.mkdir(parents=True)
     roots = [
         os.fspath(worktree.resolve()),
         *(os.fspath(root.resolve()) for root in extra_roots),
     ]
+    # Parent-side generation of the synthetic four-root manifest AFTER every
+    # worktree file (payload, fakes, any planted candidate) exists; a
+    # worktree_mutator afterwards produces genuine pre-walk drift.
+    manifest_path = run_dir / "importable_manifest.jsonl"
+    write_importable_manifest(manifest_path, roots)
+    if worktree_mutator is not None:
+        worktree_mutator(worktree)
     if expected_loaded_images == "measured":
         resolved_images = measured_expected_loaded_images()
     else:
         resolved_images = expected_loaded_images
     config = {
         "four_roots": roots,
+        "authenticated_spec_sha256": FIXTURE_SPEC_SHA256,
+        "importable_artifact_manifest": os.fspath(manifest_path.resolve()),
+        "preboundary_closure": session_closure_directive(),
         "frozen_env": expected_environment,
         "expected_pycache_prefix": os.fspath(pycache.resolve()),
         "expected_sentinel_hash": SENTINEL_HASH,
@@ -556,6 +666,8 @@ def _launch_bootstrap(
         config["numpy_build_expected"] = numpy_build_expected
     for directive in omit_directives:
         config.pop(directive, None)
+    if config_mutator is not None:
+        config_mutator(config)
     config_path = run_dir / "config.json"
     config_text = canonical_dumps(config)
     config_path.write_text(config_text, encoding="utf-8")
@@ -575,7 +687,7 @@ def _launch_bootstrap(
             "-B",
             "-X",
             f"pycache_prefix={pycache}",
-            os.fspath(BOOTSTRAP),
+            os.fspath(worktree / "bistar_gp/m2cr/bootstrap.py"),
             os.fspath(config_path),
             str(write_fd),
             config_sha256,
@@ -821,6 +933,35 @@ def test_duplicate_raw_keys_and_delta_rules(tmp_path: Path) -> None:
         "__CF_USER_TEXT_ENCODING",
         "__KMP_REGISTERED_LIB_42",
     ]
+    # Plan §4.5.5 is accept-only: a launch whose libomp never reached its
+    # lazy registration (the hermetic no-computation child — observed on the
+    # first real-native production-path launch) is compliant with zero KMP
+    # entries; TWO entries remain inadmissible.
+    no_kmp = classify_stage_b_deltas(
+        {"A": "1"},
+        {"A": "1"},
+        {"A": "1"},
+        {"A": "1", "__CF_USER_TEXT_ENCODING": "0x1F5:0x0:0x0"},
+        pid=42,
+        native_stack_modules=["synthetic_native"],
+        stage_b_expected={"__CF_USER_TEXT_ENCODING": "0x1F5:0x0:0x0"},
+    )
+    assert no_kmp["accepted"] == ["__CF_USER_TEXT_ENCODING"]
+    with pytest.raises(ValueError, match="at most one KMP"):
+        classify_stage_b_deltas(
+            {"A": "1"},
+            {"A": "1"},
+            {"A": "1"},
+            {
+                "A": "1",
+                "__CF_USER_TEXT_ENCODING": "0x1F5:0x0:0x0",
+                "__KMP_REGISTERED_LIB_42": "0x1234-cafe1234-libomp.dylib",
+                "__KMP_REGISTERED_LIB_43": "0x1234-cafe1234-libomp.dylib",
+            },
+            pid=42,
+            native_stack_modules=["synthetic_native"],
+            stage_b_expected={"__CF_USER_TEXT_ENCODING": "0x1F5:0x0:0x0"},
+        )
     with pytest.raises(ValueError, match="PID"):
         classify_stage_b_deltas(
             {"A": "1"},
@@ -1207,22 +1348,87 @@ def test_final_inventory_binds_origins_and_rejects_outside_modules(
     inside.__file__ = os.fspath(inside_path)
     inside.__spec__ = spec_from_file_location("inside", inside_path)
     inventory = _inventory(
-        [], roots=root_paths, manifest_entries=frozen, modules={"inside": inside}
+        [],
+        roots=root_paths,
+        manifest_entries=frozen,
+        closure_authority={},
+        modules={"inside": inside},
     )
     assert inventory[0]["resolved_origin"] == os.fspath(inside_path.resolve())
     assert inventory[0]["loader_class"].endswith("SourceFileLoader")
+    assert inventory[0]["classification"] == "manifest_file"
 
+    # An outside-root module with NO authenticated closure pin fails closed.
     outside_path = tmp_path / "outside.py"
     outside_path.write_text("VALUE = 2\n", encoding="utf-8")
     outside = ModuleType("outside")
     outside.__file__ = os.fspath(outside_path)
     outside.__spec__ = spec_from_file_location("outside", outside_path)
+    with pytest.raises(SystemExit, match="no authenticated closure pin"):
+        _inventory(
+            [],
+            roots=root_paths,
+            manifest_entries=frozen,
+            closure_authority={},
+            modules={"outside": outside},
+        )
+
+    # With a matching closure pin the outside-root module authenticates; a
+    # byte or loader-class mismatch against the pin fails closed.
+    outside_real = os.path.realpath(os.fspath(outside_path))
+    good_pin = {
+        outside_real: {
+            "sha256": sha256_file(outside_path),
+            "loader": "SourceFileLoader",
+        }
+    }
+    bound = _inventory(
+        [],
+        roots=root_paths,
+        manifest_entries=frozen,
+        closure_authority=good_pin,
+        modules={"outside": outside},
+    )
+    assert bound[0]["classification"] == "closure_file"
+    with pytest.raises(SystemExit, match="does not match its authenticated"):
+        _inventory(
+            [],
+            roots=root_paths,
+            manifest_entries=frozen,
+            closure_authority={
+                outside_real: {"sha256": "0" * 64, "loader": "SourceFileLoader"}
+            },
+            modules={"outside": outside},
+        )
+    with pytest.raises(SystemExit, match="loader class mismatch"):
+        _inventory(
+            [],
+            roots=root_paths,
+            manifest_entries=frozen,
+            closure_authority={
+                outside_real: {
+                    "sha256": sha256_file(outside_path),
+                    "loader": "ExtensionFileLoader",
+                }
+            },
+            modules={"outside": outside},
+        )
+    # An under-root module never falls through to the closure: a byte-changed
+    # under-root origin fails the manifest clause even when a closure pin with
+    # the new bytes exists (authority substitution is rejected).
+    inside_path.write_text("VALUE = 99\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="unknown or changed origin"):
         _inventory(
             [],
             roots=root_paths,
             manifest_entries=frozen,
-            modules={"outside": outside},
+            closure_authority={
+                os.path.realpath(os.fspath(inside_path)): {
+                    "sha256": sha256_file(inside_path),
+                    "loader": "SourceFileLoader",
+                }
+            },
+            modules={"inside": inside},
         )
 
 
@@ -1269,7 +1475,11 @@ def test_manifest_v2_header_parses_and_loader_is_enforced(tmp_path: Path) -> Non
     inside.__spec__ = spec_from_file_location("inside", inside_path)
     root_paths = [os.fspath(root.resolve()) for _, root in roots]
     inventory = _inventory(
-        [], roots=root_paths, manifest_entries=frozen, modules={"inside": inside}
+        [],
+        roots=root_paths,
+        manifest_entries=frozen,
+        closure_authority={},
+        modules={"inside": inside},
     )
     assert inventory[0]["loader_class"] == SOURCE_LOADER_CLASS
 
@@ -1283,6 +1493,7 @@ def test_manifest_v2_header_parses_and_loader_is_enforced(tmp_path: Path) -> Non
             [],
             roots=root_paths,
             manifest_entries=frozen_wrong,
+            closure_authority={},
             modules={"inside": inside},
         )
 

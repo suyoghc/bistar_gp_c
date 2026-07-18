@@ -42,7 +42,9 @@ from tests.test_m2cr_bootstrap import (
     MANDATORY_DIRECTIVES,
     SENTINEL_HASH,
     measured_expected_loaded_images,
+    session_closure_directive,
     write_fake_native_stack,
+    write_importable_manifest,
 )
 
 
@@ -251,6 +253,98 @@ def _fake_site_packages_lock_semantics(root: Path) -> dict[str, object]:
     }
 
 
+_real_interpreter_sha256: str | None = None
+
+
+def _interpreter_sha256() -> str:
+    """Session-cached genuine digest of the real hermetic interpreter."""
+
+    global _real_interpreter_sha256
+    if _real_interpreter_sha256 is None:
+        _real_interpreter_sha256 = sha256_file(
+            os.path.realpath(MINICONDA_PYTHON)
+        )
+    return _real_interpreter_sha256
+
+
+def _host_standin(path: Path, payload: bytes) -> dict[str, str]:
+    """One fixture-sized host-global pre-boundary pin with a genuine hash."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(payload)
+    return {"path": os.fspath(path), "sha256": sha256_file(path)}
+
+
+_FREEZE_RELPATHS = {
+    "child_env_mapping": "docs/m2c_freeze/m2cr_child_env_mapping_v1.json",
+    "importable_artifact_manifest": (
+        "docs/m2c_freeze/m2cr_importable_artifact_manifest_v1.jsonl"
+    ),
+    "interpreter_pin": "docs/m2c_freeze/m2cr_interpreter_pin_v1.json",
+    "preboundary_attestation_set": (
+        "docs/m2c_freeze/m2cr_preboundary_attestation_set_v1.json"
+    ),
+    "environment_freeze_manifest": (
+        "docs/m2c_freeze/m2cr_environment_freeze_manifest_v1.json"
+    ),
+    "dependency_lock": "docs/m2c_freeze/m2cr_dependency_lock_v1.json",
+    "native_stack_expectations": (
+        "docs/m2c_freeze/m2cr_native_stack_expectations_v1.json"
+    ),
+}
+
+
+def _finalize_bundle(worktree: Path) -> dict[str, object]:
+    """(Re)write the aggregating + infrastructure manifests over the current
+    on-disk freeze artifacts and return a chain bound to the result.
+
+    Mirrors the production layering: the aggregating environment-freeze
+    manifest pins the four static artifacts; the infrastructure manifest pins
+    all seven plus the aggregating manifest; the chain carries both aggregate
+    digests.  Tests that corrupt an artifact AFTER finalize exercise the pin
+    mismatches; tests that mutate BEFORE finalize exercise value-level
+    enforcement over a consistently pinned bundle.
+    """
+
+    freeze_dir = worktree / "docs" / "m2c_freeze"
+    env_freeze = {
+        "kind": "m2cr_environment_freeze_manifest",
+        "schema_version": 1,
+        "artifacts": {
+            name: {
+                "path": _FREEZE_RELPATHS[name],
+                "sha256": sha256_file(worktree / _FREEZE_RELPATHS[name]),
+            }
+            for name in (
+                "child_env_mapping",
+                "importable_artifact_manifest",
+                "interpreter_pin",
+                "preboundary_attestation_set",
+            )
+        },
+    }
+    env_freeze_path = freeze_dir / "m2cr_environment_freeze_manifest_v1.json"
+    atomic_write_canonical_json(env_freeze_path, env_freeze)
+    infra = {
+        "kind": "m2cr_infrastructure_manifest",
+        "schema_version": 1,
+        "artifacts": {
+            name: {
+                "path": _FREEZE_RELPATHS[name],
+                "sha256": sha256_file(worktree / _FREEZE_RELPATHS[name]),
+            }
+            for name in _FREEZE_RELPATHS
+        },
+    }
+    infra_path = worktree / _INFRA_RELPATH
+    atomic_write_canonical_json(infra_path, infra)
+    return {
+        **CHAIN,
+        "infrastructure_manifest_sha256": sha256_file(infra_path),
+        "environment_freeze_manifest_sha256": sha256_file(env_freeze_path),
+    }
+
+
 def _make_launch(
     tmp_path: Path,
     *,
@@ -263,21 +357,26 @@ def _make_launch(
     expectations_mutator=None,
     lock_mutator=None,
     template_extra: dict | None = None,
+    env_mapping_mutator=None,
+    interpreter_pin_mutator=None,
+    preboundary_mutator=None,
+    worktree_mutator=None,
 ) -> LaunchConfig:
     """Build a complete, self-consistent hermetic launch (Codex round-3 C1
-    Stage C).
+    Stage C; extended for the WI1/WI2 launch-authority cycle).
 
     The synthetic worktree carries byte-identical copies of the real child-side
     m2cr modules, the fake native stack (torch + numpy), a fake
-    profile_integration stub, AND the committed fake bundle under
-    ``docs/m2c_freeze``: an infrastructure manifest whose pins authenticate the
-    native-stack expectations artifact (with the session-measured
-    expected_loaded_images), the first-principles fake dependency lock, and a
-    v2-header importable manifest binding the synthetic site-packages.  The
-    LaunchConfig chain binds ``infrastructure_manifest_sha256`` to the real
-    digest of that manifest, so ``capture_run`` derives, authenticates, binds,
-    and enforces through the exact unconditional production path — there is no
-    test-only bypass and no provenance-token-conditioned enforcement.
+    profile_integration stub, AND the complete committed fake bundle under
+    ``docs/m2c_freeze``: all seven freeze artifacts plus the aggregating
+    environment-freeze manifest, entry-complete v2 importable manifest over the
+    synthetic four roots, an interpreter pin naming the real hermetic
+    interpreter with its genuine digest, and a fixture-sized pre-boundary set
+    whose pins are genuine (real interpreter, host stand-ins for the dyld
+    family, and the genuine session-enumerated closure).  The chain binds both
+    aggregate digests, so ``capture_run`` derives, authenticates, binds, and
+    enforces through the exact unconditional production path — no test-only
+    bypass, no skip tokens, no caller-supplied static field.
     """
 
     worktree = tmp_path / "worktree"
@@ -328,8 +427,9 @@ def _make_launch(
     }
     if expectations_mutator is not None:
         expectations_mutator(expectations)
-    expectations_path = freeze_dir / "m2cr_native_stack_expectations_v1.json"
-    atomic_write_canonical_json(expectations_path, expectations)
+    atomic_write_canonical_json(
+        worktree / _FREEZE_RELPATHS["native_stack_expectations"], expectations
+    )
 
     lock = {
         "pip_freeze": "",
@@ -339,51 +439,93 @@ def _make_launch(
     }
     if lock_mutator is not None:
         lock_mutator(lock)
-    lock_path = freeze_dir / "m2cr_dependency_lock_v1.json"
-    atomic_write_canonical_json(lock_path, lock)
+    atomic_write_canonical_json(
+        worktree / _FREEZE_RELPATHS["dependency_lock"], lock
+    )
 
-    manifest_path = freeze_dir / "m2cr_importable_artifact_manifest_v1.jsonl"
-    header = {
-        "kind": "m2cr_importable_artifact_manifest",
-        "schema_version": 2,
-        "roots": {
-            "worktree": roots[0],
-            "stdlib": roots[1],
-            "lib-dynload": roots[2],
-            "site-packages": roots[3],
+    env_mapping = {
+        "fixed": {
+            "PYTHONHASHSEED": "0",
+            "OMP_NUM_THREADS": "10",
+            "OMP_DYNAMIC": "FALSE",
+            "MKL_NUM_THREADS": "10",
+            "VECLIB_MAXIMUM_THREADS": "10",
+            "LC_ALL": "C",
+            "TZ": "UTC",
+            "PATH": "/usr/bin:/bin",
         },
+        "run_local_keys": [
+            "HOME",
+            "TMPDIR",
+            "XDG_CACHE_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+        ],
     }
-    manifest_path.write_text(canonical_dumps(header) + "\n", encoding="utf-8")
+    if env_mapping_mutator is not None:
+        env_mapping_mutator(env_mapping)
+    atomic_write_canonical_json(
+        worktree / _FREEZE_RELPATHS["child_env_mapping"], env_mapping
+    )
 
-    infra = {
-        "kind": "m2cr_infrastructure_manifest",
+    interpreter_pin = {
+        "path": MINICONDA_PYTHON,
+        "realpath": os.path.realpath(MINICONDA_PYTHON),
+        "sha256": _interpreter_sha256(),
+        "version": {},
+    }
+    if missing_interpreter:
+        interpreter_pin["path"] = "/definitely/missing/python3.13"
+        interpreter_pin["realpath"] = "/definitely/missing/python3.13"
+    if interpreter_pin_mutator is not None:
+        interpreter_pin_mutator(interpreter_pin)
+    atomic_write_canonical_json(
+        worktree / _FREEZE_RELPATHS["interpreter_pin"], interpreter_pin
+    )
+
+    host_dir = tmp_path / "host"
+    preboundary = {
+        "kind": "m2cr_preboundary_attestation_set",
         "schema_version": 1,
-        "artifacts": {
-            "native_stack_expectations": {
-                "path": "docs/m2c_freeze/m2cr_native_stack_expectations_v1.json",
-                "sha256": sha256_file(expectations_path),
-            },
-            "dependency_lock": {
-                "path": "docs/m2c_freeze/m2cr_dependency_lock_v1.json",
-                "sha256": sha256_file(lock_path),
-            },
-            "importable_artifact_manifest": {
-                "path": (
-                    "docs/m2c_freeze/m2cr_importable_artifact_manifest_v1.jsonl"
-                ),
-                "sha256": sha256_file(manifest_path),
-            },
+        "interpreter_binary": {
+            "path": MINICONDA_PYTHON,
+            "sha256": _interpreter_sha256(),
         },
+        "dyld": _host_standin(host_dir / "dyld.standin", b"m2cr-dyld-standin\n"),
+        "dyld_shared_cache": {
+            "main": _host_standin(
+                host_dir / "cache.main.standin", b"m2cr-cache-main\n"
+            ),
+            "declared_subcache_count": 2,
+            "discovered_subcache_count": 2,
+            "subcaches": [
+                _host_standin(
+                    host_dir / f"cache.{index}.standin",
+                    f"m2cr-cache-{index}\n".encode(),
+                )
+                for index in range(2)
+            ],
+        },
+        "bootstrap_closure": session_closure_directive(),
     }
-    infra_path = worktree / _INFRA_RELPATH
-    atomic_write_canonical_json(infra_path, infra)
-    chain = {**CHAIN, "infrastructure_manifest_sha256": sha256_file(infra_path)}
+    if preboundary_mutator is not None:
+        preboundary_mutator(preboundary, host_dir)
+    atomic_write_canonical_json(
+        worktree / _FREEZE_RELPATHS["preboundary_attestation_set"], preboundary
+    )
+
+    # Entry-complete v2 manifest over the synthetic four roots, generated
+    # parent-side with the real walker AFTER every worktree file exists.
+    write_importable_manifest(
+        worktree / _FREEZE_RELPATHS["importable_artifact_manifest"], roots
+    )
+    if worktree_mutator is not None:
+        worktree_mutator(worktree)
+
+    chain = _finalize_bundle(worktree)
 
     bootstrap_config = {
-        "four_roots": roots,
-        # expected_sentinel_hash is now a mandatory attestation directive DERIVED
-        # from the committed native-stack expectations artifact and bound by
-        # capture_run (finding 3) — the caller template no longer carries it.
         "payload": {"entry": "fake_payload:run", "pass_context": True},
         "payload_entry_path": os.fspath(payload_path),
         "attestation_paths": {
@@ -392,28 +534,19 @@ def _make_launch(
     }
     if template_extra:
         bootstrap_config.update(template_extra)
-    environment = _frozen_environment(run_dir, unexpected=wrong_environment)
     if wrong_environment:
-        bootstrap_config["expected_frozen_env"] = _frozen_environment(run_dir)
+        # A caller can no longer author the environment; the only remaining
+        # avenue is a template substitution, which capture rejects pre-spawn.
+        bootstrap_config["expected_frozen_env"] = {
+            "fixed": {**env_mapping["fixed"], "M2CR_UNEXPECTED": "1"},
+            "run_local_keys": {},
+        }
     (run_dir / BOOTSTRAP_CONFIG_NAME).write_text(
         canonical_dumps(bootstrap_config), encoding="utf-8"
     )
     arguments = {
-        "interpreter_path": "/definitely/missing/python"
-        if missing_interpreter
-        else MINICONDA_PYTHON,
-        "interpreter_flags": (
-            "-S",
-            "-s",
-            "-P",
-            "-B",
-            "-X",
-            "pycache_prefix={pycache_prefix}",
-        ),
-        "bootstrap_path": os.fspath(worktree / "bistar_gp/m2cr/bootstrap.py"),
         "worktree_root": os.fspath(worktree),
         "run_dir": os.fspath(run_dir),
-        "frozen_env": environment,
         "authorization_id": AUTHORIZATION_ID,
         "launch_attempt_id": LAUNCH_ATTEMPT_ID,
         "run_id": "m2cr-capture-test",
@@ -604,18 +737,17 @@ def test_popen_failure_with_no_confirmed_spawn_is_not_started(
 def test_missing_interpreter_is_pre_spawn_infra_failure_not_not_started(
     tmp_path: Path,
 ) -> None:
-    """Codex round-3 C1 consequence of the ratified F5 split: with the
-    dependency-lock semantic recompute unconditional, a missing/bad pinned
-    interpreter now fails the pre-spawn attestation phase (the recompute
-    cannot run) and commits INFRA_FAILURE — it never reaches Popen, so it can
-    no longer surface as NOT_STARTED."""
+    """Codex round-3 C1, strengthened by WI2: a missing/bad pinned interpreter
+    now fails the SPEC FACTORY's resolved-target digest verification — the
+    earliest pre-spawn attestation — and commits INFRA_FAILURE; it never
+    reaches Popen, so it can no longer surface as NOT_STARTED."""
 
     config = _make_launch(tmp_path, missing_interpreter=True)
     record = capture_run(config)
     assert record["status"] == "INFRA_FAILURE"
     assert record["fault"]["fault_class"] == "attestation_fault"
     assert "pre-spawn attestation failure" in record["fault"]["detail"]
-    assert "dependency-lock recompute failed" in record["fault"]["detail"]
+    assert "pinned interpreter target is unreadable" in record["fault"]["detail"]
     assert record["fault"]["payload_started"] is False
     assert not (Path(config.run_dir) / "spawned.json").exists()
     assert not (Path(config.run_dir) / "prelaunch.json").exists()
@@ -1000,47 +1132,22 @@ def test_bootstrap_closure_enumeration_is_import_only(tmp_path: Path) -> None:
     assert "json" in modules
 
 
-def _preboundary_attestation_document(
-    tmp_path: Path, *, tampered: bool
-) -> tuple[Path, Path]:
-    closure_file = tmp_path / "closure_member.py"
-    closure_file.write_text("CLOSURE = 1\n", encoding="utf-8")
-    digest = "0" * 64 if tampered else sha256_file(closure_file)
-    artifact = {
-        "kind": "m2cr_preboundary_attestation_set",
-        "schema_version": 1,
-        "interpreter_binary": {"path": "/nonexistent/python", "sha256": "1" * 64},
-        "dyld": {"path": "/nonexistent/dyld", "sha256": "2" * 64},
-        "dyld_shared_cache": {
-            "main": {"path": "/nonexistent/cache", "sha256": "3" * 64},
-            "declared_subcache_count": 0,
-            "discovered_subcache_count": 0,
-            "subcaches": [],
-        },
-        "bootstrap_closure": [
-            {"path": os.fspath(closure_file), "sha256": digest}
-        ],
-    }
-    attestation_path = tmp_path / "preboundary_attestation_set.json"
-    atomic_write_canonical_json(attestation_path, artifact)
-    return attestation_path, closure_file
-
-
 def test_preboundary_attestation_set_verifies_before_spawn(tmp_path: Path) -> None:
-    """FIX C7(b): pinned digests verify pre-spawn; hermetic skips honored."""
+    """FIX C7(b), WI2: the spec-derived pre-boundary set verifies pre-spawn
+    with EVERY member class checked — real interpreter pin, host stand-ins
+    with genuine hashes, and the genuine closure; no skip mode exists."""
 
-    attestation_path, _ = _preboundary_attestation_document(
-        tmp_path, tampered=False
+    config = _make_launch(tmp_path)
+    worktree = Path(config.worktree_root)
+    attestation_path = (
+        worktree / _FREEZE_RELPATHS["preboundary_attestation_set"]
     )
     outcome = verify_preboundary_attestation_set(
-        attestation_path, skip=("interpreter", "dyld")
+        attestation_path, worktree_root=worktree
     )
-    assert outcome == {"interpreter": 0, "dyld": 0, "closure": 1}
-    config = dataclasses.replace(
-        _make_launch(tmp_path),
-        preboundary_attestation_set=os.fspath(attestation_path),
-        preboundary_skip=("interpreter", "dyld"),
-    )
+    assert outcome["interpreter"] == 1
+    assert outcome["dyld"] == 4
+    assert outcome["closure"] == len(session_closure_directive())
     record = capture_run(config)
     assert record["status"] == "COMPLETED"
     validate_terminal_record(record)
@@ -1051,22 +1158,16 @@ def test_preboundary_mutation_during_run_forces_infra_at_post_exit(
 ) -> None:
     """External audit F3: a pre-boundary file valid at spawn but mutated
     during execution is caught by parent-side post-exit re-attestation
-    (§4.5.11), forcing INFRA_FAILURE rather than yielding COMPLETED."""
+    (§4.5.11), forcing INFRA_FAILURE rather than yielding COMPLETED.  The
+    mutated member is a host stand-in OUTSIDE the four roots, so only the
+    parent-side re-verification can catch it."""
 
-    attestation_path, closure_file = _preboundary_attestation_document(
-        tmp_path, tampered=False
-    )
-    # The payload appends to the pinned closure member while it runs, so the
-    # pre-spawn check passes but the post-exit re-attestation fails.
-    config = dataclasses.replace(
-        _make_launch(
-            tmp_path,
-            extra_payload_code=(
-                f"open({os.fspath(closure_file)!r}, 'ab').write(b'drift\\n')"
-            ),
+    standin = tmp_path / "host" / "dyld.standin"
+    config = _make_launch(
+        tmp_path,
+        extra_payload_code=(
+            f"open({os.fspath(standin)!r}, 'ab').write(b'drift\\n')"
         ),
-        preboundary_attestation_set=os.fspath(attestation_path),
-        preboundary_skip=("interpreter", "dyld"),
     )
     record = capture_run(config)
     assert record["status"] == "INFRA_FAILURE"
@@ -1082,14 +1183,13 @@ def test_tampered_preboundary_attestation_commits_infra_without_spawn(
     evidence with no child spawned, rather than escaping capture_run
     (plan §4.3 "Nothing vanishes"; author decision F5 = INFRA_FAILURE)."""
 
-    attestation_path, closure_file = _preboundary_attestation_document(
-        tmp_path, tampered=True
-    )
-    config = dataclasses.replace(
-        _make_launch(tmp_path),
-        preboundary_attestation_set=os.fspath(attestation_path),
-        preboundary_skip=("interpreter", "dyld"),
-    )
+    def corrupt_closure(preboundary: dict, host_dir: Path) -> None:
+        preboundary["bootstrap_closure"] = [
+            dict(entry, sha256="0" * 64)
+            for entry in preboundary["bootstrap_closure"]
+        ]
+
+    config = _make_launch(tmp_path, preboundary_mutator=corrupt_closure)
     record = capture_run(config)
     assert record["status"] == "INFRA_FAILURE"
     assert record["fault"]["fault_class"] == "attestation_fault"
@@ -1100,29 +1200,25 @@ def test_tampered_preboundary_attestation_commits_infra_without_spawn(
     assert (run_dir / TERMINAL_RECORD_NAME).is_file()
     assert not (run_dir / "spawned.json").exists()
     validate_terminal_record(record)
-    # The closure entries are never skippable: no such token exists.
-    with pytest.raises(ValueError, match="unknown preboundary skip tokens"):
-        verify_preboundary_attestation_set(
-            attestation_path, skip=("interpreter", "dyld", "closure")
-        )
 
 
 def test_pre_spawn_setup_failure_commits_infra_without_spawn(
     tmp_path: Path,
 ) -> None:
-    """F5: a pre-spawn INFRASTRUCTURE failure (a missing bootstrap source, a
-    resolve(strict=True) error) also commits an INFRA_FAILURE terminal record
-    rather than escaping capture_run; it is classed capture_fault, not
+    """F5: a pre-spawn INFRASTRUCTURE failure (here: a non-empty run-local
+    pycache prefix) also commits an INFRA_FAILURE terminal record rather than
+    escaping capture_run; it is classed capture_fault, not
     attestation_fault."""
 
-    config = dataclasses.replace(
-        _make_launch(tmp_path),
-        bootstrap_path=os.fspath(tmp_path / "does-not-exist" / "bootstrap.py"),
-    )
+    config = _make_launch(tmp_path)
+    pycache = Path(config.run_dir) / "pycache"
+    pycache.mkdir(parents=True, exist_ok=True)
+    (pycache / "stale.bin").write_bytes(b"stale")
     record = capture_run(config)
     assert record["status"] == "INFRA_FAILURE"
     assert record["fault"]["fault_class"] == "capture_fault"
     assert "pre-spawn infrastructure failure" in record["fault"]["detail"]
+    assert "pycache prefix must be empty" in record["fault"]["detail"]
     assert (Path(config.run_dir) / TERMINAL_RECORD_NAME).is_file()
     assert not (Path(config.run_dir) / "spawned.json").exists()
     validate_terminal_record(record)
@@ -1155,10 +1251,15 @@ def test_preboundary_worktree_entry_verifies_against_the_launch_worktree(
     artifact = {
         "kind": "m2cr_preboundary_attestation_set",
         "schema_version": 1,
-        "interpreter_binary": {"path": "/nonexistent/python", "sha256": "1" * 64},
-        "dyld": {"path": "/nonexistent/dyld", "sha256": "2" * 64},
+        "interpreter_binary": {
+            "path": MINICONDA_PYTHON,
+            "sha256": _interpreter_sha256(),
+        },
+        "dyld": _host_standin(tmp_path / "host" / "dyld.standin", b"dyld\n"),
         "dyld_shared_cache": {
-            "main": {"path": "/nonexistent/cache", "sha256": "3" * 64},
+            "main": _host_standin(
+                tmp_path / "host" / "cache.standin", b"cache\n"
+            ),
             "declared_subcache_count": 0,
             "discovered_subcache_count": 0,
             "subcaches": [],
@@ -1177,7 +1278,6 @@ def test_preboundary_worktree_entry_verifies_against_the_launch_worktree(
     outcome = verify_preboundary_attestation_set(
         attestation_path,
         worktree_root=os.fspath(launch_worktree),
-        skip=("interpreter", "dyld"),
     )
     assert outcome["closure"] == 1
 
@@ -1189,14 +1289,11 @@ def test_preboundary_worktree_entry_verifies_against_the_launch_worktree(
         verify_preboundary_attestation_set(
             attestation_path,
             worktree_root=os.fspath(launch_worktree),
-            skip=("interpreter", "dyld"),
         )
 
     # A worktree-relative entry with no worktree_root supplied fails closed.
     with pytest.raises(ValueError, match="no worktree_root was supplied"):
-        verify_preboundary_attestation_set(
-            attestation_path, skip=("interpreter", "dyld")
-        )
+        verify_preboundary_attestation_set(attestation_path)
 
     # CP-3: a lexically safe relpath that is a symlink resolving OUTSIDE the
     # launch worktree fails closed, even if the external target's bytes match —
@@ -1210,7 +1307,6 @@ def test_preboundary_worktree_entry_verifies_against_the_launch_worktree(
         verify_preboundary_attestation_set(
             attestation_path,
             worktree_root=os.fspath(launch_worktree),
-            skip=("interpreter", "dyld"),
         )
 
 
@@ -1350,174 +1446,113 @@ def test_capture_run_rejects_a_stripped_or_substituted_consumed_template(
     validate_terminal_record(record)
 
 
-def _freeze_fixture(tmp_path: Path) -> dict[str, Path]:
-    worktree = tmp_path / "worktree"
-    (worktree / "bistar_gp" / "m2cr").mkdir(parents=True)
-    fake_bootstrap = worktree / "bistar_gp" / "m2cr" / "bootstrap.py"
-    fake_bootstrap.write_text("# fixture bootstrap\n", encoding="utf-8")
-    roots = {
-        "worktree": worktree,
-        "stdlib": tmp_path / "stdlib",
-        "lib-dynload": tmp_path / "lib-dynload",
-        "site-packages": tmp_path / "site-packages",
-    }
-    for name, root in roots.items():
-        root.mkdir(exist_ok=True)
+def test_authenticated_spec_derives_all_static_facts(tmp_path: Path) -> None:
+    """Finding 2: the factory derives EVERY static launch fact from the
+    committed bundle under the worktree, chain-bound, and its digest is
+    deterministic over the same authenticated bytes."""
 
-    artifacts_dir = tmp_path / "freeze"
-    artifacts_dir.mkdir()
-    pin_path = artifacts_dir / "interpreter_pin.json"
-    atomic_write_canonical_json(
-        pin_path,
-        {
-            "path": "/fixture/interpreter/python3.13",
-            "realpath": "/fixture/interpreter/python3.13",
-            "version": {"implementation": "cpython"},
-            "sha256": "4" * 64,
-        },
+    from bistar_gp.m2cr.capture import _authenticate_launch_spec
+
+    config = _make_launch(tmp_path)
+    worktree = Path(config.worktree_root).resolve()
+    spec = _authenticate_launch_spec(worktree, config.chain)
+    assert spec.interpreter_path == MINICONDA_PYTHON
+    assert spec.interpreter_realpath == os.path.realpath(MINICONDA_PYTHON)
+    assert spec.interpreter_sha256 == sha256_file(
+        os.path.realpath(MINICONDA_PYTHON)
     )
-    mapping_path = artifacts_dir / "child_env_mapping.json"
-    atomic_write_canonical_json(
-        mapping_path,
-        {
-            "fixed": {"PYTHONHASHSEED": "0", "LC_ALL": "C"},
-            "run_local_keys": ["HOME", "TMPDIR"],
-            "path_policy": "minimal",
-        },
+    assert tuple(spec.interpreter_flags) == FROZEN_INTERPRETER_FLAGS
+    mapping = json.loads(
+        (worktree / _FREEZE_RELPATHS["child_env_mapping"]).read_text()
     )
-    inside = roots["worktree"] / "inside.py"
-    inside.write_text("VALUE = 1\n", encoding="utf-8")
-    header = {
-        "kind": "m2cr_importable_artifact_manifest",
-        "schema_version": 2,
-        "roots": {
-            name: os.fspath(root.resolve()) for name, root in roots.items()
-        },
+    assert spec.frozen_env == {
+        "fixed": mapping["fixed"],
+        "run_local_keys": mapping["run_local_keys"],
     }
-    entry = {
-        "root": "worktree",
-        "relpath": "inside.py",
-        "artifact_type": "source",
-        "sha256": sha256_file(inside),
-        "size": inside.stat().st_size,
-        "loader": "_frozen_importlib_external.SourceFileLoader",
-    }
-    manifest_path = artifacts_dir / "importable_artifact_manifest.jsonl"
-    manifest_path.write_text(
-        canonical_dumps(header) + "\n" + canonical_dumps(entry) + "\n",
-        encoding="utf-8",
+    assert spec.four_roots["worktree"] == os.fspath(worktree)
+    assert spec.importable_manifest_path == os.fspath(
+        (worktree / _FREEZE_RELPATHS["importable_artifact_manifest"]).resolve()
     )
-    attestation_path, _ = _preboundary_attestation_document(
-        artifacts_dir, tampered=False
+    assert spec.preboundary_attestation_set_path == os.fspath(
+        (worktree / _FREEZE_RELPATHS["preboundary_attestation_set"]).resolve()
     )
-    freeze_path = tmp_path / "environment_freeze_manifest.json"
-    atomic_write_canonical_json(
-        freeze_path,
-        {
-            "kind": "m2cr_environment_freeze_manifest",
-            "schema_version": 1,
-            "artifacts": {
-                "child_env_mapping": {
-                    "path": os.fspath(mapping_path),
-                    "sha256": sha256_file(mapping_path),
-                },
-                "importable_artifact_manifest": {
-                    "path": os.fspath(manifest_path),
-                    "sha256": sha256_file(manifest_path),
-                },
-                "interpreter_pin": {
-                    "path": os.fspath(pin_path),
-                    "sha256": sha256_file(pin_path),
-                },
-                "preboundary_attestation_set": {
-                    "path": os.fspath(attestation_path),
-                    "sha256": sha256_file(attestation_path),
-                },
-            },
-        },
+    assert spec.attestation_directives["expected_sentinel_hash"] == SENTINEL_HASH
+    assert spec.site_packages == spec.four_roots["site-packages"]
+    assert spec.bootstrap_path.endswith("bistar_gp/m2cr/bootstrap.py")
+    assert len(spec.preboundary_closure) >= 1
+    assert len(spec.spec_sha256) == 64 and int(spec.spec_sha256, 16) >= 0
+    assert (
+        _authenticate_launch_spec(worktree, config.chain).spec_sha256
+        == spec.spec_sha256
     )
-    # F1 (round-3): a committed native-stack expectations artifact carries the
-    # mandatory attestation directives; the factory derives them from here.
-    expectations_path = artifacts_dir / "native_stack_expectations.json"
-    atomic_write_canonical_json(
-        expectations_path,
-        {
-            "kind": "m2cr_native_stack_expectations",
-            "schema_version": 1,
-            "native_stack_modules": ["numpy", "torch"],
-            "expected_profile_integration_sha256": "a" * 64,
-            "expected_sentinel_hash": SENTINEL_HASH,
-            "torch_build_expected": ["BLAS_INFO=accelerate"],
-            "numpy_build_expected": ["name: accelerate"],
-            "stage_b_expected": {},
-            "loaded_image_allowlist": [],
-            "expected_loaded_images": [
-                {"path": "/frozen/libexample.dylib", "sha256": "b" * 64}
-            ],
-        },
-    )
-    infrastructure_path = tmp_path / "infrastructure_manifest.json"
-    atomic_write_canonical_json(
-        infrastructure_path,
-        {
-            "kind": "m2cr_infrastructure_manifest",
-            "schema_version": 1,
-            "code": {},
-            "artifacts": {
-                "environment_freeze_manifest": {
-                    "path": os.fspath(freeze_path),
-                    "sha256": sha256_file(freeze_path),
-                },
-                "native_stack_expectations": {
-                    "path": os.fspath(expectations_path),
-                    "sha256": sha256_file(expectations_path),
-                },
-            },
-            "r1_schemas": {},
-        },
-    )
-    template_path = tmp_path / "bootstrap_template.json"
-    # A lean template: F1 (round-3) derives the mandatory attestation directives
-    # from the committed expectations artifact, so the caller template carries
-    # none of them (a caller-substituted value would be rejected).
-    atomic_write_canonical_json(
-        template_path,
-        {
-            "expected_sentinel_hash": -2671292046718125608,
-            "payload": {"entry": "fake_payload:run", "pass_context": True},
-        },
-    )
-    return {
-        "freeze": freeze_path,
-        "infrastructure": infrastructure_path,
-        "template": template_path,
-        "expectations": expectations_path,
-        "worktree": worktree,
-        "manifest": manifest_path,
-        "attestation_set": attestation_path,
-        "mapping": mapping_path,
-        "run_dir": tmp_path / "run",
-    }
 
 
+def test_launch_config_is_identity_and_routing_only(tmp_path: Path) -> None:
+    """Finding 2: the former caller static fields are UNREPRESENTABLE — the
+    slim config carries run identity/routing only, and the pre-boundary
+    verifier has no skip parameter."""
 
-def _bound_chain(env_freeze_path, infrastructure_path):
-    """A chain whose static members match the authenticated artifacts, as
-    launch_config_from_freeze now requires (external audit round-2 F2)."""
+    import inspect
 
-    return {
-        **CHAIN,
-        "environment_freeze_manifest_sha256": sha256_file(env_freeze_path),
-        "infrastructure_manifest_sha256": sha256_file(infrastructure_path),
-        "authorization_id": AUTHORIZATION_ID,
+    field_names = {field.name for field in dataclasses.fields(LaunchConfig)}
+    assert field_names == {
+        "worktree_root",
+        "run_dir",
+        "authorization_id",
+        "launch_attempt_id",
+        "run_id",
+        "record_kind",
+        "chain",
+        "wall_clock_ceiling_hours",
+        "waiter",
     }
+    for removed in (
+        "interpreter_path",
+        "interpreter_flags",
+        "frozen_env",
+        "bootstrap_path",
+        "preboundary_attestation_set",
+        "preboundary_skip",
+        "dependency_lock_path",
+        "site_packages",
+    ):
+        with pytest.raises(TypeError):
+            LaunchConfig(
+                worktree_root=os.fspath(tmp_path),
+                run_dir=os.fspath(tmp_path / "run"),
+                authorization_id=AUTHORIZATION_ID,
+                launch_attempt_id=LAUNCH_ATTEMPT_ID,
+                run_id="m2cr-unrepresentable",
+                record_kind="diagnostic",
+                chain=dict(CHAIN),
+                **{removed: "any-value"},
+            )
+    signature = inspect.signature(verify_preboundary_attestation_set)
+    assert "skip" not in signature.parameters
+
+
+def test_ceiling_cannot_exceed_the_ratified_bound(tmp_path: Path) -> None:
+    """The B10 ceiling is a bound: a caller may shorten it, never exceed it."""
+
+    config = _make_launch(tmp_path, ceiling_hours=WALL_CLOCK_CEILING_HOURS + 1)
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert "at most the ratified" in record["fault"]["detail"]
+    assert not (Path(config.run_dir) / "spawned.json").exists()
+    validate_terminal_record(record)
 
 
 @pytest.mark.parametrize(
     "substitution, match",
     [
-        ({"native_stack_modules": ["scipy"]}, "substitutes the committed native_stack_modules"),
-        ({"native_stack_modules": []}, "substitutes the committed native_stack_modules"),
+        (
+            {"native_stack_modules": ["scipy"]},
+            "substitutes the committed native_stack_modules",
+        ),
+        (
+            {"native_stack_modules": []},
+            "substitutes the committed native_stack_modules",
+        ),
         (
             {"expected_profile_integration_sha256": "c" * 64},
             "substitutes the committed expected_profile_integration_sha256",
@@ -1532,136 +1567,190 @@ def _bound_chain(env_freeze_path, infrastructure_path):
         ),
     ],
 )
-def test_launch_config_from_freeze_rejects_caller_substituted_directives(
+def test_template_substitution_of_committed_directives_is_rejected(
     tmp_path: Path, substitution: dict, match: str
 ) -> None:
-    """F1 (round-3): the mandatory attestation directives are DERIVED from the
-    committed expectations artifact; a caller template that substitutes any of
-    them (a different native stack, profile hash, loaded-image set, or build
-    marker) is rejected before payload start."""
+    """F1 (round-3), retargeted at the WI2 authority: a caller template that
+    substitutes any committed attestation directive is rejected pre-spawn."""
 
-    fixture = _freeze_fixture(tmp_path)
-    template = {
-        "expected_sentinel_hash": -2671292046718125608,
-        "payload": {"entry": "fake_payload:run", "pass_context": True},
-        **substitution,
-    }
-    atomic_write_canonical_json(fixture["template"], template)
-    with pytest.raises(ValueError, match=match):
-        launch_config_from_freeze(
-            fixture["freeze"],
-            fixture["infrastructure"],
-            run_dir=fixture["run_dir"],
-            run_id="m2cr-substitution-test",
-            authorization_id=AUTHORIZATION_ID,
-            launch_attempt_id=LAUNCH_ATTEMPT_ID,
-            record_kind="diagnostic",
-            chain=_bound_chain(fixture["freeze"], fixture["infrastructure"]),
-            bootstrap_template_path=fixture["template"],
-            worktree_root=fixture["worktree"],
-        )
+    config = _make_launch(tmp_path, template_extra=substitution)
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "attestation_fault"
+    assert match in record["fault"]["detail"]
+    run_dir = Path(config.run_dir)
+    assert not (run_dir / "spawned.json").exists()
+    assert not (run_dir / "payload_started.json").exists()
+    validate_terminal_record(record)
 
 
-def test_launch_config_from_freeze_derives_mandatory_directives(
+@pytest.mark.parametrize(
+    "key, value",
+    [
+        ("four_roots", ["/a", "/b", "/c", "/d"]),
+        ("importable_artifact_manifest", "/somewhere/else/manifest.jsonl"),
+        ("authenticated_spec_sha256", "0" * 64),
+        ("preboundary_closure", [{"path": "/rogue.py", "sha256": "0" * 64}]),
+        ("worktree_root", "/somewhere/else"),
+    ],
+)
+def test_spec_static_directive_substitution_is_rejected(
+    tmp_path: Path, key: str, value: object
+) -> None:
+    """Findings 1+2: the spec-derived static directives (roots, manifest,
+    closure, spec digest, worktree root) reject caller substitution — never
+    silently preferred, never silently overwritten."""
+
+    config = _make_launch(tmp_path, template_extra={key: value})
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "attestation_fault"
+    assert f"substitutes the derived {key}" in record["fault"]["detail"]
+    assert not (Path(config.run_dir) / "payload_started.json").exists()
+    validate_terminal_record(record)
+
+
+def test_wrong_environment_template_substitution_is_rejected(
     tmp_path: Path,
 ) -> None:
-    """F1 (round-3): the derived config's bootstrap_config.json carries exactly
-    the committed expectations' mandatory directives, regardless of the lean
-    caller template."""
+    """Finding 2: the caller cannot author the child environment at all; the
+    only remaining avenue — a template alias substitution — is rejected
+    pre-spawn with no child spawned."""
 
-    fixture = _freeze_fixture(tmp_path)
-    launch_config_from_freeze(
-        fixture["freeze"],
-        fixture["infrastructure"],
-        run_dir=fixture["run_dir"],
-        run_id="m2cr-derive-directives",
-        authorization_id=AUTHORIZATION_ID,
-        launch_attempt_id=LAUNCH_ATTEMPT_ID,
-        record_kind="diagnostic",
-        chain=_bound_chain(fixture["freeze"], fixture["infrastructure"]),
-        bootstrap_template_path=fixture["template"],
-        worktree_root=fixture["worktree"],
+    config = _make_launch(tmp_path, wrong_environment=True)
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "attestation_fault"
+    assert "expected_frozen_env" in record["fault"]["detail"]
+    assert not (Path(config.run_dir) / "spawned.json").exists()
+    validate_terminal_record(record)
+
+
+def test_capture_binds_directives_and_spec_digest_into_the_consumed_config(
+    tmp_path: Path,
+) -> None:
+    """Findings 1+2: the consumed bootstrap config carries the committed
+    directives, the spec-derived four roots/manifest/closure, and the spec
+    digest; prelaunch and the marker-bound child effect proofs re-record the
+    SAME digest, so parent and child demonstrably consumed one authority."""
+
+    from bistar_gp.m2cr.capture import _authenticate_launch_spec
+
+    config = _make_launch(tmp_path)
+    spec = _authenticate_launch_spec(
+        Path(config.worktree_root).resolve(), config.chain
     )
-    written = json.loads(
-        (fixture["run_dir"] / BOOTSTRAP_CONFIG_NAME).read_text()
+    record = capture_run(config)
+    assert record["status"] == "COMPLETED", record.get("fault")
+    run_dir = Path(config.run_dir)
+    worktree = Path(config.worktree_root)
+    written = json.loads((run_dir / BOOTSTRAP_CONFIG_NAME).read_text())
+    expectations = json.loads(
+        (worktree / _FREEZE_RELPATHS["native_stack_expectations"]).read_text()
     )
-    expectations = json.loads(fixture["expectations"].read_text())
     for key in (
         "native_stack_modules",
         "expected_profile_integration_sha256",
+        "expected_sentinel_hash",
         "expected_loaded_images",
         "torch_build_expected",
+        "numpy_build_expected",
         "stage_b_expected",
+        "loaded_image_allowlist",
     ):
         assert written[key] == expectations[key]
-
-
-def test_launch_config_from_freeze_derives_all_pins(tmp_path: Path) -> None:
-    """FIX C11: hermetic derivation from tmp freeze artifacts."""
-
-    fixture = _freeze_fixture(tmp_path)
-    config = launch_config_from_freeze(
-        fixture["freeze"],
-        fixture["infrastructure"],
-        run_dir=fixture["run_dir"],
-        run_id="m2cr-derived-test",
-        authorization_id=AUTHORIZATION_ID,
-        launch_attempt_id=LAUNCH_ATTEMPT_ID,
-        record_kind="diagnostic",
-        chain=_bound_chain(fixture["freeze"], fixture["infrastructure"]),
-        bootstrap_template_path=fixture["template"],
-        worktree_root=fixture["worktree"],
+    assert written["four_roots"][0] == os.fspath(worktree.resolve())
+    assert len(written["four_roots"]) == 4
+    assert written["importable_artifact_manifest"] == spec.importable_manifest_path
+    assert written["authenticated_spec_sha256"] == spec.spec_sha256
+    assert written["preboundary_closure"] == [
+        dict(entry) for entry in spec.preboundary_closure
+    ]
+    prelaunch = json.loads((run_dir / "prelaunch.json").read_text())
+    assert (
+        prelaunch["config"]["authenticated_spec_sha256"] == spec.spec_sha256
     )
-    assert config.interpreter_path == "/fixture/interpreter/python3.13"
-    assert tuple(config.interpreter_flags) == FROZEN_INTERPRETER_FLAGS
-    assert config.frozen_env == {
-        "fixed": {"PYTHONHASHSEED": "0", "LC_ALL": "C"},
-        "run_local_keys": ["HOME", "TMPDIR"],
-    }
-    assert Path(config.worktree_root) == fixture["worktree"].resolve()
-    assert config.bootstrap_path.endswith("bistar_gp/m2cr/bootstrap.py")
-    assert config.preboundary_attestation_set == os.fspath(
-        fixture["attestation_set"].resolve()
-    )
-    assert config.wall_clock_ceiling_hours == WALL_CLOCK_CEILING_HOURS == 8.0
-    assert config.run_id == "m2cr-derived-test"
-    assert config.record_kind == "diagnostic"
-    assert config.chain == _bound_chain(fixture["freeze"], fixture["infrastructure"])
-    materialized = json.loads(
-        (fixture["run_dir"] / BOOTSTRAP_CONFIG_NAME).read_text()
-    )
-    assert materialized["four_roots"][0] == os.fspath(
-        fixture["worktree"].resolve()
-    )
-    assert len(materialized["four_roots"]) == 4
-    assert materialized["importable_artifact_manifest"] == os.fspath(
-        fixture["manifest"].resolve()
-    )
-    assert materialized["payload"] == {
-        "entry": "fake_payload:run",
-        "pass_context": True,
-    }
+    proofs = json.loads((run_dir / "effect_proofs.json").read_text())
+    assert proofs["authenticated_spec_sha256"] == spec.spec_sha256
+    stage_c = json.loads((run_dir / "stage_c.json").read_text())
+    assert stage_c["authenticated_spec_sha256"] == spec.spec_sha256
 
 
-def test_launch_config_from_freeze_rejects_tampered_pin(tmp_path: Path) -> None:
-    """FIX C11: a freeze-artifact digest mismatch fails the derivation."""
+_PIN_MISMATCH_MATCHES = {
+    "child_env_mapping": "does not match the environment freeze",
+    "importable_artifact_manifest": "does not match the environment freeze",
+    "interpreter_pin": "does not match the environment freeze",
+    "preboundary_attestation_set": "does not match the environment freeze",
+    "environment_freeze_manifest": "does not match the infrastructure manifest",
+    "dependency_lock": "does not match the infrastructure manifest",
+    "native_stack_expectations": "does not match the infrastructure manifest",
+}
 
-    fixture = _freeze_fixture(tmp_path)
-    with fixture["mapping"].open("a", encoding="utf-8") as handle:
-        handle.write("\n")
-    with pytest.raises(ValueError, match="pin mismatch for 'child_env_mapping'"):
-        launch_config_from_freeze(
-            fixture["freeze"],
-            fixture["infrastructure"],
-            run_dir=fixture["run_dir"],
-            run_id="m2cr-derived-test",
-            authorization_id=AUTHORIZATION_ID,
-            launch_attempt_id=LAUNCH_ATTEMPT_ID,
-            record_kind="diagnostic",
-            chain=dict(CHAIN),
-            bootstrap_template_path=fixture["template"],
-            worktree_root=REPOSITORY_ROOT,
+
+@pytest.mark.parametrize("artifact", sorted(_PIN_MISMATCH_MATCHES))
+def test_each_authenticated_artifact_pin_mismatch_fails_closed(
+    tmp_path: Path, artifact: str
+) -> None:
+    """Finding 2: byte-corrupting ANY of the seven committed artifacts after
+    the aggregating pins were sealed refuses the launch pre-spawn with no
+    child spawned and no marker."""
+
+    config = _make_launch(tmp_path)
+    target = Path(config.worktree_root) / _FREEZE_RELPATHS[artifact]
+    with target.open("ab") as handle:
+        handle.write(b"\n")
+    record = capture_run(config)
+    assert record["status"] == "INFRA_FAILURE"
+    assert record["fault"]["fault_class"] == "attestation_fault"
+    assert _PIN_MISMATCH_MATCHES[artifact] in record["fault"]["detail"]
+    run_dir = Path(config.run_dir)
+    assert not (run_dir / "spawned.json").exists()
+    assert not (run_dir / "payload_started.json").exists()
+    validate_terminal_record(record)
+
+
+def test_wrong_worktree_and_wrong_chain_fail_closed(tmp_path: Path) -> None:
+    """Finding 2: a worktree without the committed bundle, a chain whose
+    infrastructure digest differs, and a chain whose environment-freeze digest
+    differs each refuse the launch pre-spawn."""
+
+    config = _make_launch(tmp_path / "first")
+    empty = tmp_path / "empty-worktree"
+    empty.mkdir()
+    record = capture_run(
+        dataclasses.replace(config, worktree_root=os.fspath(empty))
+    )
+    assert record["status"] == "INFRA_FAILURE"
+    assert (
+        "committed infrastructure manifest not found"
+        in record["fault"]["detail"]
+    )
+
+    second = _make_launch(tmp_path / "second")
+    record = capture_run(
+        dataclasses.replace(
+            second,
+            chain={**second.chain, "infrastructure_manifest_sha256": "5" * 64},
         )
+    )
+    assert record["status"] == "INFRA_FAILURE"
+    assert "authorized chain binding" in record["fault"]["detail"]
+
+    third = _make_launch(tmp_path / "third")
+    record = capture_run(
+        dataclasses.replace(
+            third,
+            chain={
+                **third.chain,
+                "environment_freeze_manifest_sha256": "6" * 64,
+            },
+        )
+    )
+    assert record["status"] == "INFRA_FAILURE"
+    assert (
+        "environment_freeze_manifest_sha256 does not match"
+        in record["fault"]["detail"]
+    )
 
 
 _COMMITTED_FREEZE = REPOSITORY_ROOT / "docs/m2c_freeze/m2cr_environment_freeze_manifest_v1.json"
@@ -1670,35 +1759,81 @@ _COMMITTED_INFRASTRUCTURE = (
 )
 
 
-def _committed_manifest_is_v2() -> bool:
+def _committed_bundle_is_current() -> bool:
+    """Whether the committed bundle authenticates against this tree (false
+    only inside the orchestrator's regeneration window)."""
+
+    if os.environ.get("M2CR_ALLOW_MISSING_COMMITTED_MANIFEST") == "1":
+        return False
     try:
-        freeze = json.loads(_COMMITTED_FREEZE.read_text(encoding="utf-8"))
-        manifest_path = Path(
-            freeze["artifacts"]["importable_artifact_manifest"]["path"]
-        )
-        with manifest_path.open("rb") as handle:
-            first = json.loads(handle.readline())
-        return isinstance(first, dict) and first.get("schema_version") == 2
+        from bistar_gp.m2cr.capture import _authenticate_launch_spec
+
+        chain = {
+            **CHAIN,
+            "infrastructure_manifest_sha256": sha256_file(
+                _COMMITTED_INFRASTRUCTURE
+            ),
+            "environment_freeze_manifest_sha256": sha256_file(
+                _COMMITTED_FREEZE
+            ),
+        }
+        _authenticate_launch_spec(REPOSITORY_ROOT, chain)
+        return True
     except Exception:
         return False
 
 
 @pytest.mark.skipif(
-    not _committed_manifest_is_v2(),
+    not _committed_bundle_is_current(),
     reason=(
-        "cross-worker seam: the committed importable-artifact manifest is "
-        "not yet format v2 (header line with roots); the environment_freeze "
-        "worker regenerates it — integration reconciles"
+        "orchestrator regeneration window: the committed bundle does not "
+        "authenticate against this tree yet; the committed-manifest CI and "
+        "this derivation re-run after regeneration"
     ),
 )
 def test_committed_freeze_artifacts_derive_the_ratified_pins(
     tmp_path: Path,
 ) -> None:
-    """FIX C11: read-only derivation from the COMMITTED artifacts, no launch."""
+    """Read-only spec derivation from the COMMITTED artifacts (no launch):
+    the ratified §4.5 values flow from the committed bundle alone."""
+
+    from bistar_gp.m2cr.capture import _authenticate_launch_spec
+
+    chain = {
+        **CHAIN,
+        "infrastructure_manifest_sha256": sha256_file(
+            _COMMITTED_INFRASTRUCTURE
+        ),
+        "environment_freeze_manifest_sha256": sha256_file(_COMMITTED_FREEZE),
+    }
+    spec = _authenticate_launch_spec(REPOSITORY_ROOT, chain)
+    assert spec.interpreter_path == MINICONDA_PYTHON
+    assert tuple(spec.interpreter_flags) == FROZEN_INTERPRETER_FLAGS
+    fixed = spec.frozen_env["fixed"]
+    assert fixed["PYTHONHASHSEED"] == "0"
+    assert fixed["OMP_NUM_THREADS"] == "10"
+    assert fixed["OMP_DYNAMIC"] == "FALSE"
+    assert fixed["MKL_NUM_THREADS"] == "10"
+    assert fixed["VECLIB_MAXIMUM_THREADS"] == "10"
+    assert fixed["LC_ALL"] == "C"
+    assert fixed["TZ"] == "UTC"
+    assert spec.frozen_env["run_local_keys"] == [
+        "HOME",
+        "TMPDIR",
+        "XDG_CACHE_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+    ]
+    assert spec.four_roots["stdlib"].endswith("lib/python3.13")
+    assert spec.four_roots["site-packages"].endswith("site-packages")
+    assert spec.four_roots["worktree"] == os.fspath(REPOSITORY_ROOT)
+    assert isinstance(
+        spec.attestation_directives["expected_sentinel_hash"], int
+    )
+    assert len(spec.preboundary_closure) >= 60
 
     template_path = tmp_path / "template.json"
-    # A lean template: F1 (round-3) derives the mandatory directives from the
-    # committed native-stack expectations artifact.
     atomic_write_canonical_json(
         template_path,
         {"payload": {"entry": "fake_payload:run", "pass_context": True}},
@@ -1711,59 +1846,82 @@ def test_committed_freeze_artifacts_derive_the_ratified_pins(
         authorization_id=AUTHORIZATION_ID,
         launch_attempt_id=LAUNCH_ATTEMPT_ID,
         record_kind="diagnostic",
-        chain=_bound_chain(_COMMITTED_FREEZE, _COMMITTED_INFRASTRUCTURE),
+        chain=chain,
         bootstrap_template_path=template_path,
         worktree_root=REPOSITORY_ROOT,
     )
-    assert config.interpreter_path == MINICONDA_PYTHON
-    assert tuple(config.interpreter_flags) == FROZEN_INTERPRETER_FLAGS
-    fixed = config.frozen_env["fixed"]
-    assert fixed["PYTHONHASHSEED"] == "0"
-    assert fixed["OMP_NUM_THREADS"] == "10"
-    assert fixed["OMP_DYNAMIC"] == "FALSE"
-    assert fixed["MKL_NUM_THREADS"] == "10"
-    assert fixed["VECLIB_MAXIMUM_THREADS"] == "10"
-    assert fixed["LC_ALL"] == "C"
-    assert fixed["TZ"] == "UTC"
-    assert config.frozen_env["run_local_keys"] == [
-        "HOME",
-        "TMPDIR",
-        "XDG_CACHE_HOME",
-        "XDG_CONFIG_HOME",
-        "XDG_DATA_HOME",
-        "XDG_STATE_HOME",
-    ]
-    assert config.wall_clock_ceiling_hours == 8.0
+    assert config.wall_clock_ceiling_hours == WALL_CLOCK_CEILING_HOURS == 8.0
+    assert config.run_id == "m2cr-committed-derivation"
+    assert Path(config.worktree_root) == REPOSITORY_ROOT
 
 
-def test_launch_config_rejects_a_chain_unbound_to_the_authenticated_artifacts(
+def test_launch_config_from_freeze_is_slim_and_validates_the_authority(
     tmp_path: Path,
 ) -> None:
-    """External audit round-2 F2: the chain's static members and authorization
-    id must equal the authenticated artifacts, not free-floating values."""
+    """Finding 2: the factory returns identity/routing only, materializes the
+    caller template verbatim, and refuses explicit manifest paths that differ
+    from the worktree's committed authority or a mismatched authorization."""
 
-    fixture = _freeze_fixture(tmp_path)
-    good = _bound_chain(fixture["freeze"], fixture["infrastructure"])
-    for member in (
-        "environment_freeze_manifest_sha256",
-        "infrastructure_manifest_sha256",
-        "authorization_id",
+    config = _make_launch(tmp_path)
+    worktree = Path(config.worktree_root)
+    freeze_path = worktree / _FREEZE_RELPATHS["environment_freeze_manifest"]
+    infra_path = worktree / _INFRA_RELPATH
+    template_path = tmp_path / "template.json"
+    atomic_write_canonical_json(
+        template_path,
+        {"payload": {"entry": "fake_payload:run", "pass_context": True}},
+    )
+    derived = launch_config_from_freeze(
+        freeze_path,
+        infra_path,
+        run_dir=tmp_path / "derived-run",
+        run_id="m2cr-slim-factory",
+        authorization_id=AUTHORIZATION_ID,
+        launch_attempt_id=LAUNCH_ATTEMPT_ID,
+        record_kind="diagnostic",
+        chain=config.chain,
+        bootstrap_template_path=template_path,
+        worktree_root=worktree,
+    )
+    assert derived.run_id == "m2cr-slim-factory"
+    assert Path(derived.worktree_root) == worktree.resolve()
+    materialized = json.loads(
+        (tmp_path / "derived-run" / BOOTSTRAP_CONFIG_NAME).read_text()
+    )
+    assert materialized == {
+        "payload": {"entry": "fake_payload:run", "pass_context": True}
+    }
+
+    imposter = tmp_path / "imposter-freeze.json"
+    imposter.write_text(freeze_path.read_text() + "\n", encoding="utf-8")
+    with pytest.raises(
+        ValueError, match="does not match the worktree's committed authority"
     ):
-        bad = dict(good)
-        bad[member] = "0" * 64 if member != "authorization_id" else "m2cr-auth-20000101-99"
-        with pytest.raises(ValueError, match="does not match the authenticated"):
-            launch_config_from_freeze(
-                fixture["freeze"],
-                fixture["infrastructure"],
-                run_dir=fixture["run_dir"],
-                run_id="m2cr-derived-test",
-                authorization_id=AUTHORIZATION_ID,
-                launch_attempt_id=LAUNCH_ATTEMPT_ID,
-                record_kind="diagnostic",
-                chain=bad,
-                bootstrap_template_path=fixture["template"],
-                worktree_root=fixture["worktree"],
-            )
+        launch_config_from_freeze(
+            imposter,
+            infra_path,
+            run_dir=tmp_path / "imposter-run",
+            run_id="m2cr-slim-factory",
+            authorization_id=AUTHORIZATION_ID,
+            launch_attempt_id=LAUNCH_ATTEMPT_ID,
+            record_kind="diagnostic",
+            chain=config.chain,
+            bootstrap_template_path=template_path,
+            worktree_root=worktree,
+        )
+    with pytest.raises(ValueError, match="authorization_id does not match"):
+        launch_config_from_freeze(
+            freeze_path,
+            infra_path,
+            run_dir=tmp_path / "auth-run",
+            run_id="m2cr-slim-factory",
+            authorization_id="m2cr-auth-20000101-99",
+            launch_attempt_id=LAUNCH_ATTEMPT_ID,
+            record_kind="diagnostic",
+            chain=config.chain,
+            bootstrap_template_path=template_path,
+            worktree_root=worktree,
+        )
 
 
 def test_raw_files_excludes_only_the_root_two_by_relpath(tmp_path: Path) -> None:

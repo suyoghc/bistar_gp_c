@@ -731,11 +731,6 @@ native_modules = json.loads(sys.argv[1])
 for module_name in native_modules:
     __import__(module_name)
 loaded = sys.modules
-images = [
-    {"path": path, "sha256": _sha256(path)}
-    for path in _dyld_images()
-    if os.path.isfile(path)
-]
 torch_cfg = ""
 if "torch" in loaded:
     torch_cfg = str(loaded["torch"].__config__.show())
@@ -745,7 +740,38 @@ if "numpy" in loaded:
     with contextlib.redirect_stdout(buffer):
         loaded["numpy"].show_config()
     numpy_cfg = buffer.getvalue()
+# The image inventory is enumerated LAST, after the build-configuration
+# calls, replicating the child's exact pre-Stage-B sequence: the child
+# attests the build markers (torch.__config__.show(), numpy.show_config())
+# BEFORE it measures loaded images, and numpy.show_config() lazily imports
+# pyyaml, loading yaml's extension image.  Measuring earlier froze a
+# 66-image set that every real child (67 images) would fail — found by the
+# first real-native production-path launch (2026-07-18); no real child had
+# ever run before this cycle.
+images = [
+    {"path": path, "sha256": _sha256(path)}
+    for path in _dyld_images()
+    if os.path.isfile(path)
+]
+# The Stage-C image allowlist is MEASURED, not asserted: the frozen payload
+# class imports bistar_gp.profile_integration, whose import closure loads
+# additional extension images (scipy/gpytorch/linear_operator) AFTER the
+# Stage-B baseline; §4.5.5 Stage C admits exactly the frozen allowlist and
+# fails anything else.  Their bytes stay pinned through the importable
+# manifest and the origin/loader binding; the allowlist is the frozen
+# enumeration-level acceptance.  An empty payload probe list yields an empty
+# allowlist (the pre-cycle behavior).
+payload_probe = json.loads(sys.argv[2]) if len(sys.argv) > 2 else []
+baseline_paths = {entry["path"] for entry in images}
+for module_name in payload_probe:
+    __import__(module_name)
+payload_allowlist = sorted(
+    path
+    for path in _dyld_images()
+    if os.path.isfile(path) and path not in baseline_paths
+)
 print(json.dumps({
+    "payload_image_allowlist": payload_allowlist,
     "torch_config_show": torch_cfg,
     "numpy_config_show": numpy_cfg,
     "stage_b_env": {
@@ -807,6 +833,8 @@ def build_native_stack_expectations(
     torch_build_expected: Sequence[str],
     numpy_build_expected: Sequence[str],
     stage_b_expected: Mapping[str, str],
+    payload_probe_modules: Sequence[str] = ("bistar_gp.profile_integration",),
+    probe_cwd: str | os.PathLike[str] | None = None,
 ) -> dict[str, Any]:
     """Build the committed R2 native-stack expectation set (external audit
     round-3 revision of F1/F2; external-audit finding 3 adds the sentinel hash).
@@ -829,8 +857,10 @@ def build_native_stack_expectations(
     expected_sentinel_hash = measure_expected_sentinel_hash(interpreter_path)
     completed = subprocess.run(
         [os.fspath(interpreter_path), "-c", _NATIVE_STACK_MEASURE,
-         canonical_dumps(list(native_stack_modules))],
+         canonical_dumps(list(native_stack_modules)),
+         canonical_dumps(list(payload_probe_modules))],
         check=True, capture_output=True, text=True,
+        cwd=None if probe_cwd is None else os.fspath(probe_cwd),
     )
     measured = json.loads(completed.stdout)
     for marker in torch_build_expected:
@@ -863,7 +893,7 @@ def build_native_stack_expectations(
         "torch_build_expected": list(torch_build_expected),
         "numpy_build_expected": list(numpy_build_expected),
         "stage_b_expected": dict(stage_b_expected),
-        "loaded_image_allowlist": [],
+        "loaded_image_allowlist": list(measured["payload_image_allowlist"]),
         "expected_loaded_images": images,
     }
 

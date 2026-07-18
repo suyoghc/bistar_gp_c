@@ -280,15 +280,25 @@ def classify_stage_b_deltas(
         for key, value in additions.items()
         if key.startswith(_KMP_NAME_PREFIX)
     ]
-    if len(kmp) != 1:
-        raise ValueError("native stack requires exactly one KMP registration entry")
-    name, value = kmp[0]
-    if name != f"{_KMP_NAME_PREFIX}{pid}":
-        raise ValueError("KMP registration name is not bound to the child PID")
-    if _KMP_VALUE_RE.fullmatch(value) is None:
-        raise ValueError("KMP registration value does not match libomp format")
-    additions.pop(name)
-    accepted.append(name)
+    # Plan §4.5.5 Stage B is an ACCEPT-ONLY allowlist: it admits at most one
+    # PID-bound, format-valid libomp registration entry — it does not mandate
+    # its occurrence.  libomp performs the registration lazily (at its first
+    # parallel region, which a hermetic no-computation child never reaches),
+    # so the first real-native production-path launch (2026-07-18 real-root
+    # integration battery) observed zero entries at Stage B on the frozen
+    # host; requiring presence had over-read the frozen "accept only" text.
+    # Two entries, a wrong-PID name, a malformed value, and any other addition
+    # all still fail closed.
+    if len(kmp) > 1:
+        raise ValueError("native stack admits at most one KMP registration entry")
+    if kmp:
+        name, value = kmp[0]
+        if name != f"{_KMP_NAME_PREFIX}{pid}":
+            raise ValueError("KMP registration name is not bound to the child PID")
+        if _KMP_VALUE_RE.fullmatch(value) is None:
+            raise ValueError("KMP registration value does not match libomp format")
+        additions.pop(name)
+        accepted.append(name)
     if additions:
         raise ValueError(
             f"unapproved native environment additions: {sorted(additions)}"
@@ -431,6 +441,30 @@ MANDATORY_ATTESTATION_KEYS = (
     "expected_loaded_images",
 )
 
+# Closed-world bootstrap-config key set (Kimi K3 challenge, finding 5): the
+# child consumes ONLY these top-level keys, and any other key — a legacy alias,
+# a removed directive spelling, or a future directive the parent's substitution
+# comparison does not yet cover — fails closed rather than passing through
+# unexamined.  The parent-side template keys it does not read (payload entry
+# routing) are enumerated too, because the parent materializes them into the
+# same config document.
+KNOWN_CONFIG_KEYS = frozenset(
+    {
+        "four_roots",
+        "frozen_env",
+        "expected_pycache_prefix",
+        "worktree_root",
+        "boundary",
+        "payload",
+        "payload_entry_path",
+        "attestation_paths",
+        "importable_artifact_manifest",
+        "preboundary_closure",
+        "authenticated_spec_sha256",
+        *MANDATORY_ATTESTATION_KEYS,
+    }
+)
+
 
 def require_mandatory_attestation_directives(config: Mapping[str, Any]) -> None:
     """Fail closed unless every mandatory pre-scientific attestation directive is
@@ -495,6 +529,108 @@ def require_mandatory_attestation_directives(config: Mapping[str, Any]) -> None:
         raise SystemExit(
             "attestation_fault: expected_loaded_images must be a non-empty list"
         )
+
+
+def _require_spec_binding_directives(config: Mapping[str, Any]) -> str:
+    """Require the WI1/WI2 spec-derived static directives before any further
+    consumption (external-audit findings 1 and 2).
+
+    ``authenticated_spec_sha256`` (the parent's derived static-authority
+    digest), ``importable_artifact_manifest`` (an absolute path), and
+    ``preboundary_closure`` (a non-empty list of authenticated closure pins)
+    are mandatory and unconditional: there is no launch mode without them.
+    Returns the validated spec digest.
+    """
+
+    spec_digest = config.get("authenticated_spec_sha256")
+    if (
+        not isinstance(spec_digest, str)
+        or _SHA256_RE.fullmatch(spec_digest) is None
+    ):
+        raise SystemExit(
+            "attestation_fault: authenticated_spec_sha256 directive is "
+            "missing or malformed"
+        )
+    manifest_path = config.get("importable_artifact_manifest")
+    if not isinstance(manifest_path, str) or not os.path.isabs(manifest_path):
+        raise SystemExit(
+            "attestation_fault: importable_artifact_manifest directive is "
+            "missing or is not an absolute path"
+        )
+    closure = config.get("preboundary_closure")
+    if not isinstance(closure, list) or not closure:
+        raise SystemExit(
+            "attestation_fault: preboundary_closure directive is missing or "
+            "empty"
+        )
+    return spec_digest
+
+
+def _closure_authority(
+    closure: list[Any], worktree_root: str
+) -> dict[str, dict[str, str]]:
+    """Resolve the authenticated pre-boundary closure into an origin authority.
+
+    Worktree-relative entries resolve against THIS launch's worktree root;
+    absolute entries keep their host-global path.  Returns a mapping from
+    resolved real path to ``{"sha256": ..., "loader": ...}`` where the loader
+    class is the frozen loader for the entry's artifact type (a ``.py`` member
+    resolves through ``SourceFileLoader``, an extension through
+    ``ExtensionFileLoader``); a closure member of any other artifact type is
+    rejected — the pre-boundary closure is source and extension modules only.
+    """
+
+    authority: dict[str, dict[str, str]] = {}
+    for index, entry in enumerate(closure):
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("sha256"), str)
+            or _SHA256_RE.fullmatch(entry["sha256"]) is None
+        ):
+            raise SystemExit(
+                f"attestation_fault: preboundary_closure[{index}] lacks a "
+                "frozen sha256"
+            )
+        if entry.get("root") == "worktree":
+            relpath = entry.get("relpath")
+            if (
+                not isinstance(relpath, str)
+                or not relpath
+                or relpath.startswith("/")
+                or any(part in ("", ".", "..") for part in relpath.split("/"))
+            ):
+                raise SystemExit(
+                    f"attestation_fault: preboundary_closure[{index}] has an "
+                    "unsafe worktree relpath"
+                )
+            target = os.path.realpath(os.path.join(worktree_root, relpath))
+            if os.path.commonpath(
+                (os.path.realpath(worktree_root), target)
+            ) != os.path.realpath(worktree_root):
+                raise SystemExit(
+                    f"attestation_fault: preboundary_closure[{index}] "
+                    "resolves outside the launch worktree"
+                )
+        elif isinstance(entry.get("path"), str) and os.path.isabs(entry["path"]):
+            target = os.path.realpath(entry["path"])
+        else:
+            raise SystemExit(
+                f"attestation_fault: preboundary_closure[{index}] is malformed"
+            )
+        if target.endswith(".py"):
+            loader = "SourceFileLoader"
+        elif any(
+            target.endswith(suffix)
+            for suffix in importlib.machinery.EXTENSION_SUFFIXES
+        ):
+            loader = "ExtensionFileLoader"
+        else:
+            raise SystemExit(
+                f"attestation_fault: preboundary_closure[{index}] names a "
+                "non-source, non-extension artifact"
+            )
+        authority[target] = {"sha256": entry["sha256"], "loader": loader}
+    return authority
 
 
 def authenticate_loaded_images(
@@ -908,15 +1044,18 @@ def _install_project_namespace(worktree_root: str) -> None:
     m2cr_root = os.path.join(package_root, "m2cr")
     if not os.path.isdir(m2cr_root):
         raise SystemExit("attestation_fault: worktree lacks bistar_gp/m2cr")
+    # The fabricated packages carry NO __file__: their initializers are
+    # deliberately never executed, so claiming a file origin would be false
+    # provenance — and the §4.5.7 origin binding would then have to hash a
+    # source that never ran (or, in a synthetic worktree, does not exist).
+    # They inventory as packages without a file origin.
     package = ModuleType("bistar_gp")
     package.__path__ = [package_root]
     package.__package__ = "bistar_gp"
-    package.__file__ = os.path.join(package_root, "__init__.py")
     sys.modules["bistar_gp"] = package
     subpackage = ModuleType("bistar_gp.m2cr")
     subpackage.__path__ = [m2cr_root]
     subpackage.__package__ = "bistar_gp.m2cr"
-    subpackage.__file__ = os.path.join(m2cr_root, "__init__.py")
     sys.modules["bistar_gp.m2cr"] = subpackage
 
 
@@ -971,6 +1110,7 @@ def _attestation_paths(config: dict[str, Any]) -> tuple[Path, dict[str, Path]]:
         "native_stack": "native_stack.json",
         "manifest_pre": "importable_manifest_pre.json",
         "manifest_post": "importable_manifest_post.json",
+        "origin_binding_pre": "origin_binding_pre.json",
         "sourceless": "sourceless_attestation.json",
         "import_inventory": "import_inventory.json",
         "stage_c": "stage_c.json",
@@ -1009,11 +1149,16 @@ def _effect_proofs(config: dict[str, Any]) -> dict[str, Any]:
     actual_prefix = os.path.realpath(sys.pycache_prefix or "")
     if sys.pycache_prefix is None or actual_prefix != canonical_prefix:
         raise SystemExit("attestation_fault: pycache_prefix mismatch")
+    # Findings 1+2: the child re-records the parent's authenticated-spec
+    # digest inside this marker-bound attestation, so the parent can verify at
+    # exit that both sides consumed the SAME static authority.
+    spec_digest = _require_spec_binding_directives(config)
     return {
         "checks": checks,
         "sentinel_hash": _BOUND_SENTINEL_HASH(),
         "utf8_mode": sys.flags.utf8_mode,
         "pycache_prefix": actual_prefix,
+        "authenticated_spec_sha256": spec_digest,
     }
 
 
@@ -1055,13 +1200,27 @@ def _inventory(
     *,
     roots: list[str] | None = None,
     manifest_entries: Mapping[tuple[str, str], Mapping[str, Any]] | None = None,
+    closure_authority: Mapping[str, Mapping[str, str]] | None = None,
     modules: Mapping[str, ModuleType | None] | None = None,
 ) -> list[dict[str, Any]]:
-    """Inventory every loaded module and optionally bind every file origin."""
+    """Inventory every loaded module and bind every file origin (§4.5.7).
+
+    With ``manifest_entries`` supplied (the mandatory launch path), every
+    file-backed module must be authenticated: a module whose resolved origin
+    is under one of the four roots must match a manifest entry by sha256 and
+    loader class; a module outside all four roots must match an entry of the
+    authenticated pre-boundary closure (``closure_authority``) by exact
+    resolved path, sha256, and the frozen loader for its artifact type.
+    Either authority failing, or a module with neither, fails closed.
+    """
 
     if (roots is None) != (manifest_entries is None):
         raise SystemExit(
             "attestation_fault: inventory manifest roots/entries are incomplete"
+        )
+    if (manifest_entries is None) != (closure_authority is None):
+        raise SystemExit(
+            "attestation_fault: inventory closure authority is incomplete"
         )
     module_map = sys.modules if modules is None else modules
     audit_filenames: dict[str, str | None] = {}
@@ -1092,7 +1251,22 @@ def _inventory(
             resolved_origin = None
         else:
             resolved_origin = os.path.realpath(origin)
-            classification = "file"
+            # A claimed origin that is not an existing regular file backs NO
+            # file execution — nothing can have been loaded from a path that
+            # does not exist — so it carries no §4.5.7 authentication
+            # obligation.  The canonical case (first real-native
+            # production-path launch): torch installs a synthetic
+            # ``torch.classes`` module carrying the bogus RELATIVE
+            # ``__file__ = "_classes.py"``, which resolves against the child's
+            # CWD to a nonexistent ``<worktree>/_classes.py``.  A real
+            # smuggled file that DID execute exists on disk (isfile true) and
+            # is authenticated below; only genuinely fileless origins are
+            # classified here.
+            if not os.path.isfile(resolved_origin):
+                classification = "synthetic_no_file"
+                resolved_origin = None
+            else:
+                classification = "file"
 
         item: dict[str, Any] = {
             "module": name,
@@ -1103,7 +1277,7 @@ def _inventory(
             "classification": classification,
         }
         if manifest_entries is not None and resolved_origin is not None:
-            matches: list[tuple[int, str, str, Mapping[str, Any]]] = []
+            containing: list[tuple[int, str, str]] = []
             for root_id, root in _manifest_roots(roots or []):
                 try:
                     common = os.path.commonpath((root, resolved_origin))
@@ -1112,40 +1286,130 @@ def _inventory(
                 if common != root:
                     continue
                 relpath = Path(resolved_origin).relative_to(root).as_posix()
-                entry = manifest_entries.get((root_id, relpath))
-                if entry is not None:
-                    matches.append((len(root), root_id, relpath, entry))
+                containing.append((len(root), root_id, relpath))
             actual_sha256 = _sha256_file(resolved_origin)
-            matching = [
-                match for match in matches if match[3].get("sha256") == actual_sha256
-            ]
-            if not matching:
-                raise SystemExit(
-                    "attestation_fault: loaded module has unknown or changed origin "
-                    f"{name} -> {resolved_origin}"
-                )
-            _, root_id, relpath, entry = max(matching, key=lambda match: match[0])
-            expected_loader = entry.get("loader")
             # Manifest v2 pins the loader class name (walker spelling is the
             # bare class name; the runtime spelling is module-qualified).
             loader_class = item["loader_class"]
             loader_spellings = {loader_class, loader_class.rsplit(".", 1)[-1]}
-            if (
-                expected_loader is not None
-                and expected_loader not in loader_spellings
-            ):
-                raise SystemExit(
-                    "attestation_fault: loaded module loader class mismatch "
-                    f"{name} -> {loader_class} (manifest pins "
-                    f"{expected_loader})"
+
+            def _loader_satisfies(expected: str) -> str | None:
+                """The pinned-loader check; returns the binding note or None.
+
+                A CONFLICTING concrete loader class fails closed — that is the
+                §4.5.7 smuggling case the pin exists for (a zipimporter or
+                SourcelessFileLoader presenting different bytes-to-execution
+                semantics always presents its class).  A runtime loader of
+                "none" carries no loading-mechanism claim at all: the first
+                real-native production-path launch showed both C-extension-
+                REGISTERED submodules (torch._C._autograd, created by the
+                parent extension's init code) and library module-object
+                surgery (torch.backends replaces its own sys.modules entry
+                with a custom module instance) legitimately drop loader
+                metadata after a genuine load.  The bytes are already
+                sha-authenticated against the manifest and sourceless
+                execution is excluded by its dedicated scan, so "none" is
+                ACCEPTED AND RECORDED — upgraded to a parent binding when a
+                loaded ancestor with the SAME resolved origin carries the
+                pinned loader.
+                """
+
+                if expected in loader_spellings:
+                    return "direct"
+                if loader_class != "none":
+                    return None
+                parent_name = name
+                while "." in parent_name:
+                    parent_name = parent_name.rsplit(".", 1)[0]
+                    parent = module_map.get(parent_name)
+                    if parent is None:
+                        continue
+                    parent_spec = getattr(parent, "__spec__", None)
+                    parent_origin = (
+                        getattr(parent_spec, "origin", None)
+                        if parent_spec is not None
+                        else None
+                    )
+                    if not isinstance(parent_origin, str):
+                        parent_origin = getattr(parent, "__file__", None)
+                    if (
+                        not isinstance(parent_origin, str)
+                        or os.path.realpath(parent_origin) != resolved_origin
+                    ):
+                        continue
+                    parent_loader = _loader_name(parent)
+                    if expected in {
+                        parent_loader,
+                        parent_loader.rsplit(".", 1)[-1],
+                    }:
+                        return f"parent:{parent_name}"
+                return "unclaimed"
+
+            if containing:
+                matching = [
+                    (size, root_id, relpath, manifest_entries[(root_id, relpath)])
+                    for size, root_id, relpath in containing
+                    if (root_id, relpath) in manifest_entries
+                    and manifest_entries[(root_id, relpath)].get("sha256")
+                    == actual_sha256
+                ]
+                if not matching:
+                    raise SystemExit(
+                        "attestation_fault: loaded module has unknown or changed origin "
+                        f"{name} -> {resolved_origin}"
+                    )
+                _, root_id, relpath, entry = max(
+                    matching, key=lambda match: match[0]
                 )
-            item.update(
-                classification="manifest_file",
-                manifest_root=root_id,
-                manifest_relpath=relpath,
-                artifact_type=entry["artifact_type"],
-                sha256=actual_sha256,
-            )
+                expected_loader = entry.get("loader")
+                loader_binding = (
+                    "direct"
+                    if expected_loader is None
+                    else _loader_satisfies(expected_loader)
+                )
+                if loader_binding is None:
+                    raise SystemExit(
+                        "attestation_fault: loaded module loader class mismatch "
+                        f"{name} -> {loader_class} (manifest pins "
+                        f"{expected_loader})"
+                    )
+                item.update(
+                    classification="manifest_file",
+                    manifest_root=root_id,
+                    manifest_relpath=relpath,
+                    artifact_type=entry["artifact_type"],
+                    sha256=actual_sha256,
+                    loader_binding=loader_binding,
+                )
+            else:
+                # Outside all four roots: the ONLY admissible authority is the
+                # authenticated pre-boundary closure (the interpreter-forced
+                # pre-replacement stdlib loads); anything else fails closed.
+                pin = (closure_authority or {}).get(resolved_origin)
+                if pin is None:
+                    raise SystemExit(
+                        "attestation_fault: loaded module origin is outside "
+                        "the four roots and has no authenticated closure pin: "
+                        f"{name} -> {resolved_origin}"
+                    )
+                if actual_sha256 != pin["sha256"]:
+                    raise SystemExit(
+                        "attestation_fault: outside-root loaded module does "
+                        "not match its authenticated closure pin: "
+                        f"{name} -> {resolved_origin}"
+                    )
+                closure_binding = _loader_satisfies(pin["loader"])
+                if closure_binding is None:
+                    raise SystemExit(
+                        "attestation_fault: outside-root loaded module loader "
+                        f"class mismatch {name} -> {loader_class} (closure "
+                        f"pins {pin['loader']})"
+                    )
+                item.update(
+                    classification="closure_file",
+                    sha256=actual_sha256,
+                    loader_binding=closure_binding,
+                )
         result.append(item)
     return result
 
@@ -1292,6 +1556,12 @@ def main(
     config = json.loads(raw_config.decode("utf-8"))
     if not isinstance(config, dict):
         raise SystemExit("attestation_fault: bootstrap config is malformed")
+    unknown_keys = sorted(set(config) - KNOWN_CONFIG_KEYS)
+    if unknown_keys:
+        raise SystemExit(
+            "attestation_fault: bootstrap config carries unknown keys "
+            f"{unknown_keys}; the consumed configuration is closed-world"
+        )
 
     proofs = _effect_proofs(config)
     roots = _canonical_four_roots(config.get("four_roots"))
@@ -1304,21 +1574,27 @@ def main(
         raise SystemExit("attestation_fault: sys.path replacement did not hold")
     _install_project_namespace(roots[0])
 
-    manifest_entries: dict[tuple[str, str], dict[str, Any]] | None = None
-    manifest_sha256: str | None = None
-    manifest_path = config.get("importable_artifact_manifest")
-    if manifest_path is not None:
-        if not isinstance(manifest_path, str) or not os.path.isabs(manifest_path):
-            raise SystemExit(
-                "attestation_fault: importable_artifact_manifest must be an absolute path"
-            )
-        manifest_entries, manifest_sha256, manifest_header = (
-            _load_importable_artifact_manifest(manifest_path)
+    # External-audit finding 1: the importable-artifact manifest, the four
+    # roots, the pre-boundary closure, and the spec digest are MANDATORY and
+    # unconditional — there is no launch mode without the complete pre-import
+    # re-walk and origin/loader authentication.  The directive checks run
+    # before any manifest consumption.
+    _require_spec_binding_directives(config)
+    manifest_path = config["importable_artifact_manifest"]
+    manifest_entries, manifest_sha256, manifest_header = (
+        _load_importable_artifact_manifest(manifest_path)
+    )
+    if manifest_header is None:
+        raise SystemExit(
+            "attestation_fault: importable manifest must carry the format-v2 "
+            "header (a headerless v1 manifest has no root or loader authority)"
         )
-        if manifest_header is not None:
-            fault = _header_roots_fault(manifest_header["roots"], roots)
-            if fault is not None:
-                raise SystemExit(f"attestation_fault: {fault}")
+    fault = _header_roots_fault(manifest_header["roots"], roots)
+    if fault is not None:
+        raise SystemExit(f"attestation_fault: {fault}")
+    closure_authority = _closure_authority(
+        config["preboundary_closure"], roots[0]
+    )
 
     run_dir, paths = _attestation_paths(config)
     # Cache the failure route from the IN-MEMORY authenticated config exactly
@@ -1365,16 +1641,16 @@ def main(
         paths["bytecode"], {"scan_roots": roots, "rejected": []}
     )
 
-    manifest_pre_digest: str | None = None
-    if manifest_entries is not None:
-        manifest_pre = _verify_importable_artifact_manifest(
-            roots, manifest_entries, phase="pre_audit"
-        )
-        manifest_pre.update(
-            frozen_manifest_path=os.path.realpath(manifest_path),
-            frozen_manifest_sha256=manifest_sha256,
-        )
-        manifest_pre_digest = _atomic_write_json(paths["manifest_pre"], manifest_pre)
+    # Finding 1: the complete pre-import re-walk is unconditional and gates the
+    # marker; payload_started.json is impossible before it succeeds.
+    manifest_pre = _verify_importable_artifact_manifest(
+        roots, manifest_entries, phase="pre_audit"
+    )
+    manifest_pre.update(
+        frozen_manifest_path=os.path.realpath(manifest_path),
+        frozen_manifest_sha256=manifest_sha256,
+    )
+    manifest_pre_digest = _atomic_write_json(paths["manifest_pre"], manifest_pre)
 
     import_events: list[tuple[str, Any]] = []
     worktree_opens: set[str] = set()
@@ -1467,7 +1743,15 @@ def main(
     loaded_native: dict[str, ModuleType] = {}
     for module_name in native_modules:
         try:
-            loaded_native[module_name] = __import__(module_name, fromlist=["*"])
+            # importlib.import_module imports EXACTLY the named module — the
+            # former __import__(..., fromlist=["*"]) expanded the package's
+            # __all__ and imported extra submodules (observed on the first
+            # real-native production-path launch: torch's expansion pulled in
+            # yaml's extension, an image the committed expectations
+            # measurement, which imports the stack plainly, never loads).
+            # The child and the freeze-time measurement now load the same
+            # closure, and the pre-marker import surface is strictly smaller.
+            loaded_native[module_name] = importlib.import_module(module_name)
         except BaseException as exc:
             raise SystemExit(
                 f"attestation_fault: native import {module_name} failed: {exc}"
@@ -1571,6 +1855,38 @@ def main(
         paths["sourceless"], {"sourceless_modules": []}
     )
 
+    # Finding 1: origin/loader authentication of every file-backed module
+    # loaded so far — the interpreter-forced pre-replacement stdlib closure,
+    # the worktree project modules, and the just-imported native stack — runs
+    # BEFORE the marker, against the manifest (under-root origins) and the
+    # authenticated pre-boundary closure (outside-root origins).  Any module
+    # with neither authority, a byte mismatch, or a loader-class mismatch
+    # fails closed here, so payload_started.json is impossible after an
+    # unauthenticated load.
+    pre_origin_inventory = _inventory(
+        import_events,
+        roots=roots,
+        manifest_entries=manifest_entries,
+        closure_authority=closure_authority,
+    )
+    origin_binding_pre_digest = _atomic_write_json(
+        paths["origin_binding_pre"],
+        {
+            "phase": "pre_marker",
+            "modules_checked": len(pre_origin_inventory),
+            "manifest_bound": sum(
+                1
+                for item in pre_origin_inventory
+                if item["classification"] == "manifest_file"
+            ),
+            "closure_bound": sum(
+                1
+                for item in pre_origin_inventory
+                if item["classification"] == "closure_file"
+            ),
+        },
+    )
+
     boundary_config = config.get("boundary")
     if not isinstance(boundary_config, dict):
         raise SystemExit("attestation_fault: boundary config is missing")
@@ -1595,9 +1911,11 @@ def main(
         "stage_b_raw": stage_b_raw_digest,
         "native_stack": native_stack_digest,
         "sourceless_check": sourceless_digest,
+        # Finding 1: the pre-walk and pre-marker origin binding are mandatory
+        # marker-bound attestations; the marker cannot exist without them.
+        "importable_manifest_pre": manifest_pre_digest,
+        "origin_binding_pre": origin_binding_pre_digest,
     }
-    if manifest_pre_digest is not None:
-        attestation_digests["importable_manifest_pre"] = manifest_pre_digest
     boundary.register_required_attestations(*attestation_digests)
     for name, digest in attestation_digests.items():
         boundary.record_attestation(name, True, digest)
@@ -1634,25 +1952,39 @@ def main(
     payload_document["node_evidence_digests"] = node_evidence
     _atomic_write_json(paths["payload"], payload_document)
 
-    manifest_post_digest: str | None = None
-    if manifest_entries is not None:
-        manifest_post = _verify_importable_artifact_manifest(
-            roots, manifest_entries, phase="post_execution"
-        )
-        manifest_post.update(
-            frozen_manifest_path=os.path.realpath(manifest_path),
-            frozen_manifest_sha256=manifest_sha256,
-        )
-        manifest_post_digest = _atomic_write_json(paths["manifest_post"], manifest_post)
+    # Finding 1: the complete post-execution re-walk and the full origin/loader
+    # validation are unconditional; a protocol exit (COMPLETED/ALGORITHM_STOP)
+    # is impossible without both.
+    manifest_post = _verify_importable_artifact_manifest(
+        roots, manifest_entries, phase="post_execution"
+    )
+    manifest_post.update(
+        frozen_manifest_path=os.path.realpath(manifest_path),
+        frozen_manifest_sha256=manifest_sha256,
+    )
+    manifest_post_digest = _atomic_write_json(paths["manifest_post"], manifest_post)
 
     inventory = _inventory(
         import_events,
-        roots=roots if manifest_entries is not None else None,
+        roots=roots,
         manifest_entries=manifest_entries,
+        closure_authority=closure_authority,
     )
     profile_check = _profile_integration_check(config)
+    # Kimi K3 challenge, finding 4 (recorded residual): an import audit event
+    # whose module is no longer present in sys.modules at inventory time (an
+    # import-then-evict) cannot be origin-authenticated after the fact — the
+    # audit event does not carry the resolved origin.  The names are recorded
+    # here so the evidence discloses the eviction rather than silently
+    # narrowing "every executed module" to "every still-resident module";
+    # worktree-origin reads remain independently covered by the load-time
+    # open-hashing above.
+    evicted_imports = sorted(
+        {name for name, _ in import_events} - set(sys.modules)
+    )
     inventory_document = {
         "modules": inventory,
+        "import_events_without_module": evicted_imports,
         "worktree_opens": _hashed_worktree_opens(
             set(worktree_opens), roots[0], dict(worktree_load_hashes)
         ),
@@ -1788,6 +2120,7 @@ def main(
             "payload_marker_sha256": marker_sha256,
             "import_inventory_sha256": inventory_digest,
             "importable_manifest_post_sha256": manifest_post_digest,
+            "authenticated_spec_sha256": config["authenticated_spec_sha256"],
         },
     )
     status = payload_document.get("status")

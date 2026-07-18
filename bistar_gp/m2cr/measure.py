@@ -257,6 +257,10 @@ RUN_DIR_EVIDENCE_CLASSES: dict[str, tuple[str, str]] = {
     "native_stack.json": ("fixed_runtime", "native-stack attestation"),
     "manifest_pre.json": ("fixed_runtime", "pre-import manifest re-walk"),
     "manifest_post.json": ("fixed_runtime", "post-execution manifest re-walk"),
+    "origin_binding_pre.json": (
+        "fixed_runtime",
+        "pre-marker origin/loader authentication summary",
+    ),
     "sourceless.json": ("fixed_runtime", "sourceless-loader attestation"),
     "import_inventory.json": ("fixed_runtime", "import inventory + worktree hashes"),
     "stage_c.json": ("fixed_runtime", "Stage C re-attestation"),
