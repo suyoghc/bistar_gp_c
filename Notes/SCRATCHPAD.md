@@ -2,7 +2,33 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## M2cR R2a — v1.20 ceilings FROZEN + enforcement OPERATIONAL; Draft PR open (NOT Ready, NOT merged) (D49 + Update 1, 2026-07-18) — branch `feat/d19-m2cr-r2a-evidence-ceilings`, HARD STOP
+## M2cR R3 — IN PROGRESS: diagnostic protocol + decision-rule freeze (D50, prereg v1.21, 2026-07-18) — branch `feat/d19-m2cr-r3-diagnostic-protocol` off `35ccc3d`
+
+- **Ballot ratified (D50):** A1 (Layer-1b enforcement closed inside R3 — capture authenticates the
+  committed protocol manifest chain-bound at launch; parent validates the exact persisted
+  diagnostic `payload.json` against the R3 schema before accepting a protocol exit; audit
+  declarable-absent shrinks to `{diagnostic_record_sha256, amendment_manifest}`); B (§6.3 rows 1–10
+  as a pure hermetic evaluator returning first-match row + frozen track only); C (protocol-manifest
+  key set literal to plan §3.1, no R3 code pins).
+- **Docs-first freeze committed:** prereg **v1.21** (§6 verbatim: coverage/continuation, frozen
+  formulas, total table; instance residence = the diagnostic run's `payload.json`; canonical-space
+  B1 composition; stage-grouped `node_index` + recorded `probe_position`; sweep at the FINAL
+  curvature evaluation point; purity at `mode_u`, repeats 2) + D50 +
+  `m2c_diagnostic_record.schema_v1.json` (`b6b60dd1…`) + `m2cr_diagnostic_protocol_v1.json`
+  (`bdfac013…`).
+- **Owed next in this milestone:** R3 modules (`bistar_gp/m2cr/diagnostic.py`,
+  `bistar_gp/m2cr/diagnostic_payload.py`), bounded capture/audit amendments per A1, new hermetic
+  test files (schema, classifier, protocol/orchestrator with fakes, coordinate goldens, protocol
+  manifest, protocol authentication), regeneration (importable → env-freeze → infra manifests +
+  protocol manifest at final Layer-1a digest), full suite, one advisory panel
+  (Opus 4.8 / Kimi K3 / GLM 5.2, Fable adjudicates), at most one consolidated correction pass,
+  Draft PR, **HARD STOP**.
+- **Boundaries:** hermetic only — no `--execute`, no diagnostic/scientific computation, no
+  real-model evaluation, no Mauna/holdout, no ledger event, no `runs/`, no `docs/m2c_evidence/`,
+  v1.18 instance stays absent. R4 needs a fresh grant (its ledger `frozen_chain` now necessarily
+  carries the committed protocol-manifest digest) at its own regenerated freeze.
+
+## M2cR R2a — v1.20 ceilings FROZEN + enforcement OPERATIONAL; PR #17 MERGED at `35ccc3d3e871a864b081d10e6ca7db53b0cbd5fe` (D49 + Updates 1–2, 2026-07-18) — R2a frozen
 
 - **Ballot ratified (D49):** five exact byte ceilings — runtime-envelope/static-artifact per-file
   33,554,432; events.jsonl 33,554,432; stdout.txt 16,777,216; stderr.txt 16,777,216; complete
@@ -20,12 +46,12 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   requirement; exact addendum provenance; report total), TOCTOU MAJOR dismissed with recorded
   rationale (v1.19 §5 out-of-scope residual, digest-bound content). Regens at bfc4d0e and 3995d5c:
   environment-derived artifacts byte-identical throughout; fixed-artifact total 8,868,576 B.
-- **NEXT (each a separate author act; none authorized):** author decides the R2a Draft PR
-  (Ready/merge). **R4 stays blocked until it merges.** Then R3 (diagnostic protocol freeze, §6
-  verbatim, diagnostic-record schema, PROTOCOL manifest, classifier goldens); R4 needs a fresh
-  grant in the v1.19 ledger + freeze regeneration at its own worktree/commit.
+- **CLOSED (D49 Update 2):** PR #17 merged at `35ccc3d3e871a864b081d10e6ca7db53b0cbd5fe`
+  (2026-07-18); final-head full suite 869 passed / 2 skipped. R2a frozen. R3 is now in progress
+  under D50 (section above); R4 still needs a fresh grant in the v1.19 ledger + freeze
+  regeneration at its own worktree/commit.
 
-## M2cR R2 — CLOSED; external-audit BLOCKERs 1 AND 2 CLOSED (launch-authority cycle; findings 3/4/5/6 already closed); three-reviewer gate CLEAN at reviewed code head b673367 (four converging delta rounds; Codex + Opus APPROVE, GLM disproven); behavior-neutral tail through 3071046 verified by a one-shot Codex closure audit; PR #16 flipped Ready (NOT merged) (D48 Update 12, 2026-07-18) — branch `feat/d19-m2cr-r2-infrastructure`, HARD STOP
+## M2cR R2 — CLOSED; external-audit BLOCKERs 1 AND 2 CLOSED (launch-authority cycle; findings 3/4/5/6 already closed); three-reviewer gate CLEAN at reviewed code head b673367 (four converging delta rounds; Codex + Opus APPROVE, GLM disproven); behavior-neutral tail through 3071046 verified by a one-shot Codex closure audit; PR #16 MERGED at `9bb246714f6c64f0a5e65e9afbc50fef627dbc54` (D48 Update 12; merge recorded in v1.20 provenance, 2026-07-18) — R2 frozen
 
 - **Launch-authority cycle (D48 Update 12; reviewed code head b673367, final head 3071046):** finding 2
   (one authenticated launch authority) and finding 1 (mandatory importable-manifest child binding +
@@ -46,9 +72,10 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
   reviewed the code heads through **b673367** (round-4 Codex + Opus APPROVE, GLM disproven); the
   `366b004…3071046` tail (two test corrections, the artifacts they forced, docs) is behavior-neutral
   (`git diff b673367 3071046 -- bistar_gp/` empty) and was verified by a one-shot Codex closure audit.
-  **PR #16 flipped Draft → Ready for the author's merge decision; NOT merged.** R2 frozen — no further
-  hardening round absent an observed production failure or explicit author amendment; R2a/R3/execute
-  remain separate author acts. Full record: D48 Update 12 + `docs/m2cr-r2-hardening-design.md`.
+  **PR #16 flipped Draft → Ready, then merged by the author at `9bb2467` (2026-07-18; recorded in
+  v1.20 provenance).** R2 frozen — no further hardening round absent an observed production failure
+  or explicit author amendment; R2a/R3/execute remain separate author acts. Full record: D48
+  Update 12 + `docs/m2cr-r2-hardening-design.md`.
 
 
 - **Shipped (hermetic, plan §8 R2 exactly), at HEAD 3071046:** `bistar_gp/m2cr/` (12 modules) + **17**

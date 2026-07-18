@@ -1,0 +1,498 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_diagnostic_record.schema_v1.json",
+  "title": "M2c diagnostic-record instance schema v1 (milestone R3)",
+  "description": "Governs the R3 diagnostic-record INSTANCE: the exact persisted payload.json of a diagnostic-kind run under docs/m2c_evidence/<run_id>/, as written by the child bootstrap after node records are externalized to nodes/ and node_evidence_digests is injected. Frozen by prereg addendum v1.21 (milestone R3) under the author-ratified plan docs/plan-post-d45-m2cr.md sections 6.1-6.3. Per prereg v1.19 section 8, the sha256 of this instance is the diagnostic_record_sha256 member cited by every result-run chain and by every R6 grant; it is NEVER the digest of a terminal record. A diagnostic record is protocol completion only, never a scientific result (not_a_result is a const). This schema embeds no hash of any manifest that references it: the Layer-1b protocol manifest pins THIS schema by sha256, so embedding that manifest's digest here would create a cycle. Cross-references to the frozen R1 execution-record schema are by $id and JSON Pointer only (a downward reference, no digest embedded). The record carries measurements and frozen-check outcomes exclusively; it never carries a decision-table disposition, which plan section 6.3 assigns to mechanical application at R5.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "addendum",
+    "not_a_result",
+    "status",
+    "persisted_axis_order",
+    "computation_storage_order",
+    "coverage",
+    "map_construction",
+    "prior_draws",
+    "g2_equivalence",
+    "d23_sentinel",
+    "g1_battery",
+    "purity",
+    "per_node_diagnostics",
+    "stages",
+    "aggregates",
+    "node_evidence_digests"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "m2c_diagnostic_record" },
+    "addendum": { "const": "v1.21" },
+    "not_a_result": {
+      "const": true,
+      "description": "A diagnostic-kind COMPLETED run is protocol completion only (plan section 4.3, ballot B2)."
+    },
+    "status": {
+      "const": "COMPLETED",
+      "description": "A persisted diagnostic payload exists only on a COMPLETED protocol exit: the probe loop has no verdict gates and ALGORITHM_STOP is unreachable for diagnostic-kind runs (plan section 6.1). Budget or infrastructure interruption yields no schema-valid instance."
+    },
+    "persisted_axis_order": {
+      "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/persisted_axis_order"
+    },
+    "computation_storage_order": {
+      "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/computation_storage_order"
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "map_construction": { "$ref": "#/$defs/map_construction" },
+    "prior_draws": { "$ref": "#/$defs/prior_draws" },
+    "g2_equivalence": { "$ref": "#/$defs/g2_equivalence" },
+    "d23_sentinel": { "$ref": "#/$defs/d23_sentinel" },
+    "g1_battery": { "$ref": "#/$defs/g1_battery" },
+    "purity": { "$ref": "#/$defs/purity" },
+    "per_node_diagnostics": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/per_node_diagnostic" },
+      "description": "One row per probed closure node, sorted ascending by node_index (stage-grouped assignment; prereg v1.21 section 2). The probe trajectory itself is reconstructable from probe_position here plus the v1.19 section 9 warm-start identities in nodes/."
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        { "$ref": "#/$defs/stage_level0" },
+        { "$ref": "#/$defs/stage_refine_1" },
+        { "$ref": "#/$defs/stage_refine_2" },
+        { "$ref": "#/$defs/stage_refine_3" },
+        { "$ref": "#/$defs/stage_upper_pullback" },
+        { "$ref": "#/$defs/stage_lower_pullback" }
+      ],
+      "items": false,
+      "description": "Exactly the six verdict-id stages of the section 6.1 closure, in frozen stage order. The six decade-cap stages are result-run diagnostic traces and never appear in a diagnostic-run record."
+    },
+    "aggregates": {
+      "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/aggregates"
+    },
+    "node_evidence_digests": {
+      "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/node_evidence_digests",
+      "description": "Injected by the child bootstrap after externalizing node_records to nodes/; the payload callable itself may not supply it."
+    }
+  },
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "finite_number": { "type": "number" },
+    "number_or_nonfinite": {
+      "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/number_or_nonfinite"
+    },
+    "canonical_vector3": {
+      "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/canonical_vector3"
+    },
+    "closure_stage_id": {
+      "type": "string",
+      "enum": ["level0", "refine_1", "refine_2", "refine_3", "upper_pullback", "lower_pullback"]
+    },
+    "stage_level0": {
+      "allOf": [
+        { "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/stage_record" },
+        { "properties": { "stage_id": { "const": "level0" } }, "required": ["stage_id"] }
+      ]
+    },
+    "stage_refine_1": {
+      "allOf": [
+        { "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/stage_record" },
+        { "properties": { "stage_id": { "const": "refine_1" } }, "required": ["stage_id"] }
+      ]
+    },
+    "stage_refine_2": {
+      "allOf": [
+        { "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/stage_record" },
+        { "properties": { "stage_id": { "const": "refine_2" } }, "required": ["stage_id"] }
+      ]
+    },
+    "stage_refine_3": {
+      "allOf": [
+        { "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/stage_record" },
+        { "properties": { "stage_id": { "const": "refine_3" } }, "required": ["stage_id"] }
+      ]
+    },
+    "stage_upper_pullback": {
+      "allOf": [
+        { "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/stage_record" },
+        { "properties": { "stage_id": { "const": "upper_pullback" } }, "required": ["stage_id"] }
+      ]
+    },
+    "stage_lower_pullback": {
+      "allOf": [
+        { "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/stage_record" },
+        { "properties": { "stage_id": { "const": "lower_pullback" } }, "required": ["stage_id"] }
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "closure_node_count",
+        "probe_order",
+        "node_index_assignment",
+        "per_stage_node_counts"
+      ],
+      "properties": {
+        "closure_node_count": { "$ref": "#/$defs/count" },
+        "probe_order": {
+          "const": "ascending_noise",
+          "description": "Plan section 6.1: nodes are probed in ascending noise order over the full deterministic verdict closure (ballot B7)."
+        },
+        "node_index_assignment": {
+          "const": "stage_grouped",
+          "description": "node_index is assigned grouped by stage in frozen stage order, ascending noise within each stage, so the frozen capture stage bookkeeping (contiguous node blocks per stage) holds while probing remains globally ascending in noise. probe_position records the realized probe order."
+        },
+        "per_stage_node_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["level0", "refine_1", "refine_2", "refine_3", "upper_pullback", "lower_pullback"],
+          "properties": {
+            "level0": { "$ref": "#/$defs/count" },
+            "refine_1": { "$ref": "#/$defs/count" },
+            "refine_2": { "$ref": "#/$defs/count" },
+            "refine_3": { "$ref": "#/$defs/count" },
+            "upper_pullback": { "$ref": "#/$defs/count" },
+            "lower_pullback": { "$ref": "#/$defs/count" }
+          },
+          "description": "Unique nodes contributed by each stage of the closure: the sorted union of the level-0 grid with toy edges, its nested refinements to L_max=3, and both one-decade pullback grids (caps 1e3 and 1e-6) refined to L_max=3; at most about 1,481 unique nodes."
+        }
+      }
+    },
+    "map_construction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["torch_seed", "n_iter", "lr", "prior_config", "map_noise", "expected_noise", "delta", "report_only"],
+      "properties": {
+        "torch_seed": { "const": 42 },
+        "n_iter": { "const": 300 },
+        "lr": { "const": 0.05 },
+        "prior_config": { "const": "toy_elicited_n20" },
+        "map_noise": { "$ref": "#/$defs/finite_number" },
+        "expected_noise": {
+          "const": 0.06,
+          "description": "FIGURE_EXPECTATIONS['toy_elicited_map_noise'] (experiments/prior_sensitivity_study.py), quoted as a const."
+        },
+        "delta": {
+          "$ref": "#/$defs/finite_number",
+          "description": "Exact float64 map_noise minus expected_noise. REPORT-ONLY per ballot B12(h): no gate, no new tolerance, no decision-table row."
+        },
+        "report_only": { "const": true }
+      }
+    },
+    "prior_draws": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seeds", "storage_site_order", "states"],
+      "properties": {
+        "seeds": { "const": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109] },
+        "storage_site_order": {
+          "$ref": "https://github.com/suyoghc/bistar_gp_c/blob/main/docs/m2c_freeze/m2c_execution_record.schema_v1.json#/$defs/computation_storage_order",
+          "description": "Ballot B12(f): the exact profile.sites storage order used to generate the draws is persisted so any future ordering change is visible rather than silent."
+        },
+        "states": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "prefixItems": [
+            { "$ref": "#/$defs/prior_draw_state_100" },
+            { "$ref": "#/$defs/prior_draw_state_101" },
+            { "$ref": "#/$defs/prior_draw_state_102" },
+            { "$ref": "#/$defs/prior_draw_state_103" },
+            { "$ref": "#/$defs/prior_draw_state_104" },
+            { "$ref": "#/$defs/prior_draw_state_105" },
+            { "$ref": "#/$defs/prior_draw_state_106" },
+            { "$ref": "#/$defs/prior_draw_state_107" },
+            { "$ref": "#/$defs/prior_draw_state_108" },
+            { "$ref": "#/$defs/prior_draw_state_109" }
+          ],
+          "items": false
+        }
+      }
+    },
+    "prior_draw_state_100": { "$ref": "#/$defs/prior_draw_state_template", "properties": { "seed": { "const": 100 } } },
+    "prior_draw_state_101": { "$ref": "#/$defs/prior_draw_state_template", "properties": { "seed": { "const": 101 } } },
+    "prior_draw_state_102": { "$ref": "#/$defs/prior_draw_state_template", "properties": { "seed": { "const": 102 } } },
+    "prior_draw_state_103": { "$ref": "#/$defs/prior_draw_state_template", "properties": { "seed": { "const": 103 } } },
+    "prior_draw_state_104": { "$ref": "#/$defs/prior_draw_state_template", "properties": { "seed": { "const": 104 } } },
+    "prior_draw_state_105": { "$ref": "#/$defs/prior_draw_state_template", "properties": { "seed": { "const": 105 } } },
+    "prior_draw_state_106": { "$ref": "#/$defs/prior_draw_state_template", "properties": { "seed": { "const": 106 } } },
+    "prior_draw_state_107": { "$ref": "#/$defs/prior_draw_state_template", "properties": { "seed": { "const": 107 } } },
+    "prior_draw_state_108": { "$ref": "#/$defs/prior_draw_state_template", "properties": { "seed": { "const": 108 } } },
+    "prior_draw_state_109": { "$ref": "#/$defs/prior_draw_state_template", "properties": { "seed": { "const": 109 } } },
+    "prior_draw_state_template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seed", "u", "noise"],
+      "properties": {
+        "seed": { "type": "integer", "minimum": 100, "maximum": 109 },
+        "u": {
+          "$ref": "#/$defs/canonical_vector3",
+          "description": "Realized nuisance state u = log theta in canonical (ls, os, lv) axes."
+        },
+        "noise": { "$ref": "#/$defs/finite_number" }
+      },
+      "description": "Closed template; each per-seed def further pins seed to its const. In Draft 2020-12 the sibling properties constraint composes conjunctively with the $ref, while additionalProperties closure is evaluated here where every property is declared."
+    },
+    "g2_equivalence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tolerance_rel", "tolerance_floor", "points", "all_pass"],
+      "properties": {
+        "tolerance_rel": {
+          "const": 1e-9,
+          "description": "Reused v1.4/S3 density-equivalence class: |g_value - G_hist| <= 1e-9 x max(1, |G_hist|) (ballot B12(d))."
+        },
+        "tolerance_floor": { "const": 1.0 },
+        "points": {
+          "type": "array",
+          "minItems": 11,
+          "items": { "$ref": "#/$defs/g2_point" },
+          "description": "Prespecified points only: the MAP state, the ten prior-draw states, and every accepted conditional optimum, in that order."
+        },
+        "all_pass": { "type": "boolean" }
+      }
+    },
+    "g2_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "label", "seed", "node_index", "g_value", "g_hist", "abs_diff", "bound", "pass"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["map", "prior_draw", "accepted_optimum"] },
+        "label": { "type": "string", "minLength": 1 },
+        "seed": { "oneOf": [{ "type": "integer" }, { "type": "null" }], "description": "The prior-draw seed for kind prior_draw; null otherwise." },
+        "node_index": { "oneOf": [{ "$ref": "#/$defs/count" }, { "type": "null" }], "description": "The probed node index for kind accepted_optimum; null otherwise." },
+        "g_value": { "$ref": "#/$defs/number_or_nonfinite" },
+        "g_hist": { "$ref": "#/$defs/number_or_nonfinite" },
+        "abs_diff": { "$ref": "#/$defs/number_or_nonfinite" },
+        "bound": { "$ref": "#/$defs/finite_number" },
+        "pass": { "type": "boolean" }
+      }
+    },
+    "d23_sentinel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_rel", "per_site", "pass"],
+      "properties": {
+        "min_rel": { "const": 0.01 },
+        "per_site": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["site", "worst_relative", "pass"],
+            "properties": {
+              "site": { "type": "string", "minLength": 1 },
+              "worst_relative": {
+                "$ref": "#/$defs/number_or_nonfinite",
+                "description": "Max over the five non-MAP neighborhood states of |naive - FD| max / max(1, |FD| max); a None naive gradient counts as +inf (defect visible). Committed form of tests/test_m2c_profile_gradient.py::test_naive_data_gradient_keeps_d23_defect_visible."
+              },
+              "pass": { "type": "boolean", "description": "True iff worst_relative is STRICTLY greater than min_rel (the defect stays visible)." }
+            }
+          }
+        },
+        "pass": { "type": "boolean" }
+      }
+    },
+    "g1_battery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evaluated_count", "failing_node_indices", "all_pass"],
+      "properties": {
+        "evaluated_count": { "$ref": "#/$defs/count", "description": "Number of accepted conditional optima at which the fresh-model central-FD battery ran (v1.17 section 2a conformance; ballots B6, B12(e)). Full per-coordinate battery records are in the per-node evidence files." },
+        "failing_node_indices": { "type": "array", "items": { "$ref": "#/$defs/count" } },
+        "all_pass": { "type": "boolean" }
+      }
+    },
+    "purity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["u_definition", "repeats", "mode", "probe_points", "pass"],
+      "properties": {
+        "u_definition": {
+          "const": "mode_u",
+          "description": "Every purity evaluation is at the fixed nuisance vector mode_u, so the check is deterministic and independent of optimizer outcomes (prereg v1.21 determination filling B12(g)'s evaluation point)."
+        },
+        "repeats": { "const": 2, "description": "Minimal conforming reading of B12(g)'s 'repeated': two evaluations per point, bit-identity required. Kept at four points, not enlarged." },
+        "mode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["noise", "g_bit_identical", "grad_bit_identical"],
+          "properties": {
+            "noise": { "$ref": "#/$defs/finite_number", "description": "The MAP noise." },
+            "g_bit_identical": { "type": "boolean" },
+            "grad_bit_identical": { "type": "boolean" }
+          }
+        },
+        "probe_points": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "prefixItems": [
+            { "$ref": "#/$defs/purity_point_first" },
+            { "$ref": "#/$defs/purity_point_mid" },
+            { "$ref": "#/$defs/purity_point_last" }
+          ],
+          "items": false
+        },
+        "pass": { "type": "boolean" }
+      }
+    },
+    "purity_point_template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "probe_position", "node_index", "noise", "g_bit_identical", "grad_bit_identical"],
+      "properties": {
+        "label": { "type": "string", "enum": ["first", "mid", "last"] },
+        "probe_position": { "$ref": "#/$defs/count", "description": "Position in the realized ascending-noise probe order; first=0, mid=floor((N-1)/2), last=N-1." },
+        "node_index": { "$ref": "#/$defs/count" },
+        "noise": { "$ref": "#/$defs/finite_number" },
+        "g_bit_identical": { "type": "boolean" },
+        "grad_bit_identical": { "type": "boolean" }
+      }
+    },
+    "purity_point_first": { "$ref": "#/$defs/purity_point_template", "properties": { "label": { "const": "first" } } },
+    "purity_point_mid": { "$ref": "#/$defs/purity_point_template", "properties": { "label": { "const": "mid" } } },
+    "purity_point_last": { "$ref": "#/$defs/purity_point_template", "properties": { "label": { "const": "last" } } },
+    "sweep_point_1": { "type": "object", "additionalProperties": false, "required": ["h", "symmetry_error"], "properties": { "h": { "const": 0.00025 }, "symmetry_error": { "$ref": "#/$defs/number_or_nonfinite" } } },
+    "sweep_point_2": { "type": "object", "additionalProperties": false, "required": ["h", "symmetry_error"], "properties": { "h": { "const": 0.0005 }, "symmetry_error": { "$ref": "#/$defs/number_or_nonfinite" } } },
+    "sweep_point_3": { "type": "object", "additionalProperties": false, "required": ["h", "symmetry_error"], "properties": { "h": { "const": 0.001 }, "symmetry_error": { "$ref": "#/$defs/number_or_nonfinite" } } },
+    "sweep_point_4": { "type": "object", "additionalProperties": false, "required": ["h", "symmetry_error"], "properties": { "h": { "const": 0.002 }, "symmetry_error": { "$ref": "#/$defs/number_or_nonfinite" } } },
+    "sweep_point_5": { "type": "object", "additionalProperties": false, "required": ["h", "symmetry_error"], "properties": { "h": { "const": 0.004 }, "symmetry_error": { "$ref": "#/$defs/number_or_nonfinite" } } },
+    "sweep": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        { "$ref": "#/$defs/sweep_point_1" },
+        { "$ref": "#/$defs/sweep_point_2" },
+        { "$ref": "#/$defs/sweep_point_3" },
+        { "$ref": "#/$defs/sweep_point_4" },
+        { "$ref": "#/$defs/sweep_point_5" }
+      ],
+      "items": false,
+      "description": "symmetry_error(h) at the frozen sweep extended one factor-2 step each way by the same generative rule (ballot B12(a)); fixed order; missing, duplicate, extra, off-sweep, or reordered entries are rejected. Invalid points are never silently omitted and no reduced subset is fitted (B12(c))."
+    },
+    "slope_analysis": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["classification", "slope", "intercept"],
+          "properties": {
+            "classification": { "type": "string", "enum": ["TRUNCATION_LIKE", "NOISE_LIKE", "FLAT"] },
+            "slope": { "$ref": "#/$defs/finite_number" },
+            "intercept": { "$ref": "#/$defs/finite_number" }
+          },
+          "description": "OLS of natural-log symmetry_error against natural-log h over all five sweep points. A priori windows (ballot B12(b)): TRUNCATION_LIKE in [1.5, 2.5]; NOISE_LIKE at most -0.5; FLAT otherwise. The windows are not to be widened for reachability."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["classification", "undefined_reason"],
+          "properties": {
+            "classification": { "const": "UNDEFINED" },
+            "undefined_reason": {
+              "type": "string",
+              "enum": ["nonpositive_sweep_value", "nonfinite_sweep_value", "nonfinite_ols_statistic"]
+            }
+          },
+          "description": "Ballot B12(c) extended form: any nonpositive or nonfinite sweep value, or a nonfinite fitted slope or required OLS statistic, yields UNDEFINED; no silent omission, no reduced-subset fitting. UNDEFINED routes to PRESERVE_STOP through the frozen decision table."
+        }
+      ]
+    },
+    "final_evaluation_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase", "u"],
+      "properties": {
+        "phase": {
+          "type": "string",
+          "enum": ["pre_retry", "post_retry"],
+          "description": "Plan section 6.3: the FINAL curvature evaluation is the single evaluation at the two-start-accepted optimum when no retry fired, or the post-retry evaluation when one did. The sweep and raw-symmetry row entries are measured at this point."
+        },
+        "u": { "$ref": "#/$defs/canonical_vector3" }
+      }
+    },
+    "curvature_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retry_fired",
+        "retry_positively_accepted",
+        "nonstationarity_observed_any_evaluated_point",
+        "stationary_final",
+        "spd_final",
+        "rcond_ok_final",
+        "directional_ok_final",
+        "logdet_stable_final"
+      ],
+      "properties": {
+        "retry_fired": { "type": "boolean" },
+        "retry_positively_accepted": {
+          "oneOf": [{ "type": "boolean" }, { "type": "null" }],
+          "description": "The section 3.2 positive retry-acceptance predicate outcome; null exactly when no retry fired. Per-conjunct outcomes are in the per-node curvature record."
+        },
+        "nonstationarity_observed_any_evaluated_point": {
+          "type": "boolean",
+          "description": "True if nonstationarity was observed at ANY evaluated point, pre- or post-retry (decision-table row 4 input)."
+        },
+        "stationary_final": { "type": "boolean" },
+        "spd_final": { "type": "boolean" },
+        "rcond_ok_final": { "type": "boolean" },
+        "directional_ok_final": { "type": "boolean" },
+        "logdet_stable_final": { "type": "boolean" }
+      },
+      "description": "Distilled decision-table inputs duplicated from the authoritative per-node curvature record in nodes/; consistency between the two is enforced by the R3 audit verifier and hermetic tests, never left to trust."
+    },
+    "per_node_diagnostic": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["node_index", "probe_position", "stage_id", "noise", "optimizer_accepted", "final_evaluation_point", "raw_symmetry", "sweep", "slope_analysis", "curvature_summary"],
+          "properties": {
+            "node_index": { "$ref": "#/$defs/count" },
+            "probe_position": { "$ref": "#/$defs/count" },
+            "stage_id": { "$ref": "#/$defs/closure_stage_id" },
+            "noise": { "$ref": "#/$defs/finite_number" },
+            "optimizer_accepted": { "const": true },
+            "final_evaluation_point": { "$ref": "#/$defs/final_evaluation_point" },
+            "raw_symmetry": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["h_center", "symmetry_error", "symmetry_ok"],
+              "properties": {
+                "h_center": { "const": 0.001 },
+                "symmetry_error": { "$ref": "#/$defs/number_or_nonfinite" },
+                "symmetry_ok": { "type": "boolean", "description": "The frozen raw-symmetry check at the frozen tolerance 1e-6 (rows 6, 8, 9 input)." }
+              }
+            },
+            "sweep": { "$ref": "#/$defs/sweep" },
+            "slope_analysis": { "$ref": "#/$defs/slope_analysis" },
+            "curvature_summary": { "$ref": "#/$defs/curvature_summary" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["node_index", "probe_position", "stage_id", "noise", "optimizer_accepted"],
+          "properties": {
+            "node_index": { "$ref": "#/$defs/count" },
+            "probe_position": { "$ref": "#/$defs/count" },
+            "stage_id": { "$ref": "#/$defs/closure_stage_id" },
+            "noise": { "$ref": "#/$defs/finite_number" },
+            "optimizer_accepted": { "const": false }
+          },
+          "description": "A recorded optimizer-gate failure: no battery, curvature, sweep, or slope exists at this node (plan section 6.1); the warm start carries forward unchanged. Row 3 routes any such node to PRESERVE_STOP."
+        }
+      ]
+    }
+  }
+}

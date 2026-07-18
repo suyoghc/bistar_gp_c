@@ -4790,3 +4790,102 @@ freeze, v1.18 schema, ledger, plan, `profile_integration.py`); prereg addenda st
 content; no scientific/model computation anywhere (hermetic fake payloads and import-only children
 exclusively). **R4 remains blocked until this PR merges; R3 and every `--execute` stay separate
 author acts. Draft PR opened; NOT flipped Ready; NOT merged. HARD STOP.**
+
+### D49 — Update 2 (2026-07-18): PR #17 MERGED; R2a closed
+
+The author merged PR #17 at `35ccc3d3e871a864b081d10e6ca7db53b0cbd5fe` (2026-07-18T19:27:33Z),
+superseding Update 1's "NOT merged" status line. `origin/main` now carries the complete R2a
+freeze-plus-enforcement; the final-head full suite recorded in the PR was 869 passed / 2 skipped /
+0 failed. R2a is frozen. R3 and every `--execute` remain separate author acts (R3 begun under D50).
+
+## D50: M2cR milestone R3 — diagnostic protocol and decision-rule freeze; ballot A1/B/C ratified; prereg v1.21 frozen; Layer-1b launch/audit enforcement authorized as bounded R2/R2a amendments — 2026-07-18
+
+**Problem:** With R2a merged, R3 (plan §8: §6 verbatim, diagnostic-record schema, PROTOCOL
+manifest, coordinate goldens, hermetic classifier tests) had four unresolved ownership questions,
+surfaced by a fresh read-only preflight at `origin/main` = `35ccc3d`:
+
+1. **Layer-1b enforcement gap.** Merged R2/R2a never authenticates the protocol manifest at
+   launch: `_authenticate_launch_spec` (`bistar_gp/m2cr/capture.py`) resolves the infrastructure
+   manifest, environment-freeze set, and ceilings, but `protocol_manifest_sha256` is only
+   regex-checked (`validate_chain`) and `bistar_gp/m2cr/audit.py` lets callers declare it absent
+   (`_DECLARABLE_ABSENT`). The R1 ledger already requires a real digest in every R4/R6 grant, but
+   nothing proved the worktree's committed protocol manifest matches the granted chain. No
+   milestone owned closing this — the same unowned-enforcement class D49 diagnosed for ceilings.
+2. **Diagnostic-record instance residence.** v1.19 §8 fixes the referent (the instance governed by
+   `m2c_diagnostic_record.schema_v1.json`, never a terminal record) but not the path; the R2a
+   run-directory layout and evidence classes fail closed against silent additions.
+3. Whether R3 implements a §6.3 rows evaluator or leaves application entirely manual at R5.
+4. The PROTOCOL manifest's key set: literal plan §3.1 enumeration vs additional R3 code pins.
+
+The preflight also confirmed: no diagnostic orchestrator/classifier/slope code exists anywhere in
+`bistar_gp/` (the R2 implementation map defers orchestrator-v2 composition to R3; plan §7 makes R4
+execution-only); the §6 fixture authorities are byte-faithful at the cited lines; the six-stage
+closure and both determinations below are representable in the frozen R1 schema and capture
+bookkeeping without amendment.
+
+**Decision (author ballot, cast 2026-07-18; frozen as prereg addendum v1.21):**
+
+- **A1 — Layer-1b enforcement closed inside R3** via bounded amendments to the two
+  infrastructure-pinned modules: `_authenticate_launch_spec` resolves the committed protocol
+  manifest under the launch worktree, requires byte equality with the chain's
+  `protocol_manifest_sha256`, parses it closed-world, requires its Layer-1a reference to equal the
+  spec's authenticated infrastructure digest, digest-verifies the schema/parameter pins, and
+  carries the facts spec-digest-bound; the parent additionally validates the **exact persisted
+  `payload.json`** (post node-externalization, post digest-injection) of every diagnostic-kind
+  protocol exit against the authenticated diagnostic-record schema before acceptance
+  (`schema_invalid_payload` fault otherwise); audit's `_DECLARABLE_ABSENT` shrinks to
+  `{diagnostic_record_sha256, amendment_manifest}`. Historical semantics preserved: D45 stays a
+  historical consumed entry, never re-adjudicated; no committed R2-era report is rewritten. Not
+  left as an unowned pre-R4 task.
+- **B — rows evaluator implemented in R3**: a pure, hermetically tested function over the
+  diagnostic-record instance returning only the first matching row number and frozen track label;
+  mechanizes B16 precedence for R5's mechanical application; authorizes no execution and decides
+  no new science. The record itself never carries a disposition.
+- **C — literal §3.1 key set** for `m2cr_protocol_manifest_v1.json`: `kind`, `schema_version`,
+  `addendum`, `diagnostic_record_schema {path, sha256}`, `protocol_parameters {path, sha256}`,
+  `infrastructure_manifest_sha256`. No R3 code pins — code bytes stay bound by `execution_commit`
+  and the importable-artifact manifest with origin/loader authentication.
+- **Determinations frozen with the ballot** (v1.21 §§2–8): the instance is the diagnostic run's
+  `payload.json` at `docs/m2c_evidence/<run_id>/` (existing `RUN_DIR_LAYOUT` entry, existing
+  `fixed_runtime` class, v1.20 32-MiB per-file + 128-MiB bundle ceilings, RAW_MANIFEST-covered; no
+  layout amendment); orchestrator-to-gate composition in canonical `(ls, os, lv)` axes with the
+  role permutation inside the bridge wrapper (gates byte-identical, storage-permutation invariance
+  achievable, per-seed canonical direction goldens hard-coded); global ascending-noise probe order
+  with **stage-grouped** `node_index` plus recorded `probe_position` (frozen capture contiguity
+  honored); sweep measured at the FINAL curvature evaluation point with the frozen gate's own
+  per-`h` statistic, natural-log OLS; purity at `mode_u`, repeats 2, probe positions
+  first/mid/last; closure = full refined grid + one-decade pullbacks (caps `1e3`, `1e-6`) refined
+  to L=3, at most ~1,481 nodes.
+- **Docs-first artifacts committed with this entry:**
+  `docs/m2c_freeze/m2c_diagnostic_record.schema_v1.json`
+  (sha256 `b6b60dd1f722f3e17481a16cbeb37c2e3ff26e596beaccbd36f23dd4783d300d`) and
+  `docs/m2c_freeze/m2cr_diagnostic_protocol_v1.json`
+  (sha256 `bdfac013a489a77eb91237a7deb94b2048eac5a6ec2a870306cdf440bb121015`); the protocol
+  manifest is generated at the post-implementation regeneration (it must reference the final
+  Layer-1a digest) and its hash is appended here on completion.
+
+**Alternatives considered:** deferring Layer-1b enforcement to a later pre-R4 act (rejected —
+recreates the unowned-enforcement gap D49 closed for ceilings); a dedicated
+`diagnostic_record.json` run-directory file (rejected — amends the deliberately fail-closed R2a
+layout/classes for no informational gain over the payload the bootstrap already persists); pinning
+R3 module hashes in the protocol manifest (rejected per C — redundant with `execution_commit` +
+importable-manifest binding, and extends the ratified §3.1 enumeration); freezing the table only as
+prose (rejected per B — manual row application at R5 invites transcription drift the evaluator
+eliminates); quoting the volatile artifact hashes inside the append-only addendum (rejected —
+hashes are recorded here and pinned by the protocol manifest, the machine authority, so a review
+correction cannot strand a stale hash in the addendum).
+
+**Workflow (author-directed, this session):** branch `feat/d19-m2cr-r3-diagnostic-protocol` off
+`origin/main` `35ccc3d3e871a864b081d10e6ca7db53b0cbd5fe`; docs-first commit (v1.21 + this entry +
+schema + parameters + SCRATCHPAD); bounded implementation delegated to Codex gpt-5.6-sol xHigh over
+the mapped R3 file list only; Fable reads every change against the frozen authorities; regeneration
+by the established fresh-detached-worktree recipe; focused tests then the full suite via
+`python -m pytest -q`; one parallel advisory findings-only panel (Opus 4.8 correctness/conformance;
+Kimi K3 artifact graph/ownership/R3-R4 boundary; GLM 5.2 adversarial schema/classifier edges) with
+Fable independently verifying every finding; at most ONE consolidated correction pass; Draft PR;
+HARD STOP before Ready/merge/R4/`--execute`. No scientific or diagnostic computation anywhere; no
+Mauna/holdout access; no ledger event; `docs/m2c_freeze/gtoy_profile_result_v1.18.json` stays
+absent.
+
+**Status:** docs-first freeze committed with this entry; implementation, regeneration, suite
+results, panel verdicts, and the final head will be appended here on completion.
