@@ -1932,10 +1932,12 @@ are theory-derived.
   greater-than `D23_SENTINEL_MIN_REL` for **every** nuisance site
   (`tests/test_m2c_profile_gradient.py:365-393`; `m2c_freeze.py:36`).
 - **MAP construction pinned verbatim; comparison REPORT-ONLY (B12(h)).** `generate_toy_data()`
-  defaults, `PRIOR_CONFIGS["toy_elicited_n20"]`, `torch.manual_seed(42)`,
-  `fit_map(n_iter=300, lr=0.05)`. The exact float64 delta against
-  `FIGURE_EXPECTATIONS["toy_elicited_map_noise"]` (0.06) is recorded; **no gate, no new tolerance,
-  no new decision-table row.**
+  defaults (internally seeded), `PRIOR_CONFIGS["toy_elicited_n20"]`, fresh build, then
+  `torch.manual_seed(42)` immediately before `fit_map(n_iter=300, lr=0.05)` — the exact
+  `map_fitted` sequence of `experiments/prior_sensitivity_study.py`. The exact float64 delta
+  against `FIGURE_EXPECTATIONS["toy_elicited_map_noise"]` (`0.061867347763041584`, the study's
+  full-precision frozen constant; a rounded `0.06` appearing in a figure-test fixture dict is
+  not this constant) is recorded; **no gate, no new tolerance, no new decision-table row.**
 - **FD-step sensitivity (B12(a)).** `symmetry_error(h)` at
   `h ∈ {2.5e-4, 5e-4, 1e-3, 2e-3, 4e-3}` — the frozen sweep extended one factor-2 step each way by
   the same generative rule, introducing no new constant. Per node, an OLS slope of log

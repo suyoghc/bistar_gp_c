@@ -174,8 +174,8 @@
         "prior_config": { "const": "toy_elicited_n20" },
         "map_noise": { "$ref": "#/$defs/finite_number" },
         "expected_noise": {
-          "const": 0.06,
-          "description": "FIGURE_EXPECTATIONS['toy_elicited_map_noise'] (experiments/prior_sensitivity_study.py), quoted as a const."
+          "const": 0.061867347763041584,
+          "description": "FIGURE_EXPECTATIONS['toy_elicited_map_noise'] (experiments/prior_sensitivity_study.py), quoted as a const at full float64 precision. The rounded 0.06 that appears in a figure-test fixture dict is NOT this frozen constant."
         },
         "delta": {
           "$ref": "#/$defs/finite_number",

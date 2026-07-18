@@ -4857,12 +4857,27 @@ bookkeeping without amendment.
   first/mid/last; closure = full refined grid + one-decade pullbacks (caps `1e3`, `1e-6`) refined
   to L=3, at most ~1,481 nodes.
 - **Docs-first artifacts committed with this entry:**
-  `docs/m2c_freeze/m2c_diagnostic_record.schema_v1.json`
-  (sha256 `b6b60dd1f722f3e17481a16cbeb37c2e3ff26e596beaccbd36f23dd4783d300d`) and
-  `docs/m2c_freeze/m2cr_diagnostic_protocol_v1.json`
-  (sha256 `bdfac013a489a77eb91237a7deb94b2048eac5a6ec2a870306cdf440bb121015`); the protocol
-  manifest is generated at the post-implementation regeneration (it must reference the final
-  Layer-1a digest) and its hash is appended here on completion.
+  `docs/m2c_freeze/m2c_diagnostic_record.schema_v1.json` and
+  `docs/m2c_freeze/m2cr_diagnostic_protocol_v1.json` (initial hashes `b6b60dd1…` /
+  `bdfac013…`, corrected below); the protocol manifest is generated at the
+  post-implementation regeneration (it must reference the final Layer-1a digest) and its hash
+  is appended here on completion.
+
+**Correction (same PR, pre-implementation commit; provenance restored, no scientific change):**
+the docs-first commit quoted `expected_noise` as `0.06`, sourced from a ROUNDED fixture dict in
+`tests/test_prior_sensitivity_figures.py`; the frozen constant the plan cites is
+`FIGURE_EXPECTATIONS["toy_elicited_map_noise"] = 0.061867347763041584` in
+`experiments/prior_sensitivity_study.py` (flagged by the Codex implementation pass, verified
+against the source by Fable). The schema const, the parameters artifact, and the v1.21 §3
+parenthetical now quote the full-precision constant, and v1.21 §3 additionally pins the
+`map_fitted` seed placement (fresh build, then `torch.manual_seed(42)` immediately before
+`fit_map`). The addenda file remains strictly append-only in the PR diff against `main` (every
+edited line is new in this PR). Corrected hashes:
+`m2c_diagnostic_record.schema_v1.json`
+`2c0fc788b4a04c3bf02bc2a7fd4a29e2e51be11cf37d8cf972f98c9edc56e598`;
+`m2cr_diagnostic_protocol_v1.json`
+`97625715323a4f9fac12fd0896b9cbaa5b35d534606f6fc4084c52d9a1efff32`. The comparison stays
+REPORT-ONLY (B12(h)); no gate, tolerance, or decision-table row is affected.
 
 **Alternatives considered:** deferring Layer-1b enforcement to a later pre-R4 act (rejected —
 recreates the unowned-enforcement gap D49 closed for ceilings); a dedicated

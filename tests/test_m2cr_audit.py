@@ -545,7 +545,7 @@ def _chain_expectations():
     return {
         "infrastructure_manifest_sha256": SHA_A,
         "environment_freeze_manifest_sha256": SHA_C,
-        "expected_absent": {"protocol_manifest_sha256"},
+        "protocol_manifest_sha256": SHA_B,
     }
 
 
@@ -555,7 +555,7 @@ def _grant_ledger() -> str:
     return _jsonl(_valid_events()[:1])
 
 
-def test_verify_chain_passes_r2_members_with_declared_r3_absence():
+def test_verify_chain_passes_with_protocol_manifest_expectation():
     report = verify_chain(
         _diagnostic_chain(),
         _chain_expectations(),
@@ -563,15 +563,13 @@ def test_verify_chain_passes_r2_members_with_declared_r3_absence():
         ledger_jsonl=_grant_ledger(),
     )
     assert report["ok"], report["errors"]
-    assert report["checks"]["protocol_manifest_sha256"]["status"] == (
-        "expected_absent"
-    )
+    assert report["checks"]["protocol_manifest_sha256"]["status"] == "passed"
     assert report["checks"]["grant_execution_commit"]["status"] == "passed"
 
 
 def test_verify_chain_fails_member_without_expectation_or_declaration():
     expectations = _chain_expectations()
-    del expectations["expected_absent"]
+    del expectations["protocol_manifest_sha256"]
     report = verify_chain(
         _diagnostic_chain(),
         expectations,
@@ -692,7 +690,6 @@ def test_expected_absent_cannot_apply_to_infrastructure_members():
         "environment_freeze_manifest_sha256": SHA_C,
         "expected_absent": {
             "infrastructure_manifest_sha256",
-            "protocol_manifest_sha256",
         },
     }
     report = verify_chain(
@@ -706,6 +703,50 @@ def test_expected_absent_cannot_apply_to_infrastructure_members():
     assert "unverifiable" in report["checks"]["infrastructure_manifest_sha256"][
         "reason"
     ]
+
+
+def test_protocol_manifest_cannot_be_declared_absent_after_r3():
+    expectations = {
+        **_chain_expectations(),
+        "expected_absent": {"protocol_manifest_sha256"},
+    }
+    report = verify_chain(
+        _diagnostic_chain(),
+        expectations,
+        "diagnostic",
+        ledger_jsonl=_grant_ledger(),
+    )
+    _assert_reason(report, "expected_absent contains non-R3/R5 chain members")
+
+
+def test_result_chain_may_declare_only_r4_r5_members_absent():
+    chain = {
+        **_diagnostic_chain(),
+        "diagnostic_record_sha256": SHA_D,
+        "amendment_manifest": SHA_A,
+    }
+    grant = _valid_events()[0]
+    grant["scope"]["record_kind"] = "result"
+    grant["frozen_chain"]["diagnostic_record_sha256"] = SHA_D
+    grant["frozen_chain"]["amendment_manifest"] = SHA_A
+    expectations = {
+        **_chain_expectations(),
+        "expected_absent": {
+            "diagnostic_record_sha256",
+            "amendment_manifest",
+        },
+    }
+    report = verify_chain(
+        chain,
+        expectations,
+        "result",
+        ledger_jsonl=_jsonl([grant]),
+    )
+    assert report["ok"], report["errors"]
+    assert report["checks"]["diagnostic_record_sha256"]["status"] == (
+        "expected_absent"
+    )
+    assert report["checks"]["amendment_manifest"]["status"] == "expected_absent"
 
 
 def _write_file(path: Path, data: bytes = b"x") -> Path:
