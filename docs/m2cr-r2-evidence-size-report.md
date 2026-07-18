@@ -17,20 +17,20 @@ serializer with the frozen nonfinite sentinels.
 
 | Artifact | Bytes | Notes |
 |---|---|---|
-| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,743,895 | format v2 (roots header, per-entry loader); 39,955 entries: 39,389 source, 564 extension, 2 importable-archive, 0 orphan-bytecode |
+| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,744,319 | format v2 (roots header, per-entry loader); 39,957 entries: 39,391 source, 564 extension, 2 importable-archive, 0 orphan-bytecode (the +2 sources are the two new WI1/WI2 test files) |
 | `m2cr_dependency_lock_v1.json` | 57,451 | supplementary only; editable installs excluded from `pip_freeze` (external audit round-3 F4), reproducible at HEAD |
-| `m2cr_preboundary_attestation_set_v1.json` | 14,825 | dyld main cache plus its twelve declared subcaches, interpreter, and the complete 76-entry pre-boundary bootstrap closure; the five worktree-origin closure pins are stored worktree-relative (F3), which is why the set is smaller than before |
-| `m2cr_infrastructure_manifest_v1.json` | 2,872 | Layer 1a; repo-relative pins (now 7 artifacts incl. native-stack expectations) |
-| `m2cr_native_stack_expectations_v1.json` | 12,314 | F1/F2 round-3 + finding 3: frozen native stack, profile hash, build-pinned bound sentinel `__hash__` (§4.5.8), backend build markers, Stage-B delta, and the 66-entry expected on-disk loaded-image set (path+sha256) |
+| `m2cr_preboundary_attestation_set_v1.json` | 14,560 | dyld main cache plus its twelve declared subcaches, interpreter, and the 74-entry pre-boundary bootstrap closure; smaller than the prior 76 because the fabricated `bistar_gp`/`bistar_gp.m2cr` namespace packages no longer claim a never-executed `__init__.py` origin (WI1); the three worktree-origin closure pins are stored worktree-relative (F3) |
+| `m2cr_infrastructure_manifest_v1.json` | 2,872 | Layer 1a; repo-relative pins (7 artifacts incl. native-stack expectations) |
+| `m2cr_native_stack_expectations_v1.json` | 32,342 | WI1/WI2 launch-authority cycle: frozen native stack, profile hash, build-pinned bound sentinel `__hash__` (§4.5.8), backend build markers, Stage-B delta, the **67**-entry expected on-disk loaded-image set (path+sha256; +1 vs the prior 66 because the measurement now enumerates images after the config-show calls, matching the child sequence — `numpy.show_config()` lazily loads pyyaml's extension), and the newly-**measured** 173-entry Stage-C `loaded_image_allowlist` (the extension images the frozen `bistar_gp.profile_integration` payload closure loads after the Stage-B baseline) |
 | `m2cr_environment_freeze_manifest_v1.json` | 731 | the aggregating manifest; its file sha256 is the chain member |
 | `m2cr_child_env_mapping_v1.json` | 602 | includes the concrete frozen `PATH` |
 | `m2cr_interpreter_pin_v1.json` | 383 | version string plus resolved-target sha256 |
 
-Fixed-artifact total: **8,833,073 bytes** (measured; regenerated after the external-audit
-hardening cycle — WI3 adds the build-pinned sentinel hash to the native-stack expectations,
-and the importable/preboundary/aggregating pins re-derive for the changed code; the F3
-worktree-relative closure pins and the F4
-editable-filtered lock carry over unchanged).
+Fixed-artifact total: **8,853,260 bytes** (measured; regenerated at the WI1/WI2 launch-authority
+code commit via the established fresh-detached-worktree process — the native-stack expectations
+grow for the corrected 67-image set plus the measured Stage-C image allowlist, the importable
+manifest gains the two new test files, and the preboundary/aggregating pins re-derive; the
+interpreter pin, child-env mapping, and dependency lock stay byte-identical).
 
 Two truthfulness notes. First, the plan §4.5.12 ratification-time estimates (roughly 78,890 entries,
 about 12 MB) were explicitly "not the R2 measurement"; the measured inventory is smaller because the
@@ -88,20 +88,20 @@ classified in `bistar_gp/m2cr/measure.py` (`RUN_DIR_EVIDENCE_CLASSES`), and a CI
 any layout member lacks a measurement classification, so the per-run projection cannot silently omit a
 component.
 
-**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,833,073 bytes**
+**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,853,260 bytes**
 (the table above); it is NOT part of the per-run evidence bundle.
 
 **Per-run evidence bundle (per launch) — components:**
 
 | Component | Bytes | Basis (labeled) |
 |---|---|---|
-| Runtime envelope classes (`RUN_DIR_EVIDENCE_CLASSES` marks 19 `fixed_runtime` + the `conditional` `bootstrap_failure.json`; 17 were present in this hermetic run — `manifest_pre.json`/`manifest_post.json` are absent here because the fake bundle omits the importable-manifest directive, the deferred finding 1) | 61,340 | measured (hermetic capture via `measure_run_dir_fixed_evidence`; `import_inventory.json` dominates at 31,927 and scales with the real import closure) |
+| Runtime envelope classes (`RUN_DIR_EVIDENCE_CLASSES` marks 20 `fixed_runtime` + the `conditional` `bootstrap_failure.json`; all 20 present in this hermetic run now that the WI1 fake bundle carries the mandatory importable-manifest directive — `manifest_pre.json` 329, `manifest_post.json` 334, and the new `origin_binding_pre.json` 82 are included) | 84,921 | measured (hermetic capture via `measure_run_dir_fixed_evidence`; `import_inventory.json` dominates at 41,543 and scales with the real import closure) |
 | Run-local scratch (`home/`, `tmp/`, `xdg/`) | (allowance) | any payload-written contents are Layer-3 raw-manifested, so represented as a caller-supplied allowance (unbounded, no hermetic basis), NOT assumed zero; `pycache/` alone is asserted empty (zero) |
 | Per-node records, all nodes at the structural worst case | 8,729,014 | derived: 5,894 × 1,481 |
 | Event stream, all nodes at the structural worst case | 9,016,328 | derived: 6,088 × 1,481 |
 | stdout / stderr | (allowance) | caller-supplied allowance, labeled `measured: false`; no hermetic basis, never a measured claim |
-| **Per-run evidence bundle, measured-basis subtotal** | **17,806,682** | derived: runtime envelopes + per-node product + per-event product |
-| Per-run evidence bundle, complete | 17,806,682 + allowances | derived: measured-basis subtotal + caller-supplied stdout/stderr + run-local-scratch allowances |
+| **Per-run evidence bundle, measured-basis subtotal** | **17,830,263** | derived: runtime envelopes (84,921) + per-node product + per-event product |
+| Per-run evidence bundle, complete | 17,830,263 + allowances | derived: measured-basis subtotal + caller-supplied stdout/stderr + run-local-scratch allowances |
 
 The complete per-run bundle is exactly `derive_bundle_projection`'s `complete_bundle` = sum(measured
 fixed runtime bytes) + sum(caller-supplied allowance bytes) + sum(per-node worst-case bytes ×
