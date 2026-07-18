@@ -572,17 +572,23 @@ def test_realroot_launch_3_post_execution_mutation_never_completes(
     assert (tmp_path / "run" / "payload_started.json").is_file()
 
 
-def test_realroot_launch_4_loader_class_mismatch_fails_origin_binding(
+def test_realroot_launch_4_manifest_loader_substitution_fails_closed(
     tmp_path: Path,
 ) -> None:
-    """The reserved fourth launch, exercised: a loader-class corruption at
-    REAL roots that ONLY the child's pre-marker origin/loader binding can
-    catch.  The doctored manifest entry (a pre-marker-loaded worktree module
-    whose pinned loader is flipped to ``zipimporter``) survives the parent's
-    §4.5.2 verification and the completeness re-walk — the re-walk's drift
-    core deliberately excludes the loader annotation — so a marker would be
-    emitted if the origin/loader binding were skipped or weakened.  The
-    binding must refuse it with no marker, on genuine paths and loaders."""
+    """The reserved fourth launch, exercised: a manifest-authority substitution
+    at REAL roots.  A committed manifest entry's frozen loader is flipped to a
+    CONFLICTING class (``zipimporter`` on a ``.py`` source), a tampering that
+    survives the parent's §4.5.2 pre-boundary verification and the chain
+    binding (the infra manifest is re-pinned over the doctored bytes).  The
+    child must refuse it with no marker on genuine paths.
+
+    Since the round-3 gate, the child rejects the self-inconsistent loader/type
+    pairing at manifest PARSE — a stronger, earlier catch than the prior at-exit
+    origin/loader binding — so the launch fails closed before any import.  The
+    child-side origin/loader INVENTORY binding for a runtime loader mismatch is
+    proven by the fast synthetic battery (`test_m2cr_launch_authority.py`), per
+    the plan's allowance to prove that class with a cheaper discriminating
+    test."""
 
     worktree, chain = _bundle()
     copy = tmp_path / "worktree-copy"
@@ -618,7 +624,8 @@ def test_realroot_launch_4_loader_class_mismatch_fails_origin_binding(
         "m2cr-realroot-loader",
     )
     assert record["status"] == "INFRA_FAILURE"
-    assert "loader class mismatch" in record["fault"]["detail"]
-    assert "serialization" in record["fault"]["detail"]
+    assert (
+        "loader does not match its artifact type" in record["fault"]["detail"]
+    )
     assert record["fault"]["payload_started"] is False
     assert not (tmp_path / "run" / "payload_started.json").exists()
