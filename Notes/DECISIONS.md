@@ -4653,3 +4653,82 @@ both corrected here and in the PR body; no code, artifact, or boundary issue was
 infrastructure is now frozen: no further hardening round is opened absent an observed production
 failure or a separate explicit author amendment. R2a, R3, and every execution remain separate future
 author acts.
+
+## D49: M2cR milestone R2a — evidence-ceiling ballot ratified; v1.20 freezes the five exact byte ceilings; R2a amended once into a bounded freeze-plus-operationalization milestone; enforcement semantics fixed; measurement-provenance correction mandated — 2026-07-18
+
+**Problem:** PR #16 merged R2 with the B15(ii) measurement report but no numeric ceilings (correctly:
+plan §4.4 defers them to a versioned pre-execution addendum). An independent preflight at
+`origin/main` = `9bb2467` verified every recorded figure (all eight on-disk artifact sizes match the
+report byte-for-byte; 39,957 manifest entries; the derivations 5,894 × 1,481 = 8,729,014,
+6,088 × 1,481 = 9,016,328, and 84,921 + 8,729,014 + 9,016,328 = 17,830,263 are exact; the hermetic
+measurement suite passes 13/13) and found: (i) the report's proposals never state each ceiling's
+scope; (ii) **merged R2 enforces no numeric evidence ceiling at all** — `evidence_overflow` exists
+only as the R1 schema enum member and capture's `_FAULT_CLASSES` vocabulary entry, with no producer;
+the only enforced ceiling is the 8 h wall clock; (iii) no milestone owned the enforcement work (R2
+frozen; plan-§8 R2a addendum-only; R3 protocol-scoped), leaving B15(iii)'s overflow-is-INFRA_FAILURE
+semantics vacuous at runtime; (iv) the report overclaims that one test reproduces its five measured
+exemplars — only 3,179 and 1,613 are test-pinned; 5,894 / 3,029 / 6,088 / 84,921 exist only in the
+report and D48 narrative.
+
+**Decision (author ballot, cast 2026-07-18; frozen as prereg addendum v1.20):**
+
+- **A. Ceilings ratified as exact bytes:** runtime-envelope/static-artifact per-file 33,554,432;
+  `events.jsonl` per run 33,554,432; `stdout.txt` per run 16,777,216; `stderr.txt` per run
+  16,777,216; complete per-run bundle 134,217,728. MiB only as gloss. 256 MiB bundle **rejected**:
+  128 MiB already provides substantial headroom while retaining useful fault detection and limiting
+  committed repository growth.
+- **B. Scope:** the 33,554,432 per-file ceiling covers (1) each committed static freeze artifact at
+  regeneration/audit time and (2) every per-run `RUN_DIR_EVIDENCE_CLASSES` member classified
+  `fixed_runtime` or `conditional`, including `RAW_MANIFEST.sha256` and the candidate terminal
+  record. Events/stdout/stderr use their dedicated ceilings. `nodes/` and HOME/TMPDIR/XDG scratch
+  have no class ceiling and count toward the bundle. `pycache/` stays required empty. Static
+  artifacts never count toward a per-run bundle. No chunking, no truncation. The class is named
+  **"runtime-envelope/static-artifact per-file"** and recorded as the precise operational
+  interpretation of plan §4.4's "attestation manifests".
+- **C. Scratch and message policy:** scratch counts toward the bundle with no separate allowance;
+  the optimizer/retry `message` stays schema-unbounded; a legitimate breach is
+  `evidence_overflow`/INFRA_FAILURE with the remedy being a later larger versioned ceiling, never
+  truncation or reduced completeness; consumption continues to depend solely on
+  `payload_started.json`.
+- **D/F. Ownership — R2a amended once, no separate R2b:** R2a becomes one bounded milestone owning
+  (1) the docs-first v1.20 numerical freeze and (2) the narrowly scoped enforcement making the
+  values operational. An explicit author amendment to the prior addendum-only wording, not a silent
+  reinterpretation of R2 or R3; R2 otherwise stays frozen. Freeze-before-implementation inside one
+  branch/PR: v1.20 + this D49 commit first, enforcement in subsequent commits; **R4 stays blocked
+  until the complete R2a PR merges.**
+- **E. Version:** v1.20 (B3 sequential-at-ratification).
+- **Enforcement semantics (v1.20 §§3–5):** one authenticated machine-readable source of truth,
+  `docs/m2c_freeze/m2cr_evidence_ceilings_v1.json`, pinned through the infrastructure manifest and
+  carried on the authenticated launch spec — no duplicated independently editable constants. Exact
+  serialized/on-disk bytes. Per-run decision: close Layer 2; write `RAW_MANIFEST.sha256`; assemble
+  the candidate terminal record; compute candidate sizes including every run-directory file, the raw
+  manifest, and the candidate record's canonical serialization; on any class or total breach publish
+  INFRA_FAILURE/`evidence_overflow` over the complete retained evidence, nothing truncated or
+  deleted. **Candidate rule:** the outcome is never reconsidered because the smaller replacement
+  record would fit; the attempted candidate exceeded and remains failed; no
+  recursive/self-referential size semantics. Precedence unamended: rule-(4) candidates are replaced;
+  INFRA_FAILURE candidates get fault-class elevation with the displaced fault preserved; rule-(1)/(2)
+  NOT_STARTED/ABORTED_BUDGET keep their ratified statuses. Equivalent enforcement in normal capture
+  and reconciliation; static-artifact overflow fails regeneration/audit CI. Detail names each
+  breach's class/path, observed candidate bytes, and ceiling.
+- **Truthfulness correction:** reproduce 5,894 / 3,029 / 6,088 / 84,921 from the hermetic
+  fixture/serializer path against separately written expected integers, or correct the current
+  report where exact reproduction cannot be established; never copy report constants into a
+  tautological test. Historical D48 text stays historical.
+
+**Alternatives considered:** 268,435,456-byte (256 MiB) bundle ceiling (rejected, headroom already
+substantial at ×7.53); a separate R2b enforcement milestone (rejected in favor of one bounded R2a,
+one author act, freeze-before-implementation preserved inside the PR); a fifth per-class ceiling for
+`nodes/` (not adopted — plan §4.4's class enumeration kept exactly, bundle governs); schema
+`maxLength` on the optimizer/retry message (rejected — would reopen the frozen R1 schema and add a
+new failure mode for no measured need); in-flight streaming caps (not required — the decision point
+is Layer-3/terminal assembly; certification integrity is unaffected).
+
+**Workflow (author-directed):** one fresh branch off `origin/main` 9bb2467
+(`feat/d19-m2cr-r2a-evidence-ceilings`); implement only R2a; no scientific/model computation, no
+R3/R4, no `--execute`; focused tests then the full suite; exactly one fresh Codex gpt-5.6-sol xHigh
+read-only review of the completed exact-head diff, independently verified, at most one consolidated
+correction pass; open a **Draft** PR and STOP before Ready or merge.
+
+**Status:** v1.20 + this entry are the docs-first commit; implementation, regeneration, suite
+results, review outcome, and the final head will be appended here on completion.
