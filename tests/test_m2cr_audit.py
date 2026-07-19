@@ -163,7 +163,21 @@ def test_consumed_without_payload_started_fails():
 
 
 def test_consumed_deriving_from_historical_record_fails():
-    historical = json.loads(LEDGER.read_text(encoding="utf-8"))
+    # The committed ledger is append-only JSONL; select the unique D45
+    # historical record instead of parsing the file as one JSON document.
+    ledger_events = [
+        json.loads(line)
+        for line in LEDGER.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    historical_records = [
+        event
+        for event in ledger_events
+        if event.get("event") == "historical_authorization_record"
+        and event.get("event_id") == "m2cr-ev-000001"
+    ]
+    assert len(historical_records) == 1, historical_records
+    historical = historical_records[0]
     consumed = {
         "schema_version": 1,
         "event": "authorization_consumed",
