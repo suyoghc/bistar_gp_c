@@ -12,7 +12,9 @@ import numpy as np
 from bistar_gp.m2cr.audit import (
     V117_CANONICAL_SHA256,
     band_masses_sum_identity,
+    derive_closure_events,
     validate_ledger,
+    verify_closure,
     verify_chain,
     verify_environment_freeze,
     verify_ledger_against_evidence,
@@ -549,6 +551,254 @@ def test_pre_payload_terminal_evidence_rejects_tampered_record(tmp_path: Path):
         verify_ledger_against_evidence(jsonl, tmp_path),
         "pre_payload_terminal_record",
     )
+
+
+def test_marker_present_rejects_pre_payload_ledger_closure(tmp_path: Path):
+    _, run_dir = _write_attempt_evidence(tmp_path)
+    events = _valid_events()[:2]
+    events.append(
+        _pre_payload_outcome(
+            "m2cr-ev-000004",
+            LAUNCH,
+            sha256_file(run_dir / "terminal_record.json"),
+        )
+    )
+    _assert_reason(
+        verify_ledger_against_evidence(_jsonl(events), tmp_path),
+        f"marker present but attempt {LAUNCH} is closed pre-payload",
+    )
+
+
+def test_marker_absent_rejects_payload_branch_ledger_closure(tmp_path: Path):
+    _, run_dir = _write_pre_payload_evidence(tmp_path)
+    events = _valid_events()
+    events[3]["status"] = "INFRA_FAILURE"
+    events[3]["terminal_record_sha256"] = sha256_file(
+        run_dir / "terminal_record.json"
+    )
+    events[3]["raw_manifest_sha256"] = sha256_file(
+        run_dir / "RAW_MANIFEST.sha256"
+    )
+    _assert_reason(
+        verify_ledger_against_evidence(_jsonl(events), tmp_path),
+        f"marker absent but attempt {LAUNCH} has a payload-branch closure",
+    )
+
+
+def test_marker_present_rejects_false_terminal_payload_assertion(tmp_path: Path):
+    jsonl, run_dir = _write_attempt_evidence(tmp_path)
+    record_path = run_dir / "terminal_record.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["fault"]["payload_started"] = False
+    atomic_write_canonical_json(record_path, record)
+    events = [json.loads(line) for line in jsonl.splitlines()]
+    events[3]["terminal_record_sha256"] = sha256_file(record_path)
+    _assert_reason(
+        verify_ledger_against_evidence(_jsonl(events), tmp_path),
+        "payload_started assertion False disagrees with marker file presence True",
+    )
+
+
+def test_marker_absent_rejects_true_terminal_payload_assertion(tmp_path: Path):
+    jsonl, run_dir = _write_pre_payload_evidence(tmp_path)
+    record_path = run_dir / "terminal_record.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["fault"]["payload_started"] = True
+    atomic_write_canonical_json(record_path, record)
+    events = [json.loads(line) for line in jsonl.splitlines()]
+    events[2]["terminal_record_sha256"] = sha256_file(record_path)
+    _assert_reason(
+        verify_ledger_against_evidence(_jsonl(events), tmp_path),
+        "payload_started assertion True disagrees with marker file presence False",
+    )
+
+
+def test_pre_payload_record_rejects_raw_manifest_binding_mismatch(
+    tmp_path: Path,
+):
+    jsonl, run_dir = _write_pre_payload_evidence(tmp_path)
+    record_path = run_dir / "terminal_record.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["evidence"]["raw_manifest_sha256"] = SHA_D
+    atomic_write_canonical_json(record_path, record)
+    events = [json.loads(line) for line in jsonl.splitlines()]
+    events[2]["terminal_record_sha256"] = sha256_file(record_path)
+    _assert_reason(
+        verify_ledger_against_evidence(_jsonl(events), tmp_path),
+        "terminal record evidence.raw_manifest_sha256 does not equal the "
+        "rehashed RAW_MANIFEST.sha256 file",
+    )
+
+
+def test_payload_record_rejects_raw_manifest_binding_mismatch(tmp_path: Path):
+    jsonl, run_dir = _write_attempt_evidence(tmp_path)
+    record_path = run_dir / "terminal_record.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["evidence"]["raw_manifest_sha256"] = SHA_D
+    atomic_write_canonical_json(record_path, record)
+    events = [json.loads(line) for line in jsonl.splitlines()]
+    events[3]["terminal_record_sha256"] = sha256_file(record_path)
+    _assert_reason(
+        verify_ledger_against_evidence(_jsonl(events), tmp_path),
+        "terminal record evidence.raw_manifest_sha256 does not equal the "
+        "rehashed RAW_MANIFEST.sha256 file",
+    )
+
+
+def test_derive_closure_events_returns_exact_evidence_keyed_sequences(
+    tmp_path: Path,
+):
+    _, payload_run = _write_attempt_evidence(tmp_path)
+    pre_closure = _jsonl(_valid_events()[:2])
+    payload_events = derive_closure_events(
+        tmp_path, payload_run.name, pre_closure, date=DATE
+    )
+    marker = json.loads(
+        (payload_run / "payload_started.json").read_text(encoding="utf-8")
+    )
+    expected_payload = [
+        {
+            "schema_version": 1,
+            "event": "payload_started",
+            "event_id": "m2cr-ev-000004",
+            "authorization_id": AUTH,
+            "launch_attempt_id": LAUNCH,
+            "date": DATE,
+            "payload_started_sha256": sha256_file(
+                payload_run / "payload_started.json"
+            ),
+            "bound_to": {
+                "authorization_id": AUTH,
+                "launch_attempt_id": LAUNCH,
+                "execution_commit": marker["execution_commit"],
+                "environment_freeze_manifest_sha256": SHA_C,
+            },
+        },
+        {
+            "schema_version": 1,
+            "event": "terminal_outcome",
+            "event_id": "m2cr-ev-000005",
+            "authorization_id": AUTH,
+            "launch_attempt_id": LAUNCH,
+            "date": DATE,
+            "record_kind": "diagnostic",
+            "status": "INFRA_FAILURE",
+            "terminal_record_sha256": sha256_file(
+                payload_run / "terminal_record.json"
+            ),
+            "raw_manifest_sha256": sha256_file(
+                payload_run / "RAW_MANIFEST.sha256"
+            ),
+        },
+        {
+            "schema_version": 1,
+            "event": "authorization_consumed",
+            "event_id": "m2cr-ev-000006",
+            "authorization_id": AUTH,
+            "launch_attempt_id": LAUNCH,
+            "date": DATE,
+            "derived_from": {
+                "event": "payload_started",
+                "event_id": "m2cr-ev-000004",
+                "payload_started_sha256": sha256_file(
+                    payload_run / "payload_started.json"
+                ),
+            },
+        },
+    ]
+    assert payload_events == expected_payload
+
+    _, pre_payload_run = _write_pre_payload_evidence(tmp_path)
+    pre_payload_events = derive_closure_events(
+        tmp_path, pre_payload_run.name, pre_closure, date=DATE
+    )
+    assert pre_payload_events == [
+        {
+            "schema_version": 1,
+            "event": "pre_payload_terminal_outcome",
+            "event_id": "m2cr-ev-000004",
+            "authorization_id": AUTH,
+            "launch_attempt_id": LAUNCH,
+            "date": DATE,
+            "status": "INFRA_FAILURE",
+            "terminal_record_sha256": sha256_file(
+                pre_payload_run / "terminal_record.json"
+            ),
+            "consumes": False,
+        }
+    ]
+    assert all(
+        "historical_note" not in event and "evidence_dir" not in event
+        for event in payload_events + pre_payload_events
+    )
+
+
+def test_verify_closure_requires_the_exact_derived_event_sequence(tmp_path: Path):
+    _, run_dir = _write_attempt_evidence(tmp_path)
+    pre_closure = _jsonl(_valid_events()[:2])
+    derived = derive_closure_events(tmp_path, run_dir.name, pre_closure, date=DATE)
+    closure = pre_closure + _jsonl(derived)
+    report = verify_closure(
+        pre_closure, closure, tmp_path, run_dir.name, date=DATE
+    )
+    assert report == {"ok": True, "errors": []}
+
+    def copy_events() -> list[dict]:
+        return json.loads(canonical_dumps(derived))
+
+    skipped = copy_events()
+    del skipped[1]
+
+    reordered = copy_events()
+    reordered[1], reordered[2] = reordered[2], reordered[1]
+
+    extra = copy_events()
+    extra.append(
+        {
+            "schema_version": 1,
+            "event": "superseding_correction",
+            "event_id": "m2cr-ev-000007",
+            "date": DATE,
+            "supersedes_event_id": "m2cr-ev-000006",
+            "reason": "fixture-only extra event",
+            "correction": "must be rejected by exact closure verification",
+        }
+    )
+
+    duplicate_id = copy_events()
+    duplicate_id[1]["event_id"] = duplicate_id[0]["event_id"]
+
+    nonconsecutive = copy_events()
+    nonconsecutive[1]["event_id"] = "m2cr-ev-000006"
+    nonconsecutive[2]["event_id"] = "m2cr-ev-000007"
+
+    historical_note = copy_events()
+    historical_note[0]["historical_note"] = "fixture-only injected field"
+
+    evidence_dir = copy_events()
+    evidence_dir[1]["evidence_dir"] = f"docs/m2c_evidence/{RUN_ID}/"
+
+    variants = {
+        "skipped event": skipped,
+        "reordered events": reordered,
+        "extra event": extra,
+        "duplicate id": duplicate_id,
+        "non-consecutive id": nonconsecutive,
+        "historical_note": historical_note,
+        "evidence_dir": evidence_dir,
+    }
+    for label, closure_events in variants.items():
+        report = verify_closure(
+            pre_closure,
+            pre_closure + _jsonl(closure_events),
+            tmp_path,
+            run_dir.name,
+            date=DATE,
+        )
+        assert not report["ok"], label
+        assert any(
+            "does not exactly equal" in error for error in report["errors"]
+        ), (label, report["errors"])
 
 
 def _diagnostic_chain():

@@ -21,11 +21,19 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from bistar_gp.m2cr.environment_freeze import read_manifest_header
-from bistar_gp.m2cr.serialization import canonical_bytes, canonical_sha256, sha256_file
+from bistar_gp.m2cr.serialization import (
+    canonical_bytes,
+    canonical_dumps,
+    canonical_sha256,
+    sha256_file,
+)
 
 __all__ = [
+    "ClosureDerivationError",
     "V117_CANONICAL_SHA256",
+    "derive_closure_events",
     "validate_ledger",
+    "verify_closure",
     "verify_ledger_against_evidence",
     "verify_chain",
     "verify_infrastructure_manifest",
@@ -125,6 +133,25 @@ _PAYLOAD_MARKER_FIELDS = {
     "attestation_evidence_digests",
     "prelaunch_sha256",
 }
+
+
+class ClosureDerivationError(ValueError):
+    """Captured evidence cannot yield one schema-expressible closure."""
+
+
+def _record_asserts_payload_started(record: Mapping[str, Any]) -> bool | None:
+    """Return the terminal record's definite payload-start assertion, if any."""
+
+    status = record.get("status")
+    if status in {"COMPLETED", "ALGORITHM_STOP"}:
+        return True
+    if status == "NOT_STARTED":
+        return False
+    if status == "INFRA_FAILURE":
+        fault = record.get("fault")
+        assertion = fault.get("payload_started") if isinstance(fault, dict) else None
+        return assertion if isinstance(assertion, bool) else None
+    return None
 
 
 def _schema_error(error: Any) -> str:
@@ -627,7 +654,12 @@ def verify_ledger_against_evidence(
         )
     except (OSError, json.JSONDecodeError) as exc:
         errors.append(f"cannot load execution-record schema: {exc}")
-        return {"ok": False, "errors": errors, "checks": checks}
+        return {
+            "ok": False,
+            "errors": errors,
+            "checks": checks,
+            "event_count": stream_report["event_count"],
+        }
     record_validator = Draft202012Validator(record_schema)
     events: list[dict[str, Any]] = []
     for raw in jsonl_text.splitlines():
@@ -649,6 +681,56 @@ def verify_ledger_against_evidence(
         "pre_payload_terminal_outcome",
     }
     run_dirs = _run_directories(root, errors)
+    closure_kinds_by_launch: dict[str, set[str]] = {}
+    for event in events:
+        kind = event.get("event")
+        launch_id = event.get("launch_attempt_id")
+        if kind in audited_kinds and isinstance(launch_id, str):
+            closure_kinds_by_launch.setdefault(launch_id, set()).add(kind)
+
+    for launch_id, run_dir in sorted(run_dirs.items()):
+        marker_present = (run_dir / "payload_started.json").is_file()
+        try:
+            record = json.loads(
+                (run_dir / _TERMINAL_RECORD_NAME).read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        assertion = _record_asserts_payload_started(record)
+        if record.get("status") == "INFRA_FAILURE" and assertion is None:
+            errors.append(
+                f"run {run_dir.name}: terminal record INFRA_FAILURE "
+                "fault.payload_started is missing or not boolean"
+            )
+        elif assertion is not None and assertion != marker_present:
+            errors.append(
+                f"run {run_dir.name}: terminal record payload_started assertion "
+                f"{assertion} disagrees with marker file presence {marker_present}"
+            )
+
+        closure_kinds = closure_kinds_by_launch.get(launch_id, set())
+        if marker_present:
+            if "pre_payload_terminal_outcome" in closure_kinds:
+                errors.append(
+                    f"marker present but attempt {launch_id} is closed pre-payload"
+                )
+            if not {"payload_started", "terminal_outcome"} <= closure_kinds:
+                errors.append(
+                    f"marker present but attempt {launch_id} lacks payload closure"
+                )
+        else:
+            if closure_kinds & {"payload_started", "terminal_outcome"}:
+                errors.append(
+                    f"marker absent but attempt {launch_id} has a payload-branch "
+                    "closure"
+                )
+            if "pre_payload_terminal_outcome" not in closure_kinds:
+                errors.append(
+                    f"marker absent but attempt {launch_id} lacks pre-payload closure"
+                )
+
     for event in events:
         kind = event.get("event")
         if kind not in audited_kinds:
@@ -820,6 +902,36 @@ def verify_ledger_against_evidence(
             errors.append(f"{label}: {_schema_error(failure)}")
         if not isinstance(record, dict):
             continue
+        evidence = record.get("evidence")
+        if isinstance(evidence, dict) and "raw_manifest_sha256" in evidence:
+            raw_manifest_path = attempt / _RAW_MANIFEST_NAME
+            try:
+                rehashed_raw_manifest = sha256_file(raw_manifest_path)
+            except OSError as exc:
+                errors.append(
+                    f"{label}: cannot rehash {_RAW_MANIFEST_NAME}: {exc}"
+                )
+            else:
+                expected_raw_manifest = evidence.get("raw_manifest_sha256")
+                status = (
+                    "passed"
+                    if expected_raw_manifest == rehashed_raw_manifest
+                    else "failed"
+                )
+                checks.append(
+                    {
+                        "label": f"terminal_record_raw_manifest:{launch_id}",
+                        "path": os.fspath(raw_manifest_path),
+                        "status": status,
+                        "expected": expected_raw_manifest,
+                        "actual": rehashed_raw_manifest,
+                    }
+                )
+                if status == "failed":
+                    errors.append(
+                        f"{label}: terminal record evidence.raw_manifest_sha256 "
+                        f"does not equal the rehashed {_RAW_MANIFEST_NAME} file"
+                    )
         if record.get("run_id") != attempt.name:
             errors.append(
                 f"{label}: record run_id does not name its evidence directory "
@@ -845,7 +957,6 @@ def verify_ledger_against_evidence(
                 if chain.get(field) != expected:
                     errors.append(f"{label}: chain {field} mismatch")
         if kind == "terminal_outcome":
-            evidence = record.get("evidence")
             if not isinstance(evidence, dict) or evidence.get(
                 "raw_manifest_sha256"
             ) != event.get("raw_manifest_sha256"):
@@ -857,6 +968,387 @@ def verify_ledger_against_evidence(
         "checks": checks,
         "event_count": stream_report["event_count"],
     }
+
+
+def derive_closure_events(
+    evidence_root: str | os.PathLike[str],
+    run_id: str,
+    pre_closure_ledger_jsonl: str,
+    *,
+    date: str,
+) -> list[dict[str, Any]]:
+    """Derive the unique ordered closure for one captured run directory."""
+
+    run_dir = Path(evidence_root) / run_id
+    terminal_path = run_dir / _TERMINAL_RECORD_NAME
+    try:
+        raw_terminal = terminal_path.read_bytes()
+    except OSError as exc:
+        raise ClosureDerivationError(
+            f"terminal record is missing or unreadable: {exc}"
+        ) from exc
+    try:
+        record = json.loads(raw_terminal.decode("utf-8", errors="strict"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ClosureDerivationError(f"terminal record is malformed: {exc}") from exc
+    if not isinstance(record, dict):
+        raise ClosureDerivationError("terminal record is not an object")
+
+    try:
+        record_schema = json.loads(
+            _EXECUTION_RECORD_SCHEMA_PATH.read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ClosureDerivationError(
+            f"cannot load execution-record schema: {exc}"
+        ) from exc
+    record_failures = sorted(
+        Draft202012Validator(record_schema).iter_errors(record),
+        key=lambda item: tuple(str(part) for part in item.absolute_path),
+    )
+    if record_failures:
+        raise ClosureDerivationError(
+            f"terminal record is schema-invalid: {_schema_error(record_failures[0])}"
+        )
+    if record.get("run_id") != run_id:
+        raise ClosureDerivationError(
+            "terminal record run_id does not name its evidence directory"
+        )
+
+    status = record["status"]
+    launch_id = record["launch_attempt_id"]
+    record_kind = record["record_kind"]
+    chain = record["chain"]
+    authorization_id = chain["authorization_id"]
+    marker_path = run_dir / "payload_started.json"
+    marker_present = marker_path.is_file()
+    assertion = _record_asserts_payload_started(record)
+    if status == "INFRA_FAILURE" and assertion is None:
+        raise ClosureDerivationError(
+            "terminal record INFRA_FAILURE fault.payload_started is missing or not "
+            "boolean"
+        )
+    if assertion is not None and assertion != marker_present:
+        raise ClosureDerivationError(
+            "terminal record payload_started assertion "
+            f"{assertion} disagrees with marker file presence {marker_present}"
+        )
+
+    try:
+        ledger_schema = json.loads(_LEDGER_SCHEMA_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ClosureDerivationError(
+            f"cannot load authorization-ledger schema: {exc}"
+        ) from exc
+    ledger_validator = Draft202012Validator(ledger_schema)
+    events: list[dict[str, Any]] = []
+    seen_event_ids: set[str] = set()
+    prior_event_number = -1
+    for line_number, raw in enumerate(
+        pre_closure_ledger_jsonl.splitlines(), start=1
+    ):
+        if not raw.strip():
+            raise ClosureDerivationError(
+                f"pre-closure ledger line {line_number} is blank"
+            )
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ClosureDerivationError(
+                f"pre-closure ledger line {line_number} is invalid JSON: {exc.msg}"
+            ) from exc
+        if not isinstance(event, dict):
+            raise ClosureDerivationError(
+                f"pre-closure ledger line {line_number} is not an object"
+            )
+        failures = sorted(
+            ledger_validator.iter_errors(event),
+            key=lambda item: tuple(str(part) for part in item.absolute_path),
+        )
+        if failures:
+            raise ClosureDerivationError(
+                f"pre-closure ledger line {line_number} is schema-invalid: "
+                f"{_schema_error(failures[0])}"
+            )
+        event_id = event["event_id"]
+        match = _EVENT_ID.fullmatch(event_id)
+        if match is None:
+            raise ClosureDerivationError(
+                f"pre-closure ledger line {line_number} has an invalid event_id"
+            )
+        event_number = int(match.group(1))
+        if event_id in seen_event_ids:
+            raise ClosureDerivationError(
+                f"pre-closure ledger has duplicate event_id {event_id}"
+            )
+        if event_number <= prior_event_number:
+            raise ClosureDerivationError(
+                "pre-closure ledger event ids are not strictly increasing"
+            )
+        seen_event_ids.add(event_id)
+        prior_event_number = event_number
+        events.append(event)
+
+    grants = [
+        event
+        for event in events
+        if event.get("event") == "authorization_granted"
+        and event.get("authorization_id") == authorization_id
+    ]
+    if len(grants) != 1:
+        raise ClosureDerivationError(
+            f"pre-closure ledger must contain exactly one grant for {authorization_id}"
+        )
+    grant = grants[0]
+    frozen_chain = grant["frozen_chain"]
+    for field, expected in frozen_chain.items():
+        if chain.get(field) != expected:
+            raise ClosureDerivationError(
+                f"terminal record chain {field} does not match the grant"
+            )
+    if grant["scope"]["record_kind"] != record_kind:
+        raise ClosureDerivationError(
+            "terminal record record_kind does not match the grant scope"
+        )
+
+    launches = [
+        event
+        for event in events
+        if event.get("event") == "launch_attempt_started"
+        and event.get("launch_attempt_id") == launch_id
+        and event.get("authorization_id") == authorization_id
+    ]
+    if len(launches) != 1:
+        raise ClosureDerivationError(
+            "pre-closure ledger must contain exactly one matching "
+            f"launch_attempt_started for {launch_id}"
+        )
+    if any(
+        event.get("launch_attempt_id") == launch_id
+        and event.get("event")
+        in {
+            "payload_started",
+            "terminal_outcome",
+            "pre_payload_terminal_outcome",
+            "authorization_consumed",
+        }
+        for event in events
+    ):
+        raise ClosureDerivationError(
+            f"pre-closure ledger already contains a closure event for {launch_id}"
+        )
+
+    base_number = max(
+        (int(_EVENT_ID.fullmatch(event["event_id"]).group(1)) for event in events),
+        default=0,
+    ) + 1
+
+    evidence = record.get("evidence")
+    raw_manifest_sha: str | None = None
+    if isinstance(evidence, dict) and "raw_manifest_sha256" in evidence:
+        raw_manifest_path = run_dir / _RAW_MANIFEST_NAME
+        try:
+            raw_manifest_sha = sha256_file(raw_manifest_path)
+        except OSError as exc:
+            raise ClosureDerivationError(
+                f"{_RAW_MANIFEST_NAME} is missing or unreadable: {exc}"
+            ) from exc
+        if evidence["raw_manifest_sha256"] != raw_manifest_sha:
+            raise ClosureDerivationError(
+                "terminal record evidence.raw_manifest_sha256 does not equal the "
+                f"rehashed {_RAW_MANIFEST_NAME} file"
+            )
+
+    def event_id(offset: int) -> str:
+        return f"m2cr-ev-{base_number + offset:06d}"
+
+    derived: list[dict[str, Any]]
+    if marker_present:
+        try:
+            raw_marker = marker_path.read_bytes()
+            marker = json.loads(raw_marker.decode("utf-8", errors="strict"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ClosureDerivationError(
+                f"payload marker is missing, unreadable, or malformed: {exc}"
+            ) from exc
+        try:
+            marker_is_canonical = raw_marker == canonical_bytes(marker)
+        except (TypeError, ValueError):
+            marker_is_canonical = False
+        if (
+            not isinstance(marker, dict)
+            or set(marker) != _PAYLOAD_MARKER_FIELDS
+            or not marker_is_canonical
+        ):
+            raise ClosureDerivationError(
+                "payload marker is not an exact canonical marker object"
+            )
+        if marker.get("authorization_id") != authorization_id:
+            raise ClosureDerivationError(
+                "payload marker authorization_id disagrees with the terminal record"
+            )
+        if marker.get("launch_attempt_id") != launch_id:
+            raise ClosureDerivationError(
+                "payload marker launch_attempt_id disagrees with the terminal record"
+            )
+        if marker.get("execution_commit") != chain.get("execution_commit"):
+            raise ClosureDerivationError(
+                "payload marker execution_commit disagrees with the terminal record"
+            )
+        marker_chain = marker.get("chain")
+        if marker_chain != chain:
+            raise ClosureDerivationError(
+                "payload marker chain disagrees with the terminal record"
+            )
+        allowed_statuses = {
+            "diagnostic": {"COMPLETED", "ABORTED_BUDGET", "INFRA_FAILURE"},
+            "result": {
+                "COMPLETED",
+                "ALGORITHM_STOP",
+                "ABORTED_BUDGET",
+                "INFRA_FAILURE",
+            },
+        }
+        if status not in allowed_statuses.get(record_kind, set()):
+            raise ClosureDerivationError(
+                f"status {status} is not schema-expressible as a {record_kind} "
+                "terminal_outcome"
+            )
+        if raw_manifest_sha is None:
+            raise ClosureDerivationError(
+                "payload-branch terminal record lacks evidence.raw_manifest_sha256"
+            )
+        try:
+            terminal_record_sha = sha256_file(terminal_path)
+            marker_sha = sha256_file(marker_path)
+        except OSError as exc:
+            raise ClosureDerivationError(
+                f"closure evidence file is missing or unreadable: {exc}"
+            ) from exc
+        derived = [
+            {
+                "schema_version": 1,
+                "event": "payload_started",
+                "event_id": event_id(0),
+                "authorization_id": marker["authorization_id"],
+                "launch_attempt_id": marker["launch_attempt_id"],
+                "date": date,
+                "payload_started_sha256": marker_sha,
+                "bound_to": {
+                    "authorization_id": marker["authorization_id"],
+                    "launch_attempt_id": marker["launch_attempt_id"],
+                    "execution_commit": marker["execution_commit"],
+                    "environment_freeze_manifest_sha256": marker["chain"][
+                        "environment_freeze_manifest_sha256"
+                    ],
+                },
+            },
+            {
+                "schema_version": 1,
+                "event": "terminal_outcome",
+                "event_id": event_id(1),
+                "authorization_id": authorization_id,
+                "launch_attempt_id": launch_id,
+                "date": date,
+                "record_kind": record_kind,
+                "status": status,
+                "terminal_record_sha256": terminal_record_sha,
+                "raw_manifest_sha256": raw_manifest_sha,
+            },
+            {
+                "schema_version": 1,
+                "event": "authorization_consumed",
+                "event_id": event_id(2),
+                "authorization_id": authorization_id,
+                "launch_attempt_id": launch_id,
+                "date": date,
+                "derived_from": {
+                    "event": "payload_started",
+                    "event_id": event_id(0),
+                    "payload_started_sha256": marker_sha,
+                },
+            },
+        ]
+    else:
+        if status not in {"INFRA_FAILURE", "NOT_STARTED"}:
+            raise ClosureDerivationError(
+                f"status {status} is not schema-expressible as a "
+                "pre_payload_terminal_outcome"
+            )
+        try:
+            terminal_record_sha = sha256_file(terminal_path)
+        except OSError as exc:
+            raise ClosureDerivationError(
+                f"terminal record is missing or unreadable: {exc}"
+            ) from exc
+        derived = [
+            {
+                "schema_version": 1,
+                "event": "pre_payload_terminal_outcome",
+                "event_id": event_id(0),
+                "authorization_id": authorization_id,
+                "launch_attempt_id": launch_id,
+                "date": date,
+                "status": status,
+                "terminal_record_sha256": terminal_record_sha,
+                "consumes": False,
+            }
+        ]
+
+    for offset, event in enumerate(derived):
+        failures = sorted(
+            ledger_validator.iter_errors(event),
+            key=lambda item: tuple(str(part) for part in item.absolute_path),
+        )
+        if failures:
+            raise ClosureDerivationError(
+                f"derived closure event {offset + 1} is not schema-expressible: "
+                f"{_schema_error(failures[0])}"
+            )
+    return derived
+
+
+def verify_closure(
+    pre_closure_ledger_jsonl: str,
+    closure_ledger_jsonl: str,
+    evidence_root: str | os.PathLike[str],
+    run_id: str,
+    *,
+    date: str,
+) -> dict[str, Any]:
+    """Require byte-exact deterministic closure plus both standing audits."""
+
+    try:
+        derived = derive_closure_events(
+            evidence_root, run_id, pre_closure_ledger_jsonl, date=date
+        )
+    except ClosureDerivationError as exc:
+        return {"ok": False, "errors": [str(exc)]}
+
+    errors: list[str] = []
+    expected = pre_closure_ledger_jsonl + "".join(
+        canonical_dumps(event) + "\n" for event in derived
+    )
+    if closure_ledger_jsonl != expected:
+        errors.append(
+            "closure ledger does not exactly equal the pre-closure ledger plus "
+            "the deterministically derived canonical closure events"
+        )
+
+    stream_report = validate_ledger(closure_ledger_jsonl)
+    if not stream_report["ok"]:
+        errors.extend(
+            f"ledger validation: {error}" for error in stream_report["errors"]
+        )
+    evidence_report = verify_ledger_against_evidence(
+        closure_ledger_jsonl, evidence_root
+    )
+    if not evidence_report["ok"]:
+        errors.extend(
+            f"evidence verification: {error}"
+            for error in evidence_report["errors"]
+        )
+    return {"ok": not errors, "errors": errors}
 
 
 def _chain_check(
