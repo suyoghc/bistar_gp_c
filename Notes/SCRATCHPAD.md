@@ -2,7 +2,17 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## M2cR R3 — COMPLETE: diagnostic protocol + decision-rule freeze; Draft PR open (NOT Ready, NOT merged) (D50 + Update 1, 2026-07-18) — branch `feat/d19-m2cr-r3-diagnostic-protocol` off `35ccc3d`, HARD STOP
+## M2cR R3a — COMPLETE: production launch vehicle; Draft PR open (NOT Ready, NOT merged) (D51 + Update 1, 2026-07-19) — branch `feat/d19-m2cr-r3a-launch-vehicle` off `b19cce2`, HARD STOP
+
+- **Shipped (D51 scope exactly; Update 1 is the full record):** `d0a317d` (docs-first + template `d62fee60…`) · `c11db47` (`r4_launch.py` + 48-test battery) · `601f599` (regen + Layer-1b re-pin + report currency). Full suite at `601f599`: **1005 passed / 2 skipped / 0 failed**. Gate: Codex gpt-5.6-sol xHigh implementation, Fable-verified line-by-line; ONE Opus 4.8 read-only exact-head review: **APPROVE**, zero defects, two advisory NOTEs (rc-0-is-mechanism-not-outcome; tracked-only worktree cleanliness), both Fable-verified and recorded; no correction pass needed.
+- **NEXT (each a separate author act; none authorized):** author decides the R3a Draft PR (Ready/merge). AFTER merge, R4 preparation per the preflight ballot: T-B freeze regeneration, committed launch packet (consumed by `python -m bistar_gp.m2cr.r4_launch`), prospective grant in the v1.19 ledger, then the separate one-shot `--execute` authorization. R4 is NOT begun; v1.18 instance absent; D45 stays UNVALIDATED_ATTEMPT.
+
+- **Why:** the read-only R4 preflight (2026-07-19, at `origin/main` `b19cce2` = the PR #18 merge) passed the startup gate and every chain/pin verification but returned **BLOCKED**: no committed, reviewed argv-level launch vehicle exists (`capture.py` has no `__main__`; no console script; the launch-authority battery defers production proof to pytest). Author ballot: an R4-created launcher REJECTED; **R4 stays BLOCKED before any grant or launch**; one narrow hermetic R3a amendment AUTHORIZED (D51).
+- **Scope:** NEW `bistar_gp/m2cr/r4_launch.py` (`python -m bistar_gp.m2cr.r4_launch`; closed-world canonical launch packet binding commit/chain/grant id/attempt+run ids/template sha/manifest digests/worktree identity/evidence dir/8 h ceiling; explicit `--execute`; validate/report mode with zero side effects; on `--execute` invokes only `launch_config_from_freeze` then `capture_run`); NEW committed template `docs/m2c_freeze/m2cr_r4_bootstrap_template_v1.json` (sha256 `d62fee60…`, diagnostic entry + `pass_context: true`); NEW hermetic battery `tests/test_m2cr_r4_launch.py`; regen of the four affected artifacts by the established recipe + F8 report currency; NO infra code pin for the launcher (D50 ballot-C precedent); NO R4 ids/grants/evidence; NO R2/R2a module edits.
+- **Gate:** bounded Codex gpt-5.6-sol xHigh implementation with Fable verifying every change; focused + full suite; ONE bounded read-only Opus 4.8 exact-head review, Fable-verified, at most one consolidated correction pass; Draft PR; HARD STOP before Ready/merge/R4 grant/`launch_attempt_started`/`--execute`/evidence/scientific computation.
+- R4 is NOT begun. D45 stays UNVALIDATED_ATTEMPT; the v1.18 instance stays absent; the ledger stays one D45 line.
+
+## M2cR R3 — COMPLETE: diagnostic protocol + decision-rule freeze; PR #18 MERGED at `b19cce2` (2026-07-19; D50 + Update 1, 2026-07-18) — branch `feat/d19-m2cr-r3-diagnostic-protocol` off `35ccc3d`, HARD STOP
 
 - **Shipped (v1.21 scope exactly; D50 Update 1 is the full record):** docs-first freeze
   (`0bbc69d`), implementation (`365d7b3`: diagnostic.py + diagnostic_payload.py + capture/audit
@@ -12,11 +22,11 @@ Working notes: current plan, open questions, in-progress state. Clean out comple
 - **Panel (one bounded parallel pass at `c855d5f`):** Opus 4.8 APPROVE; GLM 5.2 APPROVE;
   Kimi K3 REVISE (two MINORs, both fixed); no BLOCKER/MAJOR anywhere; every finding
   independently verified by Fable; three dismissals recorded with evidence.
-- **NEXT (each a separate author act; none authorized):** author decides the R3 Draft PR
-  (Ready/merge). **R4 needs a fresh grant in the v1.19 ledger** — its `frozen_chain` now
-  necessarily cites the committed protocol manifest — plus freeze regeneration at its own
-  worktree/commit and the `--execute` boundary. v1.18 instance stays absent; D45 stays
-  UNVALIDATED_ATTEMPT.
+- **NEXT — superseded by D51 (2026-07-19):** PR #18 was merged at `b19cce2`; the R4 preflight
+  then returned BLOCKED (no committed launch vehicle) and the author authorized the R3a
+  amendment tracked in the section above. R4 still needs its own fresh grant, freeze
+  regeneration, and `--execute` boundary, all AFTER R3a merges. v1.18 instance stays absent;
+  D45 stays UNVALIDATED_ATTEMPT.
 
 - **Ballot ratified (D50):** A1 (Layer-1b enforcement closed inside R3 — capture authenticates the
   committed protocol manifest chain-bound at launch; parent validates the exact persisted

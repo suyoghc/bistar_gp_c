@@ -662,3 +662,31 @@ interim Layer-1b manifest) · `0071fd4` (regen) · `c855d5f` (report currency) �
 committed, chain-bound protocol manifest and schema-valid persisted payload; R4 stays blocked
 on a fresh author grant; the v1.18 label/instance stay permanently unused/absent; D45 stays
 UNVALIDATED_ATTEMPT.
+
+## 2026-07-19 — M2cR R4 preflight (BLOCKED) + R3a production launch vehicle (D51); Draft PR opened
+
+**What was done:** The author-directed read-only R4 preflight at `origin/main` `b19cce2` (the PR #18
+merge) passed the startup gate and every authority verification — all infrastructure/environment/
+protocol pins byte-verified, v1.17 canonical recomputed `65381bc7…`, all 154 worktree-root
+importable-manifest entries matched with zero extras, ledger exactly the one D45 line — and returned
+**BLOCKED** on one gap: no committed argv-level production launch vehicle. The author's ballot
+adopted T-B regeneration, one_shot, Draft evidence PR, and capture-at-source evidence, REJECTED an
+R4-created launcher, and authorized the narrow hermetic **R3a** amendment (D51). This session then
+delivered R3a on `feat/d19-m2cr-r3a-launch-vehicle`: the fixed diagnostic bootstrap template
+(`d62fee60…`), `bistar_gp/m2cr/r4_launch.py` (`python -m bistar_gp.m2cr.r4_launch`; closed-world
+canonical launch packet; read-only validate mode; `--execute` gate appending one schema-valid
+`launch_attempt_started` line between factory success and capture; only `launch_config_from_freeze`
+then `capture_run`; no wrappers), a 48-test hermetic battery, and the four-artifact regeneration at
+the exact code commit with report currency (fixed total 8,870,677 B).
+
+**Committed:** `d0a317d` (docs-first) · `c11db47` (implementation) · `601f599` (regen) · the final
+docs commit (D51 Update 1 + SCRATCHPAD + this entry). Full suite at `601f599`:
+**1005 passed / 2 skipped / 0 failed**.
+
+**Key points:** Codex gpt-5.6-sol xHigh implemented under the bounded brief with every line
+Fable-verified (one recorded deviation, packet-derived repo root, verified sound); ONE read-only
+Opus 4.8 exact-head review returned **APPROVE** with zero defects and two advisory NOTEs, both
+independently verified; the launcher takes no infrastructure code pin (ballot-C precedent) and the
+R2 code-pin set is untouched; R4 remains BLOCKED and NOT begun — it needs its own author-authorized
+preparation and one-shot launch grant after this PR merges; D45 stays UNVALIDATED_ATTEMPT; the
+v1.18 instance stays absent. Draft PR opened and held before Ready/merge. HARD STOP.
