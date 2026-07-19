@@ -289,6 +289,12 @@ class AuthenticatedLaunchSpec:
     site_packages: str
     environment_freeze_manifest_sha256: str
     infrastructure_manifest_sha256: str
+    protocol_manifest_sha256: str
+    diagnostic_record_schema_path: str
+    diagnostic_record_schema_sha256: str
+    protocol_parameters_path: str
+    protocol_parameters_sha256: str
+    execution_record_schema_path: str
     bootstrap_path: str
     evidence_ceilings: Mapping[str, int]
     spec_sha256: str
@@ -1399,6 +1405,69 @@ def _bootstrap_fault(run_dir: Path) -> tuple[str, str] | None:
 
 def _load_protocol_payload(run_dir: Path) -> dict[str, Any]:
     return _read_json_object(run_dir / "payload.json")
+
+
+def _validate_diagnostic_protocol_payload(
+    payload_path: Path, spec: AuthenticatedLaunchSpec
+) -> None:
+    """Validate the exact persisted R3 payload (prereg v1.21 section 7/A1)."""
+
+    from jsonschema import Draft202012Validator
+    from referencing import Registry, Resource
+
+    payload = json.loads(payload_path.read_text(encoding="utf-8"))
+    diagnostic_path = Path(spec.diagnostic_record_schema_path)
+    if sha256_file(diagnostic_path) != spec.diagnostic_record_schema_sha256:
+        raise RecordAssemblyError(
+            "authenticated R3 diagnostic schema changed before payload validation"
+        )
+    infra_path = Path(spec.worktree_root) / _COMMITTED_INFRA_RELPATH
+    if sha256_file(infra_path) != spec.infrastructure_manifest_sha256:
+        raise RecordAssemblyError(
+            "authenticated infrastructure manifest changed before payload validation"
+        )
+    infra = _read_json_object(infra_path)
+    r1_schemas = infra.get("r1_schemas")
+    if not isinstance(r1_schemas, Mapping):
+        raise RecordAssemblyError(
+            "authenticated infrastructure manifest lacks r1_schemas"
+        )
+    execution_path = _authenticated_pin_under_worktree(
+        r1_schemas, "execution_record", Path(spec.worktree_root)
+    )
+    if execution_path != Path(spec.execution_record_schema_path):
+        raise RecordAssemblyError(
+            "authenticated execution-record schema path changed before validation"
+        )
+    diagnostic_schema = json.loads(
+        diagnostic_path.read_text(encoding="utf-8")
+    )
+    execution_schema = json.loads(
+        execution_path.read_text(encoding="utf-8")
+    )
+    if not isinstance(diagnostic_schema, dict) or not isinstance(
+        execution_schema, dict
+    ):
+        raise RecordAssemblyError("authenticated R3/R1 schema is not an object")
+    registry = Registry().with_resources(
+        [
+            (
+                diagnostic_schema["$id"],
+                Resource.from_contents(diagnostic_schema),
+            ),
+            (
+                execution_schema["$id"],
+                Resource.from_contents(execution_schema),
+            ),
+        ]
+    )
+    validator = Draft202012Validator(diagnostic_schema, registry=registry)
+    first_error = next(validator.iter_errors(payload), None)
+    if first_error is not None:
+        raise RecordAssemblyError(
+            "diagnostic payload violates the R3 diagnostic-record schema: "
+            f"{first_error.message}"
+        )
 
 
 def _stage_class_map_from_records(
@@ -2522,6 +2591,10 @@ def capture_run(config: LaunchConfig) -> dict[str, Any]:
                         else:
                             try:
                                 payload = _load_protocol_payload(run_dir)
+                                if config.record_kind == "diagnostic":
+                                    _validate_diagnostic_protocol_payload(
+                                        run_dir / "payload.json", spec
+                                    )
                                 node_records, validated_evidence = (
                                     _validated_node_records(run_dir)
                                 )
@@ -3023,6 +3096,7 @@ def _bind_spec_static_directives(
 
 
 _COMMITTED_INFRA_RELPATH = "docs/m2c_freeze/m2cr_infrastructure_manifest_v1.json"
+_COMMITTED_PROTOCOL_RELPATH = "docs/m2c_freeze/m2cr_protocol_manifest_v1.json"
 
 
 def _authenticated_pin_under_worktree(
@@ -3189,6 +3263,78 @@ def _authenticate_launch_spec(
     from bistar_gp.m2cr.environment_freeze import parse_evidence_ceilings
 
     evidence_ceilings = parse_evidence_ceilings(_read_json_object(ceilings_path))
+
+    # Prereg v1.21 section 7 / ballot A1: authenticate the committed Layer-1b
+    # manifest against the chain, bind its downward Layer-1a reference, and
+    # resolve both of its pins under the same launch worktree discipline.
+    protocol_manifest_path = worktree / _COMMITTED_PROTOCOL_RELPATH
+    if not protocol_manifest_path.is_file():
+        raise ValueError(
+            "committed protocol manifest not found under the launch worktree: "
+            f"{protocol_manifest_path}"
+        )
+    expected_protocol_sha = chain.get("protocol_manifest_sha256")
+    if (
+        not isinstance(expected_protocol_sha, str)
+        or _SHA256_RE.fullmatch(expected_protocol_sha) is None
+    ):
+        raise ValueError(
+            "authorized chain lacks a valid protocol_manifest_sha256 binding"
+        )
+    if sha256_file(protocol_manifest_path) != expected_protocol_sha:
+        raise ValueError(
+            "protocol manifest under the worktree does not match the "
+            "authorized chain binding"
+        )
+    protocol_manifest = _read_json_object(protocol_manifest_path)
+    protocol_keys = {
+        "kind",
+        "schema_version",
+        "addendum",
+        "diagnostic_record_schema",
+        "protocol_parameters",
+        "infrastructure_manifest_sha256",
+    }
+    if set(protocol_manifest) != protocol_keys:
+        raise ValueError(
+            "protocol manifest must carry exactly the frozen Layer-1b key set"
+        )
+    if protocol_manifest["kind"] != "m2cr_protocol_manifest":
+        raise ValueError("protocol manifest has the wrong kind")
+    if protocol_manifest["schema_version"] != 1:
+        raise ValueError("protocol manifest has the wrong schema_version")
+    if protocol_manifest["addendum"] != "v1.21":
+        raise ValueError("protocol manifest has the wrong addendum")
+    if protocol_manifest["infrastructure_manifest_sha256"] != expected_infra_sha:
+        raise ValueError(
+            "protocol manifest does not reference the authenticated "
+            "infrastructure manifest"
+        )
+    for pin_name in ("diagnostic_record_schema", "protocol_parameters"):
+        protocol_pin = protocol_manifest.get(pin_name)
+        if (
+            not isinstance(protocol_pin, Mapping)
+            or set(protocol_pin) != {"path", "sha256"}
+            or not isinstance(protocol_pin.get("path"), str)
+            or not isinstance(protocol_pin.get("sha256"), str)
+            or _SHA256_RE.fullmatch(protocol_pin["sha256"]) is None
+        ):
+            raise ValueError(
+                f"protocol manifest has a malformed {pin_name} pin"
+            )
+    diagnostic_schema_path = _authenticated_pin_under_worktree(
+        protocol_manifest, "diagnostic_record_schema", worktree
+    )
+    protocol_parameters_path = _authenticated_pin_under_worktree(
+        protocol_manifest, "protocol_parameters", worktree
+    )
+    r1_schemas = infra.get("r1_schemas")
+    if not isinstance(r1_schemas, Mapping):
+        raise ValueError("infrastructure manifest lacks an r1_schemas section")
+    execution_record_schema_path = _authenticated_pin_under_worktree(
+        r1_schemas, "execution_record", worktree
+    )
+
     expectations = _read_json_object(expectations_path)
     dependency_lock = _read_json_object(lock_path)
     for key in _MANDATORY_ATTESTATION_KEYS:
@@ -3322,6 +3468,12 @@ def _authenticate_launch_spec(
         "site_packages": four_roots["site-packages"],
         "environment_freeze_manifest_sha256": env_freeze_sha,
         "infrastructure_manifest_sha256": expected_infra_sha,
+        "protocol_manifest_sha256": expected_protocol_sha,
+        "diagnostic_record_schema_path": os.fspath(diagnostic_schema_path),
+        "diagnostic_record_schema_sha256": sha256_file(diagnostic_schema_path),
+        "protocol_parameters_path": os.fspath(protocol_parameters_path),
+        "protocol_parameters_sha256": sha256_file(protocol_parameters_path),
+        "execution_record_schema_path": os.fspath(execution_record_schema_path),
         "bootstrap_path": os.fspath(bootstrap_path.resolve()),
         "evidence_ceilings": evidence_ceilings,
     }
@@ -3344,6 +3496,18 @@ def _authenticate_launch_spec(
         site_packages=document["site_packages"],
         environment_freeze_manifest_sha256=env_freeze_sha,
         infrastructure_manifest_sha256=expected_infra_sha,
+        protocol_manifest_sha256=expected_protocol_sha,
+        diagnostic_record_schema_path=document[
+            "diagnostic_record_schema_path"
+        ],
+        diagnostic_record_schema_sha256=document[
+            "diagnostic_record_schema_sha256"
+        ],
+        protocol_parameters_path=document["protocol_parameters_path"],
+        protocol_parameters_sha256=document["protocol_parameters_sha256"],
+        execution_record_schema_path=document[
+            "execution_record_schema_path"
+        ],
         bootstrap_path=document["bootstrap_path"],
         evidence_ceilings=evidence_ceilings,
     )

@@ -55,10 +55,10 @@ _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _RAW_MANIFEST_NAME = "RAW_MANIFEST.sha256"
 _TERMINAL_RECORD_NAME = "terminal_record.json"
 _RAW_MANIFEST_LINE = re.compile(r"^([0-9a-f]{64})  (\S[^\n]*)$")
-# Chain members the caller may legitimately declare absent during R2: they are
-# R3/R5-owned artifacts that do not exist yet.
+# After R3 the protocol manifest is committed and never declarable-absent.
+# The remaining members are produced only by R4 (diagnostic-record instance)
+# and R5 (amendment manifest); D45 historical ledger semantics are unchanged.
 _DECLARABLE_ABSENT = {
-    "protocol_manifest_sha256",
     "diagnostic_record_sha256",
     "amendment_manifest",
 }
@@ -917,8 +917,8 @@ def verify_chain(
     ``expectations`` supplies committed digests under their chain-field names.
     A member with no caller-supplied expectation FAILS unless the caller
     explicitly lists it in ``expectations["expected_absent"]``, which is
-    allowed only for the R3/R5-owned members (protocol manifest, diagnostic
-    record, amendment manifest).  The chain's ``authorization_id`` must
+    allowed only for the R4/R5-produced diagnostic record and amendment
+    manifest.  The chain's ``authorization_id`` must
     resolve to a prospective ``authorization_granted`` ledger event; a
     ``historical_authorization_record`` never satisfies a chain (prereg v1.19:
     every future execution requires its own fresh explicit authorization).
@@ -972,7 +972,8 @@ def verify_chain(
     invalid_absent = expected_absent - _DECLARABLE_ABSENT
     if invalid_absent:
         errors.append(
-            "expected_absent contains non-R3/R5 chain members: "
+            "expected_absent contains members that are not the R4/R5-produced "
+            "chain members: "
             + ", ".join(sorted(invalid_absent))
         )
     expected_absent &= _DECLARABLE_ABSENT

@@ -29,6 +29,7 @@ from bistar_gp.m2cr.capture import (
     validate_terminal_record,
     verify_preboundary_attestation_set,
 )
+from bistar_gp.m2cr.diagnostic import build_protocol_manifest
 from bistar_gp.m2cr.serialization import (
     atomic_write_canonical_json,
     canonical_dumps,
@@ -46,6 +47,7 @@ from tests.test_m2cr_bootstrap import (
     write_fake_native_stack,
     write_importable_manifest,
 )
+from tests.test_m2cr_diagnostic_schema import valid_instance
 
 
 MINICONDA_PYTHON = "/opt/homebrew/Caskroom/miniconda/base/bin/python3.13"
@@ -153,25 +155,41 @@ def _payload_source(
             if mode == "unbalanced"
             else 'context.emit("STAGE_END", stage_id="level0")'
         )
-        stages = """[{
-            "stage_id": "level0", "stage_class": "verdict",
-            "status": "COMPLETED", "nodes_evaluated": 1, "nodes_total": 1
-        }]"""
         marker_mutation = ""
         if mode == "delete_marker":
             marker_mutation = f"os.unlink({os.fspath(marker_path)!r})"
         elif mode == "tamper_marker":
             marker_mutation = f"open({os.fspath(marker_path)!r}, 'ab').write(b'\\n')"
-        node_records = (
-            '[{"node_index": 0}]'
+        payload = valid_instance()
+        payload.pop("node_evidence_digests")
+        payload["node_records"] = (
+            [{"node_index": 0}]
             if mode == "invalid"
-            else repr([_failed_node_record()])
+            else [_failed_node_record()]
         )
-        aggregates = _aggregate_source()
+        if mode == "invalid_diagnostic_schema":
+            payload["unknown_r3_member"] = True
+        if mode == "result":
+            payload["unknown_r3_member"] = True
+            payload["result_payload"] = {
+                "profile_band_masses": {
+                    "lo": 0.2,
+                    "mid": 0.5,
+                    "hi": 0.3,
+                    "sum": 1.0,
+                },
+                "numerical_sensitivity": {"lo": 0.0, "mid": 0.0, "hi": 0.0},
+                "realized_grids": [
+                    {
+                        "stage_id": "level0",
+                        "n_nodes": 1,
+                        "min_noise": 0.1,
+                        "max_noise": 0.1,
+                    }
+                ],
+            }
         if mode == "false_aggregates":
-            aggregates = aggregates.replace(
-                '"restart_count": 0', '"restart_count": 1', 1
-            )
+            payload["aggregates"]["verdict_class"]["restart_count"] = 1
         body = f"""
     import os
     import bistar_gp.profile_integration
@@ -181,12 +199,7 @@ def _payload_source(
     {end}
     {marker_mutation}
     {extra_code}
-    return {{
-        "status": "COMPLETED",
-        "stages": {stages},
-        "aggregates": {aggregates},
-        "node_records": {node_records}
-    }}
+    return {payload!r}
 """
     return "def run(context):\n" + body
 
@@ -308,6 +321,13 @@ def _finalize_bundle(worktree: Path) -> dict[str, object]:
     """
 
     freeze_dir = worktree / "docs" / "m2c_freeze"
+    for name in (
+        "m2c_diagnostic_record.schema_v1.json",
+        "m2cr_diagnostic_protocol_v1.json",
+        "m2c_execution_record.schema_v1.json",
+        "m2c_authorization_ledger.schema_v1.json",
+    ):
+        shutil.copy2(REPOSITORY_ROOT / "docs/m2c_freeze" / name, freeze_dir / name)
     env_freeze = {
         "kind": "m2cr_environment_freeze_manifest",
         "schema_version": 1,
@@ -336,13 +356,32 @@ def _finalize_bundle(worktree: Path) -> dict[str, object]:
             }
             for name in _FREEZE_RELPATHS
         },
+        "r1_schemas": {
+            "execution_record": {
+                "path": "docs/m2c_freeze/m2c_execution_record.schema_v1.json",
+                "sha256": sha256_file(
+                    freeze_dir / "m2c_execution_record.schema_v1.json"
+                ),
+            },
+            "authorization_ledger": {
+                "path": "docs/m2c_freeze/m2c_authorization_ledger.schema_v1.json",
+                "sha256": sha256_file(
+                    freeze_dir / "m2c_authorization_ledger.schema_v1.json"
+                ),
+            },
+        },
     }
     infra_path = worktree / _INFRA_RELPATH
     atomic_write_canonical_json(infra_path, infra)
+    protocol_path = freeze_dir / "m2cr_protocol_manifest_v1.json"
+    atomic_write_canonical_json(
+        protocol_path, build_protocol_manifest(worktree)
+    )
     return {
         **CHAIN,
         "infrastructure_manifest_sha256": sha256_file(infra_path),
         "environment_freeze_manifest_sha256": sha256_file(env_freeze_path),
+        "protocol_manifest_sha256": sha256_file(protocol_path),
     }
 
 
@@ -593,9 +632,17 @@ def _rebind_infra(config: LaunchConfig, mutate) -> LaunchConfig:
     infra = json.loads(infra_path.read_text(encoding="utf-8"))
     mutate(infra, worktree)
     atomic_write_canonical_json(infra_path, infra)
+    protocol_path = worktree / "docs/m2c_freeze/m2cr_protocol_manifest_v1.json"
+    atomic_write_canonical_json(
+        protocol_path, build_protocol_manifest(worktree)
+    )
     return dataclasses.replace(
         config,
-        chain={**config.chain, "infrastructure_manifest_sha256": sha256_file(infra_path)},
+        chain={
+            **config.chain,
+            "infrastructure_manifest_sha256": sha256_file(infra_path),
+            "protocol_manifest_sha256": sha256_file(protocol_path),
+        },
     )
 
 
@@ -1780,6 +1827,9 @@ _COMMITTED_FREEZE = REPOSITORY_ROOT / "docs/m2c_freeze/m2cr_environment_freeze_m
 _COMMITTED_INFRASTRUCTURE = (
     REPOSITORY_ROOT / "docs/m2c_freeze/m2cr_infrastructure_manifest_v1.json"
 )
+_COMMITTED_PROTOCOL = (
+    REPOSITORY_ROOT / "docs/m2c_freeze/m2cr_protocol_manifest_v1.json"
+)
 
 
 def _committed_bundle_is_current() -> bool:
@@ -1799,6 +1849,7 @@ def _committed_bundle_is_current() -> bool:
             "environment_freeze_manifest_sha256": sha256_file(
                 _COMMITTED_FREEZE
             ),
+            "protocol_manifest_sha256": sha256_file(_COMMITTED_PROTOCOL),
         }
         _authenticate_launch_spec(REPOSITORY_ROOT, chain)
         return True
@@ -1828,6 +1879,7 @@ def test_committed_freeze_artifacts_derive_the_ratified_pins(
             _COMMITTED_INFRASTRUCTURE
         ),
         "environment_freeze_manifest_sha256": sha256_file(_COMMITTED_FREEZE),
+        "protocol_manifest_sha256": sha256_file(_COMMITTED_PROTOCOL),
     }
     spec = _authenticate_launch_spec(REPOSITORY_ROOT, chain)
     assert spec.interpreter_path == MINICONDA_PYTHON

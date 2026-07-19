@@ -4790,3 +4790,219 @@ freeze, v1.18 schema, ledger, plan, `profile_integration.py`); prereg addenda st
 content; no scientific/model computation anywhere (hermetic fake payloads and import-only children
 exclusively). **R4 remains blocked until this PR merges; R3 and every `--execute` stay separate
 author acts. Draft PR opened; NOT flipped Ready; NOT merged. HARD STOP.**
+
+### D49 — Update 2 (2026-07-18): PR #17 MERGED; R2a closed
+
+The author merged PR #17 at `35ccc3d3e871a864b081d10e6ca7db53b0cbd5fe` (2026-07-18T19:27:33Z),
+superseding Update 1's "NOT merged" status line. `origin/main` now carries the complete R2a
+freeze-plus-enforcement; the final-head full suite recorded in the PR was 869 passed / 2 skipped /
+0 failed. R2a is frozen. R3 and every `--execute` remain separate author acts (R3 begun under D50).
+
+## D50: M2cR milestone R3 — diagnostic protocol and decision-rule freeze; ballot A1/B/C ratified; prereg v1.21 frozen; Layer-1b launch/audit enforcement authorized as bounded R2/R2a amendments — 2026-07-18
+
+**Problem:** With R2a merged, R3 (plan §8: §6 verbatim, diagnostic-record schema, PROTOCOL
+manifest, coordinate goldens, hermetic classifier tests) had four unresolved ownership questions,
+surfaced by a fresh read-only preflight at `origin/main` = `35ccc3d`:
+
+1. **Layer-1b enforcement gap.** Merged R2/R2a never authenticates the protocol manifest at
+   launch: `_authenticate_launch_spec` (`bistar_gp/m2cr/capture.py`) resolves the infrastructure
+   manifest, environment-freeze set, and ceilings, but `protocol_manifest_sha256` is only
+   regex-checked (`validate_chain`) and `bistar_gp/m2cr/audit.py` lets callers declare it absent
+   (`_DECLARABLE_ABSENT`). The R1 ledger already requires a real digest in every R4/R6 grant, but
+   nothing proved the worktree's committed protocol manifest matches the granted chain. No
+   milestone owned closing this — the same unowned-enforcement class D49 diagnosed for ceilings.
+2. **Diagnostic-record instance residence.** v1.19 §8 fixes the referent (the instance governed by
+   `m2c_diagnostic_record.schema_v1.json`, never a terminal record) but not the path; the R2a
+   run-directory layout and evidence classes fail closed against silent additions.
+3. Whether R3 implements a §6.3 rows evaluator or leaves application entirely manual at R5.
+4. The PROTOCOL manifest's key set: literal plan §3.1 enumeration vs additional R3 code pins.
+
+The preflight also confirmed: no diagnostic orchestrator/classifier/slope code exists anywhere in
+`bistar_gp/` (the R2 implementation map defers orchestrator-v2 composition to R3; plan §7 makes R4
+execution-only); the §6 fixture authorities are byte-faithful at the cited lines; the six-stage
+closure and both determinations below are representable in the frozen R1 schema and capture
+bookkeeping without amendment.
+
+**Decision (author ballot, cast 2026-07-18; frozen as prereg addendum v1.21):**
+
+- **A1 — Layer-1b enforcement closed inside R3** via bounded amendments to the two
+  infrastructure-pinned modules: `_authenticate_launch_spec` resolves the committed protocol
+  manifest under the launch worktree, requires byte equality with the chain's
+  `protocol_manifest_sha256`, parses it closed-world, requires its Layer-1a reference to equal the
+  spec's authenticated infrastructure digest, digest-verifies the schema/parameter pins, and
+  carries the facts spec-digest-bound; the parent additionally validates the **exact persisted
+  `payload.json`** (post node-externalization, post digest-injection) of every diagnostic-kind
+  protocol exit against the authenticated diagnostic-record schema before acceptance
+  (`schema_invalid_payload` fault otherwise); audit's `_DECLARABLE_ABSENT` shrinks to
+  `{diagnostic_record_sha256, amendment_manifest}`. Historical semantics preserved: D45 stays a
+  historical consumed entry, never re-adjudicated; no committed R2-era report is rewritten. Not
+  left as an unowned pre-R4 task.
+- **B — rows evaluator implemented in R3**: a pure, hermetically tested function over the
+  diagnostic-record instance returning only the first matching row number and frozen track label;
+  mechanizes B16 precedence for R5's mechanical application; authorizes no execution and decides
+  no new science. The record itself never carries a disposition.
+- **C — literal §3.1 key set** for `m2cr_protocol_manifest_v1.json`: `kind`, `schema_version`,
+  `addendum`, `diagnostic_record_schema {path, sha256}`, `protocol_parameters {path, sha256}`,
+  `infrastructure_manifest_sha256`. No R3 code pins — code bytes stay bound by `execution_commit`
+  and the importable-artifact manifest with origin/loader authentication.
+- **Determinations frozen with the ballot** (v1.21 §§2–8): the instance is the diagnostic run's
+  `payload.json` at `docs/m2c_evidence/<run_id>/` (existing `RUN_DIR_LAYOUT` entry, existing
+  `fixed_runtime` class, v1.20 32-MiB per-file + 128-MiB bundle ceilings, RAW_MANIFEST-covered; no
+  layout amendment); orchestrator-to-gate composition in canonical `(ls, os, lv)` axes with the
+  role permutation inside the bridge wrapper (gates byte-identical, storage-permutation invariance
+  achievable, per-seed canonical direction goldens hard-coded); global ascending-noise probe order
+  with **stage-grouped** `node_index` plus recorded `probe_position` (frozen capture contiguity
+  honored); sweep measured at the FINAL curvature evaluation point with the frozen gate's own
+  per-`h` statistic, natural-log OLS; purity at `mode_u`, repeats 2, probe positions
+  first/mid/last; closure = full refined grid + one-decade pullbacks (caps `1e3`, `1e-6`) refined
+  to L=3, at most ~1,481 nodes.
+- **Docs-first artifacts committed with this entry:**
+  `docs/m2c_freeze/m2c_diagnostic_record.schema_v1.json` and
+  `docs/m2c_freeze/m2cr_diagnostic_protocol_v1.json` (initial hashes `b6b60dd1…` /
+  `bdfac013…`, corrected below); the protocol manifest is generated at the
+  post-implementation regeneration (it must reference the final Layer-1a digest) and its hash
+  is appended here on completion.
+
+**Correction (same PR, pre-implementation commit; provenance restored, no scientific change):**
+the docs-first commit quoted `expected_noise` as `0.06`, sourced from a ROUNDED fixture dict in
+`tests/test_prior_sensitivity_figures.py`; the frozen constant the plan cites is
+`FIGURE_EXPECTATIONS["toy_elicited_map_noise"] = 0.061867347763041584` in
+`experiments/prior_sensitivity_study.py` (flagged by the Codex implementation pass, verified
+against the source by Fable). The schema const, the parameters artifact, and the v1.21 §3
+parenthetical now quote the full-precision constant, and v1.21 §3 additionally pins the
+`map_fitted` seed placement (fresh build, then `torch.manual_seed(42)` immediately before
+`fit_map`). The addenda file remains strictly append-only in the PR diff against `main` (every
+edited line is new in this PR). Corrected hashes:
+`m2c_diagnostic_record.schema_v1.json`
+`2c0fc788b4a04c3bf02bc2a7fd4a29e2e51be11cf37d8cf972f98c9edc56e598`;
+`m2cr_diagnostic_protocol_v1.json`
+`97625715323a4f9fac12fd0896b9cbaa5b35d534606f6fc4084c52d9a1efff32`. The comparison stays
+REPORT-ONLY (B12(h)); no gate, tolerance, or decision-table row is affected.
+
+**Alternatives considered:** deferring Layer-1b enforcement to a later pre-R4 act (rejected —
+recreates the unowned-enforcement gap D49 closed for ceilings); a dedicated
+`diagnostic_record.json` run-directory file (rejected — amends the deliberately fail-closed R2a
+layout/classes for no informational gain over the payload the bootstrap already persists); pinning
+R3 module hashes in the protocol manifest (rejected per C — redundant with `execution_commit` +
+importable-manifest binding, and extends the ratified §3.1 enumeration); freezing the table only as
+prose (rejected per B — manual row application at R5 invites transcription drift the evaluator
+eliminates); quoting the volatile artifact hashes inside the append-only addendum (rejected —
+hashes are recorded here and pinned by the protocol manifest, the machine authority, so a review
+correction cannot strand a stale hash in the addendum).
+
+**Workflow (author-directed, this session):** branch `feat/d19-m2cr-r3-diagnostic-protocol` off
+`origin/main` `35ccc3d3e871a864b081d10e6ca7db53b0cbd5fe`; docs-first commit (v1.21 + this entry +
+schema + parameters + SCRATCHPAD); bounded implementation delegated to Codex gpt-5.6-sol xHigh over
+the mapped R3 file list only; Fable reads every change against the frozen authorities; regeneration
+by the established fresh-detached-worktree recipe; focused tests then the full suite via
+`python -m pytest -q`; one parallel advisory findings-only panel (Opus 4.8 correctness/conformance;
+Kimi K3 artifact graph/ownership/R3-R4 boundary; GLM 5.2 adversarial schema/classifier edges) with
+Fable independently verifying every finding; at most ONE consolidated correction pass; Draft PR;
+HARD STOP before Ready/merge/R4/`--execute`. No R3/R4 diagnostic payload or scientific
+model/profile computation; no Mauna/holdout access or computation; no ledger event;
+`docs/m2c_freeze/gtoy_profile_result_v1.18.json` stays absent. (The full suite legitimately
+exercises R3 classifier/protocol machinery on synthetic values and fake/rigged callables, runs
+the four real-root infrastructure launches, and retains the repository's pre-existing hermetic
+tiny-E1 sampler regression tests; `_real_components` is never executed.)
+
+**Status:** COMPLETE — see Update 1 below (implementation, regenerations, suite results,
+panel verdicts, final head).
+
+### D50 — Update 1 (2026-07-18): R3 implemented, regenerated, panel-reviewed; Draft PR opened; HARD STOP before Ready/merge
+
+**Commits** (branch `feat/d19-m2cr-r3-diagnostic-protocol` off `origin/main`
+`35ccc3d3e871a864b081d10e6ca7db53b0cbd5fe`): `0bbc69d` (docs-first: v1.21 + D50 + diagnostic-record
+schema + protocol parameters) · `365d7b3` (implementation + interim Layer-1b manifest +
+expected-noise provenance correction) · `0071fd4` (regen at 365d7b3 + Layer-1b re-pin) ·
+`c855d5f` (evidence-size report currency, F8 cross-check) · `9c4452f` (the single
+consolidated panel-correction pass) · `c038f47` (regen at 9c4452f + Layer-1b re-pin) · final
+docs commit (this update).
+
+**Implementation, exactly the v1.21 scope:** `bistar_gp/m2cr/diagnostic.py` (frozen per-h symmetry
+statistic; B12(c) natural-log OLS; exact inclusive B12(b) windows; rows 1–10 evaluator returning
+first-match row + frozen track; canonical bridge; Layer-1b manifest build/verify/CLI with the
+literal §3.1 key set, acyclicity guard, authenticated v1.20 static ceiling);
+`bistar_gp/m2cr/diagnostic_payload.py` (closure from frozen grid primitives, stage-grouped
+`node_index` + global ascending-noise probing, five continuation components verbatim, record-only
+curvature under the frozen retry policy, fresh-model battery, G2 at map/draws/optima,
+committed-form D23, fixture-exact prior draws with storage-order persistence, `map_fitted`-exact
+MAP wiring, purity at `mode_u` ×2; real components confined to `_real_components`, never executed
+by tests); capture.py A1 (chain-bound Layer-1b authentication incl. addendum value + downward
+Layer-1a equality + pin verification; exact-persisted-payload validation for diagnostic protocol
+exits mapping to `schema_invalid_payload`); audit.py `_DECLARABLE_ABSENT` narrowed to
+`{diagnostic_record_sha256, amendment_manifest}` (D45 historical semantics untouched). Six new
+hermetic test files + minimal A1-forced fixture updates in three existing ones. Codex gpt-5.6-sol
+xHigh implemented under the bounded brief; Fable read every change and applied four pre-commit
+corrections (exact windows sans ULP-widening; expected-noise chain to the full-precision constant;
+`map_fitted` seed placement; launch-side addendum value check).
+
+**Regeneration** (`0071fd4`, fresh-detached-worktree recipe): interpreter pin, child-env mapping,
+dependency lock, native-stack expectations, AND preboundary attestation set byte-identical (no
+closure member changed); importable manifest 8,746,211 B / 39,966 entries (+8 R3 sources);
+environment-freeze + infrastructure manifests re-derived (A1 code re-pins); protocol manifest
+re-pinned at the final Layer-1a digest
+`7d33bc9ebd1671768c5e5c1db561206af2b58fa8436cc11211f0fa8f45d0b4d3`; committed protocol manifest
+sha256 `63c2a8ec…` (schema pin `2c0fc788…`, parameters pin `97625715…` per the docs-first
+correction). The correction-pass regen (`c038f47`) re-pins the panel-corrected schema
+(`076cdc2ddb190ce4fb0b8a985423ab4fc7c450c3f97f7e7ffa7434b2207d0e98`) at the final Layer-1a
+digest `b63be66bb49254878aff13a78e8d09c43859812b44d9f07624873e7f203611fa`; final committed
+protocol manifest sha256
+`5afb0f00214e198905ce7f1fe8f89df6ef60ef7d9a81a5efc4a870a2780a4999`; parameters pin unchanged.
+
+**Suite:** focused R3 files 77 passed / 1 skipped; affected hermetic suites 276 passed / 1 skipped;
+full `python -m pytest -q` at `c855d5f`: **949 passed / 2 skipped / 0 failed** (6:18; both skips
+are the pre-existing opt-ins), including the four real-root integration launches now exercising A1
+protocol authentication against the real committed tree. The R2a-era F8 report cross-check
+correctly failed closed on the stale fixed-artifact total and was updated truthfully
+(8,870,266 B). Post-correction focused suites 137 + 137 green; full suite at the final code head
+`c038f47`: **957 passed / 2 skipped / 0 failed (6:51)**.
+
+**Advisory panel (one bounded parallel pass at `c855d5f`; findings-only, read-only; no individual
+veto; every finding independently verified by Fable):**
+
+- **Opus 4.8** (implementation correctness / frozen conformance): **APPROVE** — "no
+  correctness or conformance defect"; per-question verification of the sweep statistic
+  (construction-identical to the frozen gate), B12(c) OLS, exact windows, rows precedence,
+  closure realization, all five continuation components, A1 fail-closed authentication, and
+  frozen-file byte-integrity; two NOTEs only.
+- **Kimi K3** (artifact graph / ownership / architecture / R3-R4 boundary): **REVISE** — graph
+  acyclic, authentication chain admits no mismatched Layer-1b artifact, ledger narrowing
+  preserves D45, residence and `_real_components` boundary sound, no BLOCKER/MAJOR; two MINOR
+  governance-surface findings routed to the correction pass; five explicit non-findings.
+- **GLM 5.2** (adversarial schema / classifier / test edges): **APPROVE** — "internally
+  consistent … decision-table precedence is correct"; two MINOR closed-world backstop gaps and
+  two NOTEs.
+
+**Confirmed and fixed in the one consolidated pass (`9c4452f`), each verified by Fable against
+source first:** Kimi F1 — the audit declarable-absent rejection message still said "non-R3/R5
+chain members" post-narrowing; message and both test assertions corrected. Kimi F2 — the frozen
+schema's `curvature_summary` description named a consistency verifier that did not exist;
+`verify_diagnostic_record_consistency` now cross-checks every distilled rows-4/7 input and the
+G2 accepted-tail ordering against the authoritative `nodes/` evidence (positive + five
+tampering negatives). GLM F1 — `g2_equivalence.points` closed per kind and order via
+prefixItems (MAP point, ten const-seed prior draws) with an accepted-optimum-only tail. GLM
+F2 — the frozen 1,481-node B7 bound schema-encoded on `closure_node_count` and every per-stage
+count. GLM F3 — `classify_slope` fails closed on a defined-True/nonfinite slope instead of
+silently returning FLAT. GLM F4 — `d23_sentinel.per_site` gains `uniqueItems`.
+
+**Dismissed with evidence:** Kimi F3 (the "missing" D50 completion append is by design this
+post-panel docs commit; Kimi itself framed it as recording the pending state). Opus NOTE 1
+(`_real_components` fidelity rests on inspection until R4 because the v1.21 §1 hermetic
+constraint itself forbids executing it; two reviewers independently inspection-verified the
+wiring, including the `map_fitted` seed placement). Opus NOTE 2 (`torch.randn(())` vs
+`torch.randn(shape)` consumes the identical draw for the frozen toy's scalar nuisance sites;
+numerically inert, recorded for transparency).
+
+**Boundaries at the final head:** protected files byte-identical to `origin/main` except exactly
+the two A1-amended modules and the regenerated pinned artifacts D50 authorized; prereg addenda
+strictly append-only in the PR diff (zero removed lines vs `main`); ledger untouched (one D45
+line); `docs/m2c_freeze/gtoy_profile_result_v1.18.json` ABSENT; no `runs/` or `docs/m2c_evidence/`
+content. **Computation provenance, stated precisely (wording corrected by author direction,
+2026-07-18):** no R3/R4 diagnostic payload or scientific model/profile computation ran;
+`_real_components` was never executed; no Mauna/holdout computation ran. The hermetic suite
+exercised R3 classifier/protocol machinery using synthetic values and fake/rigged callables,
+including four real-root infrastructure launches, and retained the repository's pre-existing
+hermetic tiny-E1 sampler regression tests. **R4 remains unauthorized: it requires a fresh explicit author grant in the v1.19
+ledger — whose `frozen_chain` now necessarily cites the committed protocol manifest — at its own
+regenerated freeze and exact execution commit. Draft PR opened; NOT flipped Ready; NOT merged.
+HARD STOP.**

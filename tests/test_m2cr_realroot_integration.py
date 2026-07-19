@@ -53,6 +53,7 @@ from bistar_gp.m2cr.capture import (
     capture_run,
     enumerate_bootstrap_closure,
 )
+from bistar_gp.m2cr.diagnostic import build_protocol_manifest
 from bistar_gp.m2cr.environment_freeze import (
     R1_SCHEMA_RELPATHS,
     R2_CODE_RELPATHS,
@@ -76,6 +77,7 @@ from bistar_gp.m2cr.serialization import (
     sha256_file,
 )
 from tests.test_m2cr_bootstrap import _failed_node_record
+from tests.test_m2cr_diagnostic_schema import valid_instance
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 INTERPRETER = "/opt/homebrew/Caskroom/miniconda/base/bin/python3.13"
@@ -98,6 +100,10 @@ pytestmark = pytest.mark.skipif(
     not os.path.exists(INTERPRETER), reason="hermetic interpreter absent"
 )
 
+_REALROOT_PAYLOAD = valid_instance()
+_REALROOT_PAYLOAD.pop("node_evidence_digests")
+_REALROOT_PAYLOAD["node_records"] = [_failed_node_record()]
+
 _PAYLOAD_SOURCE = f"""import os
 
 
@@ -109,26 +115,7 @@ def run(context):
         open("m2cr_postdrift_plant.py", "w").write("PLANT = 1\\n")
     context.emit("NODE_END", node_index=0)
     context.emit("STAGE_END", stage_id="level0")
-    return {{
-        "status": "COMPLETED",
-        "stages": [{{
-            "stage_id": "level0", "stage_class": "verdict",
-            "status": "COMPLETED", "nodes_evaluated": 1, "nodes_total": 1
-        }}],
-        "aggregates": {{
-            "verdict_class": {{
-                "restart_count": 0, "retry_count": 0, "retry_failure_count": 0,
-                "rcond_fail_count": 0, "symmetry_fail_count": 0,
-                "battery_fail_count": 0
-            }},
-            "diagnostic_class": {{
-                "restart_count": 0, "retry_count": 0, "retry_failure_count": 0,
-                "rcond_fail_count": 0, "symmetry_fail_count": 0,
-                "battery_fail_count": 0
-            }}
-        }},
-        "node_records": {[_failed_node_record()]!r}
-    }}
+    return {_REALROOT_PAYLOAD!r}
 """
 
 
@@ -331,6 +318,10 @@ def _finalize_bundle_manifests(worktree: Path) -> None:
             repo_root=worktree,
         ),
     )
+    atomic_write_canonical_json(
+        freeze / "m2cr_protocol_manifest_v1.json",
+        build_protocol_manifest(worktree),
+    )
 
 
 def _bundle_chain(worktree: Path) -> dict[str, object]:
@@ -342,6 +333,9 @@ def _bundle_chain(worktree: Path) -> dict[str, object]:
         ),
         "environment_freeze_manifest_sha256": sha256_file(
             freeze / "m2cr_environment_freeze_manifest_v1.json"
+        ),
+        "protocol_manifest_sha256": sha256_file(
+            freeze / "m2cr_protocol_manifest_v1.json"
         ),
     }
 

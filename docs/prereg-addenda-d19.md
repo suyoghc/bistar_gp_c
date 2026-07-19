@@ -1843,3 +1843,239 @@ serializer, event, or record contract. It authorizes **NO** compute, recompute, 
 optimizer, gradient, Hessian, curvature, MAP, sampler, VI, or Mauna access, and **no `--execute`**;
 the 60-month **holdout stays SEALED**. **R3 is not begun and is not authorized; R4 requires its own
 fresh grant and is blocked until the R2a PR merges.** The v1.18 label stays permanently unused.
+
+## v1.21 — M2cR R3: diagnostic protocol and decision-rule freeze — §6 verbatim (coverage, continuation, frozen formulas, total decision table), diagnostic-record schema + instance residence, protocol parameters + Layer-1b PROTOCOL manifest, Layer-1b launch/audit enforcement, rows 1–10 evaluator, coordinate goldens (author ballot, milestone R3) — 2026-07-18
+
+**Prereg anchor:** v1.19 (the R1 taxonomy freeze, unchanged), v1.20 (the R2a ceilings freeze,
+unchanged), v1.17 (untouched), and the D45/D46/D48/D49 chain. Provenance: PR #16 merged R2 at
+`9bb246714f6c64f0a5e65e9afbc50fef627dbc54`; PR #17 merged R2a at
+`35ccc3d3e871a864b081d10e6ca7db53b0cbd5fe`; a fresh read-only R3 preflight at that head verified the
+startup gate (tracked tree clean; reserved v1.18 instance absent; fixture authorities byte-faithful
+to the plan's §6 citations) and produced a requirement-to-artifact map; the author then cast the R3
+ballot recorded in **D50** (items A1, B, C, 2026-07-18), which this addendum freezes. The governing
+plan remains `docs/plan-post-d45-m2cr.md`, pinned at
+
+```
+sha256 51b8ec602bc955a619432fd1097012efbfa795e4bccb0a2cc7830d07e1aefbf7
+```
+
+The pinned plan governs on any detail. **D45 remains permanently an UNVALIDATED_ATTEMPT.**
+
+**Numbering (B3).** This is **v1.21**, the next sequential number after v1.20, assigned at
+ratification. The addenda sequence is v1.15, v1.17, v1.19, v1.20, **v1.21**; v1.16 remains a
+run/protocol label, v1.18 remains permanently unused.
+
+**1. Milestone scope.** R3 is the diagnostic protocol and decision-rule freeze of plan §8, PLUS the
+orchestrator-v2 composition that the R2 implementation map's scope rule explicitly deferred "with
+the protocol work it depends on (§6 is frozen in R3)" — plan §7 makes R4 execution-only, so the
+executable diagnostic payload must exist, hermetically tested, before any R4 grant. R3 is hermetic:
+**no `--execute`, no diagnostic or scientific computation, no real-model evaluation, no
+profile/optimizer/gradient/Hessian/MAP/sampler execution outside the pre-existing hermetic suite,
+no Mauna or holdout access, no ledger event, no run directory, no v1.18 instance.** Every R3 test
+drives the new code with fakes, rigged oracles, and injected data only.
+
+**2. Probe coverage and continuation (plan §6.1; ballots B7, B12(i)).** **Coverage is full
+deterministic verdict closure:** the sorted union of the level-0 grid with toy edges, its nested
+refinements to `L_max = 3`, and **both one-decade pullback grids** — upper cap `1e3`, lower cap
+`1e-6`, exactly the caps of the frozen `δ_tail` definition — refined to `L_max = 3`. The level-3
+refined full grid has `8 × (184 − 1) + 1 = 1,465` nodes and each refined pullback adds at most about
+8 further nodes adjacent to its inserted cap node, so the closure has **at most about 1,481 unique
+nodes**. Full closure is **necessary but not sufficient** for the amendment branch; a globally
+scoped row-8 amendment is permissible only under this full-closure coverage. The six decade-cap
+stages (`cap_1e-6` … `cap_1e3`) are result-run diagnostic traces and are **not** probed here.
+
+**Continuation, all five components (B12(i)).** Nodes are probed in **ascending noise order**. Per
+node: run the v2 two-start optimizer and record all attempts. On **accept**, the warm start for the
+next node is this accepted optimum, regardless of this node's battery or curvature outcomes. On
+**failure**, the warm start carries forward unchanged (last accepted optimum, else `mode_u`).
+**Battery and curvature results never affect continuation or warm-start selection.** At accepted
+optima only: run the battery (record), then the v2 curvature evaluation in **record-only mode
+executing the frozen retry policy exactly** (a retry fires only on SPD/rcond conditioning failure;
+both evaluations recorded in full with the per-conjunct retry-acceptance outcomes). **No scientific
+gate outcome halts the probe loop**; a diagnostic run's terminal status is COMPLETED unless budget
+or infrastructure intervenes; **ALGORITHM_STOP is unreachable for diagnostic-kind runs.**
+
+**R3 determinations (conforming, recorded here so they are frozen rather than silent):**
+(i) `node_index` is assigned **stage-grouped** — grouped by the frozen stage order `level0`,
+`refine_1..3`, `upper_pullback`, `lower_pullback`, ascending noise within each stage — because the
+frozen capture stage bookkeeping requires contiguous node blocks per stage, while probing remains
+globally ascending in noise; every per-node record and diagnostic row additionally carries
+`probe_position`, the realized position in probe order, so the trajectory is explicit.
+(ii) Purity's three node points `0`, `mid = floor((N−1)/2)`, `last = N−1` are positions in **probe
+order** over the closure §6.1 determines.
+
+**3. Frozen formulas (plan §6.2). No threshold anywhere in this protocol is new.** Every numeric
+gate reuses a pre-STOP frozen constant; the MAP-noise comparison is report-only; the slope windows
+are theory-derived.
+
+- **Battery (B6, B12(e)).** At every accepted real conditional optimum — a v1.17 §2a conformance
+  requirement, not superseded. Reference gradient = central FD of the independent fresh-model scalar
+  `G_hist(u, noise) = _mh_log_joint(...) + Σ_nuisance u`, constructed exactly as the committed
+  fixture does it (`tests/test_m2c_profile_gradient.py:188-199`): fresh model per evaluation,
+  `apply_hp_value`, `ExactMarginalLogLikelihood`, noise fixed. Steps
+  `h_j = FD_STEP_GRAD × max(1, |u_j|)` (`FD_STEP_GRAD = 1e-5`); gate per site
+  `|Δ| ≤ TOL_GRAD_ABS + TOL_GRAD_REL × scale`, `scale = max(1, max |FD|)` (both `1e-4`). **Ratified
+  scope: a gross-defect detector at accepted optima, not a precision-gradient claim.**
+- **Historical equivalence (B12(d)).** `|g_value − G_hist| ≤ 1e-9 × max(1, |G_hist|)` — the reused
+  v1.4/S3 density-equivalence class — at prespecified points only: the MAP state, the ten prior-draw
+  states, and every accepted conditional optimum. The `+ Σ u` term is the change-of-variables
+  Jacobian.
+- **Prior draws (B12(f)).** Exactly as the committed fixture generates them
+  (`tests/test_m2c_profile_gradient.py:167-181`): `torch.random.fork_rng()`,
+  `torch.manual_seed(seed)` for seeds 100–109, theta sampled per site in `profile.sites` storage
+  order, `u = log theta`, noise from the draw. **Additionally persisted: the exact storage-site
+  order and the realized states in canonical named coordinates** — reproducible, not
+  permutation-invariant, and any ordering change becomes visible rather than silent.
+- **D23 sentinel — committed form verbatim; no vote taken or needed.** Point set
+  `_map_neighborhood_states(case)[1:6]`; per-site worst relative error, max over states of
+  `|naive − FD| max / max(1, |FD| max)`; a `None` naive gradient counts as infinity; **strict**
+  greater-than `D23_SENTINEL_MIN_REL` for **every** nuisance site
+  (`tests/test_m2c_profile_gradient.py:365-393`; `m2c_freeze.py:36`).
+- **MAP construction pinned verbatim; comparison REPORT-ONLY (B12(h)).** `generate_toy_data()`
+  defaults (internally seeded), `PRIOR_CONFIGS["toy_elicited_n20"]`, fresh build, then
+  `torch.manual_seed(42)` immediately before `fit_map(n_iter=300, lr=0.05)` — the exact
+  `map_fitted` sequence of `experiments/prior_sensitivity_study.py`. The exact float64 delta
+  against `FIGURE_EXPECTATIONS["toy_elicited_map_noise"]` (`0.061867347763041584`, the study's
+  full-precision frozen constant; a rounded `0.06` appearing in a figure-test fixture dict is
+  not this constant) is recorded; **no gate, no new tolerance, no new decision-table row.**
+- **FD-step sensitivity (B12(a)).** `symmetry_error(h)` at
+  `h ∈ {2.5e-4, 5e-4, 1e-3, 2e-3, 4e-3}` — the frozen sweep extended one factor-2 step each way by
+  the same generative rule, introducing no new constant. Per node, an OLS slope of log
+  `symmetry_error` against log `h`. **R3 determinations:** the per-`h` statistic is the frozen
+  gate's own formula applied per sweep value — `‖raw_h − raw_hᵀ‖_F / max(1, ‖raw_h‖_F)` with
+  `raw_h` the central-difference Hessian of the validated gradient at step `h`; the sweep is
+  measured at the **FINAL curvature evaluation point** (§6.3's FINAL definition); the OLS uses
+  **natural logs** (the slope is base-invariant; fixing the base pins the recorded intercept). The
+  measurement is implemented **outside the frozen v2 gates**, which stay byte-identical.
+- **Slope classification (B12(b)).** A priori windows: **TRUNCATION-LIKE** `[1.5, 2.5]`;
+  **NOISE-LIKE** `≤ −0.5`; **FLAT** otherwise. **The windows are not to be widened to make the
+  amendment branch more reachable; row 8 remains deliberately conservative.**
+- **UNDEFINED (B12(c), extended form).** The slope is UNDEFINED if **any sweep value is nonpositive
+  or nonfinite**, or if **the fitted slope or any required OLS statistic is nonfinite**. **Invalid
+  points are never silently omitted and no reduced subset is fitted.** UNDEFINED routes to
+  PRESERVE_STOP through the frozen decision table.
+- **Purity (B12(g)).** Repeated `g` and `grad` evaluations bit-identical at the mode and at the
+  three frozen probe positions (first, mid, last). **Kept at four points, not enlarged**; the claim
+  is repeatability at those points, not global determinism. **R3 determinations:** every purity
+  evaluation is at the fixed nuisance vector `mode_u` (deterministic, independent of optimizer
+  outcomes); `repeats = 2` — the minimal conforming reading of "repeated"; bit-identity of the
+  objective and every gradient component.
+
+**4. Total decision table (plan §6.3; ballot B16 as conformed to B12(c)).** Definitions: `G1` =
+battery outcome over all accepted optima; `G2` = historical-equivalence outcome; slope classes per
+§3 above with the B12(c) UNDEFINED; POSITIVE RETRY ACCEPTANCE is the plan §3.2 six-conjunct
+predicate; a **FINAL** curvature evaluation is the single evaluation at the two-start-accepted
+optimum when no retry fired, or the post-retry evaluation at the positively accepted retry point
+when one did. **First matching row wins; the table is total via row 10; every mixed, missing,
+nonfinite, or unresolved case lands on PRESERVE_STOP.**
+
+| # | Condition | Disposition |
+|---|---|---|
+| 1 | The purity check fails anywhere | PRESERVE_STOP; infrastructure-defect track; no amendment permitted |
+| 2 | Any probed node lacks a complete record for any reason other than a recorded optimizer-gate failure, or the diagnostic run's terminal status is not COMPLETED | PRESERVE_STOP; evidence incomplete; no amendment |
+| 3 | The two-start optimizer gate fails at any probed node (start failure after restart, non-stationarity, or agreement failure) | PRESERVE_STOP; optimizer/step-policy track (not a Hessian-estimator diagnosis) |
+| 4 | Any curvature retry is not POSITIVELY ACCEPTED (the negation of any conjunct, including `status == 0` with `success == False` and the malformed-output fallback), OR nonstationarity is observed at any evaluated point, pre- or post-retry | PRESERVE_STOP; optimizer/stationarity track; this row precedes every Hessian or amendment diagnosis |
+| 5 | `G1` fails at any accepted optimum, or `G2` fails at any prespecified point, or the D23 sentinel fails | PRESERVE_STOP; gradient/potential code-defect track; no gate or tolerance amendment permitted |
+| 6 | Zero probed nodes fail the frozen raw-symmetry check | PRESERVE_STOP; reproducibility investigation; no amendment supported; D45 remains unvalidated either way |
+| 7 | Any symmetrized-curvature gate (SPD, rcond, directional, logdet-stability) fails at a FINAL curvature evaluation (which by rows 3–4 exists only at positively accepted points) | PRESERVE_STOP; Hessian-estimator amendment track, gated on a separate future ballot (B5) |
+| 8 | Rows 1–7 clear; at least one node fails raw symmetry; every probed node has a defined finite slope; every symmetry-failing node is TRUNCATION-LIKE | AMEND per the pre-committed B4 branch, scoped per B7: global only under full-closure coverage |
+| 9 | Any symmetry-failing node is NOISE-LIKE, FLAT, or UNDEFINED, or any probed node's slope is UNDEFINED | PRESERVE_STOP; mixed or ambiguous evidence; follow-up requires a new frozen protocol version |
+| 10 | Anything else | PRESERVE_STOP |
+
+**Only row 8 can ever authorize an amendment**, and even then the amendment requires its own
+implementation, review, manifest, and separate author ratification at R5 before a result run (B4).
+The `tol(h) = C·h²` alternative remains not ballot-ready and not authorized. Row-7 estimator
+amendments stay deferred to a separate future ballot (B5); row 7 preserves the STOP.
+
+**Rows evaluator (author ballot item B, ratified).** R3 implements the table as a **pure,
+hermetically tested function** over the diagnostic-record instance: input the committed record's
+distilled fields, output **only the first matching row number and its frozen track label**. It
+mechanizes frozen precedence for R5's mechanical application, which the author confirms; it
+authorizes no execution and makes no new scientific decision. The diagnostic record itself carries
+measurements and frozen-check outcomes only, **never a disposition**.
+
+**5. Diagnostic-record schema and instance residence.**
+`docs/m2c_freeze/m2c_diagnostic_record.schema_v1.json` (Draft 2020-12; closed properties
+everywhere; frozen nonfinite sentinels element-wise on every measurement field; finite-only summary
+constants; `not_a_result: true` as a const) governs the **R3 diagnostic-record INSTANCE**, whose
+sha256 is the `diagnostic_record_sha256` member of every result-run chain and every R6 grant
+(v1.19 §8; never a terminal-record digest). **Residence, determined:** the instance is the
+diagnostic run's **exact persisted `payload.json`** — the document the child bootstrap writes after
+externalizing `node_records` to `nodes/` and injecting `node_evidence_digests` — committed at
+`docs/m2c_evidence/<run_id>/payload.json`. Consequences, each verified against merged source: the
+`RUN_DIR_LAYOUT` entry is the existing `"payload.json"`; its `RUN_DIR_EVIDENCE_CLASSES` class is
+the existing `fixed_runtime`; the applicable v1.20 ceilings are the 33,554,432-byte
+runtime-envelope per-file class and membership in the 134,217,728-byte bundle; it is Layer-2
+evidence under `RAW_MANIFEST.sha256` with its digest in the terminal record's evidence block. **No
+new run-directory path, class, or ceiling is introduced; the R2a fail-closed layout is not
+amended.** The schema references the frozen R1 execution-record schema by `$id` and JSON Pointer
+(a downward reference embedding no digest) and embeds no hash of the protocol manifest that pins
+it (acyclicity, plan §3.1).
+
+**6. Protocol parameters and the Layer-1b PROTOCOL manifest (author ballot item C, ratified).**
+`docs/m2c_freeze/m2cr_diagnostic_protocol_v1.json` (`kind: "m2cr_diagnostic_protocol"`,
+`schema_version: 1`, `addendum: "v1.21"`) restates this addendum's protocol machine-readably;
+**every numeric value quotes an existing frozen constant** from `bistar_gp/m2c_freeze.py` or this
+addendum's ratified windows; the audit CI asserts artifact/addendum agreement.
+`docs/m2c_freeze/m2cr_protocol_manifest_v1.json` is the Layer-1b PROTOCOL manifest with the
+**literal plan §3.1 key set and nothing more**: `kind`, `schema_version`, `addendum`,
+`diagnostic_record_schema {path, sha256}`, `protocol_parameters {path, sha256}`, and
+`infrastructure_manifest_sha256` (the Layer-1a downward edge). **No R3 code pins are added**: code
+bytes remain bound by the exact `execution_commit` and the complete importable-artifact manifest
+with origin/loader authentication. The manifest is produced by a committed R3 generator and
+**re-pinned mechanically whenever Layer 1a regenerates** (an R4 launch-prep regeneration at its own
+worktree/commit regenerates Layer 1b alongside, under the R4 grant); the committed-matches-tree
+audit fails closed on any drift, self-hash, or R3-schema pin appearing in Layer 1a. The three new
+Layer-0/1b static artifacts are additionally checked against the v1.20 static per-file ceiling.
+
+**7. Layer-1b launch and audit enforcement (author ballot item A1, ratified).** Bounded amendments
+to two infrastructure-pinned R2/R2a modules, with the full regeneration cascade and discriminating
+tests:
+
+- **Launch (capture).** `_authenticate_launch_spec` additionally resolves the committed protocol
+  manifest under the launch worktree at its committed relpath, requires its file sha256 to equal
+  the authorized chain's `protocol_manifest_sha256`, parses it **closed-world** against the §6 key
+  set, requires its `infrastructure_manifest_sha256` to equal the spec's own authenticated
+  Layer-1a digest, resolves and digest-verifies the diagnostic-record schema and protocol-parameter
+  pins on disk, and carries the authenticated facts on the launch spec (spec-digest-bound). Any
+  missing, unbindable, or mismatched artifact remains a pre-payload `INFRA_FAILURE` that does not
+  consume.
+- **Protocol-exit validation (capture).** For diagnostic-kind runs the parent validates the **exact
+  persisted `payload.json`** — after node externalization and digest injection — against the
+  **authenticated** diagnostic-record schema before accepting the protocol exit; a violation is
+  `schema_invalid_payload` and the record falls to `INFRA_FAILURE` under the unamended B2
+  precedence (rule 4 unsatisfied, rule 5 applies).
+- **Audit.** `protocol_manifest_sha256` is removed from the declarable-absent set, which shrinks to
+  exactly `{diagnostic_record_sha256, amendment_manifest}` — the members produced only by R4 and
+  R5. **Historical semantics are preserved:** D45 remains a historical consumed ledger entry and is
+  never re-adjudicated; no committed R2-era report is rewritten; the change binds every **future**
+  chain verification, and every future R4 diagnostic launch requires the committed protocol
+  manifest.
+- Both amended modules are re-pinned in the regenerated infrastructure manifest `code` section; the
+  importable-artifact manifest and aggregating environment-freeze manifest regenerate by the
+  established fresh-detached-worktree recipe.
+
+**8. Coordinate semantics and goldens (plan §3.3/B1; plan §8 R3).** **Composition, determined:**
+the orchestrator supplies the v2 gates with callables and vectors in **canonical `(ls, os, lv)`
+axes**; the canonical-to-storage role permutation is applied **inside the bridge wrapper** at each
+evaluation, so computation inside the scientific bridge stays in E1 storage order and the bridge is
+untouched, while the gates — which are axis-space-agnostic and stay byte-identical — realize
+directions positionally on canonical axes. This is the only composition that simultaneously
+satisfies B1's named-canonical semantics, §3.2's "B1-reconciled directions", and storage-permutation
+invariance. Consequences frozen as goldens: **hard-coded per-seed canonical direction vectors** —
+the exact float64 triples `normalize(default_rng(seed).standard_normal(3))` for seeds
+`{200, 201, 202}` — pinned as literals; an **asymmetric named-coordinate oracle** tracing
+distinguishable per-axis values through optimizer, battery, curvature, and persistence; and
+**storage-permutation invariance** — permuting the storage-site order changes no persisted
+canonical evidence and no realized direction.
+
+**9. What this addendum does NOT change or authorize.** It changes **no v1.17 value, tolerance,
+gate, reference, predicate, or algorithm**; no B2 precedence row; no R1 schema byte; no v1.20
+ceiling; no frozen M2bR/M2c artifact; no §6.5/§6.6 relaxation. The frozen v2 gates,
+`profile_integration.py`, and the v1.17 manifest CI stay byte-identical. It authorizes **NO**
+compute, recompute, diagnostic, profile, optimizer, gradient, Hessian, curvature, MAP, sampler, VI,
+or Mauna access, and **no `--execute`**; the 60-month **holdout stays SEALED**. **R4 is not begun
+and is not authorized**: it requires its own fresh explicit author grant, recorded in the v1.19
+ledger with the complete frozen chain — which after this addendum necessarily includes the
+committed protocol manifest — at its own regenerated freeze and exact execution commit. The
+reserved instance path stays **ABSENT** and the **v1.18 label stays permanently unused**.
