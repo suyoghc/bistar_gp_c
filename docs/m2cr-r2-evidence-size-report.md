@@ -19,7 +19,7 @@ serializer with the frozen nonfinite sentinels.
 
 | Artifact | Bytes | Notes |
 |---|---|---|
-| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,746,621 | format v2 (roots header, per-entry loader); 39,968 entries: 39,402 source, 564 extension, 2 importable-archive, 0 orphan-bytecode (the +2 sources vs the R3 figure are the R3a launch vehicle `bistar_gp/m2cr/r4_launch.py` and `tests/test_m2cr_r4_launch.py`; R3 had added its two modules plus six test files; R2a itself had added `tests/test_m2cr_evidence_ceilings.py`) |
+| `m2cr_importable_artifact_manifest_v1.jsonl` | 8,746,622 | format v2 (roots header, per-entry loader); 39,968 entries: 39,402 source, 564 extension, 2 importable-archive, 0 orphan-bytecode (the +2 sources vs the R3 figure are the R3a launch vehicle `bistar_gp/m2cr/r4_launch.py` and `tests/test_m2cr_r4_launch.py`; R3 had added its two modules plus six test files; R2a itself had added `tests/test_m2cr_evidence_ceilings.py`) |
 | `m2cr_dependency_lock_v1.json` | 57,451 | supplementary only; editable installs excluded from `pip_freeze` (external audit round-3 F4), reproducible at HEAD |
 | `m2cr_preboundary_attestation_set_v1.json` | 14,560 | dyld main cache plus its twelve declared subcaches, interpreter, and the 74-entry pre-boundary bootstrap closure; smaller than the prior 76 because the fabricated `bistar_gp`/`bistar_gp.m2cr` namespace packages no longer claim a never-executed `__init__.py` origin (WI1); the three worktree-origin closure pins are stored worktree-relative (F3) |
 | `m2cr_infrastructure_manifest_v1.json` | 3,026 | Layer 1a; repo-relative pins (8 artifacts incl. native-stack expectations and, since R2a, the evidence-ceilings artifact) |
@@ -29,18 +29,20 @@ serializer with the frozen nonfinite sentinels.
 | `m2cr_interpreter_pin_v1.json` | 383 | version string plus resolved-target sha256 |
 | `m2cr_evidence_ceilings_v1.json` | 255 | added by R2a (v1.20): the five ratified evidence-size ceilings, the one machine-readable authority enforcement consumes; hand-authored, never regenerated |
 
-Fixed-artifact total: **8,870,676 bytes** (measured; regenerated at the R4 preparation commit
-`f745bcd` — the D52 T-B freeze — via the established fresh-detached-worktree process. The R4
-regeneration is a pure pin cascade: the importable manifest changes ONLY in its informational
-header worktree path (8,746,621 B, one byte below the R3a figure because the regeneration
-worktree name is one character shorter; all 39,968 entries byte-identical, zero added or removed),
+Fixed-artifact total: **8,870,677 bytes** (measured; regenerated at the R4 preparation commit
+`473a3f8` — the D52 Update 2 fixture-correction commit H — via the established
+fresh-detached-worktree process. The R4 correction-cycle regeneration is a pure authorized
+cascade: the importable manifest changes ONLY in its informational header worktree path and in
+the single `tests/test_m2cr_audit.py` entry (the D52-authorized JSONL fixture correction:
+sha256 `5c805e43…`, size 37,521 B; 8,746,622 B total; all other 39,967 entries byte-identical),
 the aggregating and infrastructure manifests re-derive at unchanged sizes (digest-only changes),
 the Layer-1b protocol manifest re-pins the new Layer-1a digest, and the interpreter pin
 (re-attested per v1.19 §4.5.1), child-env mapping, dependency lock, native-stack expectations,
-AND the preboundary attestation set stay byte-identical. The R3a total at the `c11db47` regen was
-8,870,677 bytes — the importable manifest had gained the two R3a sources
-`bistar_gp/m2cr/r4_launch.py` and `tests/test_m2cr_r4_launch.py`, with no infrastructure code pin
-for the launcher per the D50 ballot-C precedent. The R3 total at the `c038f47`
+AND the preboundary attestation set stay byte-identical. The first R4 preparation regen at
+`f745bcd` measured 8,870,676 bytes (header-path-only manifest delta, 8,746,621 B). The R3a total
+at the `c11db47` regen was 8,870,677 bytes — the importable manifest had gained the two R3a
+sources `bistar_gp/m2cr/r4_launch.py` and `tests/test_m2cr_r4_launch.py`, with no infrastructure
+code pin for the launcher per the D50 ballot-C precedent. The R3 total at the `c038f47`
 regen was 8,870,266 bytes; the R2a total at PR #17 merge was 8,868,576 bytes; the
 R2-close total at PR #16 merge was 8,867,965 bytes over the then-eight artifacts. The three R3
 Layer-1b statics — the diagnostic-record schema, the protocol parameters, and the protocol
@@ -121,7 +123,7 @@ classified in `bistar_gp/m2cr/measure.py` (`RUN_DIR_EVIDENCE_CLASSES`), and a CI
 any layout member lacks a measurement classification, so the per-run projection cannot silently omit a
 component.
 
-**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,870,676 bytes**
+**Static freeze-artifact storage (one-time, committed):** Fixed-artifact total **8,870,677 bytes**
 (the table above); it is NOT part of the per-run evidence bundle.
 
 **Per-run evidence bundle (per launch) — components:**
