@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
-import os
 import shutil
 from pathlib import Path
 
@@ -20,6 +20,25 @@ from bistar_gp.m2cr.serialization import atomic_write_canonical_json
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMITTED_MANIFEST = ROOT / "docs/m2c_freeze/m2cr_infrastructure_manifest_v1.json"
+
+# D54: the committed v1 cascade is RETIRED — its two former live-tree standing
+# checks now verify against the historical Git anchor 76f3c39, never the live
+# working tree. The historical-anchor verifier is loaded through its ISOLATED
+# interface (standalone file path), never a package-qualified import that would
+# execute the pre-existing eager bistar_gp/__init__.py.
+_VERIFIER_PATH = ROOT / "bistar_gp/m2cr/historical_anchor.py"
+
+
+def _load_historical_anchor():
+    spec = importlib.util.spec_from_file_location(
+        "m2cr_historical_anchor_isolated_infra", _VERIFIER_PATH
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_HA = _load_historical_anchor()
 
 
 def _inputs(tmp_path: Path):
@@ -155,63 +174,47 @@ def test_no_pinned_digest_occurs_inside_the_file_it_pins(tmp_path: Path):
             assert pin["sha256"].encode("ascii") not in pin_path.read_bytes()
 
 
-def test_committed_infrastructure_manifest_matches_tree():
-    if os.environ.get("M2CR_ALLOW_MISSING_COMMITTED_MANIFEST") == "1":
-        pytest.skip(
-            "orchestrator regeneration window: the committed manifest is being "
-            "regenerated and its content check is deferred to the orchestrator"
-        )
-    if not COMMITTED_MANIFEST.exists():
-        pytest.fail(
-            "committed R2 infrastructure manifest is missing; only the generation "
-            "orchestrator may set M2CR_ALLOW_MISSING_COMMITTED_MANIFEST=1"
-        )
-    report = verify_infrastructure_manifest(COMMITTED_MANIFEST)
-    assert report["ok"], report["errors"]
+def test_retired_infrastructure_manifest_verifies_at_historical_anchor():
+    """RETIRED (D54): the committed infrastructure manifest's internal pins (12
+    R2 code modules + 8 artifact pins + 2 R1 schema pins) verify against the
+    historical anchor 76f3c39, NOT the live working tree, so future edits to the
+    retired tree never desync it. Replaces the former live-tree
+    ``verify_infrastructure_manifest(COMMITTED_MANIFEST)`` check; the
+    ``M2CR_ALLOW_MISSING_COMMITTED_MANIFEST`` regeneration-window bypass is gone
+    because an immutable historical artifact is never regenerated. The fresh-arc
+    ``verify_infrastructure_manifest`` live-tree default is preserved and still
+    exercised by the fresh-builder tests above."""
+
+    record, record_errors = _HA.load_anchor_record(ROOT)
+    assert record_errors == [], record_errors
+    report = _HA.verify_l2_cascade_content_at_anchor(record, ROOT)
+    assert report["manifests"]["ok"], report["manifests"]["errors"]
+    pins = report["infrastructure_internal_pins"]
+    assert pins["ok"], pins["errors"]
+    assert (pins["code"], pins["artifacts"], pins["r1_schemas"]) == (12, 8, 2)
 
 
-COMMITTED_IMPORTABLE_MANIFEST = (
-    ROOT / "docs/m2c_freeze/m2cr_importable_artifact_manifest_v1.jsonl"
-)
+def test_retired_importable_manifest_worktree_entries_verify_at_historical_anchor():
+    """RETIRED (D54): the committed importable manifest's 156 WORKTREE entries
+    verify against their 76f3c39 blobs, NOT the live on-disk source.
 
+    This is the direct blocker for the future A7 ``experiments/d19_bench.py``
+    rework: after retirement a live-tree edit to any worktree entry cannot break
+    this check (demonstrated by the robustness test in
+    tests/test_m2cr_historical_anchor.py). The 39,812 environment-root entries
+    stay interpreter-attested and are never git-verified. Replaces the former
+    live-tree cross-walk (which read every worktree entry off disk); the
+    ``M2CR_ALLOW_MISSING_COMMITTED_MANIFEST`` regeneration-window bypass is gone
+    because an immutable historical artifact is never regenerated."""
 
-def test_committed_importable_manifest_worktree_entries_match_tree():
-    """The committed importable manifest's WORKTREE entries must attest the
-    on-disk source, not only carry a self-consistent file digest.
-
-    External audit (Opus re-review) F1-regen: the infrastructure manifest
-    pins the importable manifest by FILE sha256, which cannot catch a stale
-    INTERIOR worktree entry (a regeneration-ordering slip left audit.py and
-    tests/test_m2cr_audit.py entries lagging their on-disk bytes). This
-    cross-walk closes that CI-invisible class.
-    """
-
-    if os.environ.get("M2CR_ALLOW_MISSING_COMMITTED_MANIFEST") == "1":
-        pytest.skip("orchestrator regeneration window")
-    if not COMMITTED_IMPORTABLE_MANIFEST.exists():
-        pytest.fail("committed importable manifest is missing")
-    from bistar_gp.m2cr.serialization import sha256_file
-
-    stale: list[str] = []
-    with COMMITTED_IMPORTABLE_MANIFEST.open(encoding="utf-8") as handle:
-        handle.readline()  # v2 header
-        for line in handle:
-            entry = json.loads(line)
-            if entry.get("root") != "worktree":
-                continue
-            relpath = entry["relpath"]
-            disk = ROOT / relpath
-            if not disk.is_file():
-                stale.append(f"{relpath}: committed but absent on disk")
-                continue
-            if (
-                sha256_file(disk) != entry["sha256"]
-                or disk.stat().st_size != entry["size"]
-            ):
-                stale.append(f"{relpath}: sha256/size differ from on-disk source")
-    assert not stale, "stale committed importable-manifest worktree entries: " + "; ".join(
-        stale
-    )
+    record, record_errors = _HA.load_anchor_record(ROOT)
+    assert record_errors == [], record_errors
+    report = _HA.verify_l2_cascade_content_at_anchor(record, ROOT)
+    entries = report["importable_worktree_entries"]
+    assert entries["ok"], entries["errors"]
+    assert entries["git_verified"] == 156
+    assert entries["environment_interpreter_attested"] == 39812
+    assert entries["environment_git_verified"] == 0
 
 
 def test_child_and_generator_loader_maps_stay_in_sync():
