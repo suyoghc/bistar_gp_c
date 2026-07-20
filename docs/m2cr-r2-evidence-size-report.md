@@ -30,11 +30,14 @@ serializer with the frozen nonfinite sentinels.
 | `m2cr_evidence_ceilings_v1.json` | 255 | added by R2a (v1.20): the five ratified evidence-size ceilings, the one machine-readable authority enforcement consumes; hand-authored, never regenerated |
 
 Fixed-artifact total: **8,870,677 bytes** (measured; regenerated at the R4 post-execution
-closure-auditor amendment commit `2797cef` — the D52 Update 10 amendment commit K — via the
-established fresh-detached-worktree process. The K regeneration is a pure authorized cascade over
-the three amended source files: the importable manifest changes ONLY in its informational header
-worktree path and in the three entries `bistar_gp/m2cr/audit.py` (auditor consumes the public
-attestation-name→stem contract; size 90,343 B), `bistar_gp/m2cr/capture.py` (promoted
+closure-auditor amendment, most recently at commit `6636929` — the D52 Update 11 correction commit
+K2 (the two Codex-review wording NOTEs) — via the established fresh-detached-worktree process; the
+K2 re-regeneration changed ONLY the `bistar_gp/m2cr/audit.py` entry (docstring precision; sha256
+`9fe00795…`, size 90,624 B) plus the header, and its pin cascade. The prior K regeneration
+(`2797cef`, D52 Update 10) was the substantive cascade over the three amended source files: the
+importable manifest changed in its informational header worktree path and in the three entries
+`bistar_gp/m2cr/audit.py` (auditor consumes the public
+attestation-name→stem contract), `bistar_gp/m2cr/capture.py` (promoted
 `MANDATORY_MARKER_ATTESTATIONS` to a public immutable contract, values byte-identical; size
 152,853 B), and `tests/test_m2cr_audit.py` (+5 discriminating tests; size 52,560 B); all other
 39,965 entries are byte-identical and the manifest file stays 8,746,622 B because the grown entries
