@@ -34,6 +34,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from bistar_gp.m2cr.events import check_stream_balance, parent_event_pipe
@@ -54,6 +55,7 @@ __all__ = [
     "FRESH_RUN_DIR_BLOCKERS",
     "FROZEN_INTERPRETER_FLAGS",
     "GRACE_SECONDS",
+    "MANDATORY_MARKER_ATTESTATIONS",
     "RAW_MANIFEST_NAME",
     "RUN_DIR_LAYOUT",
     "TERMINAL_RECORD_NAME",
@@ -124,18 +126,33 @@ _ATTESTATION_NAMES = (
 # so a protocol claim cannot ride a marker missing the mandatory pre-walk,
 # origin-binding, or spec-binding attestations, and a payload cannot rewrite a
 # marker-bound evidence file undetected).
-_MANDATORY_MARKER_ATTESTATIONS = {
-    "effect_proofs": "effect_proofs",
-    "path_and_stage_a": "stage_a",
-    "bytecode_scan": "bytecode",
-    "audit_canary": "audit_canary",
-    "stage_b_os": "stage_b_os",
-    "stage_b_raw": "stage_b_raw",
-    "native_stack": "native_stack",
-    "sourceless_check": "sourceless",
-    "importable_manifest_pre": "manifest_pre",
-    "origin_binding_pre": "origin_binding_pre",
-}
+#
+# Public immutable contract (D52 Update 10): this is the SINGLE authoritative
+# marker-attestation logical-NAME -> evidence-file STEM map.  The post-run
+# ledger auditor (``bistar_gp.m2cr.audit.verify_ledger_against_evidence``)
+# consumes exactly this object to resolve each marker attestation name to its
+# on-disk ``<stem>.json`` file, so the auditor and capture can never drift.
+# The values are byte-for-byte the previously private mapping; exposing the
+# name is an ownership/export correction and changes no capture behaviour.  A
+# ``MappingProxyType`` makes it read-only so no consumer can mutate the
+# authority.
+MANDATORY_MARKER_ATTESTATIONS = MappingProxyType(
+    {
+        "effect_proofs": "effect_proofs",
+        "path_and_stage_a": "stage_a",
+        "bytecode_scan": "bytecode",
+        "audit_canary": "audit_canary",
+        "stage_b_os": "stage_b_os",
+        "stage_b_raw": "stage_b_raw",
+        "native_stack": "native_stack",
+        "sourceless_check": "sourceless",
+        "importable_manifest_pre": "manifest_pre",
+        "origin_binding_pre": "origin_binding_pre",
+    }
+)
+# Internal alias: existing capture references stay byte-unchanged; both names
+# denote the one immutable authority above.
+_MANDATORY_MARKER_ATTESTATIONS = MANDATORY_MARKER_ATTESTATIONS
 # Frozen self-contained run-directory layout (plan §4.4): every artifact one
 # launch attempt may produce, relative to run_dir.  Trailing "/" marks a
 # directory subtree.

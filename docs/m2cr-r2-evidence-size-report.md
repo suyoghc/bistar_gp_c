@@ -29,14 +29,33 @@ serializer with the frozen nonfinite sentinels.
 | `m2cr_interpreter_pin_v1.json` | 383 | version string plus resolved-target sha256 |
 | `m2cr_evidence_ceilings_v1.json` | 255 | added by R2a (v1.20): the five ratified evidence-size ceilings, the one machine-readable authority enforcement consumes; hand-authored, never regenerated |
 
-Fixed-artifact total: **8,870,677 bytes** (measured; regenerated at the R3a implementation commit
-`c11db47` via the established fresh-detached-worktree process — the importable manifest gains the
-two R3a sources `bistar_gp/m2cr/r4_launch.py` and `tests/test_m2cr_r4_launch.py` (8,746,622 B; the
-header worktree path is informational and its length varies per freeze), the infrastructure and
-aggregating manifests re-derive at unchanged sizes (digest-only changes; the launcher takes NO
-infrastructure code pin per the D50 ballot-C precedent), and the interpreter pin, child-env
-mapping, dependency lock, native-stack expectations, AND the preboundary attestation set stay
-byte-identical (no R3a change touches a bootstrap-closure member). The R3 total at the `c038f47`
+Fixed-artifact total: **8,870,677 bytes** (measured; regenerated at the R4 post-execution
+closure-auditor amendment, most recently at commit `6636929` — the D52 Update 11 correction commit
+K2 (the two Codex-review wording NOTEs) — via the established fresh-detached-worktree process; the
+K2 re-regeneration changed ONLY the `bistar_gp/m2cr/audit.py` entry (docstring precision; sha256
+`9fe00795…`, size 90,624 B) plus the header, and its pin cascade. The prior K regeneration
+(`2797cef`, D52 Update 10) was the substantive cascade over the three amended source files: the
+importable manifest changed in its informational header worktree path and in the three entries
+`bistar_gp/m2cr/audit.py` (auditor consumes the public
+attestation-name→stem contract), `bistar_gp/m2cr/capture.py` (promoted
+`MANDATORY_MARKER_ATTESTATIONS` to a public immutable contract, values byte-identical; size
+152,853 B), and `tests/test_m2cr_audit.py` (+5 discriminating tests; size 52,560 B); all other
+39,965 entries are byte-identical and the manifest file stays 8,746,622 B because the grown entries
+kept their digit-count sizes and fixed-width digests. The aggregating and infrastructure manifests
+re-derive at unchanged sizes (digest-only changes; the infrastructure code section changes ONLY the
+`audit.py` and `capture.py` pins), the Layer-1b protocol manifest re-pins the new Layer-1a digest,
+and the interpreter pin (re-attested per v1.19 §4.5.1), child-env mapping, dependency lock,
+native-stack expectations, AND the preboundary attestation set stay byte-identical. The exercised
+`_03` launch packet was removed from the tree in commit K (preserved in history at G3 `5cb3527`)
+and is not a freeze artifact. IMPORTANT: this regeneration is the CURRENT-tree freeze for
+self-consistency; it is NOT the chain under which the consumed `-03` run executed — that immutable
+execution freeze is E3 `367667f` with infrastructure `d8a3f302…`, cited by the `-03` grant and
+terminal record and retrievable byte-exact from commit E3. The prior J regen at `b1ee5ec` measured
+the same 8,870,677-byte total (audit.py `2adae520…`/89,677 B + test `ad0d1af5…`/46,611 B). The E2 regen at `473a3f8` (commit H) measured the same 8,870,677-byte total; the
+first R4 preparation regen at `f745bcd` measured 8,870,676 bytes (header-path-only manifest delta,
+8,746,621 B). The R3a total at the `c11db47` regen was 8,870,677 bytes — the importable manifest had gained the two R3a
+sources `bistar_gp/m2cr/r4_launch.py` and `tests/test_m2cr_r4_launch.py`, with no infrastructure
+code pin for the launcher per the D50 ballot-C precedent. The R3 total at the `c038f47`
 regen was 8,870,266 bytes; the R2a total at PR #17 merge was 8,868,576 bytes; the
 R2-close total at PR #16 merge was 8,867,965 bytes over the then-eight artifacts. The three R3
 Layer-1b statics — the diagnostic-record schema, the protocol parameters, and the protocol
