@@ -635,8 +635,12 @@ def verify_ledger_against_evidence(
     The layout is the capture driver's ``<evidence_root>/<run_id>/`` (plan
     sections 3.1 and 4.4): ``prelaunch.json``, ``spawned.json``,
     ``payload_started.json``, ``events.jsonl``, ``stdout.txt``,
-    ``stderr.txt``, attestation JSONs at the run root (a marker attestation
-    named ``NAME`` resolves to ``NAME.json``), per-node record files,
+    ``stderr.txt``, attestation JSONs at the run root (a marker attestation's
+    logical ``NAME`` resolves to its evidence-file ``<STEM>.json`` through
+    capture's single ``MANDATORY_MARKER_ATTESTATIONS`` contract, under which
+    four of the ten mandatory names are aliased — e.g. ``bytecode_scan`` ->
+    ``bytecode.json`` — and any non-mandatory self-named attestation resolves
+    to itself), per-node record files,
     ``RAW_MANIFEST.sha256``, and ``terminal_record.json``.  Run directories
     are associated to ledger events through their terminal record's
     ``launch_attempt_id``.  Terminal and pre-payload terminal records are
