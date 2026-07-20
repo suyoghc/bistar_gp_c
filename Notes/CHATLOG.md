@@ -690,3 +690,41 @@ independently verified; the launcher takes no infrastructure code pin (ballot-C 
 R2 code-pin set is untouched; R4 remains BLOCKED and NOT begun — it needs its own author-authorized
 preparation and one-shot launch grant after this PR merges; D45 stays UNVALIDATED_ATTEMPT; the
 v1.18 instance stays absent. Draft PR opened and held before Ready/merge. HARD STOP.
+
+## 2026-07-19 — M2cR R4 executed (INFRA_FAILURE) + closure certified + R5 audit APPROVE_RECORD (D52 Updates 8–12, D53); PR #20 flipped Ready, STOP before merge
+
+R4 was prepared, executed, closed, and independently audited across this arc. R4 preparation went
+through three superseded freezes (E `71ade35` / E2 `baf5dd7` / **E3 `367667f`**) with an Option-B
+audit-hardening amendment (J `b1ee5ec`) before the author returned the one-shot `--execute`
+authorization. The launcher was invoked once on packet-03 at E3; the diagnostic probed all 1,481
+closure nodes and wrote `payload.json`, but a post-execution parent-side origin-binding attestation
+faulted on a torch-internal `_remote_module_non_scriptable` module pointing at a nonexistent
+`torch-git` path — terminal **INFRA_FAILURE / attestation_fault / not_a_result: true**; the one-shot
+grant `m2cr-auth-20260719-03` was **CONSUMED** (marker present). Machine closure was first BLOCKED by
+a pre-existing `verify_ledger_against_evidence` defect (marker-name→file resolution ignored the four
+aliased attestation stems); the author authorized a narrow post-execution closure-auditor amendment
+(K `2797cef` → L `7a6871d` → K2 `6636929` → **L2 `76f3c39`**) promoting capture's mapping to a public
+immutable contract the auditor consumes. The fixed auditor certified the closure over the preserved
+E3 evidence — ledger events 000008/9/10 machine-derived, all 1503 evidence files byte-identical to
+the pre-amendment baseline — committed at **`f78d16a`** with a Draft evidence PR (#20).
+
+**R5 (this session):** Fable Max performed the independent read-only record audit at exact head
+`f78d16a` and returned **APPROVE_RECORD**. Every hash, schema, chain member, and the machine-derived
+closure were recomputed from committed bytes / git objects (not adopted from D52): auditability
+ok/0-errors, `EVIDENCE_TREE_DIGEST 7154212a…` = baseline, the E3 chain retrieved byte-exact from E3
+(distinct from the regenerated current-tree manifests), `payload.json` schema-valid. The frozen §6.3
+`evaluate_decision_table` was applied mechanically with `terminal_status=INFRA_FAILURE`: row 1 does
+not match (`purity.pass:true`), **row 2 is the first match** →
+`{"row":2,"track":"evidence_incomplete_no_amendment"}` = **PRESERVE_STOP; no amendment**. Row 8 did
+not fire, so R6 is unreachable and no origin-binding repair / rerun / interpretation is authorized.
+Two NOTE-level wording observations recorded (commit-message event range; underspecified digest
+recipe), no action.
+
+**Committed:** the Notes-only R5 closeout (D53 + SCRATCHPAD + this entry) — no code, schema, manifest,
+ledger event, evidence file, freeze artifact, payload, or v1.18 path touched. PR #20 body updated
+with the Fable audit provenance (AI audit, not a GitHub review/CI; first-match row 2; the D53 head
+itself not re-audited by Fable; no amendment/R6/repair/rerun authorized), then flipped to **Ready**
+after a mechanical preflight. The previously certified unflagged suite (1018 passed / 2 skipped) was
+NOT rerun for a Notes-only tail. **STOP before merge.** The M2cR remediation arc ends with the STOP
+preserved; D45 remains permanently UNVALIDATED_ATTEMPT; the v1.18 instance stays absent. No
+replacement protocol, Della, M2d, or broader D19 planning begun.
