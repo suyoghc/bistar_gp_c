@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bistar-gp/m2c_freeze/m2cr_current_tree_anchor.schema_v1.json",
+  "title": "M2cR current-tree cascade historical anchor (D54)",
+  "description": "Closed-world record reclassifying the four-manifest M2cR current-tree cascade as immutable historical artifacts frozen at anchor commit 76f3c39. Every identity-bearing value (the two commits, the four retired paths and sha256s, the four E3 chain members, the entry-class counts, the provenance-class list, and the lifecycle status) is const-pinned, so a canonical but tampered record cannot validate. Verified by bistar_gp.m2cr.historical_anchor against git blobs, never the live working tree. Does not alter E3, L2, the committed R4 ledger/evidence, or D53.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "schema_version",
+    "anchor_commit",
+    "e3_execution_commit",
+    "retired_cascade",
+    "e3_execution_chain",
+    "importable_entry_classes",
+    "provenance_classes",
+    "lifecycle",
+    "references"
+  ],
+  "properties": {
+    "kind": {"const": "m2cr_current_tree_anchor"},
+    "schema_version": {"const": 1},
+    "anchor_commit": {"const": "76f3c39631d8724c45db5f0e679608bffde39bbe"},
+    "e3_execution_commit": {"const": "367667f77881469b47c901345015c72b70e2fc02"},
+    "retired_cascade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "importable_artifact_manifest",
+        "environment_freeze_manifest",
+        "infrastructure_manifest",
+        "protocol_manifest"
+      ],
+      "properties": {
+        "importable_artifact_manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": {"const": "docs/m2c_freeze/m2cr_importable_artifact_manifest_v1.jsonl"},
+            "sha256": {"const": "3fde66c187e8669f086b7dfcfd89541e8ca05018745b90d68de1bd4cd36f8e26"}
+          }
+        },
+        "environment_freeze_manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": {"const": "docs/m2c_freeze/m2cr_environment_freeze_manifest_v1.json"},
+            "sha256": {"const": "69028f69ae5c163938dc9656842a8b534bb9eec0280c35219f62399cd8b7c7f2"}
+          }
+        },
+        "infrastructure_manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": {"const": "docs/m2c_freeze/m2cr_infrastructure_manifest_v1.json"},
+            "sha256": {"const": "4bf7bec0ef2680c2a8adca49927cc4bc3aa967c2383c2f7dc6d55e1c75f2b527"}
+          }
+        },
+        "protocol_manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": {"const": "docs/m2c_freeze/m2cr_protocol_manifest_v1.json"},
+            "sha256": {"const": "a268dd85f23dc016d2658017c0c9dfd34030f338fa6eee1eec5dfdb20e3587c2"}
+          }
+        }
+      }
+    },
+    "e3_execution_chain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment_freeze_manifest_sha256",
+        "infrastructure_manifest_sha256",
+        "protocol_manifest_sha256",
+        "v117_canonical_sha256",
+        "v117_canonical_note"
+      ],
+      "properties": {
+        "environment_freeze_manifest_sha256": {"const": "8b6795e58ce07c08be94ba9136edcf3f97431188eb57ac91e0a62b5aa76113bc"},
+        "infrastructure_manifest_sha256": {"const": "d8a3f302fc39b59a4210d65fefd10b67fce5a435245cd387bed952d120f7259d"},
+        "protocol_manifest_sha256": {"const": "ace374a6d0b02eaf6321ac6b81d542ec532114235e166fac0190f499a0c179d2"},
+        "v117_canonical_sha256": {"const": "65381bc774e894dd9aaf2207cadd9cfa2f2735dafceff4bb39492086a9e522e2"},
+        "v117_canonical_note": {"type": "string", "minLength": 1}
+      }
+    },
+    "importable_entry_classes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "worktree_git_reproducible",
+        "environment_interpreter_attested",
+        "environment_note"
+      ],
+      "properties": {
+        "worktree_git_reproducible": {"const": 156},
+        "environment_interpreter_attested": {"const": 39812},
+        "environment_note": {"type": "string", "minLength": 1}
+      }
+    },
+    "provenance_classes": {
+      "const": [
+        "e3_execution_freeze",
+        "l2_cascade_anchor",
+        "committed_r4_ledger_evidence",
+        "future_live_tree_manifests"
+      ]
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "rule"],
+      "properties": {
+        "status": {"const": "retired_immutable_v1"},
+        "rule": {"type": "string", "minLength": 1}
+      }
+    },
+    "references": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["l2_certification_commit", "d53_disposition", "holdout"],
+      "properties": {
+        "l2_certification_commit": {"const": "76f3c39631d8724c45db5f0e679608bffde39bbe"},
+        "d53_disposition": {"type": "string", "minLength": 1},
+        "holdout": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
