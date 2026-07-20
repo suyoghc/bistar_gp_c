@@ -1,0 +1,5 @@
+/opt/homebrew/Caskroom/miniconda/base/lib/python3.13/site-packages/pyro/ops/stats.py:527: SyntaxWarning: invalid escape sequence '\g'
+  we have :math:`ES^{*}(P,Q) \ge ES^{*}(Q,Q)` with equality holding if and only if :math:`P=Q`, i.e.
+/opt/homebrew/Caskroom/miniconda/base/lib/python3.13/site-packages/linear_operator/utils/cholesky.py:40: NumericalWarning: A not p.d., added jitter of 1.0e-08 to the diagonal
+  warnings.warn(
+attestation_fault: loaded module origin is unreadable and cannot be authenticated: _remote_module_non_scriptable -> /private/tmp/claude-501/-Users-sc8918-Documents-GitHub-bistar-gp-c/d9d6eac2-6c0f-4fc8-b055-743950bc8205/scratchpad/r4_exec_wt/torch-git: [Errno 2] No such file or directory: '/private/tmp/claude-501/-Users-sc8918-Documents-GitHub-bistar-gp-c/d9d6eac2-6c0f-4fc8-b055-743950bc8205/scratchpad/r4_exec_wt/torch-git'
