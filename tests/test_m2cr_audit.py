@@ -801,6 +801,135 @@ def test_verify_closure_requires_the_exact_derived_event_sequence(tmp_path: Path
         ), (label, report["errors"])
 
 
+def _write_full_attestation_evidence(tmp_path: Path):
+    """Real capture layout (D52 Update 10): the marker records the ten mandatory
+    logical NAMES; four resolve to ALIASED file stems through capture's single
+    authoritative ``MANDATORY_MARKER_ATTESTATIONS`` contract
+    (``path_and_stage_a`` -> ``stage_a.json``, ``bytecode_scan`` ->
+    ``bytecode.json``, ``sourceless_check`` -> ``sourceless.json``,
+    ``importable_manifest_pre`` -> ``manifest_pre.json``); the other six are
+    self-named.  The prior ``<name>.json`` auditor false-rejected the four
+    aliased names on real evidence.  This is not tied to the untracked scientific
+    evidence directory."""
+
+    from bistar_gp.m2cr.capture import MANDATORY_MARKER_ATTESTATIONS
+
+    run_id = "run_20260719_full"
+    run_dir = tmp_path / run_id
+    (run_dir / "nodes").mkdir(parents=True)
+    prelaunch = run_dir / "prelaunch.json"
+    atomic_write_canonical_json(prelaunch, {"launch_attempt_id": LAUNCH})
+    atomic_write_canonical_json(run_dir / "spawned.json", {"launch_attempt_id": LAUNCH})
+    (run_dir / "events.jsonl").write_text('{"event":"STAGE_BEGIN"}\n', encoding="utf-8")
+    (run_dir / "stdout.txt").write_text("", encoding="utf-8")
+    (run_dir / "stderr.txt").write_text("", encoding="utf-8")
+    atomic_write_canonical_json(run_dir / "nodes" / "node_000000.json", {"node_index": 0})
+
+    # Each mandatory attestation's evidence file is written under its STEM; the
+    # marker records the logical NAME (four of which differ from the stem).
+    digests = []
+    for name in sorted(MANDATORY_MARKER_ATTESTATIONS):
+        stem = MANDATORY_MARKER_ATTESTATIONS[name]
+        evidence_file = run_dir / f"{stem}.json"
+        atomic_write_canonical_json(evidence_file, {"attestation": name, "stem": stem})
+        digests.append({"name": name, "evidence_sha256": sha256_file(evidence_file)})
+
+    commit = _commit()
+    chain = _frozen_chain_dict(commit)
+    marker = {
+        "authorization_id": AUTH,
+        "launch_attempt_id": LAUNCH,
+        "execution_commit": commit,
+        "chain": chain,
+        "attestation_evidence_digests": digests,
+        "prelaunch_sha256": sha256_file(prelaunch),
+    }
+    marker_path = run_dir / "payload_started.json"
+    atomic_write_canonical_json(marker_path, marker)
+
+    raw_manifest_digest = _write_raw_manifest(run_dir)
+    terminal = _infra_failure_record(
+        run_id, LAUNCH, chain, raw_manifest_digest, payload_started=True
+    )
+    terminal_path = run_dir / "terminal_record.json"
+    atomic_write_canonical_json(terminal_path, terminal)
+
+    events = _valid_events()
+    events[2]["payload_started_sha256"] = sha256_file(marker_path)
+    events[3]["status"] = "INFRA_FAILURE"
+    events[3]["terminal_record_sha256"] = sha256_file(terminal_path)
+    events[3]["raw_manifest_sha256"] = raw_manifest_digest
+    events[4]["derived_from"]["payload_started_sha256"] = sha256_file(marker_path)
+    return _jsonl(events), run_dir
+
+
+def test_evidence_verification_accepts_all_ten_real_marker_attestations(tmp_path: Path):
+    """The fixed auditor resolves every mandatory name — including the four
+    aliased ones — to its real on-disk file and accepts a correct tree."""
+
+    jsonl, _ = _write_full_attestation_evidence(tmp_path)
+    report = verify_ledger_against_evidence(jsonl, tmp_path)
+    assert report["ok"], report["errors"]
+
+
+def test_aliased_attestation_missing_evidence_file_fails_closed(tmp_path: Path):
+    """Removing an ALIASED file (stage_a.json for path_and_stage_a) fails closed;
+    the dangling digest names the resolved stem file, not <name>.json."""
+
+    jsonl, run_dir = _write_full_attestation_evidence(tmp_path)
+    (run_dir / "stage_a.json").unlink()
+    report = verify_ledger_against_evidence(jsonl, tmp_path)
+    assert not report["ok"]
+    assert any(
+        "attestation:" in e and "path_and_stage_a" in e and "stage_a.json" in e
+        for e in report["errors"]
+    ), report["errors"]
+
+
+def test_aliased_attestation_under_old_buggy_name_fails_closed(tmp_path: Path):
+    """Renaming an aliased file to the OLD buggy <name>.json (bytecode_scan.json)
+    must still fail: the fixed auditor looks for the real bytecode.json, proving
+    it resolves to the correct stem rather than the logical name."""
+
+    jsonl, run_dir = _write_full_attestation_evidence(tmp_path)
+    (run_dir / "bytecode.json").rename(run_dir / "bytecode_scan.json")
+    report = verify_ledger_against_evidence(jsonl, tmp_path)
+    assert not report["ok"]
+    assert any(
+        "attestation:" in e and "bytecode_scan" in e and "bytecode.json" in e
+        for e in report["errors"]
+    ), report["errors"]
+
+
+def test_aliased_attestation_digest_mismatch_fails_closed(tmp_path: Path):
+    """Tampering an aliased evidence file (sourceless.json for sourceless_check)
+    breaks its digest binding and fails closed."""
+
+    jsonl, run_dir = _write_full_attestation_evidence(tmp_path)
+    tampered = run_dir / "sourceless.json"
+    tampered.write_bytes(tampered.read_bytes() + b" ")
+    report = verify_ledger_against_evidence(jsonl, tmp_path)
+    assert not report["ok"]
+    assert any(
+        "attestation:" in e and "sourceless_check" in e and "sha256 mismatch" in e
+        for e in report["errors"]
+    ), report["errors"]
+
+
+def test_auditor_consumes_capture_single_mapping_authority():
+    """The auditor imports capture's public immutable contract — one source, no
+    duplicated mapping; the four aliases are exactly the real capture layout."""
+
+    from bistar_gp.m2cr.audit import MANDATORY_MARKER_ATTESTATIONS as audit_map
+    from bistar_gp.m2cr.capture import MANDATORY_MARKER_ATTESTATIONS as capture_map
+
+    assert audit_map is capture_map
+    assert dict(capture_map)["path_and_stage_a"] == "stage_a"
+    assert dict(capture_map)["bytecode_scan"] == "bytecode"
+    assert dict(capture_map)["sourceless_check"] == "sourceless"
+    assert dict(capture_map)["importable_manifest_pre"] == "manifest_pre"
+
+
 def _diagnostic_chain():
     return _frozen_chain_dict(_commit())
 

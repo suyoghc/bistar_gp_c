@@ -20,6 +20,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from bistar_gp.m2cr.capture import MANDATORY_MARKER_ATTESTATIONS
 from bistar_gp.m2cr.environment_freeze import read_manifest_header
 from bistar_gp.m2cr.serialization import (
     canonical_bytes,
@@ -840,8 +841,16 @@ def verify_ledger_against_evidence(
                     )
                     continue
                 attestation_names.append(name)
+                # Resolve the marker's logical attestation NAME to its on-disk
+                # evidence-file STEM through capture's single authoritative
+                # contract (D52 Update 10): four of the ten mandatory names are
+                # aliased (e.g. bytecode_scan -> bytecode.json), and a
+                # non-mandatory self-named attestation resolves to itself.  This
+                # replaces the prior `<name>.json` assumption that false-rejected
+                # real capture evidence for the aliased names.
+                stem = MANDATORY_MARKER_ATTESTATIONS.get(name, name)
                 _read_hashed_file(
-                    attempt / f"{name}.json",
+                    attempt / f"{stem}.json",
                     item.get("evidence_sha256"),
                     f"attestation:{launch_id}:{name}",
                     checks,
