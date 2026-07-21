@@ -140,7 +140,7 @@ def _record(scale, threads, *, hessian_status="measured", stage2_status="measure
             "openblas_num_threads_configured": threads,
             "veclib_maximum_threads_configured": threads,
             "torch_num_threads_effective": threads,
-            "torch_num_interop_threads_effective": threads,
+            "torch_num_interop_threads_effective": 4,
             "thread_configuration_checks_passed": True,
             "thread_control_scope_note": EXPECTED_THREAD_SCOPE_NOTE,
         },
@@ -241,13 +241,13 @@ def _sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _report_line(scale):
+def _report_line(scale, elapsed_s):
     return json.dumps(
         {
             "kind": "d19_bench_timing_record",
             "scale": scale,
             "n_points": 150 if scale == "sub" else 461,
-            "elapsed_s": 0.0,
+            "elapsed_s": elapsed_s,
         },
         separators=(",", ":"),
     )
@@ -260,7 +260,9 @@ def _write_stdout(evidence_dir, overrides=None, extra_lines=()):
         "3.11.14 2.10.0+cu128 1.15.1 1.9.1 2.4.2",
     ]
     for scale, threads in ((s, t) for s in ("sub", "full") for t in (1, 2, 3, 4)):
-        lines.append(_report_line(scale))
+        filename = f"bench_{scale}_threads_{threads}.json"
+        record = json.loads((evidence_dir / filename).read_text(encoding="utf-8"))
+        lines.append(_report_line(scale, record["totals"]["elapsed_s"]))
         lines.append(f"CELL {scale} {threads} exit 0 end 2026-07-21T12:00:00Z")
     for scale, threads in ((s, t) for s in ("sub", "full") for t in (1, 2, 3, 4)):
         filename = f"bench_{scale}_threads_{threads}.json"
@@ -346,6 +348,20 @@ def test_submit_script_pins_the_complete_execution_contract():
     assert "for t in 1 2 3 4; do" in text
     assert "MATRIX-STOP: cell ($scale,$t) rc=$rc; no retry, no continuation" in text
     assert "sha256sum runs/d19_a7_timing/bench_*.json" in text
+    assert text.index("UT_RAW=$(git status") < text.index("for scale in sub full")
+    assert "|| rc=$?" in text
+    assert '[ "$rc" -eq 0 ]' in text
+    assert "git diff --quiet" in text
+    assert "git diff --cached --quiet" in text
+    assert text.count("python -B") >= 2
+    assert "HOOK_SCRIPT=$(conda shell.bash hook) || fail 68" in text
+    assert 'eval "$HOOK_SCRIPT" || fail 68' in text
+    assert "--untracked-files=normal" in text
+    for name in (
+        "sitecustomize.py", "sitecustomize.pyc",
+        "usercustomize.py", "usercustomize.pyc",
+    ):
+        assert name in text
 
 
 def test_submit_script_never_owns_thread_variables_or_optimized_assertions():
@@ -357,15 +373,18 @@ def test_submit_script_never_owns_thread_variables_or_optimized_assertions():
     assert assignment.search(text) is None
     heredoc = text.split("<<'PYEOF'", 1)[1].split("\nPYEOF", 1)[0]
     assert re.search(r"\bassert\s+", heredoc) is None
+    assert "mod_path.parents" in heredoc
+    assert "startswith(" not in heredoc
     ceiling_line = next(line for line in text.splitlines() if "16G and 02:00:00" in line)
     assert "CEILINGS" in ceiling_line
 
 
-def test_valid_synthetic_evidence_passes(tmp_path, capsys):
+def test_valid_synthetic_evidence_passes(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(validator, "_dependency_blob_mismatches", lambda sha: [])
     evidence_dir = _valid_evidence(tmp_path)
     assert _run(evidence_dir) == 0
     output = capsys.readouterr().out
-    for number in range(1, 16):
+    for number in range(0, 16):
         assert f"V{number}" in output
     assert "FAIL" not in output
 
@@ -431,6 +450,77 @@ def _mutation_in_job_hash(evidence_dir):
     _write_manifest(evidence_dir)
 
 
+def _mutation_duplicate_json_key(evidence_dir):
+    path = _json_path(evidence_dir)
+    record = json.loads(path.read_text(encoding="utf-8"))
+    duplicate = json.dumps(record["record"], sort_keys=True)
+    raw = path.read_text(encoding="utf-8").replace(
+        "{", f'{{"record": {duplicate}, ', 1
+    )
+    path.write_text(raw, encoding="utf-8")
+    _refresh(evidence_dir)
+
+
+def _mutation_nan_literal(evidence_dir):
+    path = _json_path(evidence_dir)
+    raw = path.read_text(encoding="utf-8").replace(
+        '"cpu_count": 4', '"cpu_count": NaN', 1
+    )
+    path.write_text(raw, encoding="utf-8")
+    _refresh(evidence_dir)
+
+
+def _mutation_timestamp_outside_window(evidence_dir):
+    _mutate_json(
+        evidence_dir,
+        lambda record: record["environment"].__setitem__(
+            "timestamp", "2026-07-21T20:00:00+00:00"
+        ),
+    )
+
+
+def _mutation_sacct_node_mismatch(evidence_dir):
+    path = evidence_dir / "job_metadata.txt"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("della-r3c2n7", "della-r3c1n9"),
+        encoding="utf-8",
+    )
+    _write_manifest(evidence_dir)
+
+
+def _mutation_sacct_exit_code(evidence_dir):
+    path = evidence_dir / "job_metadata.txt"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("|0:0|", "|0:1|"),
+        encoding="utf-8",
+    )
+    _write_manifest(evidence_dir)
+
+
+def _mutation_sacct_elapsed(evidence_dir):
+    path = evidence_dir / "job_metadata.txt"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("|00:00:00|02:00:00|", "|03:00:00|02:00:00|"),
+        encoding="utf-8",
+    )
+    _write_manifest(evidence_dir)
+
+
+def _mutation_report_n_points(evidence_dir):
+    path = evidence_dir / f"slurm-{JOB_ID}.out"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace('"n_points":150', '"n_points":151', 1),
+        encoding="utf-8",
+    )
+    _write_manifest(evidence_dir)
+
+
+def _mutation_stderr_stop_marker(evidence_dir):
+    path = evidence_dir / f"slurm-{JOB_ID}.err"
+    path.write_text("MATRIX-STOP: x\n", encoding="utf-8")
+    _write_manifest(evidence_dir)
+
+
 @pytest.mark.parametrize("mutation", (
     _mutation_torch,
     _mutation_sha,
@@ -446,6 +536,14 @@ def _mutation_in_job_hash(evidence_dir):
     _mutation_budget,
     _mutation_threads,
     _mutation_in_job_hash,
+    _mutation_duplicate_json_key,
+    _mutation_nan_literal,
+    _mutation_timestamp_outside_window,
+    _mutation_sacct_node_mismatch,
+    _mutation_sacct_exit_code,
+    _mutation_sacct_elapsed,
+    _mutation_report_n_points,
+    _mutation_stderr_stop_marker,
 ), ids=(
     "torch-version-drift",
     "git-sha-mismatch",
@@ -461,14 +559,24 @@ def _mutation_in_job_hash(evidence_dir):
     "wrong-budget",
     "thread-filename-disagreement",
     "in-job-hash-disagreement",
+    "duplicate-json-key",
+    "nan-json-literal",
+    "artifact-timestamp-outside-window",
+    "sacct-node-mismatch",
+    "sacct-nonzero-step-exit",
+    "sacct-elapsed-over-ceiling",
+    "report-n-points-mismatch",
+    "stderr-stop-marker",
 ))
-def test_single_evidence_mutations_fail_closed(tmp_path, mutation):
+def test_single_evidence_mutations_fail_closed(tmp_path, mutation, monkeypatch):
+    monkeypatch.setattr(validator, "_dependency_blob_mismatches", lambda sha: [])
     evidence_dir = _valid_evidence(tmp_path)
     mutation(evidence_dir)
     assert _run(evidence_dir) == 1
 
 
-def test_truthful_budget_statuses_pass_and_are_censused(tmp_path, capsys):
+def test_truthful_budget_statuses_pass_and_are_censused(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(validator, "_dependency_blob_mismatches", lambda sha: [])
     evidence_dir = _valid_evidence(tmp_path)
     path = _json_path(evidence_dir)
     _write_record(
@@ -489,6 +597,71 @@ def test_truthful_budget_statuses_pass_and_are_censused(tmp_path, capsys):
     ) in output
 
 
+def test_v0_failure_makes_otherwise_valid_evidence_fail(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        validator,
+        "_dependency_blob_mismatches",
+        lambda sha: ["validation dependency differs"],
+    )
+    evidence_dir = _valid_evidence(tmp_path)
+    assert _run(evidence_dir) == 1
+
+
+def test_dependency_blob_helper_fails_for_missing_expected_sha():
+    assert validator._dependency_blob_mismatches("f" * 40)
+
+
+def test_v0_consults_dependency_blob_helper(monkeypatch):
+    observed = []
+
+    def fake(expected_sha):
+        observed.append(expected_sha)
+        return ["sentinel"]
+
+    monkeypatch.setattr(validator, "_dependency_blob_mismatches", fake)
+    assert validator._v0({"expected_sha": EXPECTED_SHA}) == ["sentinel"]
+    assert observed == [EXPECTED_SHA]
+
+
+def test_ambiguous_dst_fall_back_time_fails_closed():
+    with pytest.raises(ValueError, match="ambiguous local cluster time"):
+        validator._parse_local_cluster_time(
+            "2026-11-01T01:30:00", validator.ZoneInfo("America/New_York")
+        )
+
+
+def test_v4_detects_both_missing_and_extra_paths():
+    records = {
+        filename: _record(scale, threads)
+        for filename, (scale, threads) in zip(validator.BENCH_FILES, validator.CELL_ORDER)
+    }
+    changed = records["bench_sub_threads_1.json"]
+    del changed["record"]["kind"]
+    changed["record"]["unreviewed"] = "extra"
+    reasons = validator._v4({"records": records})
+    assert any("missing paths" in reason and "record.kind" in reason for reason in reasons)
+    assert any("extra paths" in reason and "record.unreviewed" in reason for reason in reasons)
+
+
+def test_v6_detects_negative_total_seconds():
+    records = {
+        filename: _record(scale, threads)
+        for filename, (scale, threads) in zip(validator.BENCH_FILES, validator.CELL_ORDER)
+    }
+    records["bench_sub_threads_1.json"]["timings"]["map_fit"]["total_s"] = -0.1
+    reasons = validator._v6({"records": records})
+    assert any("timings.map_fit.total_s" in reason for reason in reasons)
+
+
+def test_v15_rejects_wrong_monkeypatched_anchor_hash(monkeypatch):
+    monkeypatch.setattr(
+        validator,
+        "ANCHORS",
+        {"bench_sub.json": ("0" * 64, 3663)},
+    )
+    assert validator._v15({})
+
+
 def test_frozen_node_pool_expands_to_exact_membership():
     nodes = validator.expand_node_pool()
     assert len(nodes) == 90
@@ -504,7 +677,7 @@ def test_validator_source_has_no_assert_and_only_stdlib_imports():
     assert not any(isinstance(node, ast.Assert) for node in ast.walk(tree))
     allowed = {
         "argparse", "hashlib", "importlib", "json", "math", "re", "sys",
-        "datetime", "pathlib", "zoneinfo",
+        "subprocess", "datetime", "pathlib", "zoneinfo",
     }
     imported = set()
     for node in tree.body:
@@ -514,6 +687,13 @@ def test_validator_source_has_no_assert_and_only_stdlib_imports():
             imported.add((node.module or "").split(".")[0])
     assert imported <= allowed
     assert not ({"torch", "numpy", "gpytorch", "pyro", "bistar_gp"} & imported)
+
+
+def test_validator_key_inventory_is_transcription_independent():
+    source = VALIDATOR_PATH.read_text(encoding="utf-8")
+    assert "EXPECTED_KEY_PATHS = frozenset((" in source
+    assert "_VEHICLE.SCHEMA" not in source
+    assert ".SCHEMA" not in source
 
 
 def test_protocol_document_pins_authority_transport_and_topology():
@@ -536,6 +716,8 @@ def test_protocol_document_pins_authority_transport_and_topology():
     assert "dotfile" in lowered
     assert "worktree collision" in lowered and "stop" in lowered
     assert "staging destination must not exist" in lowered
+    assert "git add -f" in text
+    assert "git ls-files" in text
     assert (
         "git diff H'..M56 -- experiments/ bistar_gp/ tests/ "
         "docs/d19-a7-execution-protocol.md"

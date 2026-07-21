@@ -57,6 +57,8 @@ It fails closed with explicit exit codes:
 
 The script uses one node and one task with four CPUs available to the task. It runs `(sub,1)` first, then `sub` threads 2–4, then `full` threads 1–4. Cells are strictly serial. Every cell receives the uniform operational `--budget-s 600` ceiling. The first nonzero cell exit stops the matrix with no retry or continuation. The script does not set the four thread environment variables; the frozen D55 vehicle owns that pre-import contract.
 
+Gitignored files are invisible to git-based cleanliness checks; the four `sitecustomize.py`, `sitecustomize.pyc`, `usercustomize.py`, and `usercustomize.pyc` hijack names are shell-checked and both Python invocations run with `-B`, while host-level write access to the worktree remains a stated trust assumption.
+
 ## 4. Launch procedure
 
 These steps may be executed **only under a later byte-exact launch authorization** naming `<M56>`.
@@ -94,17 +96,19 @@ sbatch --export=NONE experiments/submit_d19_a7_bench.slurm <M56>
 **P6 — Capture scheduler metadata after termination.**
 
 ```text
+[ ! -e runs/d19_a7_timing/job_metadata.txt ] || { echo "job_metadata.txt exists; STOP"; exit 1; }
 sacct -j <jobid> -P --format=JobID,State,ExitCode,Elapsed,Timelimit,TotalCPU,MaxRSS,NodeList,Submit,Start,End > runs/d19_a7_timing/job_metadata.txt
 ```
 
 **P6b — Generate the complete Della manifest, excluding itself.**
 
 ```text
+[ ! -e runs/d19_a7_timing/PROVENANCE.sha256 ] || { echo "PROVENANCE.sha256 exists; STOP"; exit 1; }
 (cd runs/d19_a7_timing && ls -A | grep -vx PROVENANCE.sha256 | LC_ALL=C sort \
   | xargs -d '\n' sha256sum > PROVENANCE.sha256)
 ```
 
-This covers every present entry, including dotfiles. The success set is exactly the eleven files comprising eight JSON artifacts, stdout, stderr, and `job_metadata.txt`.
+This covers every present entry, including dotfiles. The success set is exactly the eleven files comprising eight JSON artifacts, stdout, stderr, and `job_metadata.txt`. A rerun of either P6 or P6b capture is an author decision: refuse and STOP when its target is present; nothing is ever truncated or overwritten.
 
 **P7 — Transport without clobbering or dropping dotfiles.**
 
@@ -126,6 +130,7 @@ experiments/d19_a7_validate.py --evidence-dir <staging> --expected-sha <M56>
 
 The validator is stdlib-only, read-only, and fail-closed:
 
+- **V0:** require the validator and frozen vehicle bytes to equal their `<M56>` Git blobs, so validation cannot run on unreviewed code.
 - **V1:** require the exact twelve-entry set, including the manifest; reject every extra entry and dotfile.
 - **V2:** parse all eight UTF-8 JSON artifacts strictly.
 - **V3:** pass every artifact through the frozen vehicle's `validate_record` firewall.
@@ -133,10 +138,10 @@ The validator is stdlib-only, read-only, and fail-closed:
 - **V5:** scan artifacts and logs against both frozen forbidden-token tables, with only the two frozen note values removed from artifact scan text.
 - **V6:** require every present seconds/count value to be finite and nonnegative; compare no magnitude.
 - **V7:** bind filename scale/thread tokens to the frozen run configuration and operational budget ceiling.
-- **V8:** require the successful thread check and all six configured/effective thread fields to agree with the filename.
+- **V8:** require the successful thread check, all four configured thread fields, and effective torch intra-op threads to agree with the filename; observed, never-set inter-op threads remain schema-checked by V3 only.
 - **V9:** bind every artifact to `<M56>`, exact versions, and a common environment fingerprint.
-- **V10:** require the short hostname in the frozen 90-node pool, matching `sacct` NodeList, plus `ENV-OK` and no preflight/matrix-stop marker.
-- **V11:** require eight closed-world report lines, eight successful cell exits in frozen order, one completion marker, the in-job hash block, and forbidden-clean logs; surface nonempty stderr for author reading.
+- **V10:** require the short hostname in the frozen 90-node pool, matching `sacct` NodeList, plus `ENV-OK` and no preflight/matrix-stop marker in either log stream.
+- **V11:** require eight closed-world report lines whose kind, scale sequence, point counts, and finite nonnegative elapsed values match the order-paired artifacts; also require eight successful cell exits in frozen order, one completion marker, the in-job hash block, and forbidden-clean logs; surface nonempty stderr for author reading.
 - **V12:** require the parent scheduler row `COMPLETED`, `0:0`, and within the `02:00:00` scheduler ceiling.
 - **V13:** interpret offset-free `sacct` times as `America/New_York`, compare artifact UTC timestamps with ±300 seconds tolerance, and require each artifact elapsed total within scheduler Elapsed; zoneinfo failure is fatal.
 - **V14:** require the exact eleven-file `PROVENANCE.sha256`, no self-entry or duplicate, local rehash equality, and three-way JSON-hash agreement.
@@ -152,6 +157,8 @@ AC5 applies uniformly. Submission failure, preflight abort, firewall rejection, 
 
 The topology is D56 branch → reviewed head `H` (or `H'` after the single bounded correction pass) → optional Notes-only tail → merge `M56`. D56 deliberately does not name its own future merge SHA.
 
+`H'` becomes the reviewed head only after the corrected findings receive focused re-confirmation; the `H..H'` delta is bounded to the confirmed findings and their tests.
+
 Launch authorization requires all of the following: `origin/main` HEAD equals `M56`; `M56`'s second parent is the PR head; the following diff is empty:
 
 ```text
@@ -162,6 +169,6 @@ The Della worktree HEAD must equal `M56`, enforced by the script, and every arti
 
 ## 8. Later allowlists and remaining open decision
 
-Evidence commit allowlist B is `runs/d19_a7_timing/{8 JSONs, slurm-<id>.out, slurm-<id>.err, job_metadata.txt, PROVENANCE.sha256}` plus Notes updates. Post-run addendum allowlist C is `docs/prereg-addenda-d19.md` v1.22 plus Notes. Numbering is fixed: v1.16 was burned as the M2bR run label, v1.18 is permanently burned, and the latest addendum is v1.21.
+Evidence commit allowlist B is `runs/d19_a7_timing/{8 JSONs, slurm-<id>.out, slurm-<id>.err, job_metadata.txt, PROVENANCE.sha256}` plus Notes updates. `.gitignore:29` (`slurm-*.out`) ignores the stdout evidence file, so the evidence commit MUST use `git add -f runs/d19_a7_timing/slurm-<id>.out` and MUST verify that `git ls-files runs/d19_a7_timing/` lists exactly the twelve evidence files before committing; this makes a silent stdout drop impossible. Post-run addendum allowlist C is `docs/prereg-addenda-d19.md` v1.22 plus Notes. Numbering is fixed: v1.16 was burned as the M2bR run label, v1.18 is permanently burned, and the latest addendum is v1.21.
 
 All claims are scoped to the frozen `intel,cascade,rh9` 90-node pool. Deletion of the superseded pre-D22 anchors remains a separate OPEN author decision.

@@ -28,16 +28,20 @@ EXEC_SHA="${1:-}"
 command -v module >/dev/null 2>&1 || fail 66 "module command unavailable"
 module purge
 module load anaconda3/2024.6 || fail 67 "module load anaconda3/2024.6 failed"
-eval "$(conda shell.bash hook)" || fail 68 "conda shell hook failed"
+HOOK_SCRIPT=$(conda shell.bash hook) || fail 68 "conda shell hook failed"
+eval "$HOOK_SCRIPT" || fail 68 "conda shell hook eval failed"
 conda activate bistar_gp || fail 69 "conda activate bistar_gp failed"
 
 [ "$(git rev-parse HEAD)" = "$EXEC_SHA" ] || fail 70 "HEAD != execution SHA"
 git diff --quiet || fail 71 "unstaged tracked modifications"
 git diff --cached --quiet || fail 72 "staged (index) modifications"
-mapfile -t UT < <(git status --porcelain)
+UT_RAW=$(git status --porcelain --untracked-files=normal) || fail 73 "git status failed"
+mapfile -t UT <<< "$UT_RAW"
 { [ "${#UT[@]}" -eq 1 ] && [ "${UT[0]}" = "?? runs/d19_a7_timing/" ]; } \
   || fail 73 "unexpected untracked path(s): ${UT[*]:-none}"
-mapfile -t EV < <(ls -A runs/d19_a7_timing)
+EV_RAW=$(ls -A runs/d19_a7_timing) || fail 74 "evidence directory unreadable"
+mapfile -t EV <<< "$EV_RAW"
+# An empty capture yields one empty element; the exact equality checks fail closed.
 [ "${#EV[@]}" -eq 2 ] || fail 74 "evidence dir not pristine: ${EV[*]:-empty}"
 for f in "${EV[@]}"; do
   case "$f" in
@@ -45,11 +49,14 @@ for f in "${EV[@]}"; do
     *) fail 75 "unexpected evidence entry: $f" ;;
   esac
 done
+for name in sitecustomize.py sitecustomize.pyc usercustomize.py usercustomize.pyc; do
+  [ ! -e "$EXEC_ROOT/$name" ] || fail 76 "import-hijack file present: $name"
+done
 
 EXPECT_ENV=/home/sc8918/.conda/envs/bistar_gp
 [ "${CONDA_PREFIX:-}" = "$EXPECT_ENV" ] || fail 80 "conda prefix ${CONDA_PREFIX:-unset} != $EXPECT_ENV"
 [ "$(command -v python)" = "$EXPECT_ENV/bin/python" ] || fail 81 "python resolves to $(command -v python)"
-PYTHONPATH="$EXEC_ROOT" python - "$EXEC_ROOT" <<'PYEOF' || fail 82 "environment drift or bistar_gp containment failure"
+PYTHONPATH="$EXEC_ROOT" python -B - "$EXEC_ROOT" <<'PYEOF' || fail 82 "environment drift or bistar_gp containment failure"
 import pathlib, platform, sys
 EXPECTED_EXE = "/home/sc8918/.conda/envs/bistar_gp/bin/python"
 EXPECTED = {"python": "3.11.14", "torch": "2.10.0+cu128",
@@ -91,7 +98,7 @@ for scale in sub full; do
     [ ! -e "$target" ] || fail 77 "target pre-exists: $target"
     echo "CELL $scale $t start $(date -u +%FT%TZ)"
     rc=0
-    PYTHONPATH="$EXEC_ROOT" python experiments/d19_bench.py \
+    PYTHONPATH="$EXEC_ROOT" python -B experiments/d19_bench.py \
         --scale "$scale" --threads "$t" --budget-s 600 || rc=$?
     echo "CELL $scale $t exit $rc end $(date -u +%FT%TZ)"
     [ "$rc" -eq 0 ] || { echo "MATRIX-STOP: cell ($scale,$t) rc=$rc; no retry, no continuation" >&2; exit "$rc"; }

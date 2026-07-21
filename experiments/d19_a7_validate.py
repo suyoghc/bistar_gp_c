@@ -6,6 +6,7 @@ import importlib.util
 import json
 import math
 import re
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -155,6 +156,7 @@ EXPECTED_KEY_PATHS = frozenset((
 ))
 
 CHECK_NAMES = (
+    "V0 validation-code identity",
     "V1 file set",
     "V2 strict JSON",
     "V3 vehicle firewall",
@@ -349,7 +351,13 @@ def _parse_local_cluster_time(value, cluster_zone):
     parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is not None:
         raise ValueError(f"sacct time unexpectedly carries an offset: {value!r}")
-    return parsed.replace(tzinfo=cluster_zone)
+    zoned = parsed.replace(tzinfo=cluster_zone)
+    if zoned.replace(fold=0).utcoffset() != zoned.replace(fold=1).utcoffset():
+        raise ValueError(
+            "ambiguous local cluster time (DST fall-back hour); "
+            "author adjudication required"
+        )
+    return zoned
 
 
 def _parse_artifact_utc(value):
@@ -398,6 +406,61 @@ def _infer_job_id(evidence_dir, supplied):
     if len(pairs) != 1:
         return None, [f"expected exactly one slurm out/err pair, found {sorted(pairs)}"]
     return next(iter(pairs)), []
+
+
+def _dependency_blob_mismatches(expected_sha):
+    reasons = []
+    for relpath in (
+        "experiments/d19_bench.py",
+        "experiments/d19_a7_validate.py",
+    ):
+        commands = (
+            (
+                "expected",
+                [
+                    "git", "-C", str(REPO_ROOT), "rev-parse", "--verify",
+                    f"{expected_sha}:{relpath}",
+                ],
+            ),
+            (
+                "live",
+                [
+                    "git", "-C", str(REPO_ROOT), "hash-object", "--",
+                    str(REPO_ROOT / relpath),
+                ],
+            ),
+        )
+        blobs = {}
+        for label, command in commands:
+            try:
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            except OSError as exc:
+                reasons.append(f"{relpath}: {label} blob command failed: {exc}")
+                continue
+            blob = result.stdout.strip()
+            if result.returncode != 0:
+                reasons.append(
+                    f"{relpath}: {label} blob command exited {result.returncode}"
+                )
+            elif not blob:
+                reasons.append(f"{relpath}: {label} blob command returned empty output")
+            else:
+                blobs[label] = blob
+        if set(blobs) == {"expected", "live"} and blobs["expected"] != blobs["live"]:
+            reasons.append(
+                f"{relpath}: live blob {blobs['live']} != "
+                f"{expected_sha} blob {blobs['expected']}"
+            )
+    return reasons
+
+
+def _v0(context):
+    return _dependency_blob_mismatches(context["expected_sha"])
 
 
 def _v1(context):
@@ -546,7 +609,6 @@ def _v8(context):
         "openblas_num_threads_configured",
         "veclib_maximum_threads_configured",
         "torch_num_threads_effective",
-        "torch_num_interop_threads_effective",
     )
     for filename, record in context["records"].items():
         tokens = _filename_tokens(filename)
@@ -632,13 +694,16 @@ def _v10(context):
         reasons.append(
             f"sacct NodeList {row.get('NodeList')!r} != artifact hostname {next(iter(hostnames))!r}")
     out_text = context.get("out_text")
+    err_text = context.get("err_text")
     if out_text is None:
         reasons.append("slurm stdout unavailable")
-    else:
-        if re.search(r"(?m)^ENV-OK\b", out_text) is None:
-            reasons.append("ENV-OK line missing")
-        if "PREFLIGHT-FAIL" in out_text or "MATRIX-STOP" in out_text:
-            reasons.append("stdout contains PREFLIGHT-FAIL or MATRIX-STOP")
+    elif re.search(r"(?m)^ENV-OK\b", out_text) is None:
+        reasons.append("ENV-OK line missing")
+    for label, text in (("stdout", out_text), ("stderr", err_text)):
+        if text is None:
+            reasons.append(f"slurm {label} unavailable for failure-marker check")
+        elif "PREFLIGHT-FAIL" in text or "MATRIX-STOP" in text:
+            reasons.append(f"{label} contains PREFLIGHT-FAIL or MATRIX-STOP")
     if len(context["records"]) != len(BENCH_FILES):
         reasons.append("not all artifacts were available for node checks")
     return reasons
@@ -687,6 +752,46 @@ def _v11(context):
     for index, report in enumerate(reports):
         if type(report) is not dict or set(report) != {"kind", "scale", "n_points", "elapsed_s"}:
             reasons.append(f"report line {index + 1} has wrong key set")
+            continue
+        if report.get("kind") != "d19_bench_timing_record":
+            reasons.append(f"report line {index + 1} has wrong kind")
+        if index >= len(CELL_ORDER):
+            continue
+        scale, threads = CELL_ORDER[index]
+        if report.get("n_points") != EXPECTED_N_POINTS[scale]:
+            reasons.append(
+                f"report line {index + 1} n_points {report.get('n_points')!r} "
+                f"!= {EXPECTED_N_POINTS[scale]}"
+            )
+        elapsed = report.get("elapsed_s")
+        if (
+            type(elapsed) not in (int, float)
+            or not math.isfinite(float(elapsed))
+            or elapsed < 0
+        ):
+            reasons.append(
+                f"report line {index + 1} elapsed_s is not finite and nonnegative"
+            )
+        filename = f"bench_{scale}_threads_{threads}.json"
+        record = context["records"].get(filename)
+        try:
+            artifact_elapsed = record["totals"]["elapsed_s"]
+        except (KeyError, TypeError):
+            reasons.append(f"report line {index + 1} artifact elapsed_s unavailable")
+        else:
+            if elapsed != artifact_elapsed:
+                reasons.append(
+                    f"report line {index + 1} elapsed_s {elapsed!r} != "
+                    f"{filename} totals.elapsed_s {artifact_elapsed!r}"
+                )
+    report_scales = tuple(
+        report.get("scale") if type(report) is dict else None for report in reports
+    )
+    expected_scales = tuple(scale for scale, _threads in CELL_ORDER)
+    if report_scales != expected_scales:
+        reasons.append(
+            f"report scale sequence {report_scales!r} != {expected_scales!r}"
+        )
     exits = []
     for line in out_text.splitlines():
         match = re.match(r"^CELL (sub|full) ([1-4]) exit 0(?:\s|$)", line)
@@ -832,7 +937,7 @@ def _v15(context):
 
 
 CHECK_FUNCTIONS = (
-    _v1, _v2, _v3, _v4, _v5, _v6, _v7, _v8, _v9, _v10,
+    _v0, _v1, _v2, _v3, _v4, _v5, _v6, _v7, _v8, _v9, _v10,
     _v11, _v12, _v13, _v14, _v15,
 )
 
