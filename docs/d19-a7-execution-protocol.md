@@ -167,6 +167,36 @@ git diff H'..M56 -- experiments/ bistar_gp/ tests/ docs/d19-a7-execution-protoco
 
 The Della worktree HEAD must equal `M56`, enforced by the script, and every artifact `git_sha` must equal `M56`, enforced by the validator.
 
+### §7 amendment (D56a, 2026-07-21): launch-closure rule repaired
+
+The original launch-closure rule quoted below is **SUPERSEDED**:
+
+```text
+git diff H'..M56 -- experiments/ bistar_gp/ tests/ docs/d19-a7-execution-protocol.md
+```
+
+It became permanently non-empty when the separately authorized test-only commit `b50350e` landed after `H'`. That commit changed only `tests/test_slurm_argparse.py`: the standing guard learned POSIX backslash-continued logical shell lines after the D56 submit script's continuations crashed its collection. The execution-relevant surface stayed byte-identical to `H'`. A launch gate that can never pass protects nothing; the gate is repaired here in the committed record, not overridden in chat.
+
+**Definitions.** `H'` = `4c9b79ae8fbe42ceeacbeac1f99a2cc1599ece7a`, the reviewed D56 code head. `b50350e` = `b50350e16f5a9356c383e09c357df258f99cd432`, the authorized guard correction. `A` is the exact reviewed D56a protocol-amendment head: this amendment's reviewed commit. `M56a` is the merge commit of the D56a PR and is the launch anchor. D56a deliberately does not name its own future merge SHA.
+
+**Two-anchor launch-closure rule.** This rule replaces the superseded diff above. Launch authorization requires **ALL** of the following:
+
+1. **Execution-byte closure.** The following diff is empty:
+
+   ```text
+   git diff H'..M56a -- experiments/submit_d19_a7_bench.slurm experiments/d19_a7_validate.py experiments/d19_bench.py bistar_gp/
+   ```
+
+2. **Known test-only delta.** The complete `tests/` diff from `H'` through `M56a` names exactly `tests/test_slurm_argparse.py`, and that file's blob at `M56a` equals its blob at `b50350e`. No other `tests/` delta is permitted.
+
+3. **Amendment closure.** `docs/d19-a7-execution-protocol.md` at `M56a` is byte-identical to `A`; equivalently, `git diff A..M56a -- docs/d19-a7-execution-protocol.md` is empty. Any commit after `A` on the D56a branch before merge must be Notes-only and explicitly identified in the launch authorization.
+
+4. **Topology.** `origin/main` HEAD equals `M56a`. `M56a` is a true merge commit whose second parent is the D56a PR head.
+
+5. **Unchanged enforcement bindings.** The Della worktree HEAD must equal `M56a`, enforced by the script, and every artifact `git_sha` must equal `M56a`, enforced by the validator. V0 binds the validator and frozen vehicle bytes at `M56a`; execution-byte closure makes those bytes identical to the bytes reviewed at `H'`.
+
+**Scope and amendment-time proof.** This amendment does not reinterpret the earlier two-reviewer review or its focused re-confirmation; alters no execution or validator byte; and authorizes no benchmark and no Della access. It only repairs the launch precondition so the authorized parser-test correction does not make D56 permanently unlaunchable. At amendment time, the following mechanical facts were verified at current `origin/main`, D56 merge `M56` = `66ca91cd8a5e0a2bbb7d984b2e5298707160d6c0`, which was merged without launch: `git diff 4c9b79a..origin/main -- experiments/submit_d19_a7_bench.slurm experiments/d19_a7_validate.py experiments/d19_bench.py bistar_gp/` is empty; the complete `tests/` diff from `4c9b79ae8fbe42ceeacbeac1f99a2cc1599ece7a` through current `origin/main` is exactly `tests/test_slurm_argparse.py`; and that file's blob at current `origin/main` is `5ef26ec2464aeb9e788a6e14b443e5801ed8b5c8`, equal to its blob at `b50350e16f5a9356c383e09c357df258f99cd432`.
+
 ## 8. Later allowlists and remaining open decision
 
 Evidence commit allowlist B is `runs/d19_a7_timing/{8 JSONs, slurm-<id>.out, slurm-<id>.err, job_metadata.txt, PROVENANCE.sha256}` plus Notes updates. `.gitignore:29` (`slurm-*.out`) ignores the stdout evidence file, so the evidence commit MUST use `git add -f runs/d19_a7_timing/slurm-<id>.out` and MUST verify that `git ls-files runs/d19_a7_timing/` lists exactly the twelve evidence files before committing; this makes a silent stdout drop impossible. Post-run addendum allowlist C is `docs/prereg-addenda-d19.md` v1.22 plus Notes. Numbering is fixed: v1.16 was burned as the M2bR run label, v1.18 is permanently burned, and the latest addendum is v1.21.
