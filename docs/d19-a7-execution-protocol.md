@@ -195,7 +195,25 @@ It became permanently non-empty when the separately authorized test-only commit 
 
 5. **Unchanged enforcement bindings.** The Della worktree HEAD must equal `M56a`, enforced by the script, and every artifact `git_sha` must equal `M56a`, enforced by the validator. V0 binds the validator and frozen vehicle bytes at `M56a`; execution-byte closure makes those bytes identical to the bytes reviewed at `H'`.
 
-**Scope and amendment-time proof.** This amendment does not reinterpret the earlier two-reviewer review or its focused re-confirmation; alters no execution or validator byte; and authorizes no benchmark and no Della access. It only repairs the launch precondition so the authorized parser-test correction does not make D56 permanently unlaunchable. At amendment time, the following mechanical facts were verified at current `origin/main`, D56 merge `M56` = `66ca91cd8a5e0a2bbb7d984b2e5298707160d6c0`, which was merged without launch: `git diff 4c9b79a..origin/main -- experiments/submit_d19_a7_bench.slurm experiments/d19_a7_validate.py experiments/d19_bench.py bistar_gp/` is empty; the complete `tests/` diff from `4c9b79ae8fbe42ceeacbeac1f99a2cc1599ece7a` through current `origin/main` is exactly `tests/test_slurm_argparse.py`; and that file's blob at current `origin/main` is `5ef26ec2464aeb9e788a6e14b443e5801ed8b5c8`, equal to its blob at `b50350e16f5a9356c383e09c357df258f99cd432`.
+6. **Total-surface closure (audit hardening).** The complete
+   `git diff --name-only H'..M56a` may contain only paths under `Notes/` or `docs/`,
+   plus exactly `tests/test_slurm_argparse.py`; equivalently, the following command
+   must print nothing:
+
+   ```text
+   git diff --name-only H'..M56a -- . ':(exclude)Notes' ':(exclude)docs' ':(exclude)tests/test_slurm_argparse.py'
+   ```
+
+   Rationale: the benchmark process imports through `PYTHONPATH=$EXEC_ROOT` and its
+   script directory `experiments/`, so any new or changed top-level `*.py`, top-level
+   package directory, or `experiments/` file could shadow a standard-library or
+   scientific module and execute unreviewed code that the item-1 closure and V0 cannot
+   see. Items 1 and 2 remain as the named anchors; this item closes the remainder of
+   the tree. `Notes/` and `docs/` paths cannot enter the interpreter's import path,
+   and `docs/d19-a7-execution-protocol.md` stays pinned to `A` by item 3, while
+   `tests/test_slurm_argparse.py` stays blob-pinned to `b50350e` by item 2.
+
+**Scope and amendment-time proof.** This amendment does not reinterpret the earlier two-reviewer review or its focused re-confirmation; alters no execution or validator byte; and authorizes no benchmark and no Della access. It only repairs the launch precondition so the authorized parser-test correction does not make D56 permanently unlaunchable. At amendment time, the following mechanical facts were verified at current `origin/main`, D56 merge `M56` = `66ca91cd8a5e0a2bbb7d984b2e5298707160d6c0`, which was merged without launch: `git diff 4c9b79a..origin/main -- experiments/submit_d19_a7_bench.slurm experiments/d19_a7_validate.py experiments/d19_bench.py bistar_gp/` is empty; the complete `tests/` diff from `4c9b79ae8fbe42ceeacbeac1f99a2cc1599ece7a` through current `origin/main` is exactly `tests/test_slurm_argparse.py`; and that file's blob at current `origin/main` is `5ef26ec2464aeb9e788a6e14b443e5801ed8b5c8`, equal to its blob at `b50350e16f5a9356c383e09c357df258f99cd432`. At amendment time the total-surface check also holds at current `origin/main`: the complete name-diff from `H'` contains only `Notes/`, `docs/`, and `tests/test_slurm_argparse.py` paths.
 
 ## 8. Later allowlists and remaining open decision
 
