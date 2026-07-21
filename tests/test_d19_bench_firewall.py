@@ -1255,3 +1255,91 @@ def test_loader_returned_provenance_flows_into_the_record():
     text = SOURCE_TEXT
     assert '"canonical_sha256": canonical_sha256' in text
     assert '"source": dataset_source' in text
+
+
+# AUTHORITATIVE CONSTANT PINNING
+#
+# The schema validates these two fields with `Const(<module constant>)`, and
+# `_valid_record()` builds them from the SAME module constant, so those checks
+# are tautological with respect to the TEXT: a reworded constant would keep the
+# whole suite green. The literals below are transcribed independently, so any
+# edit to the production wording fails here and nowhere else. Flagged by the
+# exact-head acceptance audit of dd673d9 as its one non-blocking residual.
+
+EXPECTED_FIREWALL_NOTE = (
+    "prereg v1.2 point 6 and v1.6 item 6 (ratified v1.9 item 1, v1.11 item 4): "
+    "this artifact carries only timing, evaluation-count, configuration and "
+    "environment fields. Posterior samples and disallowed diagnostics are "
+    "discarded unread. Transient prior proposals and MAP-derived values are "
+    "read internally ONLY to execute the frozen timing workloads that require "
+    "them. None of them is printed or serialized: no hyperparameter, noise, "
+    "posterior, curvature-spectrum or per-site value leaves this process."
+)
+
+EXPECTED_DESIGN_LABEL = (
+    "whole-span season-preserving even-index subsample "
+    "(np.round(np.linspace) over indices)"
+)
+
+
+def test_firewall_note_matches_the_authorized_literal():
+    """Exact equality against an independently transcribed literal."""
+
+    assert d19.FIREWALL_NOTE == EXPECTED_FIREWALL_NOTE
+    assert len(d19.FIREWALL_NOTE) == 497
+
+
+def test_firewall_note_makes_the_three_authorized_claims():
+    """Semantic guard, so a reworded-but-same-length edit still fails.
+
+    The author's ratified wording draws a distinction the earlier draft got
+    wrong: prior proposals ARE read (applying them is how the prior-evaluation
+    workload is priced), so the note may not claim every sample is discarded
+    unread. These assertions encode that distinction directly.
+    """
+
+    note = d19.FIREWALL_NOTE
+    # (1) posterior samples and disallowed diagnostics: discarded unread
+    assert "Posterior samples and disallowed diagnostics are discarded unread" in note
+    # (2) transient prior proposals and MAP-derived values: internal use only
+    assert "Transient prior proposals and MAP-derived values are read internally" in note
+    assert "ONLY to execute the frozen timing workloads" in note
+    # (3) none of them is emitted
+    assert "None of them is printed or serialized" in note
+
+
+def test_firewall_note_does_not_revert_to_the_overclaiming_wording():
+    """The superseded draft asserted that ALL samples were discarded unread,
+    which is false for prior proposals. Reverting must fail here."""
+
+    note = d19.FIREWALL_NOTE
+    for overclaim in (
+        "samples and disallowed diagnostics are discarded unread, and no",
+        "samples and scientific diagnostics are discarded unread",
+        "computes scientific values internally",
+    ):
+        assert overclaim not in note, overclaim
+    # "discarded unread" must be scoped to POSTERIOR samples, never bare.
+    assert "samples and disallowed diagnostics are discarded unread" not in (
+        note.replace("Posterior samples and disallowed diagnostics are "
+                     "discarded unread", ""))
+
+
+def test_design_label_matches_the_authorized_literal():
+    assert d19.DESIGN_LABEL == EXPECTED_DESIGN_LABEL
+    assert len(d19.DESIGN_LABEL) == 86
+    # The A5 sub-scale rule these words describe, pinned phrase by phrase.
+    for phrase in ("whole-span", "season-preserving", "even-index subsample",
+                   "np.round(np.linspace) over indices"):
+        assert phrase in d19.DESIGN_LABEL, phrase
+
+
+def test_pinned_literals_are_not_sourced_from_the_module():
+    """Guards the guard: if someone 'fixes' the tests by pointing the expected
+    literals back at the module, the pin becomes tautological again."""
+
+    source = Path("tests/test_d19_bench_firewall.py").read_text()
+    block = source.split("EXPECTED_FIREWALL_NOTE = ")[1].split("def test_")[0]
+    assert "d19." not in block
+    assert "FIREWALL_NOTE" not in block.split("EXPECTED_DESIGN_LABEL")[0].replace(
+        "EXPECTED_FIREWALL_NOTE", "")
