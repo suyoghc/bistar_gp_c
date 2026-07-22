@@ -9,7 +9,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=02:00:00
-#SBATCH --chdir=/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec
+#SBATCH --chdir=/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02
 #SBATCH --output=runs/d19_a7_timing/slurm-%j.out
 #SBATCH --error=runs/d19_a7_timing/slurm-%j.err
 # D56 (docs/d19-a7-execution-protocol.md): A7 timing matrix under ballot AC1-AC11.
@@ -17,9 +17,15 @@
 # Submission: sbatch --export=NONE experiments/submit_d19_a7_bench.slurm <execution-sha>
 set -euo pipefail
 
+# D56b (D56 Update 6, job 11485635): the anaconda3/2024.6 modulefile reads
+# ${PS1} unguarded inside the environment-imported _module_raw wrapper, fatal
+# under nounset when the batch environment leaves PS1 unset. Define and export
+# it (empty when unset) before any module operation; nounset stays enabled.
+export PS1="${PS1-}"
+
 fail() { echo "PREFLIGHT-FAIL($1): $2" >&2; exit "$1"; }
 
-EXEC_ROOT=/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec
+EXEC_ROOT=/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02
 [ "$PWD" = "$EXEC_ROOT" ] || fail 64 "PWD $PWD != $EXEC_ROOT"
 
 EXEC_SHA="${1:-}"

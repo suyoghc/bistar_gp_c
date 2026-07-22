@@ -771,3 +771,107 @@ this attempt (number unburned); the Della worktree is preserved untouched; **A7 
 OWED**. Next acts (separate authorizations, none begun): read-only Della diagnostic →
 bounded D56b script correction (new review cycle + new launch anchor) → fresh launch
 authorization.
+
+## 2026-07-22 — D56b: PS1 correction + attempt-2 worktree `_02`; two-model review gate; Draft PR (STOP at Draft) (Fable orchestrator session, branch fix/d19-a7-d56b-ps1)
+
+**Startup + implementation (Codex implementer):** startup gate all-PASS (origin/main = the
+PR #26 failed-attempt evidence merge `7d234e9f…`; tracked tree clean; branch cut from it;
+base-state proofs: empty `H'` execution-byte diff, canonical `runs/d19_a7_timing/` +
+staging + v1.22 absent, v1.18 burned, all four failure-evidence blobs pin-identical;
+baseline full suite 1157 passed / 2 skipped). The separately authorized read-only Della
+diagnostic (recorded as D56 Update 6) attributed `environment: line 49` to the
+anaconda3/2024.6 modulefile: 51 emitted shell lines, emitted line 50 carrying the first
+unguarded read `export _LOCAL_OLD_PS1="${PS1}"`, executed inside the environment-imported
+`_module_raw` wrapper (hence the label and the 49-vs-50 offset); an empty exported PS1
+defined before `set -u` passes purge, load, conda hook, and activation. Implementation was
+delegated to Codex **gpt-5.6-sol xHigh** (identity verified from the session banner AND
+the rollout-log model field, session `019f8814`): frozen correction `export PS1="${PS1-}"`
+after `set -euo pipefail` and before `module purge` (nounset never relaxed); attempt-2
+worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02` in every live binding (`--chdir`,
+`EXEC_ROOT`, protocol P2/P3/P7, tests) with the attempt-1 worktree preserved and its path
+only historical; §7 D56b amendment defining B and the true-merge launch anchor M56b; nine
+new discriminating hermetic tests including the disposable `/bin/bash` fake-modulefile
+reproduction; four failure-evidence blobs test-pinned (sha256 + size). Two re-verified
+orchestrator refinements landed pre-review. Implementation head `08e7d2d7…`; focused
+48/12/68; full suite 1167 passed / 2 skipped / 0 failed (delta = exactly the 10 new items).
+
+**Review gate + single bounded correction pass:** FRESH read-only Codex gpt-5.6-sol xHigh
+(session `019f8821`, sandbox read-only, banner + rollout verified; its final-message
+"GPT-5" self-identification superseded by the session identity, the D55 precedent)
+returned **REVISE** — 1 BLOCKER (the closure byte-pinned only the submit script across
+`B..M56b`, leaving the protocol and tests changeable post-review), 4 MAJOR
+(comment-evadable literal check with a fixture-only reproduction; unguarded P2/P3 prose
+bindings; `set +e +u` evading the nounset regex; presence-only STOP/amendment checks),
+2 MINOR. FRESH **Opus 4.8** (`claude-opus-4-8[1m]`, transcribed from its own context)
+returned **APPROVE** with 1 MINOR (the shared premature "exactly six" wording) and 4
+NOTEs, independently confirming the correction's bash semantics, the discrimination
+matrix, hermeticity and bash-3.2 portability, closure satisfiability, and zero
+frozen-surface drift. Every finding was orchestrator-verified against source; the SINGLE
+bounded correction pass closed them: reviewed-surface closure (script + protocol document
++ protocol test file byte-identical across `B..M56b`; post-B commits Notes-only and
+explicitly identified), line-exact literal assertions plus a reproduction driver that
+extracts the correction line from the script itself, positive P2/P3 prose assertions plus
+a per-line history rule for bare attempt-1 occurrences, a token-level `set` argument
+parser, the document-wide sbatch count pinned to 2 plus §6's verbatim no-retry sentence,
+and the two MINOR wording/disambiguation fixes. Mutation-verified: five mutants each
+killed by the intended tests, byte-identical restores, control green. Reviewed head
+**B = `e4894e2e…`** (the last non-Notes commit); post-pass focused 128; full suite
+1167 passed / 2 skipped / 0 failed. Opus's §2 present-tense NOTE was adjudicated
+no-action (D56 history stays unrewritten). AI reviews, not GitHub reviews or CI.
+
+**Committed (this closure):** the six-file allowlist only — submit script, protocol
+tests, protocol document, DECISIONS (Updates 6 and 7 plus Status), SCRATCHPAD, and this
+CHATLOG entry (the Notes-only tail after B, explicitly identified per the
+reviewed-surface closure rule). Draft PR opened against main off `7d234e9f`; **STOP at
+Draft** — before Ready, merge, M56b, any Della contact, worktree creation, module or
+conda probe, submission, retry, benchmark, data load, evidence creation, v1.22, poster
+branch, or scientific computation. Attempt 2 remains gated on `origin/main == M56b` and a
+fresh byte-exact author authorization naming M56b. The attempt-1 submission stays SPENT;
+its worktree and evidence stay preserved untouched. A7 remains OWED.
+
+## 2026-07-22 — D56b exact-head confirmation round: SPLIT verdict, mechanical adjudication, author-accepted residual; D56 Update 8 truth correction (Fable orchestrator session, branch fix/d19-a7-d56b-ps1)
+
+**Round (separately authorized, strictly read-only):** both Update 7 reviews had run at
+implementation head `08e7d2d7…`, so the author authorized one exact-head confirmation at
+B = `e4894e2e…`. The original findings were recovered byte-exact (Codex `019f8821`
+rollout; the original Opus subagent transcript) and fed VERBATIM to two FRESH reviewers
+at the exact head. Codex gpt-5.6-sol xHigh (session `019f8998`, banner + rollout
+model/effort verified, sandbox read-only): **FINDINGS** — closures 1, 2, 3, 6, 7 CLOSED;
+(4) NOT-CLOSED (backslash-continued `set +e \` + `+u` joins into `set +e +u`, disabling
+nounset while evading the regex, the per-physical-line token parser, and the `set +o`
+check); (5) NOT-CLOSED (a sbatch-free retry sentence keeps the STOP-only test green).
+Opus 4.8 (`claude-opus-4-8`, transcript model field verified; all 18 SHA-bearing git
+commands on the correct full SHA): **APPROVE** — all dispositions VERIFIED-CLOSED, own
+MINOR RESOLVED, §2 adjudication ACCEPTED, no new defects, zero drift, focused 48 passed
+on the target bytes. SPLIT, not unanimous; never to be described as CONFIRMED-CLOSED or
+APPROVE by both models.
+
+**Adjudication:** the orchestrator mechanically reproduced finding (4) by construction
+(guard logic copied verbatim from B, run in memory: real script GREEN as control, the
+continuation mutant GREEN so the evasion succeeds, single-line `set +e +u` caught; a
+disposable `/bin/bash` run drops the flags from `ehuBc` to `hBc` and a bare unbound
+expansion survives while the control aborts; the frozen argparse guard has no
+set-command handling) and adjudicated Codex CORRECT on (4); Opus's grade covered only
+the named single-line forms. Finding (5) was verified textually true but restates
+Update 7's recorded partial disposition. An initial STOP was taken with no changes and
+the verified finding returned to the author.
+
+**Author adjudication (cast 2026-07-22):** the residual is ACCEPTED as a known,
+NON-LAUNCH-BLOCKING limitation of the test guard — the exact attempt-2 script at B
+carries `set -euo pipefail`, contains no nounset-relaxing command, and retains nounset
+through its actual execution path, and the item-1 reviewed-surface byte-pin means the
+demonstrated mutant cannot enter attempt 2 without violating the launch gate. No further
+code or test correction pass. `_set_option_args` is recorded as a bounded source guard,
+not a complete parser of Bash logical commands; the limitation matters for future
+amendment cycles, which receive fresh review anyway. Update 7's class-wide CLOSED
+wording for (4) is superseded by D56 Update 8; (5) retains its recorded disposition.
+
+**Committed (this closure):** Notes-only truth correction — D56 Update 8 + Status
+refresh, SCRATCHPAD alignment, and this CHATLOG entry; one normal commit + push (no
+amend, no force); Draft PR #27 body updated with the precise review lineage and the
+accepted residual. The Notes-only tail after B is now exactly two identified commits
+(`7d077aff…` and this one). No non-Notes byte changed; the suite was not rerun (1167
+passed / 2 skipped / 0 failed applies to B's tree). A mechanical Ready-closure
+authorization was returned; **STOP before Ready** — no Ready flip, merge, M56b, Della
+contact, worktree creation, submission, retry, benchmark, evidence creation, v1.22,
+Mauna access, or scientific computation. A7 remains OWED.

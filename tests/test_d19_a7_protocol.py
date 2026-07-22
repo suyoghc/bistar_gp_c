@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,16 @@ PROTOCOL_PATH = Path("docs/d19-a7-execution-protocol.md")
 TEST_PATH = Path("tests/test_d19_a7_protocol.py")
 EXPECTED_SHA = "a" * 40
 JOB_ID = "12345"
+ATTEMPT1_EXEC_ROOT = "/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec"
+ATTEMPT2_EXEC_ROOT = "/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02"
+PS1_CORRECTION = 'export PS1="${PS1-}"'
+FAILED_ATTEMPT_DIR = Path("runs/d19_a7_failed_11485635")
+FAILED_ATTEMPT_PINS = {
+    "PROVENANCE.sha256": ("c420d12425d6afa29e5b204f2ef47496ed7779485922403f88a7f883e9ca4b25", 253),
+    "job_metadata.txt": ("09f524460da0ba70e94d5b0ee42a67f11638346f3235f1f904baa44dc67deb37", 451),
+    "slurm-11485635.err": ("59be6fc2986c195cdedc5c28bf6f8a03f3cf6513244db911e8b0f049a3ebc9d1", 44),
+    "slurm-11485635.out": ("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", 0),
+}
 
 EXPECTED_SBATCH_LINES = (
     "#SBATCH --job-name=d19-a7-bench",
@@ -28,7 +39,7 @@ EXPECTED_SBATCH_LINES = (
     "#SBATCH --cpus-per-task=4",
     "#SBATCH --mem=16G",
     "#SBATCH --time=02:00:00",
-    "#SBATCH --chdir=/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec",
+    "#SBATCH --chdir=/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02",
     "#SBATCH --output=runs/d19_a7_timing/slurm-%j.out",
     "#SBATCH --error=runs/d19_a7_timing/slurm-%j.err",
 )
@@ -84,6 +95,54 @@ EXPECTED_VERSIONS = {
     "pyro": "1.9.1",
     "numpy": "2.4.2",
 }
+
+
+def _script_ps1_correction_line():
+    lines = SCRIPT_PATH.read_text(encoding="utf-8").splitlines()
+    matches = [line for line in lines if line == PS1_CORRECTION]
+    assert len(matches) == 1, "script must carry the correction as an exact line"
+    return matches[0]
+
+
+def _write_ps1_repro_driver(tmp_path, correction_placement):
+    tail = tmp_path / "tail.sh"
+    tail.write_text(
+        "# Benign modulefile tail prelude.\n"
+        'export _LOCAL_OLD_PS1="${PS1}"\n',
+        encoding="utf-8",
+    )
+    lines = ["#!/bin/bash", "set -euo pipefail"]
+    if correction_placement == "before":
+        lines.append(_script_ps1_correction_line())
+    elif correction_placement not in {"after", "absent"}:
+        raise ValueError(f"unknown correction placement: {correction_placement}")
+    lines.extend([
+        "module() {",
+        '  case "$1" in',
+        "    purge) ;;",
+        '    load) . "${0%/*}/tail.sh" ;;',
+        "    *) return 2 ;;",
+        "  esac",
+        "}",
+        "module purge",
+        "module load anaconda3/2024.6",
+    ])
+    if correction_placement == "after":
+        lines.append(_script_ps1_correction_line())
+    lines.append("echo REPRO-OK")
+    driver = tmp_path / f"driver-{correction_placement}.sh"
+    driver.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return driver, tail
+
+
+def _run_ps1_repro(driver):
+    return subprocess.run(
+        ["/bin/bash", str(driver)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin"},
+    )
 
 
 def _load_validator():
@@ -331,6 +390,146 @@ def _mutate_json(evidence_dir, mutator, scale="sub", threads=1):
     mutator(record)
     _write_record(path, record)
     _refresh(evidence_dir)
+
+
+def test_ps1_correction_literal_once_between_strict_mode_and_module_purge():
+    text = SCRIPT_PATH.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    # Line-exact: a commented-out or suffixed variant must not satisfy this.
+    assert lines.count(PS1_CORRECTION) == 1
+    assert all(line == PS1_CORRECTION for line in lines if PS1_CORRECTION in line)
+    assert (
+        lines.index("set -euo pipefail")
+        < lines.index(PS1_CORRECTION)
+        < lines.index("module purge")
+    )
+
+
+def test_ps1_repro_with_correction_survives_fake_modulefile_tail(tmp_path):
+    driver, tail = _write_ps1_repro_driver(tmp_path, "before")
+    assert tail.read_text(encoding="utf-8").splitlines()[-1] == (
+        'export _LOCAL_OLD_PS1="${PS1}"'
+    )
+    result = _run_ps1_repro(driver)
+    assert result.returncode == 0, result.stderr
+    assert "REPRO-OK" in result.stdout
+
+
+@pytest.mark.parametrize("correction_placement", ("absent", "after"))
+def test_ps1_repro_without_or_late_correction_dies_under_nounset(
+    tmp_path, correction_placement
+):
+    driver, tail = _write_ps1_repro_driver(tmp_path, correction_placement)
+    result = _run_ps1_repro(driver)
+    assert result.returncode != 0
+    assert "PS1: unbound variable" in result.stderr
+    assert "REPRO-OK" not in result.stdout
+
+
+def _set_option_args(text):
+    """Yield every +/- option argument of every `set` command in the script."""
+    for line in text.splitlines():
+        tokens = line.split()
+        for i, token in enumerate(tokens):
+            if token != "set":
+                continue
+            for arg in tokens[i + 1:]:
+                if arg.startswith(("+", "-")):
+                    yield arg
+                else:
+                    break
+
+
+def test_nounset_stays_enabled_and_never_relaxed():
+    text = SCRIPT_PATH.read_text(encoding="utf-8")
+    assert "set -euo pipefail" in text
+    assert re.search(r"set\s+\+[a-z]*u", text) is None
+    assert "set +o" not in text
+    # Token-level guard: split clusters such as `set +e +u` or `set -e +u`
+    # match neither regex above but still disable nounset.
+    for arg in _set_option_args(text):
+        assert not (arg.startswith("+") and "u" in arg), arg
+        assert arg != "+o", arg
+
+
+def test_every_live_attempt2_binding_uses_the_attempt2_worktree():
+    text = SCRIPT_PATH.read_text(encoding="utf-8")
+    assert f"--chdir={ATTEMPT2_EXEC_ROOT}" in text
+    assert f"EXEC_ROOT={ATTEMPT2_EXEC_ROOT}" in text
+    assert text.count(ATTEMPT1_EXEC_ROOT) == text.count(ATTEMPT2_EXEC_ROOT)
+
+    protocol = PROTOCOL_PATH.read_text(encoding="utf-8")
+    assert f"worktree add --detach {ATTEMPT2_EXEC_ROOT} " in protocol
+    assert f"{ATTEMPT2_EXEC_ROOT}/runs/d19_a7_timing" in protocol
+    # Live prose bindings: the P2 collision target and the P3 change-directory
+    # target must name the attempt-2 worktree, not the preserved attempt-1 one.
+    assert f"STOP if `{ATTEMPT2_EXEC_ROOT}` exists" in protocol
+    assert f"Change to the execution worktree `{ATTEMPT2_EXEC_ROOT}`" in protocol
+
+
+def test_attempt1_path_survives_only_as_history_and_is_never_a_live_target():
+    text = PROTOCOL_PATH.read_text(encoding="utf-8")
+    bare_attempt1 = re.compile(re.escape(ATTEMPT1_EXEC_ROOT) + r"(?!_02)")
+    fenced_blocks = text.split("```")[1::2]
+    assert fenced_blocks
+    assert all(bare_attempt1.search(block) is None for block in fenced_blocks)
+    assert bare_attempt1.search(text) is not None
+    assert "never remove" in text.lower()
+    # Every bare attempt-1 occurrence must be historical/preservation prose:
+    # its line must carry preservation or attempt-1 context, so a live
+    # directive can never quietly re-target the preserved worktree.
+    for line in text.splitlines():
+        if bare_attempt1.search(line):
+            assert "preserved" in line or "attempt-1" in line, line
+
+
+def test_attempt1_failure_evidence_blobs_remain_byte_identical():
+    assert sorted(path.name for path in FAILED_ATTEMPT_DIR.iterdir()) == sorted(
+        FAILED_ATTEMPT_PINS
+    )
+    for name, (expected_digest, expected_size) in FAILED_ATTEMPT_PINS.items():
+        data = (FAILED_ATTEMPT_DIR / name).read_bytes()
+        assert len(data) == expected_size
+        assert hashlib.sha256(data).hexdigest() == expected_digest
+
+
+def test_single_submission_stop_only_semantics_preserved():
+    protocol = PROTOCOL_PATH.read_text(encoding="utf-8")
+    script = SCRIPT_PATH.read_text(encoding="utf-8")
+    submit_command = "sbatch --export=NONE experiments/submit_d19_a7_bench.slurm"
+    assert protocol.count(submit_command) == 1
+    # Exactly two `sbatch` mentions may exist: the §2 `man sbatch` recon fact
+    # and the single P5 command. Any added submission instruction trips this.
+    assert protocol.count("sbatch") == 2
+    assert "P5 — Submit once." in protocol
+    assert "no retry" in protocol
+    assert (
+        "There is no retry, completion invocation, or continuation without a "
+        "new explicit author authorization."
+    ) in protocol
+    assert "no retry, no continuation" in script
+    assert "fresh byte-exact" in protocol
+
+
+def test_protocol_document_records_the_d56b_amendment():
+    text = PROTOCOL_PATH.read_text(encoding="utf-8")
+    for literal in (
+        "D56b",
+        "M56b",
+        "7d234e9ffad6b154e7523507658a6999e7bb6c53",
+        PS1_CORRECTION,
+        ATTEMPT2_EXEC_ROOT,
+        # The launch-closure rule's load-bearing members, pinned so that
+        # deleting an item while keeping the headline tokens cannot pass.
+        "git diff B..M56b -- experiments/submit_d19_a7_bench.slurm "
+        "tests/test_d19_a7_protocol.py docs/d19-a7-execution-protocol.md",
+        "git diff H'..M56b -- experiments/d19_a7_validate.py "
+        "experiments/d19_bench.py bistar_gp/",
+        "second parent is the D56b PR head",
+        "fresh byte-exact author authorization naming `M56b`",
+        "Notes-only and explicitly identified in the launch authorization",
+    ):
+        assert literal in text
 
 
 def test_submit_script_pins_the_complete_execution_contract():

@@ -73,15 +73,15 @@ Run `git -C /scratch/gpfs/SUYOGHC/bistar_gp_c fetch origin`, or the authorized b
 
 **P2 — Worktree collision guard.**
 
-STOP if `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec` exists or is registered in `git worktree list --porcelain`. Never remove, reset, clean, or reuse it. Only after both checks are negative:
+STOP if `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02` exists or is registered in `git worktree list --porcelain`. The attempt-1 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec` is expected to remain present and registered from the spent attempt 1; its presence is NOT a collision for attempt 2. Never remove, reset, clean, or reuse either worktree. Only after both attempt-2 checks are negative:
 
 ```text
-git -C /scratch/gpfs/SUYOGHC/bistar_gp_c worktree add --detach /scratch/gpfs/SUYOGHC/bistar_gp_a7_exec <M56>
+git -C /scratch/gpfs/SUYOGHC/bistar_gp_c worktree add --detach /scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02 <M56>
 ```
 
 **P3 — Detached-head and cleanliness precondition.**
 
-Change to the execution worktree. Require HEAD exactly `<M56>` and `git status --porcelain` completely empty, including untracked paths, before P4.
+Change to the execution worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02`. Require HEAD exactly `<M56>` and `git status --porcelain` completely empty, including untracked paths, before P4.
 
 **P4 — Create the evidence directory.**
 
@@ -115,7 +115,7 @@ This covers every present entry, including dotfiles. The success set is exactly 
 The local staging destination must not exist; refuse otherwise and never merge or overwrite. Use the directory form:
 
 ```text
-scp -r sc8918@della.princeton.edu:/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec/runs/d19_a7_timing <staging-parent>/d19_a7_timing_incoming
+scp -r sc8918@della.princeton.edu:/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02/runs/d19_a7_timing <staging-parent>/d19_a7_timing_incoming
 ```
 
 Never use a `/*` wildcard because it omits dotfiles. Verify the received file set exactly, then require three-way hash agreement — in-job `sha256sum` lines, `PROVENANCE.sha256`, and an independent local recomputation — before the validator runs or anything is moved or committed. Failure evidence, including stranded temporary files and partial sets, is transported and preserved verbatim, never omitted or deleted.
@@ -214,6 +214,46 @@ It became permanently non-empty when the separately authorized test-only commit 
    `tests/test_slurm_argparse.py` stays blob-pinned to `b50350e` by item 2.
 
 **Scope and amendment-time proof.** This amendment does not reinterpret the earlier two-reviewer review or its focused re-confirmation; alters no execution or validator byte; and authorizes no benchmark and no Della access. It only repairs the launch precondition so the authorized parser-test correction does not make D56 permanently unlaunchable. At amendment time, the following mechanical facts were verified at current `origin/main`, D56 merge `M56` = `66ca91cd8a5e0a2bbb7d984b2e5298707160d6c0`, which was merged without launch: `git diff 4c9b79a..origin/main -- experiments/submit_d19_a7_bench.slurm experiments/d19_a7_validate.py experiments/d19_bench.py bistar_gp/` is empty; the complete `tests/` diff from `4c9b79ae8fbe42ceeacbeac1f99a2cc1599ece7a` through current `origin/main` is exactly `tests/test_slurm_argparse.py`; and that file's blob at current `origin/main` is `5ef26ec2464aeb9e788a6e14b443e5801ed8b5c8`, equal to its blob at `b50350e16f5a9356c383e09c357df258f99cd432`. At amendment time the total-surface check also holds at current `origin/main`: the complete name-diff from `H'` contains only `Notes/`, `docs/`, and `tests/test_slurm_argparse.py` paths.
+
+### §7 amendment (D56b, 2026-07-22): PS1 correction, attempt-2 worktree, and launch anchor M56b
+
+Attempt 1, Slurm job `11485635`, is SPENT and immutable. Its four-file failure evidence is committed at `runs/d19_a7_failed_11485635/`, and the AC5 one-submission authorization was consumed. Nothing is retried.
+
+The separately authorized, strictly read-only Della diagnostic established the failure mechanism. With `PS1` unset and nounset enabled, `module purge` passes, while `module load anaconda3/2024.6` reproduces the byte-identical `environment: line 49: PS1: unbound variable` failure. The modulefile emits 51 shell lines; emitted line 50 contains the first unguarded read, `export _LOCAL_OLD_PS1="${PS1}"`. It executes through the environment-imported `_module_raw` wrapper, which explains both the `environment` source label and the reported-line-49 versus emitted-line-50 offset. In a disposable child, defining and exporting an empty `PS1` before `set -u` makes module purge, module load, conda-hook generation and evaluation, and activation of `/home/sc8918/.conda/envs/bistar_gp` all pass. D56b itself performs no Della operation and no benchmark; the diagnostic ran under its own separate read-only authorization.
+
+The frozen correction is exactly `export PS1="${PS1-}"`, placed after `set -euo pipefail` and before the first module operation. Nounset is never disabled, and no `set +u` bracketing is introduced.
+
+Attempt 2 executes in `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02`. The attempt-1 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec` is preserved untouched forever. The in-worktree evidence path `runs/d19_a7_timing/` and the local staging path `runs/d19_a7_timing_incoming`, currently absent, are unchanged.
+
+**Definitions.** `B` = the reviewed D56b code head: the last commit of the D56b PR that touches any non-Notes path. An optional Notes-only tail may follow `B` before merge and must be explicitly identified in the launch authorization. `B` names a Git commit anchor here; it is unrelated to §8's "evidence commit allowlist B", which names a file list. `M56b` = the merge commit of the D56b PR and the NEW launch anchor. D56b deliberately does not name its own future merge SHA. Every `<M56>` placeholder in the §4 procedure and the §5 validator invocation is read as `<M56b>` for attempt 2; it was read as `<M56a>` for attempt 1.
+
+**Attempt-2 launch-closure rule.** Launch authorization requires **ALL** of the following:
+
+1. **Reviewed-surface closure.** The submit script, this protocol document, and the protocol test file at `M56b` must be byte-identical to `B`; the following diff must be empty:
+
+   ```text
+   git diff B..M56b -- experiments/submit_d19_a7_bench.slurm tests/test_d19_a7_protocol.py docs/d19-a7-execution-protocol.md
+   ```
+
+   This closes the reviewed launch rule itself: no post-review commit or merge resolution can weaken the correction, these tests, or this amendment while the check passes. Any commit after `B` on the D56b branch before merge must be Notes-only and explicitly identified in the launch authorization.
+
+2. **Reviewed execution-byte closure.** The validator, vehicle, and library execution bytes must stay byte-identical to the D56-reviewed bytes; the following diff must be empty:
+
+   ```text
+   git diff H'..M56b -- experiments/d19_a7_validate.py experiments/d19_bench.py bistar_gp/
+   ```
+
+   Here `H'` remains `4c9b79ae8fbe42ceeacbeac1f99a2cc1599ece7a`, unchanged from the D56a rule.
+
+3. **Six-file total-surface closure.** The complete name-diff from failed-attempt merge `7d234e9ffad6b154e7523507658a6999e7bb6c53` to `M56b` must be limited to exactly this D56b allowlist: `experiments/submit_d19_a7_bench.slurm`, `tests/test_d19_a7_protocol.py`, `docs/d19-a7-execution-protocol.md`, `Notes/DECISIONS.md`, `Notes/SCRATCHPAD.md`, and `Notes/CHATLOG.md`. This pins the attempt-1 evidence blobs and every other tree byte, closing the total surface in the same way as D56a item 6.
+
+4. **Topology.** Before any future launch, `origin/main` HEAD must equal `M56b`. `M56b` must be a true merge commit whose second parent is the D56b PR head.
+
+5. **Fresh authorization.** Attempt 2 still requires a fresh byte-exact author authorization naming `M56b`; the spent attempt-1 authorization does not carry over.
+
+6. **Enforcement bindings.** The Della attempt-2 worktree HEAD must equal `M56b`, enforced by the script. Every artifact `git_sha` must equal `M56b`, enforced by the validator. V0 binds the validator and frozen vehicle bytes at `M56b`, which item 2 makes byte-identical to the `H'`-reviewed bytes.
+
+This amendment does not reinterpret the D56 review lineage, alters no validator or vehicle byte, and authorizes no benchmark and no Della access.
 
 ## 8. Later allowlists and remaining open decision
 
