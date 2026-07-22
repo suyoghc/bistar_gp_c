@@ -225,15 +225,17 @@ The frozen correction is exactly `export PS1="${PS1-}"`, placed after `set -euo 
 
 Attempt 2 executes in `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02`. The attempt-1 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec` is preserved untouched forever. The in-worktree evidence path `runs/d19_a7_timing/` and the local staging path `runs/d19_a7_timing_incoming`, currently absent, are unchanged.
 
-**Definitions.** `B` = the reviewed D56b code head: the head of the D56b PR after its review cycle. `M56b` = the merge commit of the D56b PR and the NEW launch anchor. D56b deliberately does not name its own future merge SHA. Every `<M56>` placeholder in the §4 procedure and the §5 validator invocation is read as `<M56b>` for attempt 2; it was read as `<M56a>` for attempt 1.
+**Definitions.** `B` = the reviewed D56b code head: the last commit of the D56b PR that touches any non-Notes path. An optional Notes-only tail may follow `B` before merge and must be explicitly identified in the launch authorization. `B` names a Git commit anchor here; it is unrelated to §8's "evidence commit allowlist B", which names a file list. `M56b` = the merge commit of the D56b PR and the NEW launch anchor. D56b deliberately does not name its own future merge SHA. Every `<M56>` placeholder in the §4 procedure and the §5 validator invocation is read as `<M56b>` for attempt 2; it was read as `<M56a>` for attempt 1.
 
 **Attempt-2 launch-closure rule.** Launch authorization requires **ALL** of the following:
 
-1. **Submit-script closure.** The submit script at `M56b` must be byte-identical to `B`; the following diff must be empty:
+1. **Reviewed-surface closure.** The submit script, this protocol document, and the protocol test file at `M56b` must be byte-identical to `B`; the following diff must be empty:
 
    ```text
-   git diff B..M56b -- experiments/submit_d19_a7_bench.slurm
+   git diff B..M56b -- experiments/submit_d19_a7_bench.slurm tests/test_d19_a7_protocol.py docs/d19-a7-execution-protocol.md
    ```
+
+   This closes the reviewed launch rule itself: no post-review commit or merge resolution can weaken the correction, these tests, or this amendment while the check passes. Any commit after `B` on the D56b branch before merge must be Notes-only and explicitly identified in the launch authorization.
 
 2. **Reviewed execution-byte closure.** The validator, vehicle, and library execution bytes must stay byte-identical to the D56-reviewed bytes; the following diff must be empty:
 

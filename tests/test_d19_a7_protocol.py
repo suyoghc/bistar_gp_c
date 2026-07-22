@@ -97,6 +97,13 @@ EXPECTED_VERSIONS = {
 }
 
 
+def _script_ps1_correction_line():
+    lines = SCRIPT_PATH.read_text(encoding="utf-8").splitlines()
+    matches = [line for line in lines if line == PS1_CORRECTION]
+    assert len(matches) == 1, "script must carry the correction as an exact line"
+    return matches[0]
+
+
 def _write_ps1_repro_driver(tmp_path, correction_placement):
     tail = tmp_path / "tail.sh"
     tail.write_text(
@@ -106,7 +113,7 @@ def _write_ps1_repro_driver(tmp_path, correction_placement):
     )
     lines = ["#!/bin/bash", "set -euo pipefail"]
     if correction_placement == "before":
-        lines.append(PS1_CORRECTION)
+        lines.append(_script_ps1_correction_line())
     elif correction_placement not in {"after", "absent"}:
         raise ValueError(f"unknown correction placement: {correction_placement}")
     lines.extend([
@@ -121,7 +128,7 @@ def _write_ps1_repro_driver(tmp_path, correction_placement):
         "module load anaconda3/2024.6",
     ])
     if correction_placement == "after":
-        lines.append(PS1_CORRECTION)
+        lines.append(_script_ps1_correction_line())
     lines.append("echo REPRO-OK")
     driver = tmp_path / f"driver-{correction_placement}.sh"
     driver.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -387,11 +394,14 @@ def _mutate_json(evidence_dir, mutator, scale="sub", threads=1):
 
 def test_ps1_correction_literal_once_between_strict_mode_and_module_purge():
     text = SCRIPT_PATH.read_text(encoding="utf-8")
-    assert text.count(PS1_CORRECTION) == 1
+    lines = text.splitlines()
+    # Line-exact: a commented-out or suffixed variant must not satisfy this.
+    assert lines.count(PS1_CORRECTION) == 1
+    assert all(line == PS1_CORRECTION for line in lines if PS1_CORRECTION in line)
     assert (
-        text.index("set -euo pipefail")
-        < text.index(PS1_CORRECTION)
-        < text.index("module purge")
+        lines.index("set -euo pipefail")
+        < lines.index(PS1_CORRECTION)
+        < lines.index("module purge")
     )
 
 
@@ -416,11 +426,30 @@ def test_ps1_repro_without_or_late_correction_dies_under_nounset(
     assert "REPRO-OK" not in result.stdout
 
 
+def _set_option_args(text):
+    """Yield every +/- option argument of every `set` command in the script."""
+    for line in text.splitlines():
+        tokens = line.split()
+        for i, token in enumerate(tokens):
+            if token != "set":
+                continue
+            for arg in tokens[i + 1:]:
+                if arg.startswith(("+", "-")):
+                    yield arg
+                else:
+                    break
+
+
 def test_nounset_stays_enabled_and_never_relaxed():
     text = SCRIPT_PATH.read_text(encoding="utf-8")
     assert "set -euo pipefail" in text
     assert re.search(r"set\s+\+[a-z]*u", text) is None
     assert "set +o" not in text
+    # Token-level guard: split clusters such as `set +e +u` or `set -e +u`
+    # match neither regex above but still disable nounset.
+    for arg in _set_option_args(text):
+        assert not (arg.startswith("+") and "u" in arg), arg
+        assert arg != "+o", arg
 
 
 def test_every_live_attempt2_binding_uses_the_attempt2_worktree():
@@ -432,6 +461,10 @@ def test_every_live_attempt2_binding_uses_the_attempt2_worktree():
     protocol = PROTOCOL_PATH.read_text(encoding="utf-8")
     assert f"worktree add --detach {ATTEMPT2_EXEC_ROOT} " in protocol
     assert f"{ATTEMPT2_EXEC_ROOT}/runs/d19_a7_timing" in protocol
+    # Live prose bindings: the P2 collision target and the P3 change-directory
+    # target must name the attempt-2 worktree, not the preserved attempt-1 one.
+    assert f"STOP if `{ATTEMPT2_EXEC_ROOT}` exists" in protocol
+    assert f"Change to the execution worktree `{ATTEMPT2_EXEC_ROOT}`" in protocol
 
 
 def test_attempt1_path_survives_only_as_history_and_is_never_a_live_target():
@@ -442,6 +475,12 @@ def test_attempt1_path_survives_only_as_history_and_is_never_a_live_target():
     assert all(bare_attempt1.search(block) is None for block in fenced_blocks)
     assert bare_attempt1.search(text) is not None
     assert "never remove" in text.lower()
+    # Every bare attempt-1 occurrence must be historical/preservation prose:
+    # its line must carry preservation or attempt-1 context, so a live
+    # directive can never quietly re-target the preserved worktree.
+    for line in text.splitlines():
+        if bare_attempt1.search(line):
+            assert "preserved" in line or "attempt-1" in line, line
 
 
 def test_attempt1_failure_evidence_blobs_remain_byte_identical():
@@ -459,8 +498,15 @@ def test_single_submission_stop_only_semantics_preserved():
     script = SCRIPT_PATH.read_text(encoding="utf-8")
     submit_command = "sbatch --export=NONE experiments/submit_d19_a7_bench.slurm"
     assert protocol.count(submit_command) == 1
+    # Exactly two `sbatch` mentions may exist: the §2 `man sbatch` recon fact
+    # and the single P5 command. Any added submission instruction trips this.
+    assert protocol.count("sbatch") == 2
     assert "P5 — Submit once." in protocol
     assert "no retry" in protocol
+    assert (
+        "There is no retry, completion invocation, or continuation without a "
+        "new explicit author authorization."
+    ) in protocol
     assert "no retry, no continuation" in script
     assert "fresh byte-exact" in protocol
 
@@ -473,6 +519,15 @@ def test_protocol_document_records_the_d56b_amendment():
         "7d234e9ffad6b154e7523507658a6999e7bb6c53",
         PS1_CORRECTION,
         ATTEMPT2_EXEC_ROOT,
+        # The launch-closure rule's load-bearing members, pinned so that
+        # deleting an item while keeping the headline tokens cannot pass.
+        "git diff B..M56b -- experiments/submit_d19_a7_bench.slurm "
+        "tests/test_d19_a7_protocol.py docs/d19-a7-execution-protocol.md",
+        "git diff H'..M56b -- experiments/d19_a7_validate.py "
+        "experiments/d19_bench.py bistar_gp/",
+        "second parent is the D56b PR head",
+        "fresh byte-exact author authorization naming `M56b`",
+        "Notes-only and explicitly identified in the launch authorization",
     ):
         assert literal in text
 
