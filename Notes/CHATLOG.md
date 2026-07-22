@@ -922,3 +922,21 @@ submission, retry, benchmark, data load, Mauna access, the v1.23 measured-result
 scientific computation. Attempt 3 remains gated on `origin/main == M56c`, the preparation-time
 `import bistar_gp` check, and a fresh byte-exact authorization naming M56c. Both prior submissions
 stay SPENT; A7 remains OWED.
+
+**Hardening pass (same session, second commit, pre-review).** An external Codex hardening pass was
+assessed (orchestrator agreed it tightened the right things while preserving the lightweight
+disposition — no runtime full-manifest gate, no attempt-2 evidence PR) and applied in a second
+commit: (1) the preparation-time Della check now requires BOTH exact byte-for-byte equality of the
+live `pip list --format=freeze` against the committed 69-package manifest AND `import bistar_gp`,
+honestly scoped (complete inventory enforced at preparation time only; the submit job still enforces
+the five pins + import, exit 82; the prep-to-submission interval is a disclosed user-controlled
+trust interval); (2) the vague "D56b rule applies in shape" closure was replaced by an explicit
+D56c rule naming reviewed head **R56c** and pinning five files byte-identical `R56c..M56c`
+(script, tests, protocol, prereg, manifest), post-R56c commits Notes-only, eight-file total allowlist
+and true-merge topology and H' closure retained; (3) new hermetic tests pin the manifest
+sha256/size/69-line-count, the five-file closure command, and the BOTH-check prep enforcement;
+(4) wording fixes (no benchmark JSON artifact; before-manifest uncommitted in Della home; complete
+inventory not called runtime-enforced). Focused **50** / 12 / 68; full **1169 passed, 2 skipped,
+0 failed**; cumulative diff within the eight-file allowlist. Next: a bounded fresh Codex gpt-5.6-sol
+xHigh + fresh Opus 4.8 read-only exact-head review over `M56b..corrected-head`, verdicts returned
+for author decision, nothing auto-corrected. STOP before Ready holds.

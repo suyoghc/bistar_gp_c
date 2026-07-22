@@ -261,11 +261,35 @@ Attempt 2, Slurm job `11497561`, is SPENT and immutable. It failed at the prefli
 
 **Environment re-freeze (prerequisite).** The frozen `bistar_gp` conda environment was extended, without perturbing the five pinned scientific versions, by installing `arviz` and `jsonschema`: a pure addition of eleven packages, with zero removals and zero version changes. The complete post-change 69-package manifest is committed at `docs/d19_a7_freeze/bistar_env_after.txt` and is the authoritative environment for attempt 3; prereg addendum **v1.22** records the re-freeze, the eleven-package delta, the install commands, and the observed verification. This supersedes, for future attempts, the original five-version freeze recorded in §2 and §3, without rewriting that history. Prospective versioning amendment: §8's post-run success addendum (allowlist C) moves from **v1.22** to **v1.23**, because v1.22 now denotes this environment re-freeze; §8's "latest addendum is v1.21" is likewise superseded, not rewritten.
 
-**Preparation-time import check.** Before a future launch authorization for attempt 3 is cast, the read-only preparation preflight must run `import bistar_gp` in the frozen environment on Della and require it to succeed. This catches the entire class of missing-dependency failures at preparation time, where a failure costs no submission; the submit script already performs the same `import bistar_gp` at runtime.
+**Preparation-time environment enforcement.** Immediately before a future launch authorization for attempt 3 is cast, the read-only preparation preflight on Della must require **BOTH**: (a) exact byte-for-byte equality between the live `/home/sc8918/.conda/envs/bistar_gp/bin/python -m pip list --format=freeze` and the committed `docs/d19_a7_freeze/bistar_env_after.txt` (the complete 69-package inventory); and (b) a successful `import bistar_gp` under the five pinned versions (python 3.11.14, torch 2.10.0+cu128, gpytorch 1.15.1, pyro 1.9.1, numpy 2.4.2). Both are read-only and run no benchmark. **Honest scope.** The complete 69-package inventory is enforced only here, at preparation time, immediately before the authorization is cast. The submit job itself continues to enforce the five version pins plus `import bistar_gp` (script exit 82), **not** the complete 69-package manifest. The interval between this preparation check and the single submission is a disclosed, user-controlled trust interval, accepted under the D56c lightweight disposition; the operator mutates no package across it.
 
 **Attempt 3.** Attempt 3 executes in `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03`. The attempt-1 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec` and the attempt-2 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02` are both preserved untouched forever, and neither is reused. The in-worktree evidence path `runs/d19_a7_timing/` and the local staging path `runs/d19_a7_timing_incoming`, currently absent, are unchanged.
 
-**Definitions and launch closure.** `M56c` = the merge commit of the D56c PR and the NEW launch anchor; D56c deliberately does not name its own future merge SHA. Every `<M56>` placeholder in the §4 procedure and the §5 validator invocation is read as `<M56c>` for attempt 3. The D56b two-anchor launch-closure rule above applies unchanged in shape, with the reviewed D56c code head (the last non-Notes commit of the D56c PR) substituted for `B` and `M56c` substituted for `M56b`; the execution-byte anchor `H'` is unchanged (`4c9b79ae8fbe42ceeacbeac1f99a2cc1599ece7a`); and the total-surface base is this D56c branch's base `M56b` = `d9c924fc35cc771775732cb431014a25de8a6400`, with the complete name-diff limited to the D56c allowlist: this protocol document, `experiments/submit_d19_a7_bench.slurm`, `tests/test_d19_a7_protocol.py`, `docs/prereg-addenda-d19.md`, `docs/d19_a7_freeze/bistar_env_after.txt`, and the three `Notes/` files. Attempt 3 still requires a fresh byte-exact author authorization naming `M56c`; no prior authorization carries over.
+**Definitions.** `R56c` = the reviewed D56c code head: the last commit of the D56c PR that touches any non-Notes path. This is a new, unambiguous anchor name for D56c, unrelated both to the D56b commit anchor `B` and to §8's "evidence commit allowlist B". `M56c` = the merge commit of the D56c PR and the NEW launch anchor; D56c deliberately does not name its own future merge SHA. Every `<M56>` placeholder in the §4 procedure and the §5 validator invocation is read as `<M56c>` for attempt 3.
+
+**Attempt-3 launch-closure rule.** Launch authorization requires **ALL** of the following:
+
+1. **Reviewed-surface closure (five files).** These five files at `M56c` must be byte-identical to `R56c`; the following diff must be empty:
+
+   ```text
+   git diff R56c..M56c -- experiments/submit_d19_a7_bench.slurm tests/test_d19_a7_protocol.py docs/d19-a7-execution-protocol.md docs/prereg-addenda-d19.md docs/d19_a7_freeze/bistar_env_after.txt
+   ```
+
+   No post-review commit or merge resolution can weaken the correction, these tests, this amendment, the environment addendum, or the committed manifest while the check passes. Every commit after `R56c` on the D56c branch before merge must be Notes-only and explicitly identified in the launch authorization.
+
+2. **Reviewed execution-byte closure.** The validator, vehicle, and library bytes stay byte-identical to the D56-reviewed bytes; the following diff must be empty, with `H'` = `4c9b79ae8fbe42ceeacbeac1f99a2cc1599ece7a`:
+
+   ```text
+   git diff H'..M56c -- experiments/d19_a7_validate.py experiments/d19_bench.py bistar_gp/
+   ```
+
+3. **Eight-file total-surface closure.** The complete name-diff from this D56c branch's base `M56b` = `d9c924fc35cc771775732cb431014a25de8a6400` to `M56c` is limited to exactly the eight-file D56c allowlist: the five reviewed-surface files above plus `Notes/DECISIONS.md`, `Notes/SCRATCHPAD.md`, and `Notes/CHATLOG.md`.
+
+4. **Topology.** `origin/main` HEAD must equal `M56c`, a true merge commit whose second parent is the D56c PR head.
+
+5. **Preparation-time environment enforcement.** The read-only Della check above — exact 69-package inventory equality against `docs/d19_a7_freeze/bistar_env_after.txt` **and** a successful `import bistar_gp` — must pass immediately before this authorization is cast.
+
+6. **Fresh authorization and enforcement bindings.** Attempt 3 requires a fresh byte-exact author authorization naming `M56c`; no prior authorization carries over. The Della attempt-3 worktree HEAD must equal `M56c` (script-enforced) and every artifact `git_sha` must equal `M56c` (validator-enforced).
 
 This amendment alters no validator or vehicle byte, and authorizes no benchmark and no Della access.
 

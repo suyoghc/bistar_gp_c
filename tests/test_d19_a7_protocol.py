@@ -543,17 +543,44 @@ def test_protocol_document_records_the_d56b_amendment():
         assert literal in text
 
 
+ENV_MANIFEST_PATH = Path("docs/d19_a7_freeze/bistar_env_after.txt")
+ENV_MANIFEST_SHA256 = "d832d426ec5a83e3f1da3275c289323c8732f2644038efb15b2eb1567b085aa1"
+ENV_MANIFEST_SIZE = 1386
+ENV_MANIFEST_LINES = 69
+D56C_REVIEWED_SURFACE_CLOSURE = (
+    "git diff R56c..M56c -- experiments/submit_d19_a7_bench.slurm "
+    "tests/test_d19_a7_protocol.py docs/d19-a7-execution-protocol.md "
+    "docs/prereg-addenda-d19.md docs/d19_a7_freeze/bistar_env_after.txt"
+)
+
+
+def test_committed_env_manifest_is_pinned():
+    data = ENV_MANIFEST_PATH.read_bytes()
+    assert len(data) == ENV_MANIFEST_SIZE
+    assert hashlib.sha256(data).hexdigest() == ENV_MANIFEST_SHA256
+    # pip list --format=freeze terminates every line, so newline count == lines.
+    assert data.decode("utf-8").count("\n") == ENV_MANIFEST_LINES
+
+
 def test_protocol_document_records_the_d56c_amendment():
     text = PROTOCOL_PATH.read_text(encoding="utf-8")
     for literal in (
         "D56c",
+        "R56c",
         "M56c",
         ATTEMPT3_EXEC_ROOT,
         "d9c924fc35cc771775732cb431014a25de8a6400",
         "docs/d19_a7_freeze/bistar_env_after.txt",
-        "import bistar_gp",
         "environment re-freeze",
         "v1.23",
+        # Preparation-time enforcement must require BOTH checks; omitting either
+        # the exact-inventory equality or the import check trips one of these.
+        "exact byte-for-byte equality between the live",
+        "successful `import bistar_gp` under the five pinned versions",
+        "trust interval",
+        # The five-file reviewed-surface closure command, pinned verbatim so no
+        # closure member (script, tests, protocol, prereg, manifest) can drop.
+        D56C_REVIEWED_SURFACE_CLOSURE,
     ):
         assert literal in text
 

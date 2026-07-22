@@ -2087,7 +2087,7 @@ submit-script preflight `import bistar_gp` (exit 82) because the frozen Della `b
 environment lacked `arviz` — imported unconditionally by `bistar_gp/__init__.py` through
 `mcse_strategy` — together with its transitive `jsonschema` and `referencing`. The preflight caught
 this and failed closed before any benchmark cell; no scientific computation, Mauna access, or
-artifact resulted. This addendum records the environment re-freeze that removes the blocker for
+benchmark JSON artifact resulted. This addendum records the environment re-freeze that removes the blocker for
 attempt 3. Earlier freeze history (the five-version freeze in the D19 A7 execution protocol §2/§3
 and this file's prior addenda) is superseded on the environment inventory for future attempts, not
 rewritten.
@@ -2126,8 +2126,8 @@ The result was a pure addition of eleven packages, zero removals and zero versio
 `docs/d19_a7_freeze/bistar_env_after.txt` (1386 bytes, 69 lines, sha256
 `d832d426ec5a83e3f1da3275c289323c8732f2644038efb15b2eb1567b085aa1`); it is the frozen environment
 for attempt 3. The pre-change 58-package baseline (`~/bistar_env_before.txt`, 1175 bytes, sha256
-`18eef23fc80c5faea2fe1e346564f0a51c7e76e15930ee617654444f92eb084d`) is retained locally as
-provenance and is not committed.
+`18eef23fc80c5faea2fe1e346564f0a51c7e76e15930ee617654444f92eb084d`) is retained uncommitted in
+Della home (`~/bistar_env_before.txt`) as provenance and is not committed to the repository.
 
 **Verification.** After the install, the submit-script preflight environment check — run read-only
 from the attempt-2 worktree — printed `ENV-OK /home/sc8918/.conda/envs/bistar_gp/bin/python 3.11.14
@@ -2135,8 +2135,13 @@ from the attempt-2 worktree — printed `ENV-OK /home/sc8918/.conda/envs/bistar_
 versions are unchanged; a live `pip list --format=freeze` equalled the committed manifest.
 
 **Attempt-3 preconditions.** Attempt 3 requires the D56c amendment (D19 A7 execution protocol §7):
-the `_03` worktree, both prior worktrees preserved, a preparation-time read-only `import bistar_gp`
-on Della before any launch authorization is cast, and a fresh byte-exact authorization naming the
-D56c merge anchor `M56c`. This addendum authorizes **NO** benchmark, submission, Mauna access, or
-scientific computation; the 60-month holdout stays SEALED and the **v1.18 label stays permanently
-unused**.
+the `_03` worktree, both prior worktrees preserved, and a fresh byte-exact authorization naming the
+D56c merge anchor `M56c`. Immediately before that authorization is cast, the read-only Della
+preparation check must require **BOTH** exact byte-for-byte equality between the live
+`pip list --format=freeze` and this committed 69-package manifest **and** a successful
+`import bistar_gp` under the five pins. Honest scope: that complete-inventory equality is a
+preparation-time gate only; the submit job enforces the five version pins plus `import bistar_gp`
+(exit 82), **not** the 69-package manifest, and the interval between the preparation check and the
+single submission is a disclosed, user-controlled trust interval. This addendum authorizes **NO**
+benchmark, submission, Mauna access, or scientific computation; the 60-month holdout stays SEALED
+and the **v1.18 label stays permanently unused**.
