@@ -728,3 +728,46 @@ after a mechanical preflight. The previously certified unflagged suite (1018 pas
 NOT rerun for a Notes-only tail. **STOP before merge.** The M2cR remediation arc ends with the STOP
 preserved; D45 remains permanently UNVALIDATED_ATTEMPT; the v1.18 instance stays absent. No
 replacement protocol, Della, M2d, or broader D19 planning begun.
+
+## 2026-07-21/22 — A7 launch: preflight PREPARED, authorization cast, attempt 1 FAILED pre-cell (job 11485635); failed-attempt evidence recorded (D56 Update 5)
+
+**Preflight (read-only, Fable orchestrator):** startup gate all-PASS (origin/main = M56a
+`e9457d71…`; PR #25 MERGED with merge commit M56a and head A′ `5c44ca0b…`; true two-parent
+topology; tracked tree clean; reserved v1.18 instance absent). All six amended-§7 (D56a)
+conditions verified PASS with full-SHA commands (execution-byte closure to H′; guard blob
+`5ef26ec2…` pinned at M56a = b50350e; protocol byte-identical to A′ with an EMPTY post-A′
+tail; topology; unchanged script/validator/V0 bindings; total-surface exclusion printing
+nothing). A launch packet with the author-castable authorization and the byte-exact
+human-executed P0–P7 sequence was drafted; ONE fresh read-only Codex **gpt-5.6-sol xHigh**
+audit returned **APPROVE, zero findings** (identity verified from the session banner and
+rollout-log model field). Author-directed revision 2 added two mechanically tested gates:
+a read-only pre-P6 sacct-readiness loop (protects the single-shot P6 capture; squeue
+disappearance is not the P6 trigger) and an enforcing stdlib-only three-way hash gate
+before validation. The author cast the authorization 2026-07-21 23:43 -03 against packet
+rev-2 (sha256 `d5d225a4…`).
+
+**Execution (author-run, per D25/D56 USER-EXECUTED boundary):** P0–P5 clean — ls-remote
+PASS, fetch + object-verify PASS, collision guards negative, detached worktree at exactly
+M56a (2103 files), clean HEAD, `mkdir runs/d19_a7_timing`, one sbatch → job **11485635**.
+The job FAILED in 3 s on della-r3c1n8: sacct parent row
+`11485635|FAILED|1:0|00:00:03|…|2026-07-21T22:56:47`, stdout exactly 0 bytes, stderr
+exactly `environment: line 49: PS1: unbound variable`. No PREFLIGHT-FAIL marker, no cell,
+no artifact — nothing scientific ran; the firewall was never reached. Bounded inference
+(recorded as inference, not identification): death bracketed to submit-script lines 29–33
+(module/conda region) under `set -u`; the `environment` file itself is unidentified pending
+a separately authorized read-only Della diagnostic. Evidence was captured single-shot
+(P6/P6b guards held through a paste anomaly), transported dotfile-safe from the Mac after a
+declined wrong-host near-miss, `shasum -c` OK; the three-way gate FAILED by design (eight
+JSONs missing, zero hash disagreements); the validator was correctly not run.
+
+**Committed (this closure):** per the author's narrow clarification, the four files were
+committed byte-for-byte at attempt-scoped `runs/d19_a7_failed_11485635/` (pins:
+`c420d124…`, `09f52446…`, `59be6fc2…`, `e3b0c442…`), with canonical `runs/d19_a7_timing/`
+and the twelve-file allowlist B reserved for a future successful attempt. Seven changed
+files (four evidence + DECISIONS D56 Update 5 + SCRATCHPAD + this entry) on branch
+`evidence/d19-a7-failed-attempt-11485635` off M56a; Draft PR opened; **STOP before
+Ready/merge**. The one authorized submission is SPENT; no retry or repair; no v1.22 from
+this attempt (number unburned); the Della worktree is preserved untouched; **A7 remains
+OWED**. Next acts (separate authorizations, none begun): read-only Della diagnostic →
+bounded D56b script correction (new review cycle + new launch anchor) → fresh launch
+authorization.
