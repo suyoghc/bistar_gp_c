@@ -73,15 +73,15 @@ Run `git -C /scratch/gpfs/SUYOGHC/bistar_gp_c fetch origin`, or the authorized b
 
 **P2 — Worktree collision guard.**
 
-STOP if `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02` exists or is registered in `git worktree list --porcelain`. The attempt-1 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec` is expected to remain present and registered from the spent attempt 1; its presence is NOT a collision for attempt 2. Never remove, reset, clean, or reuse either worktree. Only after both attempt-2 checks are negative:
+STOP if `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03` exists or is registered in `git worktree list --porcelain`. The attempt-1 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec` and the attempt-2 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02` are both expected to remain present and registered from the spent attempts 1 and 2; neither is a collision for attempt 3. Never remove, reset, clean, or reuse any of the three worktrees. Only after both attempt-3 checks are negative:
 
 ```text
-git -C /scratch/gpfs/SUYOGHC/bistar_gp_c worktree add --detach /scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02 <M56>
+git -C /scratch/gpfs/SUYOGHC/bistar_gp_c worktree add --detach /scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03 <M56>
 ```
 
 **P3 — Detached-head and cleanliness precondition.**
 
-Change to the execution worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02`. Require HEAD exactly `<M56>` and `git status --porcelain` completely empty, including untracked paths, before P4.
+Change to the execution worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03`. Require HEAD exactly `<M56>` and `git status --porcelain` completely empty, including untracked paths, before P4.
 
 **P4 — Create the evidence directory.**
 
@@ -115,7 +115,7 @@ This covers every present entry, including dotfiles. The success set is exactly 
 The local staging destination must not exist; refuse otherwise and never merge or overwrite. Use the directory form:
 
 ```text
-scp -r sc8918@della.princeton.edu:/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02/runs/d19_a7_timing <staging-parent>/d19_a7_timing_incoming
+scp -r sc8918@della.princeton.edu:/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03/runs/d19_a7_timing <staging-parent>/d19_a7_timing_incoming
 ```
 
 Never use a `/*` wildcard because it omits dotfiles. Verify the received file set exactly, then require three-way hash agreement — in-job `sha256sum` lines, `PROVENANCE.sha256`, and an independent local recomputation — before the validator runs or anything is moved or committed. Failure evidence, including stranded temporary files and partial sets, is transported and preserved verbatim, never omitted or deleted.
@@ -254,6 +254,20 @@ Attempt 2 executes in `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02`. The attempt-
 6. **Enforcement bindings.** The Della attempt-2 worktree HEAD must equal `M56b`, enforced by the script. Every artifact `git_sha` must equal `M56b`, enforced by the validator. V0 binds the validator and frozen vehicle bytes at `M56b`, which item 2 makes byte-identical to the `H'`-reviewed bytes.
 
 This amendment does not reinterpret the D56 review lineage, alters no validator or vehicle byte, and authorizes no benchmark and no Della access.
+
+### §7 amendment (D56c, 2026-07-22): environment re-freeze, attempt-3 worktree, and launch anchor M56c
+
+Attempt 2, Slurm job `11497561`, is SPENT and immutable. It failed at the preflight `import bistar_gp` (exit 82) because the frozen Della environment lacked `arviz` (and its transitive `jsonschema` and `referencing`), which `bistar_gp/__init__.py` imports through `mcse_strategy`. The submit-script preflight caught this and failed closed before any benchmark cell, so no scientific computation occurred. The attempt-2 failure is recorded in the Notes decision log rather than a committed evidence directory.
+
+**Environment re-freeze (prerequisite).** The frozen `bistar_gp` conda environment was extended, without perturbing the five pinned scientific versions, by installing `arviz` and `jsonschema`: a pure addition of eleven packages, with zero removals and zero version changes. The complete post-change 69-package manifest is committed at `docs/d19_a7_freeze/bistar_env_after.txt` and is the authoritative environment for attempt 3; prereg addendum **v1.22** records the re-freeze, the eleven-package delta, the install commands, and the observed verification. This supersedes, for future attempts, the original five-version freeze recorded in §2 and §3, without rewriting that history. Prospective versioning amendment: §8's post-run success addendum (allowlist C) moves from **v1.22** to **v1.23**, because v1.22 now denotes this environment re-freeze; §8's "latest addendum is v1.21" is likewise superseded, not rewritten.
+
+**Preparation-time import check.** Before a future launch authorization for attempt 3 is cast, the read-only preparation preflight must run `import bistar_gp` in the frozen environment on Della and require it to succeed. This catches the entire class of missing-dependency failures at preparation time, where a failure costs no submission; the submit script already performs the same `import bistar_gp` at runtime.
+
+**Attempt 3.** Attempt 3 executes in `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03`. The attempt-1 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec` and the attempt-2 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02` are both preserved untouched forever, and neither is reused. The in-worktree evidence path `runs/d19_a7_timing/` and the local staging path `runs/d19_a7_timing_incoming`, currently absent, are unchanged.
+
+**Definitions and launch closure.** `M56c` = the merge commit of the D56c PR and the NEW launch anchor; D56c deliberately does not name its own future merge SHA. Every `<M56>` placeholder in the §4 procedure and the §5 validator invocation is read as `<M56c>` for attempt 3. The D56b two-anchor launch-closure rule above applies unchanged in shape, with the reviewed D56c code head (the last non-Notes commit of the D56c PR) substituted for `B` and `M56c` substituted for `M56b`; the execution-byte anchor `H'` is unchanged (`4c9b79ae8fbe42ceeacbeac1f99a2cc1599ece7a`); and the total-surface base is this D56c branch's base `M56b` = `d9c924fc35cc771775732cb431014a25de8a6400`, with the complete name-diff limited to the D56c allowlist: this protocol document, `experiments/submit_d19_a7_bench.slurm`, `tests/test_d19_a7_protocol.py`, `docs/prereg-addenda-d19.md`, `docs/d19_a7_freeze/bistar_env_after.txt`, and the three `Notes/` files. Attempt 3 still requires a fresh byte-exact author authorization naming `M56c`; no prior authorization carries over.
+
+This amendment alters no validator or vehicle byte, and authorizes no benchmark and no Della access.
 
 ## 8. Later allowlists and remaining open decision
 

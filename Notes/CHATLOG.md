@@ -875,3 +875,50 @@ passed / 2 skipped / 0 failed applies to B's tree). A mechanical Ready-closure
 authorization was returned; **STOP before Ready** — no Ready flip, merge, M56b, Della
 contact, worktree creation, submission, retry, benchmark, evidence creation, v1.22,
 Mauna access, or scientific computation. A7 remains OWED.
+
+## 2026-07-22 — D56b merged → M56b; A7 attempt 2 FAILED pre-cell on missing arviz; env re-freeze + D56c `_03` repath (lightweight); Draft PR pending, STOP before Ready (Fable orchestrator session, branch fix/d19-a7-d56c-env)
+
+**Merge + attempt 2.** After the D56b exact-head confirmation, the author cast the mechanical
+Ready closure, merged PR #27 (true merge, M56b = `d9c924fc35cc771775732cb431014a25de8a6400`), and
+cast + user-executed the fresh attempt-2 authorization naming M56b, command-by-command on della9
+(agent read-only/local, one packet command at a time). P0–P5 clean: execution-time topology PASS
+(`origin/main` = M56b), detached `_02` worktree at M56b (2107 files, pristine), exactly one
+`sbatch` → job **11497561**. It FAILED in 37 s, exit `82:0`, on della-i13n7 (inside the frozen
+pool); stdout 0 B; stderr 475 B = `ModuleNotFoundError: No module named 'arviz'`
+(`bistar_gp/__init__.py:36` → `mcse_strategy.py:16`) + `PREFLIGHT-FAIL(82)`. The submit-script
+preflight `import bistar_gp` (line 80) caught it and failed closed before cell 1 — no science, no
+Mauna, no artifact. The one attempt-2 submission is SPENT.
+
+**Diagnosis + proportionality.** A read-only static scan of `bistar_gp`'s imports under the frozen
+env python enumerated the full gap: `arviz`, `jsonschema`, `referencing` absent. Root cause: the
+env-freeze / D55 audit pinned only five package versions and never test-imported `bistar_gp` on
+Della. Asked whether the elaborate closure was worth it, the orchestrator gave an honest
+assessment: the `_03` repath is necessary, recording the env re-freeze is worth it, but a runtime
+full-manifest exact-match gate and a separate failure-evidence PR ceremony were disproportionate to
+a trivially-understood, already-fixed dependency gap for a timing benchmark. The author chose the
+straightforward path.
+
+**Env re-freeze (author-executed, constrained).** `arviz`+`jsonschema` installed into
+`/home/sc8918/.conda/envs/bistar_gp` with numpy/scipy/pandas/matplotlib/torch/gpytorch/pyro-ppl
+held by constraint: a `--dry-run` confirmed clean, the real install added exactly **11 packages,
+zero removals, zero version changes** (proven by `comm` on before/after `pip list`); the five pins
+stayed put and the preflight printed `ENV-OK`.
+
+**D56c change (this branch, off M56b, eight-file allowlist).** `_03` repath in the submit script
+(`--chdir`/`EXEC_ROOT`), protocol (P2/P3/P7 + a §7 D56c amendment defining `M56c`, the env-refreeze
+precondition, and a preparation-time `import bistar_gp` check), and tests (ATTEMPT3 live-binding +
+spent-worktree history guards + a D56c amendment test); the committed 69-package manifest
+`docs/d19_a7_freeze/bistar_env_after.txt` (`d832d426…`); prereg **v1.22** recording the re-freeze
+with the versioning reassignment (successful measured-results addendum → **v1.23**). The attempt-1
+(bare) and `_02` worktrees are preserved as history; the attempt-2 failure is recorded in the Notes
+decision log, not a committed evidence directory. Verification: focused **49** (48 + the new D56c
+test) / **12** / **68**; full `python -m pytest -q` **1168 passed, 2 skipped, 0 failed**. Hermetic
+repo edits + one author-executed env install; no benchmark, submission, Mauna, or science.
+
+**Committed (this closure):** the eight-file allowlist — submit script, protocol, protocol tests,
+prereg addenda, the committed env manifest, and DECISIONS/SCRATCHPAD/CHATLOG. Draft PR against main
+off M56b; **STOP before Ready** — before merge, M56c, any Della contact, worktree creation,
+submission, retry, benchmark, data load, Mauna access, the v1.23 measured-results addendum, or
+scientific computation. Attempt 3 remains gated on `origin/main == M56c`, the preparation-time
+`import bistar_gp` check, and a fresh byte-exact authorization naming M56c. Both prior submissions
+stay SPENT; A7 remains OWED.

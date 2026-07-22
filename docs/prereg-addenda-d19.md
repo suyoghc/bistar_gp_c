@@ -2079,3 +2079,64 @@ and is not authorized**: it requires its own fresh explicit author grant, record
 ledger with the complete frozen chain — which after this addendum necessarily includes the
 committed protocol manifest — at its own regenerated freeze and exact execution commit. The
 reserved instance path stays **ABSENT** and the **v1.18 label stays permanently unused**.
+
+## v1.22 — A7 attempt-3 prerequisite: Della `bistar_gp` environment re-freeze (arviz + jsonschema added), caused by attempt-2's fail-closed dependency discovery — 2026-07-22
+
+**Prospective amendment, not a rewrite.** A7 attempt 2 (Slurm job `11497561`, SPENT) failed at the
+submit-script preflight `import bistar_gp` (exit 82) because the frozen Della `bistar_gp` conda
+environment lacked `arviz` — imported unconditionally by `bistar_gp/__init__.py` through
+`mcse_strategy` — together with its transitive `jsonschema` and `referencing`. The preflight caught
+this and failed closed before any benchmark cell; no scientific computation, Mauna access, or
+artifact resulted. This addendum records the environment re-freeze that removes the blocker for
+attempt 3. Earlier freeze history (the five-version freeze in the D19 A7 execution protocol §2/§3
+and this file's prior addenda) is superseded on the environment inventory for future attempts, not
+rewritten.
+
+**Versioning reassignment.** This number, **v1.22**, previously reserved for the successful A7
+measured-results / thread-pinning addendum, is reassigned to this environment re-freeze. The
+successful measured-results addendum becomes **v1.23**. The reassignment is prospective and caused
+by attempt 2's discovery.
+
+**The re-freeze (pure addition, five scientific pins unchanged).** In the frozen environment
+`/home/sc8918/.conda/envs/bistar_gp` (python 3.11.14, torch 2.10.0+cu128, gpytorch 1.15.1, pyro
+1.9.1, numpy 2.4.2), `arviz` and `jsonschema` were installed with the five scientific packages held
+by constraint so none could move. The exact commands, author-executed on della9 (2026-07-22):
+
+```
+cat > ~/bistar_pin_constraints.txt <<'EOF'
+numpy==2.4.2
+scipy==1.17.0
+pandas==3.0.0
+matplotlib==3.10.8
+torch==2.10.0
+gpytorch==1.15.1
+pyro-ppl==1.9.1
+EOF
+/home/sc8918/.conda/envs/bistar_gp/bin/python -m pip install --dry-run -c ~/bistar_pin_constraints.txt arviz jsonschema
+/home/sc8918/.conda/envs/bistar_gp/bin/python -m pip install -c ~/bistar_pin_constraints.txt arviz jsonschema
+```
+
+The result was a pure addition of eleven packages, zero removals and zero version changes
+(mechanically proven by `comm` on the sorted before/after `pip list --format=freeze` manifests:
+`comm -23` empty, `comm -13` = 11): `arviz==0.23.4`, `attrs==26.1.0`, `h5netcdf==1.8.1`,
+`h5py==3.16.0`, `jsonschema==4.26.0`, `jsonschema-specifications==2025.9.1`, `platformdirs==4.11.0`,
+`referencing==0.37.0`, `rpds-py==2026.6.3`, `xarray==2026.7.0`, `xarray-einstats==0.9.1`.
+
+**Authoritative manifest.** The complete post-change 69-package environment is committed at
+`docs/d19_a7_freeze/bistar_env_after.txt` (1386 bytes, 69 lines, sha256
+`d832d426ec5a83e3f1da3275c289323c8732f2644038efb15b2eb1567b085aa1`); it is the frozen environment
+for attempt 3. The pre-change 58-package baseline (`~/bistar_env_before.txt`, 1175 bytes, sha256
+`18eef23fc80c5faea2fe1e346564f0a51c7e76e15930ee617654444f92eb084d`) is retained locally as
+provenance and is not committed.
+
+**Verification.** After the install, the submit-script preflight environment check — run read-only
+from the attempt-2 worktree — printed `ENV-OK /home/sc8918/.conda/envs/bistar_gp/bin/python 3.11.14
+2.10.0+cu128 1.15.1 1.9.1 2.4.2`, confirming `import bistar_gp` now succeeds and the five pinned
+versions are unchanged; a live `pip list --format=freeze` equalled the committed manifest.
+
+**Attempt-3 preconditions.** Attempt 3 requires the D56c amendment (D19 A7 execution protocol §7):
+the `_03` worktree, both prior worktrees preserved, a preparation-time read-only `import bistar_gp`
+on Della before any launch authorization is cast, and a fresh byte-exact authorization naming the
+D56c merge anchor `M56c`. This addendum authorizes **NO** benchmark, submission, Mauna access, or
+scientific computation; the 60-month holdout stays SEALED and the **v1.18 label stays permanently
+unused**.

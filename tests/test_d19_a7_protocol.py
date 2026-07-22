@@ -19,6 +19,7 @@ EXPECTED_SHA = "a" * 40
 JOB_ID = "12345"
 ATTEMPT1_EXEC_ROOT = "/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec"
 ATTEMPT2_EXEC_ROOT = "/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02"
+ATTEMPT3_EXEC_ROOT = "/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03"
 PS1_CORRECTION = 'export PS1="${PS1-}"'
 FAILED_ATTEMPT_DIR = Path("runs/d19_a7_failed_11485635")
 FAILED_ATTEMPT_PINS = {
@@ -39,7 +40,7 @@ EXPECTED_SBATCH_LINES = (
     "#SBATCH --cpus-per-task=4",
     "#SBATCH --mem=16G",
     "#SBATCH --time=02:00:00",
-    "#SBATCH --chdir=/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02",
+    "#SBATCH --chdir=/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03",
     "#SBATCH --output=runs/d19_a7_timing/slurm-%j.out",
     "#SBATCH --error=runs/d19_a7_timing/slurm-%j.err",
 )
@@ -452,35 +453,45 @@ def test_nounset_stays_enabled_and_never_relaxed():
         assert arg != "+o", arg
 
 
-def test_every_live_attempt2_binding_uses_the_attempt2_worktree():
+def test_every_live_attempt3_binding_uses_the_attempt3_worktree():
     text = SCRIPT_PATH.read_text(encoding="utf-8")
-    assert f"--chdir={ATTEMPT2_EXEC_ROOT}" in text
-    assert f"EXEC_ROOT={ATTEMPT2_EXEC_ROOT}" in text
-    assert text.count(ATTEMPT1_EXEC_ROOT) == text.count(ATTEMPT2_EXEC_ROOT)
+    assert f"--chdir={ATTEMPT3_EXEC_ROOT}" in text
+    assert f"EXEC_ROOT={ATTEMPT3_EXEC_ROOT}" in text
+    # ATTEMPT1 is a substring of every _0N path, so counting it equals counting
+    # _03 only when no bare attempt-1 or attempt-2 path leaked into the script.
+    assert text.count(ATTEMPT1_EXEC_ROOT) == text.count(ATTEMPT3_EXEC_ROOT)
+    assert ATTEMPT2_EXEC_ROOT not in text
 
     protocol = PROTOCOL_PATH.read_text(encoding="utf-8")
-    assert f"worktree add --detach {ATTEMPT2_EXEC_ROOT} " in protocol
-    assert f"{ATTEMPT2_EXEC_ROOT}/runs/d19_a7_timing" in protocol
+    assert f"worktree add --detach {ATTEMPT3_EXEC_ROOT} " in protocol
+    assert f"{ATTEMPT3_EXEC_ROOT}/runs/d19_a7_timing" in protocol
     # Live prose bindings: the P2 collision target and the P3 change-directory
-    # target must name the attempt-2 worktree, not the preserved attempt-1 one.
-    assert f"STOP if `{ATTEMPT2_EXEC_ROOT}` exists" in protocol
-    assert f"Change to the execution worktree `{ATTEMPT2_EXEC_ROOT}`" in protocol
+    # target must name the attempt-3 worktree, not a preserved earlier one.
+    assert f"STOP if `{ATTEMPT3_EXEC_ROOT}` exists" in protocol
+    assert f"Change to the execution worktree `{ATTEMPT3_EXEC_ROOT}`" in protocol
 
 
-def test_attempt1_path_survives_only_as_history_and_is_never_a_live_target():
+def test_spent_worktrees_survive_only_as_history_and_are_never_live_targets():
     text = PROTOCOL_PATH.read_text(encoding="utf-8")
-    bare_attempt1 = re.compile(re.escape(ATTEMPT1_EXEC_ROOT) + r"(?!_02)")
+    # bare attempt-1 = the root NOT followed by an _0N suffix; attempt-2 = _02.
+    bare_attempt1 = re.compile(re.escape(ATTEMPT1_EXEC_ROOT) + r"(?!_0)")
+    attempt2 = re.compile(re.escape(ATTEMPT2_EXEC_ROOT) + r"(?!\d)")
     fenced_blocks = text.split("```")[1::2]
     assert fenced_blocks
+    # No fenced command block may name either spent worktree as a live target.
     assert all(bare_attempt1.search(block) is None for block in fenced_blocks)
+    assert all(attempt2.search(block) is None for block in fenced_blocks)
+    # Both spent worktrees still appear (as history/preservation prose).
     assert bare_attempt1.search(text) is not None
+    assert attempt2.search(text) is not None
     assert "never remove" in text.lower()
-    # Every bare attempt-1 occurrence must be historical/preservation prose:
-    # its line must carry preservation or attempt-1 context, so a live
-    # directive can never quietly re-target the preserved worktree.
+    # Every spent-worktree occurrence must carry history/preservation context on
+    # its line, so a live directive can never quietly re-target a spent worktree.
+    history_markers = ("preserved", "attempt-1", "attempt-2", "attempt 2", "spent")
     for line in text.splitlines():
-        if bare_attempt1.search(line):
-            assert "preserved" in line or "attempt-1" in line, line
+        if bare_attempt1.search(line) or attempt2.search(line):
+            lowered = line.lower()
+            assert any(marker in lowered for marker in history_markers), line
 
 
 def test_attempt1_failure_evidence_blobs_remain_byte_identical():
@@ -528,6 +539,21 @@ def test_protocol_document_records_the_d56b_amendment():
         "second parent is the D56b PR head",
         "fresh byte-exact author authorization naming `M56b`",
         "Notes-only and explicitly identified in the launch authorization",
+    ):
+        assert literal in text
+
+
+def test_protocol_document_records_the_d56c_amendment():
+    text = PROTOCOL_PATH.read_text(encoding="utf-8")
+    for literal in (
+        "D56c",
+        "M56c",
+        ATTEMPT3_EXEC_ROOT,
+        "d9c924fc35cc771775732cb431014a25de8a6400",
+        "docs/d19_a7_freeze/bistar_env_after.txt",
+        "import bistar_gp",
+        "environment re-freeze",
+        "v1.23",
     ):
         assert literal in text
 
