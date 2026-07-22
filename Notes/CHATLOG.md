@@ -828,3 +828,50 @@ conda probe, submission, retry, benchmark, data load, evidence creation, v1.22, 
 branch, or scientific computation. Attempt 2 remains gated on `origin/main == M56b` and a
 fresh byte-exact author authorization naming M56b. The attempt-1 submission stays SPENT;
 its worktree and evidence stay preserved untouched. A7 remains OWED.
+
+## 2026-07-22 — D56b exact-head confirmation round: SPLIT verdict, mechanical adjudication, author-accepted residual; D56 Update 8 truth correction (Fable orchestrator session, branch fix/d19-a7-d56b-ps1)
+
+**Round (separately authorized, strictly read-only):** both Update 7 reviews had run at
+implementation head `08e7d2d7…`, so the author authorized one exact-head confirmation at
+B = `e4894e2e…`. The original findings were recovered byte-exact (Codex `019f8821`
+rollout; the original Opus subagent transcript) and fed VERBATIM to two FRESH reviewers
+at the exact head. Codex gpt-5.6-sol xHigh (session `019f8998`, banner + rollout
+model/effort verified, sandbox read-only): **FINDINGS** — closures 1, 2, 3, 6, 7 CLOSED;
+(4) NOT-CLOSED (backslash-continued `set +e \` + `+u` joins into `set +e +u`, disabling
+nounset while evading the regex, the per-physical-line token parser, and the `set +o`
+check); (5) NOT-CLOSED (a sbatch-free retry sentence keeps the STOP-only test green).
+Opus 4.8 (`claude-opus-4-8`, transcript model field verified; all 18 SHA-bearing git
+commands on the correct full SHA): **APPROVE** — all dispositions VERIFIED-CLOSED, own
+MINOR RESOLVED, §2 adjudication ACCEPTED, no new defects, zero drift, focused 48 passed
+on the target bytes. SPLIT, not unanimous; never to be described as CONFIRMED-CLOSED or
+APPROVE by both models.
+
+**Adjudication:** the orchestrator mechanically reproduced finding (4) by construction
+(guard logic copied verbatim from B, run in memory: real script GREEN as control, the
+continuation mutant GREEN so the evasion succeeds, single-line `set +e +u` caught; a
+disposable `/bin/bash` run drops the flags from `ehuBc` to `hBc` and a bare unbound
+expansion survives while the control aborts; the frozen argparse guard has no
+set-command handling) and adjudicated Codex CORRECT on (4); Opus's grade covered only
+the named single-line forms. Finding (5) was verified textually true but restates
+Update 7's recorded partial disposition. An initial STOP was taken with no changes and
+the verified finding returned to the author.
+
+**Author adjudication (cast 2026-07-22):** the residual is ACCEPTED as a known,
+NON-LAUNCH-BLOCKING limitation of the test guard — the exact attempt-2 script at B
+carries `set -euo pipefail`, contains no nounset-relaxing command, and retains nounset
+through its actual execution path, and the item-1 reviewed-surface byte-pin means the
+demonstrated mutant cannot enter attempt 2 without violating the launch gate. No further
+code or test correction pass. `_set_option_args` is recorded as a bounded source guard,
+not a complete parser of Bash logical commands; the limitation matters for future
+amendment cycles, which receive fresh review anyway. Update 7's class-wide CLOSED
+wording for (4) is superseded by D56 Update 8; (5) retains its recorded disposition.
+
+**Committed (this closure):** Notes-only truth correction — D56 Update 8 + Status
+refresh, SCRATCHPAD alignment, and this CHATLOG entry; one normal commit + push (no
+amend, no force); Draft PR #27 body updated with the precise review lineage and the
+accepted residual. The Notes-only tail after B is now exactly two identified commits
+(`7d077aff…` and this one). No non-Notes byte changed; the suite was not rerun (1167
+passed / 2 skipped / 0 failed applies to B's tree). A mechanical Ready-closure
+authorization was returned; **STOP before Ready** — no Ready flip, merge, M56b, Della
+contact, worktree creation, submission, retry, benchmark, evidence creation, v1.22,
+Mauna access, or scientific computation. A7 remains OWED.
