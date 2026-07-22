@@ -728,3 +728,58 @@ after a mechanical preflight. The previously certified unflagged suite (1018 pas
 NOT rerun for a Notes-only tail. **STOP before merge.** The M2cR remediation arc ends with the STOP
 preserved; D45 remains permanently UNVALIDATED_ATTEMPT; the v1.18 instance stays absent. No
 replacement protocol, Della, M2d, or broader D19 planning begun.
+
+## 2026-07-20 — Post-M2cR D19 disposition + D54 current-tree cascade RETIRED to historical anchor 76f3c39 (PR #21 MERGED 7277b421); A7/D55 authorized-but-unstarted (branch feat/d19-m2cr-d54-cascade-retirement)
+
+**Disposition analysis (read-only).** Established post-M2cR ground truth from `origin/main` (PR #20 merge
+`5e0bbdd`) and answered a 7-part decision brief. Original D19 milestones M2c/M2d/M3/M4 are
+UNRESOLVED/BLOCKED behind the absent corrected G-toy profile result (the reserved v1.18 artifact); the
+M2cR STOP (§6.3 row 2, D53) is preserved and forecloses R6 / origin-binding repair / rerun. The only
+work independent of the blocked science is **A7** (the Della timing benchmark), itself gated on the
+`experiments/d19_bench.py` timing-only-firewall rework (prereg v1.8 §2(d)/§5, never done). Author
+decisions: D19 stays OPEN; **Option C (A7) authorized now**; Option B (a new preregistered arc to
+unblock M2c) deferred; A7 FIRST; `d19_bench.py` hermetic-only, no run/Della.
+
+**Governance conflict surfaced (read-only).** Before editing `d19_bench.py`, found it hash-pinned as a
+worktree entry in the committed M2cR "current-tree" freeze cascade (importable `3fde66c1…` → env-freeze
+`69028f69…` → infrastructure `4bf7bec0…`; + protocol `a268dd85…`), generated at L2 `76f3c39`. The
+standing check `test_committed_importable_manifest_worktree_entries_match_tree` walks all 156 worktree
+entries against the live tree under default `pytest -q` (NOT skipif-gated), so an A7 edit would fail it
+and silently desync a committed freeze. Reported the conflict rather than proceeding; author chose
+**Option 3 (narrow "retire")**: reclassify the cascade as immutable historical artifacts frozen at
+`76f3c39`, verified against git blobs instead of the live tree, preserving every manifest byte plus
+E3 / L2 / ledger / evidence / D53.
+
+**D54 implemented.** Returned a bounded retirement design, then the exact author-cast D54 authorization
+(iterated for scope + honest-isolation + provenance + one-correction-pass wording). Built
+`bistar_gp/m2cr/historical_anchor.py` — an isolated stdlib-only verifier distinguishing four provenance
+classes (E3@`367667f` / L2@`76f3c39` / committed R4 ledger-evidence / future live-tree = out of scope;
+156 worktree entries git-verified by sha256 **and** size, 39,812 env entries interpreter-attested NOT
+git; exact R4-grant `m2cr-ev-000006`/`-03` + five-member `frozen_chain` equality; `verify_v1_immutability`
+disk guard); a canonical closed-world record `docs/m2c_freeze/m2cr_current_tree_anchor_v1.json`
+(`1b4f8247…`, 2234 B) + Draft-2020-12 schema (`d18030dd…`, `const`-binds every identity); the two
+standing tests re-anchored via the verifier's isolated file-path interface (fresh-builder + capture /
+bootstrap drift keep live-tree defaults); and `tests/test_m2cr_historical_anchor.py` (positive +
+robustness + N1–N11). Diff = exactly 7 files; `d19_bench.py` untouched.
+
+**Review + acceptance audit.** One bounded read-only Codex **gpt-5.5** (xHigh) review = REVISE with four
+confirmed findings (schema const-binding; grant identity + exact `frozen_chain` equality; immutability
+docstring accuracy; worktree `size` check + unrecognised-root rejection); one bounded correction pass
+closed all four (+5 negatives). Reviewed code head committed at **`9efeb76`**. A strictly read-only
+exact-head Codex **gpt-5.5** acceptance audit at `9efeb76` = **APPROVE** (four findings closed, all
+criteria met, 7-file allowlist, protected surface clean). Neither review was GPT-5.6-sol (a naming
+difference, flagged).
+
+**Committed / merged.** Notes-only Ready-closure tail `c761320` (D54 Update 1 + SCRATCHPAD); full
+`python -m pytest -q` **1045 passed / 2 skipped / 0 failed**; mechanical Ready preflight passed; PR #21
+flipped Ready. Author authorized the merge; **PR #21 MERGED via merge commit
+`7277b421de22117b8db78d132c74069719c3799c`** (parents `5e0bbdd` + `c761320`; no
+squash/rebase/admin/force/branch-delete). Post-merge verified on `origin/main`: verifier / record /
+schema + the four manifests byte-pinned, `experiments/d19_bench.py` `d8a606fc…` unchanged, v1.18 absent,
+tracked tree clean, branch preserved.
+
+**STOP / next.** The M2cR STOP stays preserved (no R6 / origin-binding repair / rerun / replacement
+protocol / M2d / Della). The one authorized-but-**UNSTARTED** item is **A7 = D55**: the hermetic
+`experiments/d19_bench.py` timing-only-firewall rework, its own PR. Everything scientific (the M2c
+corrected G-toy profile, M3 pilots, M4 / Della scientific runs) stays blocked pending a NEW preregistered
+arc. No A7 work, benchmark, Della, M2d, or scientific computation was begun this session.
