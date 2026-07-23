@@ -1,0 +1,91 @@
+ENV-OK /home/sc8918/.conda/envs/bistar_gp/bin/python 3.11.14 2.10.0+cu128 1.15.1 1.9.1 2.4.2
+Thu Jul 23 02:25:27 AM UTC 2026
+della-i13n2
+job=11517022 cpus=4 nodes=della-i13n2 sha=725e5f194de7bda12475f0d2a64893aa5cf5315f
+Currently Loaded Modulefiles:
+ 1) anaconda3/2024.6  
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           46 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  40
+On-line CPU(s) list:                     0-39
+Vendor ID:                               GenuineIntel
+Model name:                              Intel(R) Xeon(R) Gold 6242R CPU @ 3.10GHz
+CPU family:                              6
+Model:                                   85
+Thread(s) per core:                      1
+Core(s) per socket:                      20
+Socket(s):                               2
+Stepping:                                7
+CPU(s) scaling MHz:                      83%
+CPU max MHz:                             4100.0000
+CPU min MHz:                             1200.0000
+BogoMIPS:                                6200.00
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 monitor ds_cpl smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cdp_l3 intel_ppin ssbd mba ibrs ibpb stibp ibrs_enhanced fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm mpx rdt_a avx512f avx512dq rdseed adx smap clflushopt clwb intel_pt avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local dtherm ida arat pln pts pku ospke avx512_vnni md_clear flush_l1d arch_capabilities
+L1d cache:                               1.3 MiB (40 instances)
+L1i cache:                               1.3 MiB (40 instances)
+L2 cache:                                40 MiB (40 instances)
+L3 cache:                                71.5 MiB (2 instances)
+NUMA node(s):                            2
+NUMA node0 CPU(s):                       0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38
+NUMA node1 CPU(s):                       1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39
+Vulnerability Gather data sampling:      Mitigation; Microcode
+Vulnerability Indirect target selection: Mitigation; Aligned branch/return thunks
+Vulnerability Itlb multihit:             KVM: Mitigation: VMX unsupported
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Mitigation; Clear CPU buffers; SMT disabled
+Vulnerability Old microcode:             Vulnerable
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Mitigation; Enhanced IBRS
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS SW sequence; BHI SW loop, KVM SW loop
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Mitigation; TSX disabled
+Vulnerability Vmscape:                   Mitigation; IBPB before exit to userspace
+   Priority=10748 Nice=0 Account=suyoghc QOS=short
+   RunTime=00:00:36 TimeLimit=02:00:00 TimeMin=N/A
+   Partition=cpu AllocNode:Sid=della9:906146
+   ReqNodeList=(null) ExcNodeList=della-h12n[1-13,17-18],della-h17n1,della-i13n25
+   NodeList=della-i13n2
+   ReqTRES=cpu=4,mem=16G,node=1,billing=4
+   AllocTRES=cpu=4,mem=16G,node=1,billing=4
+   Features=cascade DelayBoot=00:00:00
+CELL sub 1 start 2026-07-23T02:25:27Z
+{"elapsed_s": 34.59474506799597, "kind": "d19_bench_timing_record", "n_points": 150, "scale": "sub"}
+CELL sub 1 exit 0 end 2026-07-23T02:26:03Z
+CELL sub 2 start 2026-07-23T02:26:03Z
+{"elapsed_s": 24.86536595702637, "kind": "d19_bench_timing_record", "n_points": 150, "scale": "sub"}
+CELL sub 2 exit 0 end 2026-07-23T02:26:29Z
+CELL sub 3 start 2026-07-23T02:26:29Z
+{"elapsed_s": 24.47032699896954, "kind": "d19_bench_timing_record", "n_points": 150, "scale": "sub"}
+CELL sub 3 exit 0 end 2026-07-23T02:26:54Z
+CELL sub 4 start 2026-07-23T02:26:54Z
+{"elapsed_s": 24.183055375004187, "kind": "d19_bench_timing_record", "n_points": 150, "scale": "sub"}
+CELL sub 4 exit 0 end 2026-07-23T02:27:19Z
+CELL full 1 start 2026-07-23T02:27:19Z
+{"elapsed_s": 64.41334903403185, "kind": "d19_bench_timing_record", "n_points": 461, "scale": "full"}
+CELL full 1 exit 0 end 2026-07-23T02:28:25Z
+CELL full 2 start 2026-07-23T02:28:25Z
+{"elapsed_s": 37.755601160926744, "kind": "d19_bench_timing_record", "n_points": 461, "scale": "full"}
+CELL full 2 exit 0 end 2026-07-23T02:29:04Z
+CELL full 3 start 2026-07-23T02:29:04Z
+{"elapsed_s": 33.981539791915566, "kind": "d19_bench_timing_record", "n_points": 461, "scale": "full"}
+CELL full 3 exit 0 end 2026-07-23T02:29:38Z
+CELL full 4 start 2026-07-23T02:29:38Z
+{"elapsed_s": 42.341203115996905, "kind": "d19_bench_timing_record", "n_points": 461, "scale": "full"}
+CELL full 4 exit 0 end 2026-07-23T02:30:22Z
+f7df3be2326b7427a32758ac3c20e65b24bf34897a9d556608a1b9ff4fb8410b  runs/d19_a7_timing/bench_full_threads_1.json
+d09dfb25ab33db144af4f0f6f133de5ba86f0c687a54c1cf3fc8e121f53b7af4  runs/d19_a7_timing/bench_full_threads_2.json
+3bcf1322781db9b7ce1c2f903956c9ab0ed22db9e8ec1de2a89f4ba2c8528c14  runs/d19_a7_timing/bench_full_threads_3.json
+2ca418389a3b583357e27f7629a2097ab8a8b31d9a488f87fcd05dd6d209c285  runs/d19_a7_timing/bench_full_threads_4.json
+d690d29ad09264d7cb4db83a42bd9e96b4bcf95281b4c65ad7af7cf4f2a6c2a5  runs/d19_a7_timing/bench_sub_threads_1.json
+e0bccf3083472006bbb36afd6577ba58df3f2780257f49ecb76a1c5c4b9ff5a4  runs/d19_a7_timing/bench_sub_threads_2.json
+3abde383a9b2bb5e69d2b4a773ef379ed03063b69e5df8a9bbc2b8697c797b89  runs/d19_a7_timing/bench_sub_threads_3.json
+a037413ebbca0be64cf15d26e8f67a4dccad3be4f927846edcf6d4bf45786510  runs/d19_a7_timing/bench_sub_threads_4.json
+MATRIX-COMPLETE 2026-07-23T02:30:22Z

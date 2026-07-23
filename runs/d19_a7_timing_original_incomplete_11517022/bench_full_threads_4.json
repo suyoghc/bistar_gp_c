@@ -1,0 +1,117 @@
+{
+  "data_provenance": {
+    "canonical_sha256": "5bcdc813b4c3b570c9947acfaa0d3ff8cb5f89094b3e4e5121f72535a0cc0910",
+    "n_train_points": 461,
+    "openml_data_id": 41187,
+    "source": "vendored"
+  },
+  "environment": {
+    "cpu_count": 40,
+    "git_sha": "725e5f194de7bda12475f0d2a64893aa5cf5315f",
+    "gpytorch": "1.15.1",
+    "hostname": "della-i13n2",
+    "numpy": "2.4.2",
+    "platform": "Linux-5.14.0-687.25.1.el9_8.x86_64-x86_64-with-glibc2.34",
+    "pyro": "1.9.1",
+    "python": "3.11.14",
+    "timestamp": "2026-07-23T02:29:41.858832+00:00",
+    "torch": "2.10.0+cu128"
+  },
+  "record": {
+    "firewall_note": "prereg v1.2 point 6 and v1.6 item 6 (ratified v1.9 item 1, v1.11 item 4): this artifact carries only timing, evaluation-count, configuration and environment fields. Posterior samples and disallowed diagnostics are discarded unread. Transient prior proposals and MAP-derived values are read internally ONLY to execute the frozen timing workloads that require them. None of them is printed or serialized: no hyperparameter, noise, posterior, curvature-spectrum or per-site value leaves this process.",
+    "kind": "d19_bench_timing_record",
+    "schema_version": 1
+  },
+  "run_config": {
+    "budget_s": 600.0,
+    "design_label": "whole-span season-preserving even-index subsample (np.round(np.linspace) over indices)",
+    "n_iter_map": 300,
+    "n_iter_profile": 150,
+    "n_points": 461,
+    "n_prior_evals_stage1": 100,
+    "n_prior_evals_stage2": 1000,
+    "scale": "full",
+    "seed": 0
+  },
+  "structure": {
+    "dim_unconstrained": 7,
+    "n_sampled_sites": 7
+  },
+  "threads": {
+    "mkl_num_threads_configured": 4,
+    "omp_num_threads_configured": 4,
+    "openblas_num_threads_configured": 4,
+    "thread_configuration_checks_passed": true,
+    "thread_control_scope_note": "OMP_NUM_THREADS, MKL_NUM_THREADS, OPENBLAS_NUM_THREADS and VECLIB_MAXIMUM_THREADS were set by this process before importing numpy, torch, gpytorch or pyro, and torch intra-op threads were set and verified equal to the request. thread_configuration_checks_passed certifies only those checks: heavy scientific modules absent when the environment was set, the four environment variables equal to the request, and torch intra-op equal to the request. It does NOT certify actual BLAS worker counts, torch inter-op control, a process-wide ceiling, or exact physical workers. VECLIB_MAXIMUM_THREADS is a maximum, not a guarantee. Torch inter-op threads were observed, never set.",
+    "threads_requested": 4,
+    "torch_num_interop_threads_effective": 40,
+    "torch_num_threads_effective": 4,
+    "veclib_maximum_threads_configured": 4
+  },
+  "timings": {
+    "gradient": {
+      "max_s": 0.031314726918935776,
+      "mean_s": 0.02679521420504898,
+      "median_s": 0.02721845405176282,
+      "min_s": 0.02336179802659899,
+      "reps": 5,
+      "status": "measured",
+      "warmup_calls": 1
+    },
+    "hessian": {
+      "extrapolated_from_gradient_s": null,
+      "status": "measured",
+      "total_s": 0.12556121603120118
+    },
+    "initialize_model": {
+      "status": "measured",
+      "total_s": 0.0515488589880988
+    },
+    "map_fit": {
+      "n_iter": 300,
+      "per_iter_s": 0.019839725000007698,
+      "status": "measured",
+      "total_s": 5.95191750000231
+    },
+    "potential_value_eval": {
+      "max_s": 0.024743562913499773,
+      "mean_s": 0.02130528218112886,
+      "median_s": 0.021780341980047524,
+      "min_s": 0.01856080605648458,
+      "reps": 5,
+      "status": "measured",
+      "warmup_calls": 1
+    },
+    "prior_eval_stage1": {
+      "n_evals": 100,
+      "n_failed_potential_evals": 0,
+      "per_eval_s": 0.017229597319383175,
+      "status": "measured",
+      "total_s": 1.7229597319383174
+    },
+    "prior_eval_stage2": {
+      "n_evals": 1000,
+      "n_failed_potential_evals": 0,
+      "per_eval_s": 0.017850280645070597,
+      "status": "measured",
+      "total_s": 17.850280645070598
+    },
+    "profile_grid_point": {
+      "composite_per_point_est_s": 2.636689316947013,
+      "laplace_det_bound_s": 0.12556121603120118,
+      "n_iter": 150,
+      "per_iter_s": 0.016740854006105414,
+      "status": "measured",
+      "total_s": 2.511128100915812
+    }
+  },
+  "totals": {
+    "elapsed_s": 42.341203115996905
+  },
+  "warning_counts": [
+    {
+      "category": "DeprecationWarning",
+      "count": 2
+    }
+  ]
+}
