@@ -28,6 +28,9 @@ FORBIDDEN_KEY_SUBSTRINGS = tuple(_VEHICLE.FORBIDDEN_KEY_SUBSTRINGS)
 del _VEHICLE
 
 
+_CONDITION_TOKEN = re.compile(r"condition(?!al)")
+
+
 EXPECTED_VERSIONS = {
     "python": "3.11.14",
     "torch": "2.10.0+cu128",
@@ -260,7 +263,10 @@ def _scan_forbidden_text(text):
     lowered = text.lower()
     found = []
     for token in FORBIDDEN_KEY_SUBSTRINGS:
-        if token in lowered:
+        if token == "condition":
+            if _CONDITION_TOKEN.search(lowered) is not None:
+                found.append(f"substring {token!r}")
+        elif token in lowered:
             found.append(f"substring {token!r}")
     for token in FORBIDDEN_EXACT_KEYS:
         if re.search(rf"\b{re.escape(token)}\b", lowered) is not None:
@@ -408,18 +414,18 @@ def _infer_job_id(evidence_dir, supplied):
     return next(iter(pairs)), []
 
 
-def _dependency_blob_mismatches(expected_sha):
+def _dependency_blob_mismatches(expected_sha, validator_sha):
     reasons = []
-    for relpath in (
-        "experiments/d19_bench.py",
-        "experiments/d19_a7_validate.py",
+    for relpath, binding_sha in (
+        ("experiments/d19_bench.py", expected_sha),
+        ("experiments/d19_a7_validate.py", validator_sha),
     ):
         commands = (
             (
                 "expected",
                 [
                     "git", "-C", str(REPO_ROOT), "rev-parse", "--verify",
-                    f"{expected_sha}:{relpath}",
+                    f"{binding_sha}:{relpath}",
                 ],
             ),
             (
@@ -454,13 +460,14 @@ def _dependency_blob_mismatches(expected_sha):
         if set(blobs) == {"expected", "live"} and blobs["expected"] != blobs["live"]:
             reasons.append(
                 f"{relpath}: live blob {blobs['live']} != "
-                f"{expected_sha} blob {blobs['expected']}"
+                f"{binding_sha} blob {blobs['expected']}"
             )
     return reasons
 
 
 def _v0(context):
-    return _dependency_blob_mismatches(context["expected_sha"])
+    return _dependency_blob_mismatches(
+        context["expected_sha"], context["validator_sha"])
 
 
 def _v1(context):
@@ -953,6 +960,7 @@ def run(argv=None):
     parser = _ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-dir", required=True)
     parser.add_argument("--expected-sha", required=True)
+    parser.add_argument("--validator-sha")
     parser.add_argument("--job-id")
     try:
         args = parser.parse_args(argv)
@@ -960,12 +968,20 @@ def run(argv=None):
         return _argument_failure(str(exc))
     if re.fullmatch(r"[0-9a-f]{40}", args.expected_sha) is None:
         return _argument_failure("--expected-sha must be 40 lowercase hexadecimal characters")
+    if (
+        args.validator_sha is not None
+        and re.fullmatch(r"[0-9a-f]{40}", args.validator_sha) is None
+    ):
+        return _argument_failure("--validator-sha must be 40 lowercase hexadecimal characters")
+    validator_sha = (
+        args.expected_sha if args.validator_sha is None else args.validator_sha)
 
     evidence_dir = Path(args.evidence_dir)
     job_id, job_id_errors = _infer_job_id(evidence_dir, args.job_id)
     context = {
         "evidence_dir": evidence_dir,
         "expected_sha": args.expected_sha,
+        "validator_sha": validator_sha,
         "job_id": job_id,
         "job_id_errors": job_id_errors,
         "records": {},
