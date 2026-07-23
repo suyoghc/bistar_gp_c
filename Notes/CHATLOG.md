@@ -940,3 +940,25 @@ inventory not called runtime-enforced). Focused **50** / 12 / 68; full **1169 pa
 0 failed**; cumulative diff within the eight-file allowlist. Next: a bounded fresh Codex gpt-5.6-sol
 xHigh + fresh Opus 4.8 read-only exact-head review over `M56b..corrected-head`, verdicts returned
 for author decision, nothing auto-corrected. STOP before Ready holds.
+
+**Two-model review round + option-(b) correction + confirmation (same session).** The bounded review
+ran at the hardening head `491680d` (both reviewers' first launch stalled ~4 h on a machine-sleep gap
+and were relaunched fresh). Codex gpt-5.6-sol xHigh (session `019f8c44`, banner + rollout verified,
+read-only sandbox) **FINDINGS** — two test-discrimination points: F1 the D56c amendment test asserted
+the two preparation phrases independently but not their BOTH/AND conjunction; F2 no test read the
+prereg or asserted v1.22. Opus 4.8 (`claude-opus-4-8`) **APPROVE** with one MINOR — F3 §8's post-run
+label wording stale after the reassignment (superseded in-file). Every substantive dimension OK from
+both; orchestrator independently confirmed all three findings non-blocking (each backstopped by the
+reviewed-surface byte-pin). Author chose option (b): one bounded correction `0b10da9` (no amend; two
+files — tests + protocol — within the eight-file allowlist) closed all three — F1 the test now asserts
+`must require **BOTH**` + the AND-joined import clause; F2 a new `test_prereg_records_the_v122_env_refreeze`
+reads the prereg and pins the v1.22 addendum + manifest path + full sha256 + the `→ v1.23` reassignment;
+F3 a concise §8 supersession pointer, history unrewritten. Mutation-verified in-memory (F1 BOTH→EITHER
+and F2 v1.22-relabel/reassignment-removed each fail; controls pass). Focused **51**/12/68; full **1170
+passed, 2 skipped, 0 failed**. Focused per-reviewer confirmation at `0b10da9`: Codex gpt-5.6-sol xHigh
+(session `019f8c63`) **CONFIRMED-CLOSED** F1+F2; Opus 4.8 (`claude-opus-4-8`) **CONFIRMED-CLOSED** F3;
+no new defect. Reviewed head **R56c = `0b10da9d48d9c6127f5c8634fd12bc16417aad53`**; this CHATLOG entry,
+the DECISIONS D56 Update 10, and the SCRATCHPAD alignment are the identified Notes-only tail after
+R56c. A mechanical Ready-closure authorization is returned. STOP before Ready holds — no Ready flip,
+merge, M56c, Della contact, submission, benchmark, data access, or science. Both prior submissions stay
+SPENT; A7 remains OWED.
