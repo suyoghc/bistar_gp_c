@@ -986,3 +986,40 @@ SPENT; A7 remains OWED.
 Executed the author-cast evidence-and-Notes closure under pinned plan v3 (`/Users/sc8918/a7_evidence_closure_plan.md`, 17976 B, sha256 `1f19d14e…`) on a new branch `evidence/d19-a7-timing-11517022` off origin/main M56d `5fcc2d31…`. Preflight verified the plan pin, `origin/main == M56d`, and a clean tree. **Step 1** freeze-verified all 23 existing evidence files (11 original + 12 recovered) against the pinned SHA-256/size table and confirmed the three destinations absent. **Step 2** placed the bundles by two guarded no-clobber `mv` renames: the validated recovered 12-entry bundle → canonical `runs/d19_a7_timing/` (§8 allowlist B), the original incomplete 11-entry capture → `runs/d19_a7_timing_original_incomplete_11517022/`; both sources are now gone (moved, not copied). **Step 3** revalidated the canonical directory exactly once — **V0–V15 PASS, exit 0** against `--expected-sha M56c --validator-sha M56d`. **Step 4** wrote `runs/d19_a7_timing_recovery_record_11517022.md` (nine-point schema; documents the validated A7 timing evidence, the original P6 CWD-relative omission, the delayed exact P6 `sacct` recovery, both anchors, the full 23-file hash tables, the 10 shared byte-identical files, the 902 B/10-line vs 985 B/11-line manifests, the 16/16 PASS, and the post-run D56d amendment; no timing magnitude interpreted). **Step 5** staged the 24 evidence/record files with the two mandatory `git add -f` for the ignored `slurm-11517022.out` files, and the full hash/tree battery passed (23-file hashes at the new paths, both `shasum -c` OK, manifests differ by exactly the one `job_metadata.txt` line, validator==M56d + vehicle==M56c blobs, `git ls-files` 12/11, staged set exactly 24); committed **E57 = `7d0b8e57ed60c863f24efb97dfd6ad7e1c8e9455`** (`M56d..E57` = exactly the 24 files). **Step 6** updated Notes (DECISIONS Update 13 + this SCRATCHPAD alignment + this CHATLOG entry) and will commit them as the Notes-only tail **N57** (`E57..N57` = only the three Notes files). **Step 7** pushes and opens a Draft PR, then STOPs before Ready. The 23 evidence-bundle files and both manifests are immutable from E57. The Della source and the spent worktrees `…_exec` / `…_exec_02` / `…_exec_03` were not touched. No benchmark, Della action, deletion, timing interpretation, or v1.23 was performed. Next: one fresh Codex gpt-5.6-sol xHigh read-only review at exact N57 with Opus-orchestrator finding-verification (GLM 5.2 only on material disagreement; no redundant fresh Opus), at most one bounded non-evidence correction → C57/F57, then STOP before Ready.
 
 **Review + correction (2026-07-23).** The fresh Codex gpt-5.6-sol xHigh read-only audit (session `019f8f03`, banner + rollout `model`/`effort` verified) ran at exact N57 over the complete `M56d..N57` diff (including Notes) and returned **FINDINGS**: six of seven points **OK** (topology 27/3/24; byte preservation vs the pinned 23-file table; manifests differ only by the `job_metadata.txt` line; force-add + 12/11 tracked sets; Notes truthfulness; frozen surfaces empty) and one **MINOR** — recovery-record §3 said "P6/P6b capture wrote only 10 files," which conflicts with the committed 11-file original bundle (ten payloads + the 10-line manifest). The Opus 4.8 orchestrator independently confirmed the finding against source (`git ls-files` original == 11; manifest == 10 lines) and independently re-verified the six OK points (committed-blob SHA-256 for all 23 files == the pinned table; `M56d..N57 -- experiments/ bistar_gp/ docs/ tests/` empty; the record contains no timing-magnitude interpretation). Codex and the orchestrator agreed, so GLM 5.2 was not consulted. The single permitted bounded **non-evidence** correction reworded recovery-record §3 to "ten payload files … an 11-file bundle, missing `job_metadata.txt` … covering those ten payload files"; **no evidence-bundle file or manifest byte was touched**. The correction commit is **C57 = F57** (recovery record + the three Notes files); at F57 the 23 immutable bundle files equal E57, the recovery record differs from E57 (corrected), and `M56d..F57` remains exactly the 27-file allowlist. Draft PR #30 stays **STOPPED before Ready**; the v1.23 measured-results addendum remains a separate later act.
+
+## 2026-07-23 — v1.23 measured-results addendum + D57: global Della thread pin 3 (Fable orchestrator session, branch docs/d19-v123-measured-results)
+
+The read-only planning turn passed startup gate 5/5 at evidence-closure anchor `24f55c37`.
+ONE fresh Codex gpt-5.6-sol xHigh read-only extraction analyst (session `019f8f69`,
+model/effort verified from the rollout log) read the committed A7 evidence. The Fable
+orchestrator independently cross-verified the extraction and arithmetic; zero material
+disagreements remained, GLM 5.2 was not consulted, and the ballot was returned.
+
+The author cast B1–B4 on 2026-07-23: scoped global pin 3 for D19/A7-governed
+`bistar_gp` CPU workloads on the frozen 90-node cascade pool; no general 5% tie rule
+from the single, unreplicated sweep; informational core-seconds only; and new D57 with
+the prospective poster milestone renumbered D58. Authorization was bounded to the
+four documentation files, with no benchmark rerun, Della contact, or science.
+
+This implementation appends prereg v1.23, creates D57, updates the evidence-closure
+status, and renumbers the poster milestone to D58; no poster work is begun. Next is
+the one-model read-only review gate, then at most one bounded docs-only correction
+pass, a Draft PR, and **STOP before Ready**.
+
+**Review gate (2026-07-23).** The implementation committed as `145a4e5` (four files;
+prereg and DECISIONS pure appends) after the orchestrator's mechanical harness and a
+full manual read verified every recorded literal (88/88), the derived spot values,
+and the disclosures. The FRESH read-only Codex gpt-5.6-sol xHigh reviewer (session
+`019f8f90`, model/effort/sandbox verified from the rollout log) audited the complete
+`24f55c37..145a4e5` diff at the exact head and returned **APPROVE, zero findings**,
+independently recomputing all 48 speedups, 16 argmins, 24 full/sub ratios, 64
+core-cost cells, and every narrative scalar. No disagreement arose, so GLM 5.2 was
+not consulted, and the single bounded docs-only correction pass is UNSPENT.
+**R57 = `145a4e5`**; this entry closes the identified Notes-only tail. The branch
+push was permission-blocked in the implementing session, so the push and Draft-PR
+opening are the immediate next acts under the standing authorization, then
+**STOP before Ready**.
+
+The plain-form push then succeeded (the denial was transient) and **Draft PR #31**
+was opened with the full lineage in its body; this pre-identified Notes line records
+the number. The PR remains **STOPPED before Ready**.
