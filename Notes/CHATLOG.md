@@ -1057,3 +1057,8 @@ job_metadata.txt capture + A1/A2/A7 decidability; tests: parameterized guards, A
 call-order and alias-loader checks, derivation/boundary/field-order pins, effective-Slurm
 token-sequence equality — focused 62 passed). D58 Update 1 records the round; the corrected
 head goes to full suite, push, Draft PR, then HARD STOP before Ready.
+
+Full suite at the corrected head 91de92d8: 1246 passed / 2 skipped / 0 failed. Branch pushed;
+**Draft PR #32** opened with the two-commit lineage (implementation 099cd728 reviewed at
+exact head; single bounded correction 91de92d8, pass SPENT) and the STOP list in its body.
+This pre-identified Notes line records the PR number. **HARD STOP before Ready.**
