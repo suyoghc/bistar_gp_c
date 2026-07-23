@@ -1005,3 +1005,17 @@ This implementation appends prereg v1.23, creates D57, updates the evidence-clos
 status, and renumbers the poster milestone to D58; no poster work is begun. Next is
 the one-model read-only review gate, then at most one bounded docs-only correction
 pass, a Draft PR, and **STOP before Ready**.
+
+**Review gate (2026-07-23).** The implementation committed as `145a4e5` (four files;
+prereg and DECISIONS pure appends) after the orchestrator's mechanical harness and a
+full manual read verified every recorded literal (88/88), the derived spot values,
+and the disclosures. The FRESH read-only Codex gpt-5.6-sol xHigh reviewer (session
+`019f8f90`, model/effort/sandbox verified from the rollout log) audited the complete
+`24f55c37..145a4e5` diff at the exact head and returned **APPROVE, zero findings**,
+independently recomputing all 48 speedups, 16 argmins, 24 full/sub ratios, 64
+core-cost cells, and every narrative scalar. No disagreement arose, so GLM 5.2 was
+not consulted, and the single bounded docs-only correction pass is UNSPENT.
+**R57 = `145a4e5`**; this entry closes the identified Notes-only tail. The branch
+push was permission-blocked in the implementing session, so the push and Draft-PR
+opening are the immediate next acts under the standing authorization, then
+**STOP before Ready**.
