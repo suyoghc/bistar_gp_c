@@ -547,6 +547,7 @@ ENV_MANIFEST_PATH = Path("docs/d19_a7_freeze/bistar_env_after.txt")
 ENV_MANIFEST_SHA256 = "d832d426ec5a83e3f1da3275c289323c8732f2644038efb15b2eb1567b085aa1"
 ENV_MANIFEST_SIZE = 1386
 ENV_MANIFEST_LINES = 69
+PREREG_PATH = Path("docs/prereg-addenda-d19.md")
 D56C_REVIEWED_SURFACE_CLOSURE = (
     "git diff R56c..M56c -- experiments/submit_d19_a7_bench.slurm "
     "tests/test_d19_a7_protocol.py docs/d19-a7-execution-protocol.md "
@@ -581,6 +582,27 @@ def test_protocol_document_records_the_d56c_amendment():
         # The five-file reviewed-surface closure command, pinned verbatim so no
         # closure member (script, tests, protocol, prereg, manifest) can drop.
         D56C_REVIEWED_SURFACE_CLOSURE,
+    ):
+        assert literal in text
+    # F1: the preparation gate must be a conjunction (require BOTH (a) AND (b)),
+    # never a disjunction. Rewriting BOTH->EITHER or "and (b)"->"or (b)" drops one
+    # of these literals, so the test fails on any weakening of the binding intent.
+    assert "must require **BOTH**" in text
+    assert "and (b) a successful `import bistar_gp`" in text
+
+
+def test_prereg_records_the_v122_env_refreeze():
+    text = PREREG_PATH.read_text(encoding="utf-8")
+    # F2: positively guard the prereg authority — the v1.22 addendum must exist,
+    # bind the committed manifest by path AND full sha256, and state the
+    # reassignment of the successful measured-results addendum to v1.23.
+    # Relabeling or removing any of these (protocol untouched) now fails a test.
+    for literal in (
+        "## v1.22",
+        "docs/d19_a7_freeze/bistar_env_after.txt",
+        ENV_MANIFEST_SHA256,
+        "is reassigned to this environment re-freeze",
+        "measured-results addendum becomes **v1.23**",
     ):
         assert literal in text
 
