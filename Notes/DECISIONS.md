@@ -5492,3 +5492,49 @@ any Della contact, any real-data load, fit, or figure generation, BMS*, holdout 
 outside the seven-file allowlist, any change under `poster/`, `CogSci Poster/`, or `runs/`,
 or any frozen-surface edit. M2cR's preserved STOP and D45's UNVALIDATED_ATTEMPT are
 untouched; the paper-grade D19 resumption stays a separate later planning act.
+
+**D58 Update 1 — exact-head review REVISE (2 BLOCKER / 2 MAJOR / 2 MINOR / 1 NOTE); all
+findings orchestrator-confirmed; the SINGLE bounded correction pass closed all seven
+(2026-07-23).** Reviewer: ONE FRESH Codex **gpt-5.6-sol** xHigh, strictly read-only sandbox,
+session `019f90b0` (model, effort, and `sandbox: read-only` verified from the CLI banner and
+the rollout log), at exact head `099cd728c4a2237588c4a2789c051427d757b356` over the complete
+`34d149de..099cd728` diff. Verdict **REVISE**. Findings, each independently confirmed against
+source before action: (B1) the protocol's RUN template passed the literal string `M58` to a
+script whose guard accepts only 40-hex, so a verbatim copy would burn the one-shot submission
+at exit 65 AFTER sbatch acceptance; (B2) render delegated to tracked plot functions whose
+"forecast" annotation and matplotlib's default x-margins depict axis range beyond the final
+training coordinate, so the cast "crop every panel" ruling was claimed but not enforced; (M1)
+the two NPZ writes were direct, not atomic, making the protocol/DECISIONS "atomically" claims
+false at `099cd728`; (M2) P4 froze neither the `sacct` command nor its destination, leaving
+acceptance check A1 undecidable from the defined evidence (the A7 CWD-relative-redirect
+lesson); (MIN1) `verify_run_dir` was not closed-world and accepted duplicate manifest names;
+(MIN2) test-discrimination gaps (single-variable conflict coverage, three-of-five late
+modules, no call-order or alias-loader guard, substring-only Slurm assertions, untested NPZ
+atomicity and diagnostics derivations); (NOTE) misleading render `--output-dir` help text.
+**Closures (this correction commit, within the seven-file allowlist):** protocol §6 P3/P4/P5
+and the §7.3 template now require the LITERAL 40-hex M58 and freeze the verbatim no-clobber
+`sacct` capture to `runs/poster_d58/job_metadata.txt` (transported in P5; A1 decides from
+it); the driver gained `validate_saved_grid` (finite, nondecreasing, endpoints exactly the
+training span, fail-closed) and `enforce_training_boundary` (every axes clamped to the
+training span in its own units — normalized for cards 6-7, `x_offset` years for the card-8
+strips — with the tracked "forecast"/"train" annotations stripped), applied to every rendered
+figure; `atomic_savez` (tmp + fsync + `os.replace` through a file object) now writes both NPZ
+archives so every census artifact is atomic; `verify_run_dir` is closed-world (a prior
+render's `figures/` directory is the one permitted extra) and rejects duplicate, malformed,
+or miscounted manifest lines; A7's caption half is explicitly a D58-POST obligation, not a
+P7 check; the render help text distinguishes fit output from transported render input.
+**Test deltas:** the conflict and late-application guards are parameterized over all four
+variables and all five heavy modules; new AST guards prove `run_fit` applies the pin before
+any import and that no import or attribute access reaches the full loader (alias
+resistance); new unit pins cover `atomic_savez` (round-trip, no stray temporary), the
+divergence/saturation derivations, `validate_saved_grid` (accept/refuse), boundary
+enforcement (crop + annotation strip), the `DecompositionResult` field order backing the
+positional rebuild, the closed-world/duplicate/miscount manifest refusals, and the exact
+effective Slurm token sequence (order, values, duplicates, and mode) via
+continuation-joined parsing. Focused: **62 passed** (49 driver + 13 argparse-guard).
+The prior entry's "written atomically" and "crops at the final training coordinate" wording
+was FALSE at `099cd728` and is true of the corrected head; this Update supersedes it without
+rewriting history. Per the D56d precedent the corrected head was not itself re-reviewed by
+the model (the single bounded pass is now SPENT); a fresh exact-head re-review before Ready
+is available at author option. These are AI reviews, not GitHub reviews or CI. Next: full
+suite at the corrected head, push, Draft PR, then **HARD STOP before Ready/merge/Della**.

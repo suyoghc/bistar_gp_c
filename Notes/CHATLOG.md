@@ -1043,3 +1043,17 @@ tests + execution protocol + Notes (the exact seven-file allowlist). Focused sui
 (31 new; slurm-argparse guard + Mauna provenance/period/registry 45). D58 DECISIONS entry
 records the cast, the disclosed pre-review refinements, the firewall, and the STOP list.
 Next: full suite, ONE Codex exact-head review, Draft PR, HARD STOP before Ready/merge/Della.
+
+The exact-head review (ONE fresh Codex gpt-5.6-sol xHigh, session 019f90b0, read-only)
+returned REVISE: 2 BLOCKER (literal `M58` in the RUN template would burn the one-shot
+submission at the script's 40-hex guard; render did not enforce the training-boundary crop
+against plot annotations and matplotlib margins), 2 MAJOR (non-atomic NPZ writes; unfrozen
+sacct capture leaving A1 undecidable), 2 MINOR (non-closed-world render gate with duplicate
+manifest acceptance; test-discrimination gaps), 1 NOTE (render help text). Every finding was
+orchestrator-confirmed against source; the single bounded correction pass closed all seven
+(driver: validate_saved_grid + enforce_training_boundary + atomic_savez + closed-world
+verify_run_dir + derivation helpers; protocol: literal-sha40 template + frozen
+job_metadata.txt capture + A1/A2/A7 decidability; tests: parameterized guards, AST
+call-order and alias-loader checks, derivation/boundary/field-order pins, effective-Slurm
+token-sequence equality — focused 62 passed). D58 Update 1 records the round; the corrected
+head goes to full suite, push, Draft PR, then HARD STOP before Ready.

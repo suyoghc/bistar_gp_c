@@ -77,8 +77,11 @@ wired into the driver (`n_posterior_samples = n_samples`).
 
 ## 4. Artifact census and provenance
 
-The fit writes exactly six artifacts into the run directory, atomically, in
-recovery order (a wall-clock kill preserves everything already written):
+The fit writes exactly six artifacts into the run directory, in recovery
+order (a wall-clock kill preserves everything already written). Every writer
+— JSON, manifest, and both NPZ archives — uses the same atomic discipline
+(same-directory temporary, flush + fsync, `os.replace`), so no partial file
+can ever occupy a final name:
 
 1. `fit_config.json` — pre-fit echo: design label, git SHA (must equal the
    RUN anchor), host, Slurm ids, seed/warmup/draws/depth/target-accept/init,
@@ -111,18 +114,25 @@ training-span grid, persisted as `x_pred`. The driver and Slurm sources are
 guard-tested to contain no holdout-array token and no full-loader call.
 
 Figures are NOT part of the fit census. Render mode (local, D58-POST)
-verifies the census against `PROVENANCE.sha256`, rebuilds the decomposition
-result from arrays, renders the four poster panels into `figures/`
-(`card6_mauna_decomposition.png`, `card7_three_interpretations.png`,
-`card8_debiased_ppm.png`, `card8_removed_bias.png`), and writes
-`figures/FIGURES.sha256` over them — the figure-provenance manifest is
-created only once figures exist. Render performs no data load and no
-inference; it loads the tracked plotting module
+verifies the census against `PROVENANCE.sha256` under a closed-world rule
+(exactly the six artifacts; a prior render's `figures/` directory is the one
+permitted extra; duplicate or miscounted manifest lines fail closed),
+validates the saved grid semantically (finite, nondecreasing, endpoints
+exactly equal to the training span — `validate_saved_grid`), rebuilds the
+decomposition result from arrays, renders the four poster panels into
+`figures/` (`card6_mauna_decomposition.png`,
+`card7_three_interpretations.png`, `card8_debiased_ppm.png`,
+`card8_removed_bias.png`), and writes `figures/FIGURES.sha256` over them —
+the figure-provenance manifest is created only once figures exist. Render
+performs no data load and no inference; it loads the tracked plotting module
 `experiments/bistar_debias_mauna_loa.py` for its figure functions, which
-binds (but render never calls) the full loader. Boundary rendering: because
-no array extends past the final training coordinate, the tracked plot
-functions' train/test boundary line and annotations fall at the right panel
-edge; nothing of the sealed span is depicted, and no forecast band exists.
+binds (but render never calls) the full loader. Boundary rendering is
+ENFORCED, not assumed: `enforce_training_boundary` sets every axes' x-limits
+to exactly the training span in that figure's own units (normalized time for
+cards 6-7; calendar years via `x_offset` for the card-8 strips), eliminating
+matplotlib's default margins, and strips the tracked plot functions'
+boundary annotations ("forecast" and "train" markers), so no axis range,
+band, or label extends past or points beyond the final training coordinate.
 
 ## 5. Acceptance checks A1-A7 (frozen, non-adaptive, display gate only)
 
@@ -132,11 +142,12 @@ re-running, or resubmission (the single submission is spent regardless).
 Any failure, and any diagnostic situation these checks cannot classify, is
 returned to the author as an unresolved judgment with the evidence preserved.
 
-- **A1 scheduler truth**: `sacct` parent row `State=COMPLETED`,
-  `ExitCode 0:0`, node inside the frozen pool.
+- **A1 scheduler truth**: decided from the frozen P4 capture
+  `runs/poster_d58/job_metadata.txt` (plus the Slurm log): parent row
+  `State=COMPLETED`, `ExitCode 0:0`, node inside the frozen pool.
 - **A2 closed-world census**: exactly the six §4 artifacts present in the
-  transported run directory; `shasum -c PROVENANCE.sha256` passes; nothing
-  extra inside the run directory.
+  transported fit directory; `shasum -c PROVENANCE.sha256` passes; nothing
+  extra inside the fit directory (figures do not exist at P7).
 - **A3 provenance completeness**: every §4 field present;
   `git_sha` equals the RUN anchor; thread contract echoed at 3/3/3 with
   inter-op recorded; the five version pins match the frozen environment.
@@ -148,12 +159,14 @@ returned to the author as an unresolved judgment with the evidence preserved.
 - **A6 seal integrity**: `n_train = 461` and the `cutoff_rule` string
   present; no test-valued field anywhere; the source-level guards hold at
   the RUN anchor.
-- **A7 truthful diagnostics**: the verbatim `SamplerDiagnostics` payload is
-  present with the DERIVED divergence and tree-depth-saturation counts;
-  whatever they are, any displayed figure caption reports them honestly (td7
-  stays labeled an efficiency control per the standing disclosure), and
-  `decomposition_n_success` is reported with any shortfall returned to the
-  author.
+- **A7 truthful diagnostics** (RUN-time half): the verbatim
+  `SamplerDiagnostics` payload is present with the DERIVED divergence and
+  tree-depth-saturation counts, and `decomposition_n_success` is reported
+  with any shortfall returned to the author. The caption obligation — any
+  displayed figure reports those numbers honestly, with td7 labeled an
+  efficiency control per the standing disclosure — attaches to D58-POST,
+  when figures exist; it is not decidable at P7 and is recorded there as an
+  obligation, not a check.
 
 ## 6. D58-RUN steps and STOP conditions
 
@@ -169,13 +182,23 @@ Available only after the PREP PR is merged (true merge; anchor **M58**) with
 - **P2** — read-only environment preflight from the worktree:
   `PYTHONPATH=$PWD python -B -c "import bistar_gp"`.
 - **P3** — **ONE** `sbatch --export=NONE
-  experiments/submit_d58_poster_fit.slurm M58`. The submission is SPENT on
-  execution; no automatic retry, no post-hoc tuning, on any outcome.
-- **P4** — single-shot `sacct` capture (parent and batch rows) after the job
-  reaches a terminal state; no-clobber.
-- **P5** — dotfile-safe transport of `runs/poster_d58/` (the fit directory
-  plus `slurm-<jobid>.out/.err`) to the Mac at `runs/poster_d58_incoming/`,
-  with sha256 recorded on Della at capture time.
+  experiments/submit_d58_poster_fit.slurm <M58-sha40>`, where `<M58-sha40>`
+  is the LITERAL 40-hex merge-anchor SHA written out in the cast
+  authorization (the script rejects anything else at exit 65 AFTER the
+  submission is accepted, which would spend it — never pass a symbolic
+  name). The submission is SPENT on execution; no automatic retry, no
+  post-hoc tuning, on any outcome.
+- **P4** — single-shot scheduler capture, frozen verbatim (the A7 recovery
+  lesson: the original P6 redirect was CWD-relative and missed; run this
+  from the worktree root and check the target first):
+  `[ ! -e runs/poster_d58/job_metadata.txt ] && sacct -j <jobid> -P
+  --format=JobID,State,ExitCode,Elapsed,Timelimit,TotalCPU,MaxRSS,NodeList,Submit,Start,End
+  > runs/poster_d58/job_metadata.txt` (parent and batch rows arrive
+  together; no-clobber; one shot).
+- **P5** — dotfile-safe transport of `runs/poster_d58/` (the fit directory,
+  `slurm-<jobid>.out/.err`, and `job_metadata.txt`) to the Mac at
+  `runs/poster_d58_incoming/`, with sha256 recorded on Della at capture
+  time.
 - **P6** — hash gate: `shasum -c PROVENANCE.sha256` inside the transported
   fit directory plus comparison of the Della-side capture hashes; any
   disagreement is a STOP.
@@ -219,21 +242,27 @@ freeze document, or `runs/` content.
 ### 7.3 D58-RUN authorization template (castable only once M58 exists)
 
 > **D58-RUN AUTHORIZATION.** Preconditions: PREP PR #\<N\> merged as a true
-> merge producing **M58 = `<sha40>`**; `origin/main == M58` verified at cast
-> time; `docs/d58-poster-execution-protocol.md` at M58 governs. Authorize, as
-> one author-executed sequence: P0 topology verification; P1 fresh detached
+> merge producing **M58 = `<sha40>`** (the cast MUST write out the literal
+> 40-hex SHA here; every later reference below means that literal);
+> `origin/main == M58` verified at cast time;
+> `docs/d58-poster-execution-protocol.md` at M58 governs. Authorize, as one
+> author-executed sequence: P0 topology verification; P1 fresh detached
 > worktree `/scratch/gpfs/SUYOGHC/bistar_gp_d58` at M58 with
 > `mkdir -p runs/poster_d58` (existing Della checkouts and spent A7 worktrees
 > untouched); P2 read-only environment preflight; P3 **ONE**
-> `sbatch --export=NONE experiments/submit_d58_poster_fit.slurm M58`, the
-> single submission SPENT on execution with no automatic retry and no
-> post-hoc tuning on any outcome; P4 single-shot `sacct` capture; P5
-> dotfile-safe transport to `runs/poster_d58_incoming/` with Della-side
-> hashes; P6 the hash gate; P7 the frozen A1-A7 acceptance checks, read-only;
-> then STOP. Evidence preserved on every outcome. Not authorized: BMS\*,
-> holdout access, paper gates, arm or strategy selection, a second
-> submission, the evidence commit, or any `poster/` change — the last two are
-> separate D58-POST authorizations.
+> `sbatch --export=NONE experiments/submit_d58_poster_fit.slurm <sha40>`
+> with the literal 40-hex M58 as the argument (a symbolic name fails the
+> in-job guard at exit 65 and spends the submission), the single submission
+> SPENT on execution with no automatic retry and no post-hoc tuning on any
+> outcome; P4 the frozen single-shot `sacct` capture to
+> `runs/poster_d58/job_metadata.txt` (protocol §6 P4, verbatim); P5
+> dotfile-safe transport (fit directory + Slurm logs + `job_metadata.txt`)
+> to `runs/poster_d58_incoming/` with Della-side hashes; P6 the hash gate;
+> P7 the frozen A1-A7 acceptance checks, read-only; then STOP. Evidence
+> preserved on every outcome. Not authorized: BMS\*, holdout access, paper
+> gates, arm or strategy selection, a second submission, the evidence
+> commit, or any `poster/` change — the last two are separate D58-POST
+> authorizations.
 
 ## 8. Disclosures and notes
 
@@ -254,5 +283,9 @@ freeze document, or `runs/` content.
   holdout value, coordinate, score, or forecast band appears anywhere on the
   poster, and the legacy log line holding a pre-freeze holdout score is not
   quotable.
+- Render input path: the fit directory is validated in place wherever the
+  transport landed it (the D58-POST flow uses
+  `runs/poster_d58_incoming/...`); the driver's namespace guard applies to
+  fit-mode OUTPUT directories only.
 - Local hermetic tests are the only PREP execution; the driver's fit mode
   runs exactly once, on Della, under the RUN authorization.

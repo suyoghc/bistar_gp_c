@@ -77,6 +77,7 @@ EXPECTED_ARTIFACTS = (
     "PROVENANCE.sha256",
 )
 MANIFEST_NAME = "PROVENANCE.sha256"
+FIGURES_DIR_NAME = "figures"
 
 FIGURE_NAMES = (
     "card6_mauna_decomposition.png",
@@ -187,6 +188,37 @@ def _atomic_write_text(path, text):
     os.replace(tmp, path)
 
 
+def atomic_savez(path, arrays):
+    """np.savez with the same tmp + fsync + os.replace discipline as the JSON
+    writers (a kill can never leave a partial file under the final name).
+    Writing through an open file object stops np.savez from appending its own
+    .npz suffix to the temporary name."""
+    import numpy as np
+
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as fh:
+        np.savez(fh, **arrays)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+
+
+def divergence_total(divergence_draws):
+    """Total post-warmup divergences across chains; None when unobserved."""
+    if divergence_draws is None:
+        return None
+    return int(sum(len(chain) for chain in divergence_draws))
+
+
+def td_saturated_count(leapfrog_counts, threshold):
+    """Post-warmup draws whose leapfrog count reaches the depth-cap bound
+    (2**max_tree_depth - 1); None when the sampler cannot observe it."""
+    if leapfrog_counts is None:
+        return None
+    return int(sum(1 for chain in leapfrog_counts
+                   for count in chain if count >= threshold))
+
+
 def _write_json(path, payload):
     _atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True,
                                         default=_json_default) + "\n")
@@ -212,7 +244,20 @@ def write_manifest(run_dir):
 
 
 def verify_run_dir(run_dir):
-    """Render-mode gate: full census present and manifest hashes match."""
+    """Render-mode gate: closed-world census and manifest hash agreement.
+
+    The run directory must contain exactly the six census artifacts (plus, on
+    a re-render only, the figures/ directory a previous render created);
+    anything else fails closed. The manifest must hold exactly one valid line
+    per payload file, duplicates rejected, every hash matching.
+    """
+    allowed = set(EXPECTED_ARTIFACTS)
+    entries_on_disk = set(os.listdir(run_dir))
+    extra = entries_on_disk - allowed - {FIGURES_DIR_NAME}
+    if extra:
+        raise SystemExit(
+            f"RENDER-CENSUS: unexpected entries {sorted(extra)} in {run_dir}; "
+            "the census is closed-world (protocol section 4)")
     for name in EXPECTED_ARTIFACTS:
         path = os.path.join(run_dir, name)
         if not (os.path.isfile(path) and os.path.getsize(path) > 0):
@@ -223,12 +268,20 @@ def verify_run_dir(run_dir):
     with open(manifest_path, "r", encoding="utf-8") as fh:
         entries = [ln.rstrip("\n") for ln in fh if ln.strip()]
     expected_payload = [n for n in EXPECTED_ARTIFACTS if n != MANIFEST_NAME]
+    if len(entries) != len(expected_payload):
+        raise SystemExit(
+            f"RENDER-MANIFEST: {len(entries)} lines != "
+            f"{len(expected_payload)} expected payload files")
     seen = {}
     for entry in entries:
         try:
             sha, name = entry.split("  ", 1)
         except ValueError:
             raise SystemExit(f"RENDER-MANIFEST: malformed line {entry!r}")
+        if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+            raise SystemExit(f"RENDER-MANIFEST: malformed sha256 in {entry!r}")
+        if name in seen:
+            raise SystemExit(f"RENDER-MANIFEST: duplicate name {name!r}")
         seen[name] = sha
     if sorted(seen) != sorted(expected_payload):
         raise SystemExit(
@@ -240,6 +293,42 @@ def verify_run_dir(run_dir):
                 f"RENDER-HASH-GATE: {name} sha256 {actual} != recorded "
                 f"{recorded}; refusing to render from a tampered or partial run")
     return True
+
+
+def validate_saved_grid(arrays):
+    """Semantic seal check on the transported arrays before any rendering:
+    the prediction grid must be finite, nondecreasing, and bounded exactly by
+    the training span (author boundary ruling 2026-07-23)."""
+    import numpy as np
+
+    grid = arrays["x_pred"]
+    x_train = arrays["x_train"]
+    if not np.isfinite(grid).all() or not np.isfinite(x_train).all():
+        raise SystemExit("RENDER-GRID: non-finite coordinates in the census")
+    if not (np.diff(grid) >= 0).all():
+        raise SystemExit("RENDER-GRID: prediction grid is not nondecreasing")
+    if grid[0] != x_train.min() or grid[-1] != x_train.max():
+        raise SystemExit(
+            "RENDER-GRID: grid endpoints "
+            f"[{grid[0]!r}, {grid[-1]!r}] != training span "
+            f"[{x_train.min()!r}, {x_train.max()!r}]; nothing outside the "
+            "training span may be rendered (plan section 6.6)")
+    return float(grid[0]), float(grid[-1])
+
+
+_BOUNDARY_ANNOTATIONS = ("forecast →", "← train")
+
+
+def enforce_training_boundary(fig, lo, hi):
+    """Crop every axes of `fig` to exactly [lo, hi] on x (zero margin) and
+    strip the tracked plot functions' boundary annotations, so no axis range
+    or label suggests anything past the final training coordinate."""
+    for ax in fig.get_axes():
+        ax.set_xlim(lo, hi)
+        for artist in list(ax.texts):
+            if artist.get_text().strip() in _BOUNDARY_ANNOTATIONS:
+                artist.remove()
+    return fig
 
 
 # ── fit mode (Della, one shot) ───────────────────────────────────────────────
@@ -335,26 +424,21 @@ def run_fit(args):
     fit_elapsed_s = time.monotonic() - t_fit
     assert_mauna_period_frozen(model)
 
-    np.savez(os.path.join(run_dir, "samples.npz"), **samples)
-    # np.savez appends .npz only when absent; the target name already has it.
+    atomic_savez(os.path.join(run_dir, "samples.npz"), samples)
 
     from dataclasses import asdict
 
     diag_payload = asdict(diagnostics)
     saturation_threshold = (2 ** args.max_tree_depth) - 1
-    divergence_total = (
-        None if diagnostics.divergence_draws is None
-        else int(sum(len(ch) for ch in diagnostics.divergence_draws)))
-    td_saturated = (
-        None if diagnostics.leapfrog_counts is None
-        else int(sum(1 for chain in diagnostics.leapfrog_counts
-                     for count in chain if count >= saturation_threshold)))
+    divergences = divergence_total(diagnostics.divergence_draws)
+    td_saturated = td_saturated_count(diagnostics.leapfrog_counts,
+                                      saturation_threshold)
     samples_finite = {site: bool(np.isfinite(arr).all())
                       for site, arr in samples.items()}
     _write_json(os.path.join(run_dir, "diagnostics.json"), {
         "sampler_diagnostics": diag_payload,
         "derived": {
-            "divergence_count_total": divergence_total,
+            "divergence_count_total": divergences,
             "tree_depth_saturation_threshold": saturation_threshold,
             "tree_depth_saturated_draws": td_saturated,
         },
@@ -383,7 +467,7 @@ def run_fit(args):
         dec_arrays[f"comp__{name}__mean"] = comp.mean
         dec_arrays[f"comp__{name}__std"] = comp.std
         dec_arrays[f"comp__{name}__samples"] = comp.samples
-    np.savez(os.path.join(run_dir, "decomposition.npz"), **dec_arrays)
+    atomic_savez(os.path.join(run_dir, "decomposition.npz"), dec_arrays)
 
     first = next(iter(result.components.values()))
     decomposition_n_success = int(first.samples.shape[0])
@@ -400,7 +484,7 @@ def run_fit(args):
         "decomposition_n_requested": args.n_samples,
         "samples_all_finite": bool(all(samples_finite.values())),
         "decomposition_all_finite": bool(dec_finite),
-        "divergence_count_total": divergence_total,
+        "divergence_count_total": divergences,
         "tree_depth_saturated_draws": td_saturated,
         "artifacts": list(EXPECTED_ARTIFACTS),
     })
@@ -480,29 +564,36 @@ def run_render(args):
     info = {k: provenance["data"][k]
             for k in ("y_mean", "y_std", "x_offset")}
 
+    grid_lo, grid_hi = validate_saved_grid(arrays)
     result = rebuild_decomposition_result(arrays)
 
     from bistar_gp.viz import plot_mauna_loa_decomposition
 
     plot_module = _load_plot_module()
 
-    figures_dir = os.path.join(run_dir, "figures")
+    figures_dir = os.path.join(run_dir, FIGURES_DIR_NAME)
     os.makedirs(figures_dir, exist_ok=True)
 
+    # x limits per figure's coordinate system: cards 6-7 plot normalized
+    # time; the card-8 strips denormalize to calendar years via x_offset.
+    x_offset = float(info["x_offset"])
     produced = []
     renderers = {
         "card6_mauna_decomposition.png":
-            lambda: plot_mauna_loa_decomposition(result),
+            (lambda: plot_mauna_loa_decomposition(result), grid_lo, grid_hi),
         "card7_three_interpretations.png":
-            lambda: plot_module.plot_three_interpretations(result),
+            (lambda: plot_module.plot_three_interpretations(result),
+             grid_lo, grid_hi),
         "card8_debiased_ppm.png":
-            lambda: plot_module.plot_debiased_comparison(result, info),
+            (lambda: plot_module.plot_debiased_comparison(result, info),
+             grid_lo + x_offset, grid_hi + x_offset),
         "card8_removed_bias.png":
-            lambda: plot_module.plot_residuals_comparison(result, info),
+            (lambda: plot_module.plot_residuals_comparison(result, info),
+             grid_lo + x_offset, grid_hi + x_offset),
     }
     assert tuple(renderers) == FIGURE_NAMES
-    for name, make in renderers.items():
-        fig = make()
+    for name, (make, lo, hi) in renderers.items():
+        fig = enforce_training_boundary(make(), lo, hi)
         target = os.path.join(figures_dir, name)
         fig.savefig(target, dpi=200, bbox_inches="tight")
         produced.append(target)
@@ -530,8 +621,11 @@ def build_parser():
                         help="fit: one-shot Della fit; render: local figures "
                              "from a validated run directory")
     parser.add_argument("--output-dir", required=True,
-                        help="run directory under runs/poster_d58/ (fit: must "
-                             "not exist; render: must hold the full census)")
+                        help="fit: fresh run directory strictly inside "
+                             "runs/poster_d58/ (must not exist); render: a "
+                             "transported, hash-validated run directory (for "
+                             "the D58-POST flow, under "
+                             "runs/poster_d58_incoming/)")
     parser.add_argument("--seed", type=int, default=0,
                         help="fit_hmc seed (P1: 0)")
     parser.add_argument("--n-warmup", type=int, default=200,

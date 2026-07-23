@@ -12,13 +12,28 @@ real Mauna load, no network, no fit, no figure rendering. What is proven:
     path, no clobber of anything existing);
   * the four-variable thread contract fails closed on conflicts and on
     too-late application;
-  * the render gate refuses an incomplete census, a malformed manifest, and a
-    hash mismatch, and accepts a manifest the driver itself wrote;
+  * the render gate refuses an incomplete or non-closed-world census, a
+    malformed/duplicated/miscounted manifest, and a hash mismatch, and
+    accepts a manifest the driver itself wrote (a prior render's figures/
+    directory is the one permitted extra);
+  * the four-variable conflict and five-module late-application failures are
+    fully parameterized, and an AST guard proves run_fit applies the pin
+    before any import while no import or attribute access reaches the full
+    loader (alias resistance);
+  * atomic_savez round-trips without stray temporaries; the divergence and
+    tree-depth-saturation derivations are unit-pinned;
+  * validate_saved_grid accepts exactly the training span and refuses
+    out-of-span, non-monotone, or non-finite grids;
+    enforce_training_boundary crops axes to [lo, hi] and strips the tracked
+    boundary annotations;
+  * the DecompositionResult field order backing the positional rebuild is
+    pinned, so a package-side reorder fails loudly here;
   * module import is hermetic (no heavy imports at import time), so the
     Slurm-argparse guard and these tests can load the driver safely;
-  * the P1a specification is byte-pinned in both the argparse defaults and
-    the committed Slurm invocation, with the firewall label transcribed
-    independently.
+  * the P1a specification is byte-pinned in the argparse defaults, in
+    substring form in the Slurm script, and as the exact effective token
+    sequence of the joined Slurm invocation (order, values, duplicates, and
+    mode), with the firewall label transcribed independently.
 """
 
 import importlib.util
@@ -159,16 +174,149 @@ def test_thread_pin_accepts_matching_preset():
     assert all(env[var] == "3" for var in driver.THREAD_VARS)
 
 
-def test_thread_pin_fails_closed_on_conflict():
-    env = {"MKL_NUM_THREADS": "4"}
+@pytest.mark.parametrize("var", [
+    "OMP_NUM_THREADS", "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"])
+def test_thread_pin_fails_closed_on_conflict(var):
+    env = {var: "4"}
     with pytest.raises(SystemExit, match="THREAD-PIN-CONFLICT"):
         driver.apply_thread_pin(environ=env, loaded_modules={})
 
 
-@pytest.mark.parametrize("mod", ["numpy", "torch", "bistar_gp"])
+@pytest.mark.parametrize("mod", [
+    "numpy", "torch", "gpytorch", "pyro", "bistar_gp"])
 def test_thread_pin_fails_closed_when_applied_late(mod):
     with pytest.raises(SystemExit, match="THREAD-PIN-LATE"):
         driver.apply_thread_pin(environ={}, loaded_modules={mod: object()})
+
+
+def _driver_ast():
+    import ast
+    return ast.parse(DRIVER_PATH.read_text())
+
+
+def test_fit_applies_the_pin_before_any_heavy_import():
+    # Structural call-order guard: inside run_fit, the apply_thread_pin()
+    # call must precede every import statement (torch and everything after).
+    import ast
+    tree = _driver_ast()
+    fit = next(n for n in tree.body
+               if isinstance(n, ast.FunctionDef) and n.name == "run_fit")
+    pin_index = None
+    first_import_index = None
+    for i, node in enumerate(fit.body):
+        for sub in ast.walk(node):
+            if (isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Name)
+                    and sub.func.id == "apply_thread_pin"
+                    and pin_index is None):
+                pin_index = i
+            if isinstance(sub, (ast.Import, ast.ImportFrom)) \
+                    and first_import_index is None:
+                first_import_index = i
+    assert pin_index is not None, "run_fit no longer applies the thread pin"
+    assert first_import_index is not None
+    assert pin_index < first_import_index, (
+        "run_fit imports a heavy module before applying the thread pin")
+
+
+def test_no_full_loader_import_or_attribute_anywhere():
+    # Alias-resistance: beyond the token guard, no import may bind the full
+    # loader name and no attribute access may reach it dynamically.
+    import ast
+    banned = "load_mauna_loa"
+    for node in ast.walk(_driver_ast()):
+        if isinstance(node, ast.ImportFrom):
+            assert all(alias.name != banned for alias in node.names), (
+                "driver imports the full loader by name")
+        if isinstance(node, ast.Attribute):
+            assert node.attr != banned, (
+                "driver reaches the full loader via attribute access")
+
+
+# ── atomic writers and diagnostics derivations ───────────────────────────────
+
+def test_atomic_savez_round_trips_without_stray_tmp(tmp_path):
+    np = pytest.importorskip("numpy")
+    target = tmp_path / "samples.npz"
+    driver.atomic_savez(str(target), {"kernels.0.site_prior": np.arange(4.0)})
+    with np.load(target) as z:
+        assert z.files == ["kernels.0.site_prior"]
+        assert z["kernels.0.site_prior"].tolist() == [0.0, 1.0, 2.0, 3.0]
+    assert [p.name for p in tmp_path.iterdir()] == ["samples.npz"], (
+        "atomic_savez left a temporary file behind")
+
+
+def test_divergence_total_derivation():
+    assert driver.divergence_total(None) is None
+    assert driver.divergence_total(((),)) == 0
+    assert driver.divergence_total(((3, 17), (5,))) == 3
+
+
+def test_td_saturated_count_derivation():
+    assert driver.td_saturated_count(None, 127) is None
+    assert driver.td_saturated_count(((126, 127, 130), (1,)), 127) == 2
+    assert driver.td_saturated_count(((1, 2), (3,)), 127) == 0
+
+
+# ── training-boundary enforcement (render post-processing) ───────────────────
+
+def test_enforce_training_boundary_crops_and_strips_annotations():
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots()
+    ax.plot([0.0, 1.0, 2.0], [0.0, 1.0, 4.0])
+    ax.text(1.8, 0.5, " forecast →")
+    ax.text(1.8, 0.4, "← train ")
+    ax.text(0.2, 0.9, "keep me")
+    driver.enforce_training_boundary(fig, 0.0, 1.5)
+    assert ax.get_xlim() == (0.0, 1.5)
+    remaining = [t.get_text() for t in ax.texts]
+    assert remaining == ["keep me"], (
+        f"boundary annotations survived or content lost: {remaining}")
+    plt.close(fig)
+
+
+def test_validate_saved_grid_accepts_exact_training_span():
+    np = pytest.importorskip("numpy")
+    arrays = {"x_pred": np.linspace(-1.0, 2.0, 50),
+              "x_train": np.array([-1.0, 0.3, 2.0])}
+    assert driver.validate_saved_grid(arrays) == (-1.0, 2.0)
+
+
+def test_validate_saved_grid_refuses_out_of_span_endpoints():
+    np = pytest.importorskip("numpy")
+    arrays = {"x_pred": np.linspace(-1.0, 2.5, 50),
+              "x_train": np.array([-1.0, 0.3, 2.0])}
+    with pytest.raises(SystemExit, match="RENDER-GRID"):
+        driver.validate_saved_grid(arrays)
+
+
+def test_validate_saved_grid_refuses_non_monotone_or_non_finite():
+    np = pytest.importorskip("numpy")
+    bad_order = {"x_pred": np.array([0.0, 1.0, 0.5, 2.0]),
+                 "x_train": np.array([0.0, 2.0])}
+    with pytest.raises(SystemExit, match="RENDER-GRID"):
+        driver.validate_saved_grid(bad_order)
+    bad_finite = {"x_pred": np.array([0.0, np.nan, 2.0]),
+                  "x_train": np.array([0.0, 2.0])}
+    with pytest.raises(SystemExit, match="RENDER-GRID"):
+        driver.validate_saved_grid(bad_finite)
+
+
+# ── decomposition dataclass field order (positional rebuild contract) ────────
+
+def test_decomposition_dataclass_field_order_is_the_rebuild_contract():
+    pytest.importorskip("torch")
+    import dataclasses
+    from bistar_gp.debias import DecompositionResult
+    names = [f.name for f in dataclasses.fields(DecompositionResult)]
+    assert names == ["x_test", "x_train", "y_train", "components",
+                     "full_mean", "full_std", "noise_var"], (
+        "DecompositionResult field order changed; the driver's positional "
+        "rebuild (rebuild_decomposition_result) must be updated in the same "
+        "commit")
 
 
 # ── render gate (census + manifest hash gate) ────────────────────────────────
@@ -210,6 +358,32 @@ def test_render_gate_refuses_malformed_manifest(tmp_path):
     run_dir = tmp_path / "fit_x"
     _make_payload(run_dir)
     (run_dir / driver.MANIFEST_NAME).write_text("not a manifest line\n")
+    with pytest.raises(SystemExit, match="RENDER-MANIFEST"):
+        driver.verify_run_dir(str(run_dir))
+
+
+def test_render_gate_is_closed_world_but_allows_prior_figures(tmp_path):
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    driver.write_manifest(str(run_dir))
+    (run_dir / "extra_artifact.json").write_text("{}")
+    with pytest.raises(SystemExit, match="RENDER-CENSUS"):
+        driver.verify_run_dir(str(run_dir))
+    (run_dir / "extra_artifact.json").unlink()
+    (run_dir / driver.FIGURES_DIR_NAME).mkdir()  # a prior render's output
+    assert driver.verify_run_dir(str(run_dir)) is True
+
+
+def test_render_gate_refuses_duplicate_and_miscounted_manifest(tmp_path):
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    driver.write_manifest(str(run_dir))
+    manifest = run_dir / driver.MANIFEST_NAME
+    lines = manifest.read_text().splitlines()
+    manifest.write_text("\n".join(lines[:-1] + [lines[0]]) + "\n")
+    with pytest.raises(SystemExit, match="RENDER-MANIFEST"):
+        driver.verify_run_dir(str(run_dir))
+    manifest.write_text("\n".join(lines[:-1]) + "\n")
     with pytest.raises(SystemExit, match="RENDER-MANIFEST"):
         driver.verify_run_dir(str(run_dir))
 
@@ -281,6 +455,39 @@ def test_slurm_invocation_pins_the_p1_specification():
         "no retry",
     ):
         assert token in text, f"Slurm script lost the pinned token {token!r}"
+
+
+def _logical_slurm_lines():
+    """Backslash-continuation-joined lines of the D58 Slurm script (the
+    tests/test_slurm_argparse.py joining rule, simplified for this script)."""
+    joined, pending = [], ""
+    for raw in SLURM_PATH.read_text().splitlines():
+        if pending:
+            raw = pending + raw
+            pending = ""
+        stripped = raw.rstrip()
+        if stripped.endswith("\\") and not raw.lstrip().startswith("#"):
+            pending = stripped[:-1]
+            continue
+        joined.append(raw)
+    return joined
+
+
+def test_slurm_effective_fit_command_is_exactly_the_p1_invocation():
+    import shlex
+    invocations = [ln for ln in _logical_slurm_lines()
+                   if "poster_d58_mauna.py" in ln]
+    assert len(invocations) == 1, (
+        f"expected exactly one driver invocation, found {len(invocations)}")
+    tokens = shlex.split(invocations[0].split("||")[0], posix=True)
+    script_at = next(i for i, t in enumerate(tokens)
+                     if t.endswith("poster_d58_mauna.py"))
+    assert tokens[script_at + 1:] == [
+        "--mode", "fit", "--output-dir", "$FIT_DIR",
+        "--seed", "0", "--n-warmup", "200", "--n-samples", "200",
+        "--max-tree-depth", "7", "--n-grid", "500"], (
+        "the effective fit command drifted from the ratified P1a invocation "
+        "(order, values, duplicates, and mode are all pinned)")
 
 
 def test_slurm_pins_threads_to_three_nowhere_else():
