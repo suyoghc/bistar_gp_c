@@ -1023,3 +1023,23 @@ opening are the immediate next acts under the standing authorization, then
 The plain-form push then succeeded (the denial was transient) and **Draft PR #31**
 was opened with the full lineage in its body; this pre-identified Notes line records
 the number. The PR remains **STOPPED before Ready**.
+
+## 2026-07-23 — D58 poster-first planning + PREP implementation (Fable orchestrator)
+
+Startup gate PASS at M57 `34d149de` (origin/main == M57; clean tracked tree; v1.23 + D57
+verified on origin/main; v1.23 §6 pin text verified). ONE fresh Codex gpt-5.6-sol xHigh
+read-only analyst (session `019f906d`; model/effort/sandbox rollout-verified) inspected the
+Mauna run paths; every load-bearing claim was independently re-verified with zero
+disagreements. Key facts: all on-disk Mauna poster figures are pre-freeze artifacts whose
+card-6/card-7 panels display sealed holdout values; the current `fit_hmc` is E1-backed
+(D27); the sealed training-only loader and the A10 period freeze are automatic in the
+current build path; `poster/` is a separate user-owned git repository.
+
+Author cast dispositions B1-B5 (Della pin-3 poster fit; crop at the training cutoff
+`max(x) - 5.0 y`; card-10 BMS* dropped; PREP branch now with evidence post-run; driver under
+`experiments/`), ballot P1(a)/P2(a)/P3(a), and the bounded D58-PREP authorization. PREP was
+implemented on `feat/d58-poster-prep` off M57: driver + dedicated Slurm script + 31 hermetic
+tests + execution protocol + Notes (the exact seven-file allowlist). Focused suites green
+(31 new; slurm-argparse guard + Mauna provenance/period/registry 45). D58 DECISIONS entry
+records the cast, the disclosed pre-review refinements, the firewall, and the STOP list.
+Next: full suite, ONE Codex exact-head review, Draft PR, HARD STOP before Ready/merge/Della.

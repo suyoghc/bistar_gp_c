@@ -2,6 +2,14 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
+## D58 poster-first Mauna milestone — PREP in flight; ONE pin-3 poster-grade Della fit prepared, NOT run (2026-07-23) — branch feat/d58-poster-prep off M57 34d149de
+
+- **Cast.** B1 Della E1 fit (poster-grade, non-paper-grade) / B2 crop at the TRAINING cutoff `max(x) - 5.0 y` = `max(x_train)` (the earlier "2001" wording was wrong — that ends the sealed span) / B3 card-10 BMS* dropped / B4 PREP branch now, evidence post-run / B5 driver under `experiments/`; ballot P1(a) seed 0, 200+200, td7, 0.8, N=461, 500-pt training-span grid, 2h/8G, `runs/poster_d58/fit_full461_seed0/`; P2(a) data-only on Della, render local at POST; P3(a) ONE Codex gpt-5.6-sol xHigh PREP review. PREP authorization CAST 2026-07-23.
+- **Why not the legacy figures.** All on-disk Mauna PNGs are pre-freeze (Jul 7-8): card 6 + money panel scatter sealed holdout values (and the card-6 script scores holdout RMSE); fits ran the superseded pyro path (28h11m full-461) under the pre-A10 plug-in period. NOT poster-usable; superseded for poster purposes.
+- **Prepared.** `experiments/poster_d58_mauna.py` (fit/render; driver-owned pre-import thread pin; namespace + no-clobber guards; A10 asserts x2; six-artifact census in recovery order; render hash-gates the census, rebuilds dataclasses, writes the four card panels + post-hoc FIGURES.sha256), `experiments/submit_d58_poster_fit.slurm` (A7 conventions: frozen pool + ActiveFeatures check, PS1 guard, positional SHA, pristine checks, ENV-OK five pins, cpus-per-task=3, FIT-STOP no retry), `tests/test_poster_d58_driver.py` (31 hermetic tests incl. seal-token guards + P1a byte-pins), `docs/d58-poster-execution-protocol.md` (spec, census, A1-A7 display-acceptance checks, RUN P0-P7, allowlists, RUN authorization template §7.3), D58 DECISIONS entry, this section, CHATLOG.
+- **Firewall.** D58 outputs feed no D19 gate/dossier/arm/strategy/BMS*/selection; paper disclosure line queued; `poster/` (separate user-owned repo) and `CogSci Poster/` untouched until the separately authorized POST hand-off on a new branch inside `poster/`.
+- **NEXT.** Full suite; ONE fresh Codex gpt-5.6-sol xHigh exact-head review (at most one bounded correction pass); Draft PR; **HARD STOP before Ready/merge/Della**. D58-RUN needs a fresh byte-exact authorization naming M58; D58-POST acts are separate. M2cR STOP + D45 untouched; paper-grade D19 resumption is a later separate act.
+
 ## D57 v1.23 measured-results addendum — global Della thread pin 3; Draft PR, STOP before Ready (2026-07-23) — branch docs/d19-v123-measured-results off 24f55c37
 
 - **Ballot.** B1 scope-clarified global pin 3; B2 alternative (no general 5% tie rule; 1.19% DERIVED sub t3/t4 difference is insufficient for a stable distinction here); B3 informational core-seconds only; B4 new D57 and poster milestone renumbered D58.
