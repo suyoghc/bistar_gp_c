@@ -24,11 +24,12 @@ eight `CELL` cells (sub 1–4, full 1–4) each exiting `0`, and `MATRIX-COMPLET
 scheduler/structural facts only; no benchmark timing magnitude is interpreted.
 
 ## 3. Original P6 omission
-The contemporaneous P6/P6b capture wrote only **10** files. Protocol P6 records scheduler metadata via
+The contemporaneous P6/P6b capture produced only **ten payload files** (the eight JSON artifacts,
+`slurm-11517022.err`, and `slurm-11517022.out`); together with the P6b manifest that is an **11-file**
+bundle, missing `job_metadata.txt`. Protocol P6 records scheduler metadata via
 `sacct … > runs/d19_a7_timing/job_metadata.txt`; that redirect target is CWD-relative and did not resolve
 from the capture CWD, so `job_metadata.txt` was never written in the original sequence. The original
-manifest therefore froze at **902 B / 10 lines** (`a3aadf32…`), covering the eight JSON artifacts,
-`slurm-11517022.err`, and `slurm-11517022.out`.
+manifest therefore froze at **902 B / 10 lines** (`a3aadf32…`), covering those ten payload files.
 
 ## 4. Delayed exact P6 recovery
 The **exact** P6 `sacct` command was re-run **post-run** — disclosed, and NOT contemporaneous with the
