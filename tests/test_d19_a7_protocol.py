@@ -96,6 +96,11 @@ EXPECTED_VERSIONS = {
     "pyro": "1.9.1",
     "numpy": "2.4.2",
 }
+REAL_SPECTRE_V2_LINE = (
+    "Vulnerability Spectre v2:   Mitigation; Enhanced / Automatic IBRS; "
+    "IBPB conditional; PBRSB-eIBRS SW sequence"
+)
+CONDITION_FINDING = "substring 'condition'"
 
 
 def _script_ps1_correction_line():
@@ -653,14 +658,85 @@ def test_submit_script_never_owns_thread_variables_or_optimized_assertions():
     assert "CEILINGS" in ceiling_line
 
 
+@pytest.mark.parametrize("text", (
+    "conditional",
+    "conditionally",
+    "unconditional",
+    REAL_SPECTRE_V2_LINE,
+))
+def test_condition_scan_allows_only_the_conditional_family(text):
+    assert CONDITION_FINDING not in validator._scan_forbidden_text(text)
+
+
+@pytest.mark.parametrize("text", (
+    "condition",
+    "condition number",
+    "condition_number",
+    "condition-number",
+    "conditioned",
+    "conditioning",
+    "preconditioned",
+    "reconditioning",
+    "conditions",
+    "conditioner",
+))
+def test_condition_scan_rejects_every_nonconditional_form(text):
+    assert CONDITION_FINDING in validator._scan_forbidden_text(text)
+
+
+def test_other_forbidden_scan_semantics_are_unchanged():
+    assert (
+        "substring 'hyperparam'"
+        in validator._scan_forbidden_text("prehyperparameterpost")
+    )
+    whole_word_finding = "whole-word token 'ess'"
+    assert whole_word_finding in validator._scan_forbidden_text("ess")
+    assert whole_word_finding not in validator._scan_forbidden_text("hessian")
+
+
 def test_valid_synthetic_evidence_passes(tmp_path, capsys, monkeypatch):
-    monkeypatch.setattr(validator, "_dependency_blob_mismatches", lambda sha: [])
+    monkeypatch.setattr(
+        validator, "_dependency_blob_mismatches",
+        lambda expected_sha, validator_sha: [],
+    )
     evidence_dir = _valid_evidence(tmp_path)
     assert _run(evidence_dir) == 0
     output = capsys.readouterr().out
     for number in range(0, 16):
         assert f"V{number}" in output
     assert "FAIL" not in output
+
+
+def test_real_conditional_lscpu_line_passes_v5_and_v11(
+    tmp_path, capsys, monkeypatch
+):
+    monkeypatch.setattr(
+        validator, "_dependency_blob_mismatches",
+        lambda expected_sha, validator_sha: [],
+    )
+    evidence_dir = _valid_evidence(tmp_path)
+    _write_stdout(evidence_dir, extra_lines=(REAL_SPECTRE_V2_LINE,))
+    _write_manifest(evidence_dir)
+    assert _run(evidence_dir) == 0
+    output = capsys.readouterr().out
+    assert "V5 forbidden scans: PASS" in output
+    assert "V11 log discipline: PASS" in output
+
+
+def test_condition_number_log_line_fails_v5_and_v11(
+    tmp_path, capsys, monkeypatch
+):
+    monkeypatch.setattr(
+        validator, "_dependency_blob_mismatches",
+        lambda expected_sha, validator_sha: [],
+    )
+    evidence_dir = _valid_evidence(tmp_path)
+    _write_stdout(evidence_dir, extra_lines=("condition number",))
+    _write_manifest(evidence_dir)
+    assert _run(evidence_dir) == 1
+    output = capsys.readouterr().out
+    assert "V5 forbidden scans: FAIL" in output
+    assert "V11 log discipline: FAIL" in output
 
 
 def _mutation_torch(evidence_dir):
@@ -843,14 +919,20 @@ def _mutation_stderr_stop_marker(evidence_dir):
     "stderr-stop-marker",
 ))
 def test_single_evidence_mutations_fail_closed(tmp_path, mutation, monkeypatch):
-    monkeypatch.setattr(validator, "_dependency_blob_mismatches", lambda sha: [])
+    monkeypatch.setattr(
+        validator, "_dependency_blob_mismatches",
+        lambda expected_sha, validator_sha: [],
+    )
     evidence_dir = _valid_evidence(tmp_path)
     mutation(evidence_dir)
     assert _run(evidence_dir) == 1
 
 
 def test_truthful_budget_statuses_pass_and_are_censused(tmp_path, capsys, monkeypatch):
-    monkeypatch.setattr(validator, "_dependency_blob_mismatches", lambda sha: [])
+    monkeypatch.setattr(
+        validator, "_dependency_blob_mismatches",
+        lambda expected_sha, validator_sha: [],
+    )
     evidence_dir = _valid_evidence(tmp_path)
     path = _json_path(evidence_dir)
     _write_record(
@@ -875,26 +957,116 @@ def test_v0_failure_makes_otherwise_valid_evidence_fail(tmp_path, monkeypatch):
     monkeypatch.setattr(
         validator,
         "_dependency_blob_mismatches",
-        lambda sha: ["validation dependency differs"],
+        lambda expected_sha, validator_sha: ["validation dependency differs"],
     )
     evidence_dir = _valid_evidence(tmp_path)
     assert _run(evidence_dir) == 1
 
 
 def test_dependency_blob_helper_fails_for_missing_expected_sha():
-    assert validator._dependency_blob_mismatches("f" * 40)
+    assert validator._dependency_blob_mismatches("f" * 40, "f" * 40)
 
 
 def test_v0_consults_dependency_blob_helper(monkeypatch):
     observed = []
 
-    def fake(expected_sha):
-        observed.append(expected_sha)
+    def fake(expected_sha, validator_sha):
+        observed.append((expected_sha, validator_sha))
         return ["sentinel"]
 
     monkeypatch.setattr(validator, "_dependency_blob_mismatches", fake)
-    assert validator._v0({"expected_sha": EXPECTED_SHA}) == ["sentinel"]
-    assert observed == [EXPECTED_SHA]
+    validator_sha = "b" * 40
+    assert validator._v0({
+        "expected_sha": EXPECTED_SHA,
+        "validator_sha": validator_sha,
+    }) == ["sentinel"]
+    assert observed == [(EXPECTED_SHA, validator_sha)]
+
+
+@pytest.mark.parametrize("malformed", (
+    "not-40-hex",
+    "A" * 40,
+    "",
+), ids=("non-40-hex", "uppercase", "empty"))
+def test_malformed_validator_sha_matches_expected_sha_argument_failure(
+    tmp_path, capsys, malformed
+):
+    assert validator.run([
+        "--evidence-dir", str(tmp_path),
+        "--expected-sha", malformed,
+    ]) == 1
+    expected_output = capsys.readouterr().out
+
+    assert validator.run([
+        "--evidence-dir", str(tmp_path),
+        "--expected-sha", EXPECTED_SHA,
+        "--validator-sha", malformed,
+    ]) == 1
+    validator_output = capsys.readouterr().out
+    assert validator_output == expected_output.replace(
+        "--expected-sha", "--validator-sha")
+
+
+def test_omitted_validator_sha_defaults_both_v0_bindings(tmp_path, monkeypatch):
+    observed = []
+
+    def fake(expected_sha, validator_sha):
+        observed.append((expected_sha, validator_sha))
+        return []
+
+    monkeypatch.setattr(validator, "_dependency_blob_mismatches", fake)
+    evidence_dir = _valid_evidence(tmp_path)
+    assert _run(evidence_dir) == 0
+    assert observed == [(EXPECTED_SHA, EXPECTED_SHA)]
+
+
+@pytest.mark.parametrize(
+    ("vehicle_live_blob", "validator_live_blob", "mismatch_path"),
+    (
+        ("3" * 40, "2" * 40, "experiments/d19_bench.py"),
+        ("1" * 40, "4" * 40, "experiments/d19_a7_validate.py"),
+    ),
+    ids=("vehicle-only-mismatch", "validator-only-mismatch"),
+)
+def test_v0_dependency_blobs_use_independent_sha_bindings(
+    monkeypatch, vehicle_live_blob, validator_live_blob, mismatch_path
+):
+    expected_sha = "a" * 40
+    validator_sha = "b" * 40
+    vehicle_path = "experiments/d19_bench.py"
+    validator_path = "experiments/d19_a7_validate.py"
+    expected_blobs = {
+        f"{expected_sha}:{vehicle_path}": "1" * 40,
+        f"{validator_sha}:{validator_path}": "2" * 40,
+    }
+    live_blobs = {
+        vehicle_path: vehicle_live_blob,
+        validator_path: validator_live_blob,
+    }
+    observed_commands = []
+
+    def fake_run(command, **kwargs):
+        observed_commands.append(command)
+        if "rev-parse" in command:
+            blob = expected_blobs[command[-1]]
+        else:
+            relpath = Path(command[-1]).relative_to(
+                validator.REPO_ROOT).as_posix()
+            blob = live_blobs[relpath]
+        return subprocess.CompletedProcess(
+            command, 0, stdout=f"{blob}\n", stderr="")
+
+    monkeypatch.setattr(validator.subprocess, "run", fake_run)
+    reasons = validator._v0({
+        "expected_sha": expected_sha,
+        "validator_sha": validator_sha,
+    })
+    assert len(reasons) == 1
+    assert reasons[0].startswith(f"{mismatch_path}: live blob ")
+    expected_specs = {
+        command[-1] for command in observed_commands if "rev-parse" in command
+    }
+    assert expected_specs == set(expected_blobs)
 
 
 def test_ambiguous_dst_fall_back_time_fails_closed():

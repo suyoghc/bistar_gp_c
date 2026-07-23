@@ -293,6 +293,42 @@ Attempt 2, Slurm job `11497561`, is SPENT and immutable. It failed at the prefli
 
 This amendment alters no validator or vehicle byte, and authorizes no benchmark and no Della access.
 
+### §7 amendment (D56d, 2026-07-23): post-run correction to the validator `condition` token semantics
+
+**Post-run motivation and status.** A7 job `11517022` completed successfully. Recovery checks R1–R10 passed, and the recovered twelve-entry bundle `runs/d19_a7_timing_recovery_11517022_incoming` is preserved unchanged. That bundle validated V0–V4, V6–V10, and V12–V15, but the ORIGINAL validator returned **14/16 PASS**: V5 and V11 alone failed because the raw free-text `condition` substring matched `conditional` in the original `lscpu` Spectre-v2 host-metadata line (`IBPB conditional`). This is explicitly a **post-run, outcome-informed correction**. It is NOT preregistered and MUST NOT be described as an original clean validation. No timing magnitude has been interpreted, and the run remains UNVALIDATED until the amended, merged validator passes.
+
+**Bounded correction.** For validator free-text scans only, the `condition` matcher changes from a raw substring to `condition(?!al)`: raw rejection remains in force except for the unrelated `conditional` family. The vehicle's forbidden-token table, its forbidden-KEY checks, the closed-world artifact schema, `_artifact_scan_text`, and every other token's matching semantics are unchanged. V0 gains an optional `--validator-sha` split: `experiments/d19_bench.py` remains bound to `--expected-sha`, while `experiments/d19_a7_validate.py` is bound to `--validator-sha`; omitting `--validator-sha` defaults it to `--expected-sha`, preserving every existing invocation.
+
+**Definitions and D56d closure.** `R56d` is the reviewed D56d code head, defined as the last non-Notes commit off M56c. `M56d` is the D56d merge anchor: a true merge whose second parent is the D56d PR head. D56d deliberately does not name its own future merge SHA. Post-merge revalidation requires ALL of the following:
+
+1. **Reviewed-surface closure.** `experiments/d19_a7_validate.py`, `tests/test_d19_a7_protocol.py`, and `docs/d19-a7-execution-protocol.md` must be byte-identical from `R56d` through `M56d`; the following diff must be empty:
+
+   ```text
+   git diff R56d..M56d -- experiments/d19_a7_validate.py tests/test_d19_a7_protocol.py docs/d19-a7-execution-protocol.md
+   ```
+
+   Every commit after `R56d` on the D56d branch before merge must be Notes-only and explicitly identified.
+
+2. **Execution-byte closure for the unchanged surface.** With `H'` = `4c9b79ae8fbe42ceeacbeac1f99a2cc1599ece7a`, the following diff must be empty:
+
+   ```text
+   git diff H'..M56d -- experiments/d19_bench.py bistar_gp/
+   ```
+
+   The validator is intentionally NOT in this diff because D56d amends it. Its reviewed identity is pinned at `M56d` and checked by V0 through `--validator-sha`.
+
+3. **Six-file total-surface closure.** The complete `git diff --name-only M56c..M56d` is limited to `experiments/d19_a7_validate.py`, `tests/test_d19_a7_protocol.py`, `docs/d19-a7-execution-protocol.md`, `Notes/DECISIONS.md`, `Notes/SCRATCHPAD.md`, and `Notes/CHATLOG.md`.
+
+4. **Topology and authorization.** `origin/main` must equal `M56d`; `M56d` must satisfy the true-merge and second-parent rule above; and post-merge revalidation requires a fresh explicit author authorization. The required reviews are AI reviews, not GitHub reviews or CI.
+
+**Post-merge revalidation.** After the closure and authorization pass, run exactly:
+
+```text
+python experiments/d19_a7_validate.py --evidence-dir runs/d19_a7_timing_recovery_11517022_incoming --expected-sha 725e5f194de7bda12475f0d2a64893aa5cf5315f --validator-sha <M56d>
+```
+
+The expected result is all V0–V15 PASS. V0 then binds the unchanged vehicle to M56c and the reviewed amended validator to M56d; V5 and V11 accept the `conditional` host-metadata line; V9 continues to bind every recovered artifact to M56c. Only that clean post-merge result validates the run.
+
 ## 8. Later allowlists and remaining open decision
 
 Evidence commit allowlist B is `runs/d19_a7_timing/{8 JSONs, slurm-<id>.out, slurm-<id>.err, job_metadata.txt, PROVENANCE.sha256}` plus Notes updates. `.gitignore:29` (`slurm-*.out`) ignores the stdout evidence file, so the evidence commit MUST use `git add -f runs/d19_a7_timing/slurm-<id>.out` and MUST verify that `git ls-files runs/d19_a7_timing/` lists exactly the twelve evidence files before committing; this makes a silent stdout drop impossible. Post-run addendum allowlist C is `docs/prereg-addenda-d19.md` v1.22 plus Notes. Numbering is fixed: v1.16 was burned as the M2bR run label, v1.18 is permanently burned, and the latest addendum is v1.21. **Superseded for D56c onward by the §7 D56c amendment above:** v1.22 now denotes the environment re-freeze, and the post-run success addendum (allowlist C) is `docs/prereg-addenda-d19.md` **v1.23** plus Notes. The historical numbering in this sentence is left unrewritten.
