@@ -1007,6 +1007,31 @@ def test_malformed_validator_sha_matches_expected_sha_argument_failure(
         "--expected-sha", "--validator-sha")
 
 
+@pytest.mark.parametrize("wrong_len", ("f" * 39, "f" * 41), ids=("39-hex", "41-hex"))
+def test_wrong_length_hex_sha_rejected_at_parse(tmp_path, capsys, wrong_len):
+    # Valid lowercase hex but the wrong length must still fail at argument parse for
+    # BOTH flags, pinning the exact `{40}` quantifier: a `[0-9a-f]+` regression would
+    # accept these and fall through to evidence processing, emitting no argument-failure
+    # line. Asserting the specific message is PRESENT (not comparing two run outputs) is
+    # what makes this discriminating for the length boundary.
+    assert validator.run([
+        "--evidence-dir", str(tmp_path),
+        "--expected-sha", wrong_len,
+    ]) == 1
+    assert (
+        "--expected-sha must be 40 lowercase hexadecimal characters"
+        in capsys.readouterr().out)
+
+    assert validator.run([
+        "--evidence-dir", str(tmp_path),
+        "--expected-sha", EXPECTED_SHA,
+        "--validator-sha", wrong_len,
+    ]) == 1
+    assert (
+        "--validator-sha must be 40 lowercase hexadecimal characters"
+        in capsys.readouterr().out)
+
+
 def test_omitted_validator_sha_defaults_both_v0_bindings(tmp_path, monkeypatch):
     observed = []
 
@@ -1018,6 +1043,29 @@ def test_omitted_validator_sha_defaults_both_v0_bindings(tmp_path, monkeypatch):
     evidence_dir = _valid_evidence(tmp_path)
     assert _run(evidence_dir) == 0
     assert observed == [(EXPECTED_SHA, EXPECTED_SHA)]
+
+
+def test_valid_validator_sha_flows_through_run(tmp_path, monkeypatch):
+    # A valid --validator-sha distinct from --expected-sha must reach _v0 unchanged
+    # end-to-end through run(). A regression that rebinds validator_sha to expected_sha
+    # (ignoring the supplied flag) would yield observed == [(EXPECTED_SHA, EXPECTED_SHA)]
+    # and fail this assertion, which the _v0-level tests (which inject context directly)
+    # cannot catch.
+    observed = []
+
+    def fake(expected_sha, validator_sha):
+        observed.append((expected_sha, validator_sha))
+        return []
+
+    monkeypatch.setattr(validator, "_dependency_blob_mismatches", fake)
+    evidence_dir = _valid_evidence(tmp_path)
+    validator_sha = "b" * 40
+    assert validator.run([
+        "--evidence-dir", str(evidence_dir),
+        "--expected-sha", EXPECTED_SHA,
+        "--validator-sha", validator_sha,
+    ]) == 0
+    assert observed == [(EXPECTED_SHA, validator_sha)]
 
 
 @pytest.mark.parametrize(
