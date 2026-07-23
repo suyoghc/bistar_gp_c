@@ -875,3 +875,90 @@ passed / 2 skipped / 0 failed applies to B's tree). A mechanical Ready-closure
 authorization was returned; **STOP before Ready** — no Ready flip, merge, M56b, Della
 contact, worktree creation, submission, retry, benchmark, evidence creation, v1.22,
 Mauna access, or scientific computation. A7 remains OWED.
+
+## 2026-07-22 — D56b merged → M56b; A7 attempt 2 FAILED pre-cell on missing arviz; env re-freeze + D56c `_03` repath (lightweight); Draft PR pending, STOP before Ready (Fable orchestrator session, branch fix/d19-a7-d56c-env)
+
+**Merge + attempt 2.** After the D56b exact-head confirmation, the author cast the mechanical
+Ready closure, merged PR #27 (true merge, M56b = `d9c924fc35cc771775732cb431014a25de8a6400`), and
+cast + user-executed the fresh attempt-2 authorization naming M56b, command-by-command on della9
+(agent read-only/local, one packet command at a time). P0–P5 clean: execution-time topology PASS
+(`origin/main` = M56b), detached `_02` worktree at M56b (2107 files, pristine), exactly one
+`sbatch` → job **11497561**. It FAILED in 37 s, exit `82:0`, on della-i13n7 (inside the frozen
+pool); stdout 0 B; stderr 475 B = `ModuleNotFoundError: No module named 'arviz'`
+(`bistar_gp/__init__.py:36` → `mcse_strategy.py:16`) + `PREFLIGHT-FAIL(82)`. The submit-script
+preflight `import bistar_gp` (line 80) caught it and failed closed before cell 1 — no science, no
+Mauna, no artifact. The one attempt-2 submission is SPENT.
+
+**Diagnosis + proportionality.** A read-only static scan of `bistar_gp`'s imports under the frozen
+env python enumerated the full gap: `arviz`, `jsonschema`, `referencing` absent. Root cause: the
+env-freeze / D55 audit pinned only five package versions and never test-imported `bistar_gp` on
+Della. Asked whether the elaborate closure was worth it, the orchestrator gave an honest
+assessment: the `_03` repath is necessary, recording the env re-freeze is worth it, but a runtime
+full-manifest exact-match gate and a separate failure-evidence PR ceremony were disproportionate to
+a trivially-understood, already-fixed dependency gap for a timing benchmark. The author chose the
+straightforward path.
+
+**Env re-freeze (author-executed, constrained).** `arviz`+`jsonschema` installed into
+`/home/sc8918/.conda/envs/bistar_gp` with numpy/scipy/pandas/matplotlib/torch/gpytorch/pyro-ppl
+held by constraint: a `--dry-run` confirmed clean, the real install added exactly **11 packages,
+zero removals, zero version changes** (proven by `comm` on before/after `pip list`); the five pins
+stayed put and the preflight printed `ENV-OK`.
+
+**D56c change (this branch, off M56b, eight-file allowlist).** `_03` repath in the submit script
+(`--chdir`/`EXEC_ROOT`), protocol (P2/P3/P7 + a §7 D56c amendment defining `M56c`, the env-refreeze
+precondition, and a preparation-time `import bistar_gp` check), and tests (ATTEMPT3 live-binding +
+spent-worktree history guards + a D56c amendment test); the committed 69-package manifest
+`docs/d19_a7_freeze/bistar_env_after.txt` (`d832d426…`); prereg **v1.22** recording the re-freeze
+with the versioning reassignment (successful measured-results addendum → **v1.23**). The attempt-1
+(bare) and `_02` worktrees are preserved as history; the attempt-2 failure is recorded in the Notes
+decision log, not a committed evidence directory. Verification: focused **49** (48 + the new D56c
+test) / **12** / **68**; full `python -m pytest -q` **1168 passed, 2 skipped, 0 failed**. Hermetic
+repo edits + one author-executed env install; no benchmark, submission, Mauna, or science.
+
+**Committed (this closure):** the eight-file allowlist — submit script, protocol, protocol tests,
+prereg addenda, the committed env manifest, and DECISIONS/SCRATCHPAD/CHATLOG. Draft PR against main
+off M56b; **STOP before Ready** — before merge, M56c, any Della contact, worktree creation,
+submission, retry, benchmark, data load, Mauna access, the v1.23 measured-results addendum, or
+scientific computation. Attempt 3 remains gated on `origin/main == M56c`, the preparation-time
+`import bistar_gp` check, and a fresh byte-exact authorization naming M56c. Both prior submissions
+stay SPENT; A7 remains OWED.
+
+**Hardening pass (same session, second commit, pre-review).** An external Codex hardening pass was
+assessed (orchestrator agreed it tightened the right things while preserving the lightweight
+disposition — no runtime full-manifest gate, no attempt-2 evidence PR) and applied in a second
+commit: (1) the preparation-time Della check now requires BOTH exact byte-for-byte equality of the
+live `pip list --format=freeze` against the committed 69-package manifest AND `import bistar_gp`,
+honestly scoped (complete inventory enforced at preparation time only; the submit job still enforces
+the five pins + import, exit 82; the prep-to-submission interval is a disclosed user-controlled
+trust interval); (2) the vague "D56b rule applies in shape" closure was replaced by an explicit
+D56c rule naming reviewed head **R56c** and pinning five files byte-identical `R56c..M56c`
+(script, tests, protocol, prereg, manifest), post-R56c commits Notes-only, eight-file total allowlist
+and true-merge topology and H' closure retained; (3) new hermetic tests pin the manifest
+sha256/size/69-line-count, the five-file closure command, and the BOTH-check prep enforcement;
+(4) wording fixes (no benchmark JSON artifact; before-manifest uncommitted in Della home; complete
+inventory not called runtime-enforced). Focused **50** / 12 / 68; full **1169 passed, 2 skipped,
+0 failed**; cumulative diff within the eight-file allowlist. Next: a bounded fresh Codex gpt-5.6-sol
+xHigh + fresh Opus 4.8 read-only exact-head review over `M56b..corrected-head`, verdicts returned
+for author decision, nothing auto-corrected. STOP before Ready holds.
+
+**Two-model review round + option-(b) correction + confirmation (same session).** The bounded review
+ran at the hardening head `491680d` (both reviewers' first launch stalled ~4 h on a machine-sleep gap
+and were relaunched fresh). Codex gpt-5.6-sol xHigh (session `019f8c44`, banner + rollout verified,
+read-only sandbox) **FINDINGS** — two test-discrimination points: F1 the D56c amendment test asserted
+the two preparation phrases independently but not their BOTH/AND conjunction; F2 no test read the
+prereg or asserted v1.22. Opus 4.8 (`claude-opus-4-8`) **APPROVE** with one MINOR — F3 §8's post-run
+label wording stale after the reassignment (superseded in-file). Every substantive dimension OK from
+both; orchestrator independently confirmed all three findings non-blocking (each backstopped by the
+reviewed-surface byte-pin). Author chose option (b): one bounded correction `0b10da9` (no amend; two
+files — tests + protocol — within the eight-file allowlist) closed all three — F1 the test now asserts
+`must require **BOTH**` + the AND-joined import clause; F2 a new `test_prereg_records_the_v122_env_refreeze`
+reads the prereg and pins the v1.22 addendum + manifest path + full sha256 + the `→ v1.23` reassignment;
+F3 a concise §8 supersession pointer, history unrewritten. Mutation-verified in-memory (F1 BOTH→EITHER
+and F2 v1.22-relabel/reassignment-removed each fail; controls pass). Focused **51**/12/68; full **1170
+passed, 2 skipped, 0 failed**. Focused per-reviewer confirmation at `0b10da9`: Codex gpt-5.6-sol xHigh
+(session `019f8c63`) **CONFIRMED-CLOSED** F1+F2; Opus 4.8 (`claude-opus-4-8`) **CONFIRMED-CLOSED** F3;
+no new defect. Reviewed head **R56c = `0b10da9d48d9c6127f5c8634fd12bc16417aad53`**; this CHATLOG entry,
+the DECISIONS D56 Update 10, and the SCRATCHPAD alignment are the identified Notes-only tail after
+R56c. A mechanical Ready-closure authorization is returned. STOP before Ready holds — no Ready flip,
+merge, M56c, Della contact, submission, benchmark, data access, or science. Both prior submissions stay
+SPENT; A7 remains OWED.

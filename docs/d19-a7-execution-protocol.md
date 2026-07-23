@@ -73,15 +73,15 @@ Run `git -C /scratch/gpfs/SUYOGHC/bistar_gp_c fetch origin`, or the authorized b
 
 **P2 — Worktree collision guard.**
 
-STOP if `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02` exists or is registered in `git worktree list --porcelain`. The attempt-1 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec` is expected to remain present and registered from the spent attempt 1; its presence is NOT a collision for attempt 2. Never remove, reset, clean, or reuse either worktree. Only after both attempt-2 checks are negative:
+STOP if `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03` exists or is registered in `git worktree list --porcelain`. The attempt-1 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec` and the attempt-2 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02` are both expected to remain present and registered from the spent attempts 1 and 2; neither is a collision for attempt 3. Never remove, reset, clean, or reuse any of the three worktrees. Only after both attempt-3 checks are negative:
 
 ```text
-git -C /scratch/gpfs/SUYOGHC/bistar_gp_c worktree add --detach /scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02 <M56>
+git -C /scratch/gpfs/SUYOGHC/bistar_gp_c worktree add --detach /scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03 <M56>
 ```
 
 **P3 — Detached-head and cleanliness precondition.**
 
-Change to the execution worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02`. Require HEAD exactly `<M56>` and `git status --porcelain` completely empty, including untracked paths, before P4.
+Change to the execution worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03`. Require HEAD exactly `<M56>` and `git status --porcelain` completely empty, including untracked paths, before P4.
 
 **P4 — Create the evidence directory.**
 
@@ -115,7 +115,7 @@ This covers every present entry, including dotfiles. The success set is exactly 
 The local staging destination must not exist; refuse otherwise and never merge or overwrite. Use the directory form:
 
 ```text
-scp -r sc8918@della.princeton.edu:/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02/runs/d19_a7_timing <staging-parent>/d19_a7_timing_incoming
+scp -r sc8918@della.princeton.edu:/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03/runs/d19_a7_timing <staging-parent>/d19_a7_timing_incoming
 ```
 
 Never use a `/*` wildcard because it omits dotfiles. Verify the received file set exactly, then require three-way hash agreement — in-job `sha256sum` lines, `PROVENANCE.sha256`, and an independent local recomputation — before the validator runs or anything is moved or committed. Failure evidence, including stranded temporary files and partial sets, is transported and preserved verbatim, never omitted or deleted.
@@ -255,8 +255,46 @@ Attempt 2 executes in `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02`. The attempt-
 
 This amendment does not reinterpret the D56 review lineage, alters no validator or vehicle byte, and authorizes no benchmark and no Della access.
 
+### §7 amendment (D56c, 2026-07-22): environment re-freeze, attempt-3 worktree, and launch anchor M56c
+
+Attempt 2, Slurm job `11497561`, is SPENT and immutable. It failed at the preflight `import bistar_gp` (exit 82) because the frozen Della environment lacked `arviz` (and its transitive `jsonschema` and `referencing`), which `bistar_gp/__init__.py` imports through `mcse_strategy`. The submit-script preflight caught this and failed closed before any benchmark cell, so no scientific computation occurred. The attempt-2 failure is recorded in the Notes decision log rather than a committed evidence directory.
+
+**Environment re-freeze (prerequisite).** The frozen `bistar_gp` conda environment was extended, without perturbing the five pinned scientific versions, by installing `arviz` and `jsonschema`: a pure addition of eleven packages, with zero removals and zero version changes. The complete post-change 69-package manifest is committed at `docs/d19_a7_freeze/bistar_env_after.txt` and is the authoritative environment for attempt 3; prereg addendum **v1.22** records the re-freeze, the eleven-package delta, the install commands, and the observed verification. This supersedes, for future attempts, the original five-version freeze recorded in §2 and §3, without rewriting that history. Prospective versioning amendment: §8's post-run success addendum (allowlist C) moves from **v1.22** to **v1.23**, because v1.22 now denotes this environment re-freeze; §8's "latest addendum is v1.21" is likewise superseded, not rewritten.
+
+**Preparation-time environment enforcement.** Immediately before a future launch authorization for attempt 3 is cast, the read-only preparation preflight on Della must require **BOTH**: (a) exact byte-for-byte equality between the live `/home/sc8918/.conda/envs/bistar_gp/bin/python -m pip list --format=freeze` and the committed `docs/d19_a7_freeze/bistar_env_after.txt` (the complete 69-package inventory); and (b) a successful `import bistar_gp` under the five pinned versions (python 3.11.14, torch 2.10.0+cu128, gpytorch 1.15.1, pyro 1.9.1, numpy 2.4.2). Both are read-only and run no benchmark. **Honest scope.** The complete 69-package inventory is enforced only here, at preparation time, immediately before the authorization is cast. The submit job itself continues to enforce the five version pins plus `import bistar_gp` (script exit 82), **not** the complete 69-package manifest. The interval between this preparation check and the single submission is a disclosed, user-controlled trust interval, accepted under the D56c lightweight disposition; the operator mutates no package across it.
+
+**Attempt 3.** Attempt 3 executes in `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_03`. The attempt-1 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec` and the attempt-2 worktree `/scratch/gpfs/SUYOGHC/bistar_gp_a7_exec_02` are both preserved untouched forever, and neither is reused. The in-worktree evidence path `runs/d19_a7_timing/` and the local staging path `runs/d19_a7_timing_incoming`, currently absent, are unchanged.
+
+**Definitions.** `R56c` = the reviewed D56c code head: the last commit of the D56c PR that touches any non-Notes path. This is a new, unambiguous anchor name for D56c, unrelated both to the D56b commit anchor `B` and to §8's "evidence commit allowlist B". `M56c` = the merge commit of the D56c PR and the NEW launch anchor; D56c deliberately does not name its own future merge SHA. Every `<M56>` placeholder in the §4 procedure and the §5 validator invocation is read as `<M56c>` for attempt 3.
+
+**Attempt-3 launch-closure rule.** Launch authorization requires **ALL** of the following:
+
+1. **Reviewed-surface closure (five files).** These five files at `M56c` must be byte-identical to `R56c`; the following diff must be empty:
+
+   ```text
+   git diff R56c..M56c -- experiments/submit_d19_a7_bench.slurm tests/test_d19_a7_protocol.py docs/d19-a7-execution-protocol.md docs/prereg-addenda-d19.md docs/d19_a7_freeze/bistar_env_after.txt
+   ```
+
+   No post-review commit or merge resolution can weaken the correction, these tests, this amendment, the environment addendum, or the committed manifest while the check passes. Every commit after `R56c` on the D56c branch before merge must be Notes-only and explicitly identified in the launch authorization.
+
+2. **Reviewed execution-byte closure.** The validator, vehicle, and library bytes stay byte-identical to the D56-reviewed bytes; the following diff must be empty, with `H'` = `4c9b79ae8fbe42ceeacbeac1f99a2cc1599ece7a`:
+
+   ```text
+   git diff H'..M56c -- experiments/d19_a7_validate.py experiments/d19_bench.py bistar_gp/
+   ```
+
+3. **Eight-file total-surface closure.** The complete name-diff from this D56c branch's base `M56b` = `d9c924fc35cc771775732cb431014a25de8a6400` to `M56c` is limited to exactly the eight-file D56c allowlist: the five reviewed-surface files above plus `Notes/DECISIONS.md`, `Notes/SCRATCHPAD.md`, and `Notes/CHATLOG.md`.
+
+4. **Topology.** `origin/main` HEAD must equal `M56c`, a true merge commit whose second parent is the D56c PR head.
+
+5. **Preparation-time environment enforcement.** The read-only Della check above — exact 69-package inventory equality against `docs/d19_a7_freeze/bistar_env_after.txt` **and** a successful `import bistar_gp` — must pass immediately before this authorization is cast.
+
+6. **Fresh authorization and enforcement bindings.** Attempt 3 requires a fresh byte-exact author authorization naming `M56c`; no prior authorization carries over. The Della attempt-3 worktree HEAD must equal `M56c` (script-enforced) and every artifact `git_sha` must equal `M56c` (validator-enforced).
+
+This amendment alters no validator or vehicle byte, and authorizes no benchmark and no Della access.
+
 ## 8. Later allowlists and remaining open decision
 
-Evidence commit allowlist B is `runs/d19_a7_timing/{8 JSONs, slurm-<id>.out, slurm-<id>.err, job_metadata.txt, PROVENANCE.sha256}` plus Notes updates. `.gitignore:29` (`slurm-*.out`) ignores the stdout evidence file, so the evidence commit MUST use `git add -f runs/d19_a7_timing/slurm-<id>.out` and MUST verify that `git ls-files runs/d19_a7_timing/` lists exactly the twelve evidence files before committing; this makes a silent stdout drop impossible. Post-run addendum allowlist C is `docs/prereg-addenda-d19.md` v1.22 plus Notes. Numbering is fixed: v1.16 was burned as the M2bR run label, v1.18 is permanently burned, and the latest addendum is v1.21.
+Evidence commit allowlist B is `runs/d19_a7_timing/{8 JSONs, slurm-<id>.out, slurm-<id>.err, job_metadata.txt, PROVENANCE.sha256}` plus Notes updates. `.gitignore:29` (`slurm-*.out`) ignores the stdout evidence file, so the evidence commit MUST use `git add -f runs/d19_a7_timing/slurm-<id>.out` and MUST verify that `git ls-files runs/d19_a7_timing/` lists exactly the twelve evidence files before committing; this makes a silent stdout drop impossible. Post-run addendum allowlist C is `docs/prereg-addenda-d19.md` v1.22 plus Notes. Numbering is fixed: v1.16 was burned as the M2bR run label, v1.18 is permanently burned, and the latest addendum is v1.21. **Superseded for D56c onward by the §7 D56c amendment above:** v1.22 now denotes the environment re-freeze, and the post-run success addendum (allowlist C) is `docs/prereg-addenda-d19.md` **v1.23** plus Notes. The historical numbering in this sentence is left unrewritten.
 
 All claims are scoped to the frozen `intel,cascade,rh9` 90-node pool. Deletion of the superseded pre-D22 anchors remains a separate OPEN author decision.
