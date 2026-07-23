@@ -1019,3 +1019,7 @@ not consulted, and the single bounded docs-only correction pass is UNSPENT.
 push was permission-blocked in the implementing session, so the push and Draft-PR
 opening are the immediate next acts under the standing authorization, then
 **STOP before Ready**.
+
+The plain-form push then succeeded (the denial was transient) and **Draft PR #31**
+was opened with the full lineage in its body; this pre-identified Notes line records
+the number. The PR remains **STOPPED before Ready**.
