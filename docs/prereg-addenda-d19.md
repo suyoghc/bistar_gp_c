@@ -2145,3 +2145,244 @@ preparation-time gate only; the submit job enforces the five version pins plus `
 single submission is a disclosed, user-controlled trust interval. This addendum authorizes **NO**
 benchmark, submission, Mauna access, or scientific computation; the 60-month holdout stays SEALED
 and the **v1.18 label stays permanently unused**.
+
+---
+
+## v1.23 — A7 measured results (job 11517022): Della timing evidence and the thread-pinning decision — 2026-07-23
+
+**1. Status and authority.** This addendum records **planning/engineering evidence only**. It is
+never a scientific-paper result. Its preregistration anchors are v1.2 point 6; the v1.5
+owed-numbers paragraph (“Della thread-pinning numbers remain OWED ... land as their own addendum”);
+v1.6 item 6; v1.8 items 4 and 5; v1.9 item 1; and v1.11 item 4. Its plan anchors are
+`docs/plan-d19-mauna.md` §1.3, §7 A7, and risk R6. Its execution-protocol authority is
+`docs/d19-a7-execution-protocol.md` §8 allowlist C, as amended by D56c to v1.23 plus Notes.
+
+The author ballot was cast 2026-07-23: B1 adopted with scope clarification (one global pin of three
+threads within the D19/A7 scope); B2 alternative adopted (no general tie rule from this
+unreplicated sweep); B3 included (the core-seconds table below is informational only); and B4
+option (a) adopted (new decision D57; the prospective poster milestone moves from D57 to D58).
+
+**2. Evidence identity and validation.** The evidence is A7 job `11517022` on `della-i13n2`, a node
+inside the frozen `intel,cascade,rh9` 90-node pool. The execution anchor is **M56c**
+`725e5f194de7bda12475f0d2a64893aa5cf5315f`; the validator anchor is **M56d**
+`5fcc2d316f6894ed793418d9ab16274e6c8a1ad2`. The canonical evidence is
+`runs/d19_a7_timing/` (12 files). Its `PROVENANCE.sha256` has sha256
+`8c27e40b71fa3e01b11625c256e480d99340a507b407a3e0a1ea8453973cf2d2`, size 985 B, and
+11 lines. The amended validator returned **16/16 PASS** (V0–V15 PASS, exit 0) against
+`--expected-sha M56c --validator-sha M56d`.
+
+Scheduler parent row, **VERBATIM**:
+
+```text
+11517022|COMPLETED|0:0|00:05:31|02:00:00|07:57.822||della-i13n2|2026-07-22T22:24:36|2026-07-22T22:24:51|2026-07-22T22:30:22
+```
+
+The batch step recorded `MaxRSS=828880K`.
+
+**3. Truthful disclosures.**
+
+- The contemporaneous P6 capture missed `job_metadata.txt` because its redirect was CWD-relative.
+  The exact P6 command,
+  `sacct -j <jobid> -P --format=JobID,State,ExitCode,Elapsed,Timelimit,TotalCPU,MaxRSS,NodeList,Submit,Start,End > runs/d19_a7_timing/job_metadata.txt`,
+  was re-run **POST-RUN**; this is disclosed and was not contemporaneous. The original incomplete
+  11-file capture is preserved at `runs/d19_a7_timing_original_incomplete_11517022/`, and the
+  recovery record is `runs/d19_a7_timing_recovery_record_11517022.md`.
+- The D56d validator amendment is **POST-RUN and OUTCOME-INFORMED**, not preregistered. The
+  ORIGINAL validator returned **14/16**: V5 and V11 failed because its raw `condition` substring
+  matched `conditional` in the `lscpu` Spectre-v2 host line. The later 16/16 result under the
+  amended validator is **NOT** an original clean validation.
+- A7 attempt 1 (job `11485635`, PS1 modulefile failure) and attempt 2 (job `11497561`, missing
+  `arviz`) failed before any cell and are **SPENT**. Attempt 3 succeeded.
+- Each of the eight cells ran **ONCE**; no replicate variance exists. The gradient and potential
+  medians use five in-cell repetitions after one warmup, which is not whole-cell replication.
+- The 600 s per-cell operational budget never bound. Every timing status is `measured`; neither
+  `skipped_for_budget` nor `extrapolated_from_stage1` occurs.
+- No leapfrog-count field exists in these artifacts because the D55 vehicle has no sampler. The
+  127-leapfrog saturation used below is imposed arithmetically.
+- Torch inter-op threads were **OBSERVED at 40 and never set**. The artifact
+  `thread_control_scope_note` governs what `thread_configuration_checks_passed` certifies.
+- `n_failed_potential_evals = 0` in all 16 prior-evaluation blocks. Each cell records two
+  `DeprecationWarning`s through category-only capture.
+
+**4. Recorded measured values (RECORDED; full precision).** Every numeric cell in this table is
+the exact JSON decimal string, with no rounding or reformatting.
+
+| dotted key path | sub t1 | sub t2 | sub t3 | sub t4 | full t1 | full t2 | full t3 | full t4 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `timings.potential_value_eval.median_s` | 0.014831801992841065 | 0.014710881980136037 | 0.014151706942357123 | 0.015059608034789562 | 0.029288980993442237 | 0.0240534960757941 | 0.01986427209340036 | 0.021780341980047524 |
+| `timings.gradient.median_s` | 0.017176617053337395 | 0.018123487010598183 | 0.01680114702321589 | 0.01751438993960619 | 0.04171486699488014 | 0.03227319091092795 | 0.0282818500418216 | 0.02721845405176282 |
+| `timings.map_fit.total_s` (`n_iter=300`) | 7.408816003007814 | 3.0719301629578695 | 2.8071806699736044 | 2.9284614539938048 | 11.929014373919927 | 8.242000250029378 | 6.649483361048624 | 5.95191750000231 |
+| `timings.map_fit.per_iter_s` | 0.02469605334335938 | 0.010239767209859564 | 0.009357268899912015 | 0.00976153817997935 | 0.039763381246399755 | 0.027473334166764594 | 0.022164944536828747 | 0.019839725000007698 |
+| `timings.hessian.total_s` | 0.04190326889511198 | 0.04282808699645102 | 0.03782768396195024 | 0.03848192002624273 | 0.29580164793878794 | 0.2071209540590644 | 0.14388174808118492 | 0.12556121603120118 |
+| `timings.prior_eval_stage1.per_eval_s` (`n=100`) | 0.005155039950041101 | 0.004606115650385618 | 0.005626399280736223 | 0.004703114270232618 | 0.027524845709558578 | 0.010579576040618122 | 0.009273645419161767 | 0.017229597319383175 |
+| `timings.prior_eval_stage2.per_eval_s` (`n=1000`) | 0.005160548096057028 | 0.004946275918977335 | 0.005310618615942076 | 0.005309688808047212 | 0.029506743222009392 | 0.010663526711985468 | 0.009482813631999307 | 0.017850280645070597 |
+| `timings.profile_grid_point.total_s` (`n_iter=150`) | 1.0701866660965607 | 0.9213487410452217 | 0.9152087289839983 | 1.1094783429289237 | 5.560419282061048 | 3.45650334097445 | 2.718568230047822 | 2.511128100915812 |
+| `timings.profile_grid_point.composite_per_point_est_s` | 1.1120899349916726 | 0.9641768280416727 | 0.9530364129459485 | 1.1479602629551664 | 5.856220929999836 | 3.6636242950335145 | 2.862449978129007 | 2.636689316947013 |
+| `timings.initialize_model.total_s` | 0.03885321889538318 | 0.041460127918981016 | 0.039100096095353365 | 0.04055247490759939 | 0.0658682519569993 | 0.06425979605410248 | 0.053278187988325953 | 0.0515488589880988 |
+| `totals.elapsed_s` | 34.59474506799597 | 24.86536595702637 | 24.47032699896954 | 24.183055375004187 | 64.41334903403185 | 37.755601160926744 | 33.981539791915566 | 42.341203115996905 |
+
+The min/mean/max repetitions and every remaining field are in the committed artifacts, which remain
+the byte source of truth. Common identity fields are: `git_sha = M56c`; hostname `della-i13n2`;
+`cpu_count = 40`; python 3.11.14 / torch 2.10.0+cu128 / gpytorch 1.15.1 / pyro 1.9.1 /
+numpy 2.4.2; seed 0; `budget_s = 600.0`; `n_points = 150` (sub) / `461` (full);
+`dim_unconstrained = 7`; and `n_sampled_sites = 7`.
+
+**5. Derived arithmetic (DERIVED).** Every number in §5 is derived from the recorded values above
+or from an explicitly named prior planning anchor; no §5 value is an artifact field. Ratios are
+rounded to three or four significant figures.
+
+**5a. Thread speedups and elapsed-time selections (DERIVED).** For operation `o`, scale `s`, and
+thread count `k`, the formula is `S_k(o,s) = T_1(o,s) / T_k(o,s)`. “Argmin” is
+`argmin_k T_k(o,s)`.
+
+| operation | sub S2 | sub S3 | sub S4 | sub argmin | full S2 | full S3 | full S4 | full argmin |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| whole-cell elapsed | 1.391 | 1.414 | 1.431 | t4 | 1.706 | 1.896 | 1.521 | t3 |
+| potential median | 1.008 | 1.048 | 0.9849 | t3 | 1.218 | 1.474 | 1.345 | t3 |
+| gradient median | 0.9478 | 1.022 | 0.9807 | t3 | 1.293 | 1.475 | 1.533 | t4 |
+| MAP total | 2.412 | 2.639 | 2.530 | t3 | 1.447 | 1.794 | 2.004 | t4 |
+| Hessian total | 0.9784 | 1.108 | 1.089 | t3 | 1.428 | 2.056 | 2.356 | t4 |
+| prior stage-2 per eval | 1.043 | 0.9717 | 0.9719 | t2 | 2.767 | 3.112 | 1.653 | t3 |
+| profile total | 1.162 | 1.169 | 0.9646 | t3 | 1.609 | 2.045 | 2.214 | t4 |
+| initialize model | 0.9371 | 0.9937 | 0.9581 | t1 | 1.025 | 1.236 | 1.278 | t4 |
+
+At sub scale, t4 wins the whole cell by
+`T3 - T4 = 24.47032699896954 - 24.183055375004187 = 0.287 s` (DERIVED);
+t3 is `(T3/T4 - 1) x 100 = 1.19%` slower and t2 is `(T2/T4 - 1) x 100 = 2.82%`
+slower (DERIVED). At full scale, t3 wins: t2 is
+`T2 - T3 = 3.774 s` and `(T2/T3 - 1) x 100 = 11.11%` slower; t4 is
+`T4 - T3 = 8.360 s` and `(T4/T3 - 1) x 100 = 24.60%` slower (all DERIVED).
+The full-scale t4 slowdown is driven by the prior stage-2 unit rising from
+`1000 x 0.009482813631999307 = 9.48 ms` at t3 to
+`1000 x 0.017850280645070597 = 17.85 ms` at t4 (DERIVED). Full-scale gradient
+itself has argmin t4; t3 is `(T3/T4 - 1) x 100 = 3.91%` slower (DERIVED).
+
+For a single global pin, define `C_k = elapsed_sub,k + elapsed_full,k`. Then
+`C_3 = 24.47032699896954 + 33.981539791915566 = 58.45 s`; relative to that
+minimum, `(C_k/C_3 - 1) x 100` gives t2 `+7.13%`, t4 `+13.81%`, and t1
+`+69.4%` (DERIVED).
+
+Scheduler reconciliation is also DERIVED: elapsed
+`5 x 60 + 31 = 331 s`; the sum of the eight recorded cell totals is `286.6 s`;
+non-cell overhead is `331 - 286.6 = 44.4 s`; and average active cores are
+`(7 x 60 + 57.822) / 331 = 1.44`.
+
+**5b. Full/sub ratios (DERIVED).** Each entry uses
+`R_k(o) = T_full,k(o) / T_sub,k(o)`.
+
+| operation | t1 | t2 | t3 | t4 |
+|---|---:|---:|---:|---:|
+| whole-cell elapsed | 1.862 | 1.518 | 1.389 | 1.751 |
+| potential median | 1.975 | 1.635 | 1.404 | 1.446 |
+| gradient median | 2.429 | 1.781 | 1.683 | 1.554 |
+| prior stage-2 per eval | 5.718 | 2.156 | 1.786 | 3.362 |
+| MAP total | 1.610 | 2.683 | 2.369 | 2.032 |
+| Hessian total | 7.059 | 4.836 | 3.804 | 3.263 |
+
+Thus at t3 the respective ratios are 1.39 whole cell, 1.40 potential, 1.68
+gradient, 1.79 prior stage 2, 2.37 MAP, and 3.80 Hessian (DERIVED by the same
+formula). All are far below the cubic reference
+`(461/150)^3 = 29.0` (DERIVED), consistent with an overhead-dominated regime at
+these sizes.
+
+**5c. Informational core-seconds (DERIVED).** Each table cell is
+`recorded wall value x configured threads`; millisecond rows additionally multiply
+seconds by 1000. This is **INFORMATIONAL context only** under B3: it is not a second
+pin, does not authorize an alternative packing policy, and does not alter the global
+three-thread decision. Any future deviation requires its own explicit amendment.
+
+| operation and unit | sub t1 | sub t2 | sub t3 | sub t4 | full t1 | full t2 | full t3 | full t4 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| whole-cell elapsed, core-s | 34.59 | 49.73 | 73.41 | 96.73 | 64.41 | 75.51 | 101.9 | 169.4 |
+| potential median, core-ms | 14.83 | 29.42 | 42.46 | 60.24 | 29.29 | 48.11 | 59.59 | 87.12 |
+| gradient median, core-ms | 17.18 | 36.25 | 50.40 | 70.06 | 41.71 | 64.55 | 84.85 | 108.9 |
+| MAP total, core-s | 7.409 | 6.144 | 8.422 | 11.71 | 11.93 | 16.48 | 19.95 | 23.81 |
+| Hessian total, core-s | 0.04190 | 0.08566 | 0.1135 | 0.1539 | 0.2958 | 0.4142 | 0.4316 | 0.5022 |
+| prior stage-2 per eval, core-ms | 5.161 | 9.893 | 15.93 | 21.24 | 29.51 | 21.33 | 28.45 | 71.40 |
+| profile total, core-s | 1.070 | 1.843 | 2.746 | 4.438 | 5.560 | 6.913 | 8.156 | 10.04 |
+| initialize model, core-s | 0.03885 | 0.08292 | 0.1173 | 0.1622 | 0.06587 | 0.1285 | 0.1598 | 0.2062 |
+
+Potential and gradient are cheapest per core at one thread at both scales
+(DERIVED argmins of the corresponding rows). The full-scale prior-evaluation unit
+is cheapest at two threads: 21.3 core-ms versus 29.5 at t1 and 71.4 at t4
+(DERIVED, `per_eval_s x threads x 1000`).
+
+**5d. Local-comparison context (DERIVED).** Per v1.8 item 4, cost per evaluation,
+leapfrog count, and wall per iteration/draw remain separate. The plan §1.1
+potential/gradient/Hessian anchors measured the pre-D22 PLATED target and are
+superseded, so they are **NOT hardware-comparable**. The comparable pin-3 rows are:
+
+- MAP fit: `2.8071806699736044 / 1.46 = 1.92x` sub and
+  `6.649483361048624 / 4.64 = 1.43x` full (Della/local, DERIVED).
+- Prior-evaluation unit:
+  `(1000 x 0.005310618615942076) / 2.15 = 2.47x` sub and
+  `(1000 x 0.009482813631999307) / 6.25 = 1.52x` full (Della/local, DERIVED).
+- The v1.5 measured E1 leapfrog unit:
+  `(1000 x 0.01680114702321589) / 16.6 = 1.01x` sub and
+  `(1000 x 0.0282818500418216) / 23.9 = 1.18x` full (Della/local, DERIVED).
+
+The D3/D8 `della-h16` history attaches to retired hardware. These values supersede
+that history for the frozen cascade pool.
+
+**6. The pin.** One global pin of **threads = 3** is adopted for
+D19/A7-governed `bistar_gp` CPU workloads on the frozen `intel,cascade,rh9`
+90-node Della pool. `OMP_NUM_THREADS`, `MKL_NUM_THREADS`,
+`OPENBLAS_NUM_THREADS`, `VECLIB_MAXIMUM_THREADS`, and torch intra-op threads are
+configured consistently at 3; `cpus-per-task` is matched to 3. This is explicitly
+**not** a claim about every conceivable future `bistar_gp` workload outside the
+D19/A7 scope.
+
+No general 5% tie threshold is frozen from this single, unreplicated sweep.
+Sub-scale t3 and t4 differ by only 1.19% (DERIVED as in §5a), which is insufficient
+evidence here for a stable performance distinction. T3 is selected because it is
+the clear full-scale whole-cell winner, avoids the full-scale t4 slowdown, uses
+fewer resources, minimizes the combined sub+full elapsed time, and provides one
+operationally simple global pin. The single-run, no-replicate-variance caveat
+remains. This pin is an operational planning value, not a scientific gate.
+
+**7. Budget-projection consequences (DERIVED arithmetic only).** These projections
+use the pin-3 recorded units and compare them with the frozen v1.5 final budgets.
+
+- **S1f pilot, sub-150 (2 h):** pin-3 gradient
+  `1000 x 0.01680114702321589 = 16.80 ms`; using the unrounded recorded value,
+  `4 x 400 x 127 x 0.01680114702321589 = 3414 s = 56.9 min` (DERIVED).
+  It fits with `120 min / 56.9 min = 2.11x` headroom (DERIVED); the local measured
+  bound was 56 min.
+- **S1 pilot, sub-150 only (6 h):** the same
+  `4 x 400 x 127 x 0.01680114702321589 = 56.9 min` bound fits with
+  `360 min / 56.9 min = 6.33x` headroom (DERIVED).
+- **Paper-target full N per strategy x arm, E1 path (4 h):** pin-3 gradient
+  `1000 x 0.0282818500418216 = 28.28 ms`; using the unrounded recorded value,
+  `4 x 400 x 127 x 0.0282818500418216 = 5747 s = 1.60 h` raw (DERIVED).
+  The frozen row's own engineering-overhead convention gives
+  `1.5 x 1.60 h = 2.39 h` (DERIVED). It fits with
+  `4 h / 1.60 h = 2.51x` raw headroom and `4 h / 2.39 h = 1.67x` with overhead
+  (DERIVED).
+- **Stage A per-arm core (1.5 h):** mode hunt
+  `13500 x 0.009482813631999307 / 60 = 2.1 min`; multi-start MAP
+  `6400 x 0.022164944536828747 / 60 = 2.4 min`; 40-point profile grid
+  `40 x 2.862449978129007 / 60 = 1.9 min`; and prior-IS 60k pilot
+  `60000 x 0.009482813631999307 / 60 = 9.5 min` (all DERIVED). Each fits with
+  wide margin.
+- **Prior-IS pools (gated, additive):** one 600k full-N pool is
+  `600000 x 0.009482813631999307 / 3600 = 1.58 h`; three pools sequential are
+  `3 x 1.58 h = 4.74 h` (DERIVED), embarrassingly parallel across tasks.
+- **RW-MH referee, 30k full N:** at the prior-evaluation unit,
+  `30000 x 0.009482813631999307 / 60 = 4.7 min`; if priced at the
+  potential-evaluation unit, `30000 x 0.01986427209340036 / 60 = 9.9 min`
+  (DERIVED).
+- **S1 pyro path at full N:** it remains barred on Della without explicit author
+  exception (plan §1.3), unchanged.
+
+Every frozen ceiling continues to hold at the pin; **NO** scientific gate,
+strategy, target scale, candidate set, holdout rule, or preregistered threshold
+changes. These projections impose 127-leapfrog saturation arithmetically, assume
+linear unit-cost scaling, and rest on single-run cells.
+
+**8. What this addendum does NOT do.** It makes no Della job assignment; every
+future assignment still requires its own authorization. It performs no benchmark
+rerun and changes no earlier preregistration section. Deletion of the two
+superseded pre-D22 anchors remains a separate **OPEN** author decision. It begins
+no poster work; the prospective poster milestone is renumbered from D57 to D58.
+It performs no scientific computation; the 60-month holdout stays **SEALED**; and
+the **v1.18 label stays permanently unused**.
