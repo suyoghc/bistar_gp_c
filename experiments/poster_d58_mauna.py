@@ -247,9 +247,9 @@ def verify_run_dir(run_dir):
     """Render-mode gate: closed-world census and manifest hash agreement.
 
     The run directory must contain exactly the six census artifacts (plus, on
-    a re-render only, the figures/ directory a previous render created);
-    anything else fails closed. The manifest must hold exactly one valid line
-    per payload file, duplicates rejected, every hash matching.
+    a re-render only, the REAL (non-symlink) figures/ directory a previous
+    render created); anything else fails closed. The manifest must hold exactly
+    one valid line per payload file, duplicates rejected, every hash matching.
     """
     allowed = set(EXPECTED_ARTIFACTS)
     entries_on_disk = set(os.listdir(run_dir))
@@ -258,6 +258,14 @@ def verify_run_dir(run_dir):
         raise SystemExit(
             f"RENDER-CENSUS: unexpected entries {sorted(extra)} in {run_dir}; "
             "the census is closed-world (protocol section 4)")
+    figures_path = os.path.join(run_dir, FIGURES_DIR_NAME)
+    if (FIGURES_DIR_NAME in entries_on_disk
+            and not (os.path.isdir(figures_path)
+                     and not os.path.islink(figures_path))):
+        raise SystemExit(
+            f"RENDER-CENSUS: {FIGURES_DIR_NAME} has a type problem in "
+            f"{run_dir}; the one permitted extra must be a REAL "
+            "(non-symlink) directory (protocol section 4)")
     for name in EXPECTED_ARTIFACTS:
         path = os.path.join(run_dir, name)
         if not (os.path.isfile(path) and os.path.getsize(path) > 0):

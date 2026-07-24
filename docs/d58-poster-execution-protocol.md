@@ -115,8 +115,9 @@ guard-tested to contain no holdout-array token and no full-loader call.
 
 Figures are NOT part of the fit census. Render mode (local, D58-POST)
 verifies the census against `PROVENANCE.sha256` under a closed-world rule
-(exactly the six artifacts; a prior render's `figures/` directory is the one
-permitted extra; duplicate or miscounted manifest lines fail closed),
+(exactly the six artifacts; the one permitted extra is a prior render's
+`figures/` directory (a real directory; a file or symlink by that name fails
+closed); duplicate or miscounted manifest lines fail closed),
 validates the saved grid semantically (finite, nondecreasing, endpoints
 exactly equal to the training span — `validate_saved_grid`), rebuilds the
 decomposition result from arrays, renders the four poster panels into
@@ -188,13 +189,36 @@ Available only after the PREP PR is merged (true merge; anchor **M58**) with
   submission is accepted, which would spend it — never pass a symbolic
   name). The submission is SPENT on execution; no automatic retry, no
   post-hoc tuning, on any outcome.
-- **P4** — single-shot scheduler capture, frozen verbatim (the A7 recovery
-  lesson: the original P6 redirect was CWD-relative and missed; run this
-  from the worktree root and check the target first):
-  `[ ! -e runs/poster_d58/job_metadata.txt ] && sacct -j <jobid> -P
-  --format=JobID,State,ExitCode,Elapsed,Timelimit,TotalCPU,MaxRSS,NodeList,Submit,Start,End
-  > runs/poster_d58/job_metadata.txt` (parent and batch rows arrive
-  together; no-clobber; one shot).
+- **P4** — frozen two-part scheduler procedure:
+  - **P4a READINESS** (read-only, repeatable, bounded): poll
+    `sacct -j <jobid> -n -P -X
+    --format=JobID,State,ExitCode,Elapsed,Timelimit,TotalCPU,MaxRSS,NodeList,Submit,Start,End`
+    with no redirect. Proceed to P4b only when the parent row is present, the
+    first token of its `State` is in the frozen recognized-terminal set
+    {`COMPLETED`, `FAILED`, `TIMEOUT`, `CANCELLED` (including any
+    `CANCELLED by ...` form), `OUT_OF_MEMORY`, `NODE_FAIL`, `BOOT_FAIL`,
+    `DEADLINE`, `PREEMPTED`}, and its `JobID`, `State`, `ExitCode`, `Elapsed`,
+    `Timelimit`, `NodeList`, `Submit`, `Start`, and `End` fields are all
+    non-empty. `TotalCPU` is normally non-empty; `MaxRSS` is expected to be
+    empty on the parent row — the batch row carries it and arrives in the P4b
+    capture, which omits `-X`. `PENDING`, `RUNNING`, `COMPLETING`, `REQUEUED`,
+    `SUSPENDED`, an absent parent row (accounting lag), and every state outside
+    the frozen set are NONTERMINAL. Poll at most every 60 seconds for at most
+    30 minutes after the job stops appearing in `squeue` (or after the Slurm
+    log's `FIT exit` marker). If the bound expires or the row is ambiguous or
+    incomplete, **STOP**: do not create the metadata file; return to the
+    author. Readiness gates CAPTURE only: every terminal outcome, whether
+    `COMPLETED` or any failure, is captured; readiness never authorizes
+    resubmission.
+  - **P4b CAPTURE** (single-shot, no-clobber, absolute path, CWD-independent):
+    exactly once, after P4a succeeds:
+    `D58_ROOT=/scratch/gpfs/SUYOGHC/bistar_gp_d58; [ ! -e "$D58_ROOT/runs/poster_d58/job_metadata.txt" ] && sacct -j <jobid> -P --format=JobID,State,ExitCode,Elapsed,Timelimit,TotalCPU,MaxRSS,NodeList,Submit,Start,End > "$D58_ROOT/runs/poster_d58/job_metadata.txt"`
+    This captures the parent and batch rows. The absolute anchor removes every
+    operator-CWD dependence, closing the A7 CWD-relative-redirect lesson
+    mechanically, not procedurally. After writing, a read-only completeness
+    confirmation (the parent row present with the P4a-required fields) is
+    allowed. If that confirmation fails, **STOP** with the file preserved as
+    evidence; never rewrite or delete it.
 - **P5** — dotfile-safe transport of `runs/poster_d58/` (the fit directory,
   `slurm-<jobid>.out/.err`, and `job_metadata.txt`) to the Mac at
   `runs/poster_d58_incoming/`, with sha256 recorded on Della at capture
@@ -232,8 +256,11 @@ freeze document, or `runs/` content.
 
 - **Evidence commit**: `runs/poster_d58/**` (the six-artifact census, the
   Slurm out/err, the `sacct` capture, and, after render, `figures/*.png`
-  plus `figures/FIGURES.sha256`; PNG and Slurm-log paths are gitignored and
-  enter by explicit force-add) plus Notes updates. Nothing else.
+  plus `figures/FIGURES.sha256`; `slurm-*.out` is gitignored
+  (`.gitignore:29`) and enters the evidence commit by explicit force-add;
+  `slurm-*.err` is not ignored and stages normally; `figures/*.png` is
+  covered by the global `*.png` ignore and enters by force-add) plus Notes
+  updates. Nothing else.
 - **Poster hand-off**: copying approved PNGs into the separate user-owned
   `poster/` repository happens on a NEW branch inside that repository, under
   its own authorization, after the evidence commit. `poster/` and every
@@ -254,8 +281,8 @@ freeze document, or `runs/` content.
 > with the literal 40-hex M58 as the argument (a symbolic name fails the
 > in-job guard at exit 65 and spends the submission), the single submission
 > SPENT on execution with no automatic retry and no post-hoc tuning on any
-> outcome; P4 the frozen single-shot `sacct` capture to
-> `runs/poster_d58/job_metadata.txt` (protocol §6 P4, verbatim); P5
+> outcome; P4 the frozen P4a readiness gate + P4b single-shot capture
+> (protocol section 6, verbatim); P5
 > dotfile-safe transport (fit directory + Slurm logs + `job_metadata.txt`)
 > to `runs/poster_d58_incoming/` with Della-side hashes; P6 the hash gate;
 > P7 the frozen A1-A7 acceptance checks, read-only; then STOP. Evidence

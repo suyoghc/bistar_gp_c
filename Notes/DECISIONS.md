@@ -5538,3 +5538,51 @@ rewriting history. Per the D56d precedent the corrected head was not itself re-r
 the model (the single bounded pass is now SPENT); a fresh exact-head re-review before Ready
 is available at author option. These are AI reviews, not GitHub reviews or CI. Next: full
 suite at the corrected head, push, Draft PR, then **HARD STOP before Ready/merge/Della**.
+
+**D58 Update 2 — author adopted option (a): SECOND AND FINAL bounded correction pass closing
+F1-F4; implemented, orchestrator-verified, mutation-checked (2026-07-23).** Authorization:
+six-file surface (protocol, driver, tests, three Notes); the Slurm script, fit
+specification, scientific scope, output schema, and acceptance POLICY explicitly frozen.
+Implementer: ONE FRESH Codex **gpt-5.6-sol** xHigh, workspace-write sandbox with network
+access disabled, session `019f91d5` (model, effort, and sandbox verified from the CLI banner
+and the rollout log); it ran no git-mutating command; its changed set was exactly the three
+technical files. Orchestrator verification: every changed line read against the cast.
+**F1 closed (protocol only):** P4 is now the frozen two-part procedure — P4a READINESS
+(read-only, repeatable, bounded: poll the parent row with `-n -P -X`; proceed only when its
+State's first token is in the frozen terminal set {COMPLETED, FAILED, TIMEOUT, CANCELLED
+incl. the `CANCELLED by ...` form, OUT_OF_MEMORY, NODE_FAIL, BOOT_FAIL, DEADLINE, PREEMPTED}
+AND JobID/State/ExitCode/Elapsed/Timelimit/NodeList/Submit/Start/End are all non-empty;
+parent MaxRSS is correctly documented as expected-empty (the batch row carries it, arriving
+in the P4b capture, which omits `-X`); PENDING/RUNNING/COMPLETING/REQUEUED/SUSPENDED/absent
+row/anything else = NONTERMINAL; poll cadence at most every 60 s, bound 30 minutes past
+squeue-exit or the Slurm log's FIT exit marker; expiry or ambiguity = STOP with NO file
+created; readiness gates capture only — every terminal outcome is captured and readiness
+never authorizes resubmission) and P4b CAPTURE (exactly once, no-clobber, the redirect
+anchored to the absolute literal `D58_ROOT=/scratch/gpfs/SUYOGHC/bistar_gp_d58`, closing the
+A7 CWD-relative-redirect lesson mechanically; post-write read-only completeness confirmation
+with STOP-preserve semantics). The §7.3 template now cites P4a+P4b. **F2 closed (driver):**
+`verify_run_dir` exempts `figures` only when `os.path.isdir` AND not `os.path.islink`; a
+regular file, a symlink (even to a real directory), or any other object fails closed;
+protocol §4 wording aligned. **F3 closed (tests):** five discriminating additions — the
+atomic test now records `os.replace` (exactly one call, temporary source, previously absent
+destination); an AST test pins exactly two `atomic_savez` calls in `run_fit` (one per NPZ
+name) and forbids any direct `savez` attribute call; an AST test requires every `fig`
+assignment in `run_render` to wrap its renderer in `enforce_training_boundary` with every
+`savefig` on the enforced receiver; figures-as-regular-file and figures-as-symlink both
+refused; the effective-command test tokenizes the COMPLETE joined invocation (tail exactly
+`|| rc=$?`, script token exactly once across all logical lines, `sbatch` only in the single
+Submission comment). **F4 closed (protocol §7.2):** `slurm-*.out` gitignored
+(`.gitignore:29`), force-add; `slurm-*.err` not ignored, stages normally; `figures/*.png`
+under the global `*.png` ignore, force-add. **Mutation battery (orchestrator-run, snapshots
+sha256-verified byte-identical after each restore):** M1 direct-write `atomic_savez` KILLED;
+M2 samples.npz call-site bypass KILLED; M3 `fig = make()` unwrapped renderer KILLED; M4
+figures type-check removal KILLED (both tests); M5a same-line retry after `||` KILLED; M5b
+second `sbatch` line KILLED; green control 79 passed (52 driver + 13 argparse-guard + 14
+provenance). This pass is the FINAL correction pass and is now SPENT. Next: full suite at
+this head, ONE separate fresh Codex gpt-5.6-sol xHigh read-only confirmation at the
+corrected code head scoped to F1-F4 plus regression detection, orchestrator verification of
+every finding (GLM 5.2 only on a material unresolved disagreement); any actionable finding
+returns to the author with NO further change; APPROVE/CONFIRMED-CLOSED leads to a factual
+Notes-only tail, a normal push, and the PR #32 lineage update, keeping Draft and STOP before
+Ready. NOT authorized: Ready, merge, D58-RUN, Della contact, submission, a third correction
+pass, another reviewer round, scientific execution, or poster-repository changes.

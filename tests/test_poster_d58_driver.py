@@ -15,7 +15,8 @@ real Mauna load, no network, no fit, no figure rendering. What is proven:
   * the render gate refuses an incomplete or non-closed-world census, a
     malformed/duplicated/miscounted manifest, and a hash mismatch, and
     accepts a manifest the driver itself wrote (a prior render's figures/
-    directory is the one permitted extra);
+    directory is the one permitted extra only when it is a REAL (non-symlink)
+    directory);
   * the four-variable conflict and five-module late-application failures are
     fully parameterized, and an AST guard proves run_fit applies the pin
     before any import while no import or attribute access reaches the full
@@ -236,15 +237,65 @@ def test_no_full_loader_import_or_attribute_anywhere():
 
 # ── atomic writers and diagnostics derivations ───────────────────────────────
 
-def test_atomic_savez_round_trips_without_stray_tmp(tmp_path):
+def test_atomic_savez_round_trips_without_stray_tmp(tmp_path, monkeypatch):
     np = pytest.importorskip("numpy")
     target = tmp_path / "samples.npz"
+    replace_calls = []
+    real_replace = driver.os.replace
+
+    def record_replace(source, destination):
+        source_path = Path(source)
+        destination_path = Path(destination)
+        assert source_path != destination_path
+        assert source_path.parent == destination_path.parent == target.parent
+        assert destination_path == target
+        assert not destination_path.exists(), (
+            "atomic_savez created the final path before os.replace")
+        replace_calls.append((source_path, destination_path))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(driver.os, "replace", record_replace)
     driver.atomic_savez(str(target), {"kernels.0.site_prior": np.arange(4.0)})
+    assert replace_calls == [(Path(str(target) + ".tmp"), target)], (
+        "atomic_savez must invoke os.replace exactly once from its temporary "
+        "path to the previously absent final destination")
     with np.load(target) as z:
         assert z.files == ["kernels.0.site_prior"]
         assert z["kernels.0.site_prior"].tolist() == [0.0, 1.0, 2.0, 3.0]
     assert [p.name for p in tmp_path.iterdir()] == ["samples.npz"], (
         "atomic_savez left a temporary file behind")
+
+
+def test_run_fit_routes_both_npz_outputs_through_atomic_savez():
+    import ast
+
+    fit = next(n for n in _driver_ast().body
+               if isinstance(n, ast.FunctionDef) and n.name == "run_fit")
+    atomic_calls = [
+        node for node in ast.walk(fit)
+        if (isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "atomic_savez")
+    ]
+    assert len(atomic_calls) == 2, (
+        "run_fit must make exactly two atomic_savez calls")
+    for artifact in ("samples.npz", "decomposition.npz"):
+        matching = [
+            call for call in atomic_calls
+            if any(isinstance(node, ast.Constant) and node.value == artifact
+                   for node in ast.walk(call))
+        ]
+        assert len(matching) == 1, (
+            f"run_fit must route {artifact} through exactly one atomic_savez "
+            "call")
+    direct_savez_calls = [
+        node for node in ast.walk(fit)
+        if (isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "savez")
+    ]
+    assert not direct_savez_calls, (
+        "run_fit must not bypass atomic_savez with a direct savez call")
 
 
 def test_divergence_total_derivation():
@@ -276,6 +327,42 @@ def test_enforce_training_boundary_crops_and_strips_annotations():
     assert remaining == ["keep me"], (
         f"boundary annotations survived or content lost: {remaining}")
     plt.close(fig)
+
+
+def test_run_render_wraps_every_renderer_with_boundary_enforcement():
+    import ast
+
+    render = next(n for n in _driver_ast().body
+                  if isinstance(n, ast.FunctionDef) and n.name == "run_render")
+    fig_assignments = [
+        node for node in ast.walk(render)
+        if (isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "fig"
+                    for target in node.targets))
+    ]
+    assert fig_assignments, "run_render must assign at least one rendered fig"
+    for assignment in fig_assignments:
+        assert (isinstance(assignment.value, ast.Call)
+                and isinstance(assignment.value.func, ast.Name)
+                and assignment.value.func.id == "enforce_training_boundary"), (
+            "every fig assignment must wrap its renderer in "
+            "enforce_training_boundary")
+        assert not (
+            isinstance(assignment.value, ast.Call)
+            and isinstance(assignment.value.func, ast.Name)
+            and assignment.value.func.id == "make"
+        ), "run_render must not bind fig to a bare make() call"
+    savefig_calls = [
+        node for node in ast.walk(render)
+        if (isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "savefig")
+    ]
+    assert savefig_calls, "run_render must save at least one figure"
+    assert all(isinstance(call.func.value, ast.Name)
+               and call.func.value.id == "fig"
+               for call in savefig_calls), (
+        "every savefig call must use the boundary-enforced fig receiver")
 
 
 def test_validate_saved_grid_accepts_exact_training_span():
@@ -372,6 +459,28 @@ def test_render_gate_is_closed_world_but_allows_prior_figures(tmp_path):
     (run_dir / "extra_artifact.json").unlink()
     (run_dir / driver.FIGURES_DIR_NAME).mkdir()  # a prior render's output
     assert driver.verify_run_dir(str(run_dir)) is True
+
+
+def test_render_gate_refuses_regular_file_named_figures(tmp_path):
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    driver.write_manifest(str(run_dir))
+    (run_dir / driver.FIGURES_DIR_NAME).write_text("not a directory\n")
+    with pytest.raises(SystemExit, match="RENDER-CENSUS"):
+        driver.verify_run_dir(str(run_dir))
+
+
+def test_render_gate_refuses_symlink_named_figures(tmp_path):
+    import os
+
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    driver.write_manifest(str(run_dir))
+    real_figures = tmp_path / "real_figures"
+    real_figures.mkdir()
+    os.symlink(real_figures, run_dir / driver.FIGURES_DIR_NAME)
+    with pytest.raises(SystemExit, match="RENDER-CENSUS"):
+        driver.verify_run_dir(str(run_dir))
 
 
 def test_render_gate_refuses_duplicate_and_miscounted_manifest(tmp_path):
@@ -474,20 +583,44 @@ def _logical_slurm_lines():
 
 
 def test_slurm_effective_fit_command_is_exactly_the_p1_invocation():
+    import re
     import shlex
+
     invocations = [ln for ln in _logical_slurm_lines()
                    if "poster_d58_mauna.py" in ln]
     assert len(invocations) == 1, (
         f"expected exactly one driver invocation, found {len(invocations)}")
-    tokens = shlex.split(invocations[0].split("||")[0], posix=True)
+    tokens = shlex.split(invocations[0], posix=True)
     script_at = next(i for i, t in enumerate(tokens)
                      if t.endswith("poster_d58_mauna.py"))
-    assert tokens[script_at + 1:] == [
+    pinned_flags = [
         "--mode", "fit", "--output-dir", "$FIT_DIR",
         "--seed", "0", "--n-warmup", "200", "--n-samples", "200",
-        "--max-tree-depth", "7", "--n-grid", "500"], (
+        "--max-tree-depth", "7", "--n-grid", "500"]
+    flags_end = script_at + 1 + len(pinned_flags)
+    assert tokens[script_at + 1:flags_end] == pinned_flags, (
         "the effective fit command drifted from the ratified P1a invocation "
         "(order, values, duplicates, and mode are all pinned)")
+    assert tokens[flags_end:] == ["||", "rc=$?"], (
+        "the complete fit command must end exactly with the single rc capture")
+
+    logical_tokens = [
+        token
+        for line in _logical_slurm_lines()
+        for token in shlex.split(line, posix=True)
+    ]
+    assert sum(token.endswith("poster_d58_mauna.py")
+               for token in logical_tokens) == 1, (
+        "the driver script token must appear exactly once in all logical "
+        "Slurm lines")
+
+    sbatch_lines = [
+        line for line in SLURM_PATH.read_text().splitlines()
+        if re.search(r"\bsbatch\b", line)
+    ]
+    assert len(sbatch_lines) == 1
+    assert sbatch_lines[0].lstrip().startswith("# Submission:"), (
+        "sbatch may appear only in the single Submission comment line")
 
 
 def test_slurm_pins_threads_to_three_nowhere_else():

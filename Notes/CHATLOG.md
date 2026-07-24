@@ -1062,3 +1062,15 @@ Full suite at the corrected head 91de92d8: 1246 passed / 2 skipped / 0 failed. B
 **Draft PR #32** opened with the two-commit lineage (implementation 099cd728 reviewed at
 exact head; single bounded correction 91de92d8, pass SPENT) and the STOP list in its body.
 This pre-identified Notes line records the PR number. **HARD STOP before Ready.**
+
+Author-cast confirmation review at a3d992d8 (fresh Codex gpt-5.6-sol xHigh read-only,
+session 019f91a9) returned FINDINGS (F1 MAJOR sacct readiness/anchoring; F2 MINOR figures
+type; F3 MINOR five surviving mutants; F4 NOTE gitignore wording), all orchestrator-verified
+and returned to the author with no change. The author adopted option (a): a SECOND AND FINAL
+bounded correction pass. Implementer Codex gpt-5.6-sol xHigh (workspace-write, session
+019f91d5) closed F1-F4 in exactly the three technical files; the orchestrator read every
+changed line, ran the six-mutant battery (all KILLED, byte-identical restores verified), and
+recorded D58 Update 2. Full suite at the corrected tree: 1250 passed / 2 skipped / 0 failed.
+Next: the separate fresh read-only confirmation at the corrected head, then the cast's
+disposition (APPROVE = Notes tail + push + PR lineage update; FINDINGS = STOP). HARD STOP
+before Ready throughout.
