@@ -1074,3 +1074,15 @@ recorded D58 Update 2. Full suite at the corrected tree: 1250 passed / 2 skipped
 Next: the separate fresh read-only confirmation at the corrected head, then the cast's
 disposition (APPROVE = Notes tail + push + PR lineage update; FINDINGS = STOP). HARD STOP
 before Ready throughout.
+
+The FINAL confirmation at e274b36f (fresh Codex gpt-5.6-sol xHigh read-only, session
+019f91e5) returned F1-F4 CONFIRMED-CLOSED with byte-freeze and launch-path PASS and zero
+surviving mutants, plus ONE new MINOR: the focused-suite split recorded in D58 Update 2 and
+the SCRATCHPAD (52+13+14) was wrong; pytest --collect-only gives 53 driver + 13
+argparse-guard + 13 provenance = 79. Per the FINAL-pass rule nothing was changed and the
+finding went to the author, who adjudicated it record-accuracy-only and authorized ONE
+Notes-only truth correction (this commit): both attribution strings fixed in place, D58
+Update 3 records the episode, no technical byte changed after e274b36f, the Notes-only
+final head is NOT re-reviewed, both correction passes SPENT. Branch pushed normally with
+e274b36f plus this tail; Draft PR #32 body updated to the full lineage. HARD STOP before
+Ready.

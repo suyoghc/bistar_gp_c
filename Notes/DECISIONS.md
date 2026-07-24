@@ -5577,7 +5577,7 @@ under the global `*.png` ignore, force-add. **Mutation battery (orchestrator-run
 sha256-verified byte-identical after each restore):** M1 direct-write `atomic_savez` KILLED;
 M2 samples.npz call-site bypass KILLED; M3 `fig = make()` unwrapped renderer KILLED; M4
 figures type-check removal KILLED (both tests); M5a same-line retry after `||` KILLED; M5b
-second `sbatch` line KILLED; green control 79 passed (52 driver + 13 argparse-guard + 14
+second `sbatch` line KILLED; green control 79 passed (53 driver + 13 argparse-guard + 13
 provenance). This pass is the FINAL correction pass and is now SPENT. Next: full suite at
 this head, ONE separate fresh Codex gpt-5.6-sol xHigh read-only confirmation at the
 corrected code head scoped to F1-F4 plus regression detection, orchestrator verification of
@@ -5586,3 +5586,42 @@ returns to the author with NO further change; APPROVE/CONFIRMED-CLOSED leads to 
 Notes-only tail, a normal push, and the PR #32 lineage update, keeping Draft and STOP before
 Ready. NOT authorized: Ready, merge, D58-RUN, Della contact, submission, a third correction
 pass, another reviewer round, scientific execution, or poster-repository changes.
+
+**D58 Update 3 — final confirmation outcome; author adjudication; the authorized Notes-only
+truth correction (2026-07-23).** The FINAL confirmation review ran at exact head
+`e274b36fb7d04f5f15ae163b802e768b59b47b6d`: ONE FRESH Codex **gpt-5.6-sol** xHigh, strictly
+read-only sandbox, session `019f91e5` (model, effort, and sandbox verified from the CLI
+banner and the rollout log; the fifth distinct Codex session of this milestone). Verdict:
+**F1-F4 CONFIRMED-CLOSED** (P4a/P4b readiness + absolute-anchor capture; the real-directory
+non-symlink `figures` rule; all five mutant classes killed with zero named survivors; the
+precise gitignore wording), byte-freeze PASS (`experiments/submit_d58_poster_fit.slurm`
+blob-identical across `a3d992d8..e274b36f`; the cumulative `34d149de..e274b36f` name-diff
+exactly the seven-file allowlist; no frozen-surface change), launch path PASS — and ONE new
+MINOR finding: the focused-suite attribution written into D58 Update 2 and the SCRATCHPAD
+("52 driver + 13 argparse-guard + 14 provenance") was factually wrong. The orchestrator
+confirmed mechanically via `pytest --collect-only`: **53 driver + 13 argparse-guard + 13
+provenance = 79** (the total 79 and the full-suite arithmetic 1246 + 4 = 1250 were always
+consistent; only the per-suite split was misattributed — an orchestrator subtraction error,
+not an implementer or reviewer error). Zero reviewer-versus-orchestrator disagreement; GLM
+5.2 not consulted. Per the FINAL-pass rule the orchestrator made no change and returned the
+finding; the author then ADJUDICATED: F1-F4 CONFIRMED-CLOSED; the new finding is material to
+record accuracy only, not implementation correctness or launch readiness; ONE Notes-only
+truth correction authorized (explicitly NOT a third technical correction pass; code, tests,
+protocol, and the D58 design stay closed). This commit is that correction: the two
+inaccurate attribution strings are fixed in place (Update 2 and the SCRATCHPAD; the git
+history preserves the erroneous wording, disclosed here rather than rewritten), this Update
+records the episode, and SCRATCHPAD/CHATLOG are aligned. The standing full-suite result at
+`e274b36f` remains **1250 passed / 2 skipped / 0 failed** (not rerun for a Notes-only tail,
+per the authorization). No technical byte changed after `e274b36f`; every D58 technical file
+is byte-identical to it; both bounded correction passes remain SPENT; **the Notes-only final
+head is NOT re-reviewed** and no claim to the contrary may be made. Next acts under the
+standing authorization: push the branch normally (`e274b36f` + this tail), update the Draft
+PR #32 body to the full lineage (099cd728 implementation; original REVISE review at
+099cd728, session 019f90b0; first bounded correction 91de92d8; Notes-only tail a3d992d8;
+author-cast confirmation at a3d992d8, session 019f91a9, FINDINGS F1-F4; FINAL bounded
+correction e274b36f, implementer session 019f91d5; final confirmation at e274b36f, session
+019f91e5, F1-F4 CONFIRMED-CLOSED + one MINOR Notes-count finding; this Notes-only truth
+correction; both passes SPENT), then **HARD STOP: PR #32 stays Draft, STOP before Ready**.
+NOT authorized: any further reviewer, code/test/protocol change, full-suite rerun, Ready,
+merge, D58-RUN, Della contact, worktree, submission, fit, render, evidence, poster-repo
+change, BMS*, holdout use, or paper work.
