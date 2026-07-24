@@ -5395,3 +5395,233 @@ The audit independently re-derived rather than trusting summaries: diff scope ex
 **Status.** Review gate pending at the implementation head. Next is a Draft PR, then **HARD STOP before Ready/merge**. NOT authorized: Ready/merge, Della contact, benchmark rerun, changes under `runs/`, `experiments/`, `bistar_gp/`, or `tests/`, edits to earlier preregistration sections, scientific-gate or threshold changes, target-scale/candidate-set/holdout changes, poster work, Mauna fitting, or other scientific computation. A7's remaining acts stay separate author authorizations.
 
 **D57 Update 1 — exact-head review APPROVE, zero findings; reviewed head R57 = `145a4e55c901cd34360bd08e8ced81f63a0fb0d1`; Notes-only tail (2026-07-23).** Implementer: Codex **gpt-5.6-sol** xHigh, workspace-write sandbox, session `019f8f82` (model and effort verified from the rollout log). Orchestrator verification before commit: a mechanical harness proved the change set equal to the four-file allowlist, the prereg and DECISIONS diffs pure appends at EOF, all **88** recorded table cells byte-equal to the committed JSON decimal strings, derived spot values matching an independent recomputation, and the required disclosure phrases present; every appended section was then read in full. One pre-review orchestrator refinement (the D56 Update 6 precedent), disclosed here: the prior SCRATCHPAD section's final bullet was disambiguated to record that PR #30's "Draft, STOP before Ready" status was contemporaneous and the merge came later; re-verified before commit. Reviewer: ONE FRESH Codex **gpt-5.6-sol** xHigh, strictly read-only sandbox, session `019f8f90` (model, effort, and `sandbox_policy read-only` verified from the rollout log), at exact head `145a4e5` over the complete `24f55c37..145a4e5` diff. Verdict **APPROVE, zero findings**: it independently confirmed diff confinement and the pure appends, matched all 88/88 recorded cells against the raw artifact tokens, recomputed all 48 speedups, 16 argmins, 24 full/sub ratios, 64 core-cost cells and every narrative scalar with zero mismatches (binding projection 1.596 h raw / 2.395 h with overhead / 1.670x headroom, displayed 1.60/2.39/1.67), and verified ballot fidelity (B1-B4), disclosure completeness, the no-change guarantees, and four-file internal consistency. No Codex-versus-orchestrator disagreement arose, so **GLM 5.2 was not consulted**; the single bounded docs-only correction pass is **UNSPENT**. Per the D57 topology, **R57 = `145a4e5`** (the last non-Notes commit; this Update and its SCRATCHPAD/CHATLOG alignment are the identified Notes-only tail after it). These are AI reviews, not GitHub reviews or CI. Immediate next acts: push the branch and open the Draft PR, then **HARD STOP before Ready**; at Update time the push had not yet executed (the session's permission layer blocked `git push`; the push and Draft-PR opening proceed under the standing authorization once transport is available, with the PR number recorded in the PR body and a later Notes line rather than here).
+
+## D58: Poster-first Mauna milestone — ONE training-only, pin-3, poster-grade Della fit; PREP/RUN/POST split; card-10 BMS* dropped — 2026-07-23
+
+**Problem:** The CogSci poster needs Mauna Loa fit/decomposition figures, but every on-disk
+Mauna panel is a pre-freeze historical artifact (regenerated 2026-07-07/08, before the
+2026-07-10 prereg freeze and the 2026-07-11 M2a seal/period machinery): the card-6 figure and
+the card-7 money panel scatter the sealed 60-month holdout values
+(`experiments/mauna_loa.py:48,88` scores holdout RMSE at line 96-98;
+`experiments/bistar_debias_mauna_loa.py:439` passes test arrays into the plot at line 143),
+their fits ran on the superseded legacy pyro path (28h11m for full-461 HMC) under the
+pre-A10 trainable plug-in period, and §6.6 seals the holdout until the D19 decision. Poster
+work must not silently become or contaminate the preregistered paper-grade study (R3 class;
+§6.5 ordering rule; §6.11 firewall).
+
+**Decision (author dispositions cast 2026-07-23):** **B1** ONE fresh, seeded, E1-backed NUTS
+poster fit (committed `fit_hmc`, D27) executed on **Della** under the prereg v1.23 §6 global
+thread pin (four env vars + torch intra-op = 3, `cpus-per-task=3`; inter-op observed, never
+set), poster-grade and explicitly non-paper-grade. **B2** the permitted boundary is the
+TRAINING cutoff `max(x) - 5.0 y` (`bistar_gp/data.py:191-192`; the earlier "crop at the 2001
+cutoff" wording was WRONG — 2001 ends the sealed span); the driver uses
+`load_mauna_loa_training` exclusively, never receives/derives/plots holdout coordinates or
+values, and every panel crops at the final training coordinate (grid =
+`linspace(min(x_train), max(x_train), 500)`); split counts and the cutoff rule are quotable
+metadata; no forecast band extends into the sealed span. **B3** the optional card-10 BMS*
+panel is DROPPED: no legacy BMS* probability reuse, no fresh BMS* before the study's ordering
+gates. **B4** main-repo D58-PREP branch with reviewed code + protocol + tests + Notes; run
+evidence/provenance is a separate post-run act; no figure-hash manifest before figures exist
+(render mode writes `figures/FIGURES.sha256` only after rendering). **B5** driver under
+`experiments/`. Ballot (cast 2026-07-23): **P1(a)** seed 0, `init_to_map` default, 200 warmup
++ 200 retained draws, `max_tree_depth=7`, target accept 0.8 (committed default), full N=461,
+decomposition from ALL 200 retained draws on the 500-point training-span grid
+(`n_posterior_samples == n_samples` freezes the unseeded subsample to the full set, making it
+RNG-independent), wall `02:00:00`, `--mem=8G`, deterministic no-clobber output
+`runs/poster_d58/fit_full461_seed0/`; **P2(a)** data-only on Della, figures rendered locally
+at D58-POST from validated arrays; **P3(a)** ONE fresh Codex gpt-5.6-sol xHigh exact-head
+read-only review for PREP. Anchored cost (DERIVED, v1.23 pin-3 units): `400 x 127 x
+0.0282818500418216 s = 23.9 min` raw, `35.9 min` with the x1.5 convention, `3.3x` ceiling
+headroom; decomposition unanchored (minutes-class expectation); memory anchor A7
+`MaxRSS=828880K` vs the 8G ceiling.
+
+**Files (the PREP allowlist, exactly seven):** NEW `experiments/poster_d58_mauna.py` (fit +
+render modes; driver-owned pre-import thread contract failing closed on conflict or late
+application; fail-closed output guard admitting only fresh dirs strictly inside
+`runs/poster_d58/`; A10 `assert_mauna_period_frozen` after build AND after fit; six-artifact
+census written atomically in recovery order — fit_config.json, samples.npz, diagnostics.json
+(verbatim `SamplerDiagnostics` + DERIVED divergence/saturation counts), decomposition.npz,
+provenance.json, PROVENANCE.sha256; render verifies the census hash gate, rebuilds the
+decomposition dataclasses positionally, renders the four poster panels via the tracked
+plotting module, and writes the post-hoc figure manifest); NEW
+`experiments/submit_d58_poster_fit.slurm` (A7 conventions mirrored: frozen
+`intel,cascade,rh9` pool via constraint+exclude with the in-job ActiveFeatures check, D56b
+PS1 guard, `--export=NONE` + positional 40-hex SHA with HEAD equality, pristine-worktree and
+import-hijack checks, the five-pin ENV-OK block, `cpus-per-task=3`, 8G/02:00:00 ceilings, ONE
+fit with FIT-STOP no-retry semantics); NEW `tests/test_poster_d58_driver.py` (31 hermetic
+tests: source-level seal guards on driver+slurm mirroring `tests/test_mauna_provenance.py:161`,
+training-span grid exactness, namespace/no-clobber refusals incl. `runs/d19_*` and tracked
+dirs, thread-contract conflict/late failures, render census/hash-gate refusals, hermetic
+module import via subprocess, and byte-pins of the P1a numbers in both argparse defaults and
+the slurm invocation plus the firewall label); NEW `docs/d58-poster-execution-protocol.md`
+(scope/firewall, authority lineage, frozen spec + anchors, census + provenance fields, frozen
+non-adaptive display-acceptance checks A1-A7, RUN P0-P7 + STOP conditions, PREP/POST
+allowlists, the RUN authorization template); APPEND/UPDATE the three Notes files.
+
+**Alternatives considered:** reusing the 28-hour legacy HMC cache with seal-clean re-plotting
+(rejected by B1: plug-in-period provenance and a period-1.0 reconstruction mismatch); local
+execution of the fit (rejected by author: Della under the committed pin, local work hermetic
+only); a forecast band over the sealed span without points (rejected by B2: nothing extends
+past the final training coordinate); reusing or refreshing BMS* for card 10 (rejected by B3;
+fresh BMS* before the §6.5 dossier-hash ordering was recommended against and not taken);
+committing a figure-hash manifest at PREP (rejected: figures do not exist yet).
+
+**Disclosed refinements (pre-review):** (1) the plan message said the Slurm script would
+export the four thread variables; the implementation follows the committed D55/A7 division
+instead — the DRIVER owns the pre-import four-variable contract + torch intra-op pin, the
+script owns `cpus-per-task=3` and exports no thread variable; a test enforces the absence.
+(2) The driver persists the prediction grid under its own name `x_pred` and reconstructs the
+package dataclass positionally, so the source-level guard can forbid the holdout-array tokens
+outright; the package dataclass's first field is a legacy name for prediction locations
+(protocol §4 naming note). (3) Render mode loads the tracked plotting module, which binds
+(but render never calls) the full loader; render performs no data load and no inference.
+
+**Firewall:** every D58 output is a poster-grade presentation artifact; none is a paper
+result; none may feed any D19 gate, dossier, arm, strategy, BMS*, or selection; the paper
+discloses the poster-grade fit as pre-pilot exposure that fed no gate. The legacy pre-freeze
+PNGs displaying holdout values are NOT poster-usable and are superseded for poster purposes;
+the legacy log line with a pre-freeze holdout score is not quotable.
+
+**Status:** PREP implementation this commit. Next: focused + full suite, ONE fresh Codex
+gpt-5.6-sol xHigh exact-head read-only review (orchestrator-verified; at most one bounded
+correction pass), Draft PR, then **HARD STOP before Ready/merge/Della**. D58-RUN requires a
+fresh byte-exact authorization naming the true-merge anchor M58 (template in protocol §7.3);
+each D58-POST act (evidence commit; poster hand-off into the separate user-owned `poster/`
+repository on a new branch there) is its own authorization. NOT authorized now: Ready/merge,
+any Della contact, any real-data load, fit, or figure generation, BMS*, holdout access, edits
+outside the seven-file allowlist, any change under `poster/`, `CogSci Poster/`, or `runs/`,
+or any frozen-surface edit. M2cR's preserved STOP and D45's UNVALIDATED_ATTEMPT are
+untouched; the paper-grade D19 resumption stays a separate later planning act.
+
+**D58 Update 1 — exact-head review REVISE (2 BLOCKER / 2 MAJOR / 2 MINOR / 1 NOTE); all
+findings orchestrator-confirmed; the SINGLE bounded correction pass closed all seven
+(2026-07-23).** Reviewer: ONE FRESH Codex **gpt-5.6-sol** xHigh, strictly read-only sandbox,
+session `019f90b0` (model, effort, and `sandbox: read-only` verified from the CLI banner and
+the rollout log), at exact head `099cd728c4a2237588c4a2789c051427d757b356` over the complete
+`34d149de..099cd728` diff. Verdict **REVISE**. Findings, each independently confirmed against
+source before action: (B1) the protocol's RUN template passed the literal string `M58` to a
+script whose guard accepts only 40-hex, so a verbatim copy would burn the one-shot submission
+at exit 65 AFTER sbatch acceptance; (B2) render delegated to tracked plot functions whose
+"forecast" annotation and matplotlib's default x-margins depict axis range beyond the final
+training coordinate, so the cast "crop every panel" ruling was claimed but not enforced; (M1)
+the two NPZ writes were direct, not atomic, making the protocol/DECISIONS "atomically" claims
+false at `099cd728`; (M2) P4 froze neither the `sacct` command nor its destination, leaving
+acceptance check A1 undecidable from the defined evidence (the A7 CWD-relative-redirect
+lesson); (MIN1) `verify_run_dir` was not closed-world and accepted duplicate manifest names;
+(MIN2) test-discrimination gaps (single-variable conflict coverage, three-of-five late
+modules, no call-order or alias-loader guard, substring-only Slurm assertions, untested NPZ
+atomicity and diagnostics derivations); (NOTE) misleading render `--output-dir` help text.
+**Closures (this correction commit, within the seven-file allowlist):** protocol §6 P3/P4/P5
+and the §7.3 template now require the LITERAL 40-hex M58 and freeze the verbatim no-clobber
+`sacct` capture to `runs/poster_d58/job_metadata.txt` (transported in P5; A1 decides from
+it); the driver gained `validate_saved_grid` (finite, nondecreasing, endpoints exactly the
+training span, fail-closed) and `enforce_training_boundary` (every axes clamped to the
+training span in its own units — normalized for cards 6-7, `x_offset` years for the card-8
+strips — with the tracked "forecast"/"train" annotations stripped), applied to every rendered
+figure; `atomic_savez` (tmp + fsync + `os.replace` through a file object) now writes both NPZ
+archives so every census artifact is atomic; `verify_run_dir` is closed-world (a prior
+render's `figures/` directory is the one permitted extra) and rejects duplicate, malformed,
+or miscounted manifest lines; A7's caption half is explicitly a D58-POST obligation, not a
+P7 check; the render help text distinguishes fit output from transported render input.
+**Test deltas:** the conflict and late-application guards are parameterized over all four
+variables and all five heavy modules; new AST guards prove `run_fit` applies the pin before
+any import and that no import or attribute access reaches the full loader (alias
+resistance); new unit pins cover `atomic_savez` (round-trip, no stray temporary), the
+divergence/saturation derivations, `validate_saved_grid` (accept/refuse), boundary
+enforcement (crop + annotation strip), the `DecompositionResult` field order backing the
+positional rebuild, the closed-world/duplicate/miscount manifest refusals, and the exact
+effective Slurm token sequence (order, values, duplicates, and mode) via
+continuation-joined parsing. Focused: **62 passed** (49 driver + 13 argparse-guard).
+The prior entry's "written atomically" and "crops at the final training coordinate" wording
+was FALSE at `099cd728` and is true of the corrected head; this Update supersedes it without
+rewriting history. Per the D56d precedent the corrected head was not itself re-reviewed by
+the model (the single bounded pass is now SPENT); a fresh exact-head re-review before Ready
+is available at author option. These are AI reviews, not GitHub reviews or CI. Next: full
+suite at the corrected head, push, Draft PR, then **HARD STOP before Ready/merge/Della**.
+
+**D58 Update 2 — author adopted option (a): SECOND AND FINAL bounded correction pass closing
+F1-F4; implemented, orchestrator-verified, mutation-checked (2026-07-23).** Authorization:
+six-file surface (protocol, driver, tests, three Notes); the Slurm script, fit
+specification, scientific scope, output schema, and acceptance POLICY explicitly frozen.
+Implementer: ONE FRESH Codex **gpt-5.6-sol** xHigh, workspace-write sandbox with network
+access disabled, session `019f91d5` (model, effort, and sandbox verified from the CLI banner
+and the rollout log); it ran no git-mutating command; its changed set was exactly the three
+technical files. Orchestrator verification: every changed line read against the cast.
+**F1 closed (protocol only):** P4 is now the frozen two-part procedure — P4a READINESS
+(read-only, repeatable, bounded: poll the parent row with `-n -P -X`; proceed only when its
+State's first token is in the frozen terminal set {COMPLETED, FAILED, TIMEOUT, CANCELLED
+incl. the `CANCELLED by ...` form, OUT_OF_MEMORY, NODE_FAIL, BOOT_FAIL, DEADLINE, PREEMPTED}
+AND JobID/State/ExitCode/Elapsed/Timelimit/NodeList/Submit/Start/End are all non-empty;
+parent MaxRSS is correctly documented as expected-empty (the batch row carries it, arriving
+in the P4b capture, which omits `-X`); PENDING/RUNNING/COMPLETING/REQUEUED/SUSPENDED/absent
+row/anything else = NONTERMINAL; poll cadence at most every 60 s, bound 30 minutes past
+squeue-exit or the Slurm log's FIT exit marker; expiry or ambiguity = STOP with NO file
+created; readiness gates capture only — every terminal outcome is captured and readiness
+never authorizes resubmission) and P4b CAPTURE (exactly once, no-clobber, the redirect
+anchored to the absolute literal `D58_ROOT=/scratch/gpfs/SUYOGHC/bistar_gp_d58`, closing the
+A7 CWD-relative-redirect lesson mechanically; post-write read-only completeness confirmation
+with STOP-preserve semantics). The §7.3 template now cites P4a+P4b. **F2 closed (driver):**
+`verify_run_dir` exempts `figures` only when `os.path.isdir` AND not `os.path.islink`; a
+regular file, a symlink (even to a real directory), or any other object fails closed;
+protocol §4 wording aligned. **F3 closed (tests):** five discriminating additions — the
+atomic test now records `os.replace` (exactly one call, temporary source, previously absent
+destination); an AST test pins exactly two `atomic_savez` calls in `run_fit` (one per NPZ
+name) and forbids any direct `savez` attribute call; an AST test requires every `fig`
+assignment in `run_render` to wrap its renderer in `enforce_training_boundary` with every
+`savefig` on the enforced receiver; figures-as-regular-file and figures-as-symlink both
+refused; the effective-command test tokenizes the COMPLETE joined invocation (tail exactly
+`|| rc=$?`, script token exactly once across all logical lines, `sbatch` only in the single
+Submission comment). **F4 closed (protocol §7.2):** `slurm-*.out` gitignored
+(`.gitignore:29`), force-add; `slurm-*.err` not ignored, stages normally; `figures/*.png`
+under the global `*.png` ignore, force-add. **Mutation battery (orchestrator-run, snapshots
+sha256-verified byte-identical after each restore):** M1 direct-write `atomic_savez` KILLED;
+M2 samples.npz call-site bypass KILLED; M3 `fig = make()` unwrapped renderer KILLED; M4
+figures type-check removal KILLED (both tests); M5a same-line retry after `||` KILLED; M5b
+second `sbatch` line KILLED; green control 79 passed (53 driver + 13 argparse-guard + 13
+provenance). This pass is the FINAL correction pass and is now SPENT. Next: full suite at
+this head, ONE separate fresh Codex gpt-5.6-sol xHigh read-only confirmation at the
+corrected code head scoped to F1-F4 plus regression detection, orchestrator verification of
+every finding (GLM 5.2 only on a material unresolved disagreement); any actionable finding
+returns to the author with NO further change; APPROVE/CONFIRMED-CLOSED leads to a factual
+Notes-only tail, a normal push, and the PR #32 lineage update, keeping Draft and STOP before
+Ready. NOT authorized: Ready, merge, D58-RUN, Della contact, submission, a third correction
+pass, another reviewer round, scientific execution, or poster-repository changes.
+
+**D58 Update 3 — final confirmation outcome; author adjudication; the authorized Notes-only
+truth correction (2026-07-23).** The FINAL confirmation review ran at exact head
+`e274b36fb7d04f5f15ae163b802e768b59b47b6d`: ONE FRESH Codex **gpt-5.6-sol** xHigh, strictly
+read-only sandbox, session `019f91e5` (model, effort, and sandbox verified from the CLI
+banner and the rollout log; the fifth distinct Codex session of this milestone). Verdict:
+**F1-F4 CONFIRMED-CLOSED** (P4a/P4b readiness + absolute-anchor capture; the real-directory
+non-symlink `figures` rule; all five mutant classes killed with zero named survivors; the
+precise gitignore wording), byte-freeze PASS (`experiments/submit_d58_poster_fit.slurm`
+blob-identical across `a3d992d8..e274b36f`; the cumulative `34d149de..e274b36f` name-diff
+exactly the seven-file allowlist; no frozen-surface change), launch path PASS — and ONE new
+MINOR finding: the focused-suite attribution written into D58 Update 2 and the SCRATCHPAD
+("52 driver + 13 argparse-guard + 14 provenance") was factually wrong. The orchestrator
+confirmed mechanically via `pytest --collect-only`: **53 driver + 13 argparse-guard + 13
+provenance = 79** (the total 79 and the full-suite arithmetic 1246 + 4 = 1250 were always
+consistent; only the per-suite split was misattributed — an orchestrator subtraction error,
+not an implementer or reviewer error). Zero reviewer-versus-orchestrator disagreement; GLM
+5.2 not consulted. Per the FINAL-pass rule the orchestrator made no change and returned the
+finding; the author then ADJUDICATED: F1-F4 CONFIRMED-CLOSED; the new finding is material to
+record accuracy only, not implementation correctness or launch readiness; ONE Notes-only
+truth correction authorized (explicitly NOT a third technical correction pass; code, tests,
+protocol, and the D58 design stay closed). This commit is that correction: the two
+inaccurate attribution strings are fixed in place (Update 2 and the SCRATCHPAD; the git
+history preserves the erroneous wording, disclosed here rather than rewritten), this Update
+records the episode, and SCRATCHPAD/CHATLOG are aligned. The standing full-suite result at
+`e274b36f` remains **1250 passed / 2 skipped / 0 failed** (not rerun for a Notes-only tail,
+per the authorization). No technical byte changed after `e274b36f`; every D58 technical file
+is byte-identical to it; both bounded correction passes remain SPENT; **the Notes-only final
+head is NOT re-reviewed** and no claim to the contrary may be made. Next acts under the
+standing authorization: push the branch normally (`e274b36f` + this tail), update the Draft
+PR #32 body to the full lineage (099cd728 implementation; original REVISE review at
+099cd728, session 019f90b0; first bounded correction 91de92d8; Notes-only tail a3d992d8;
+author-cast confirmation at a3d992d8, session 019f91a9, FINDINGS F1-F4; FINAL bounded
+correction e274b36f, implementer session 019f91d5; final confirmation at e274b36f, session
+019f91e5, F1-F4 CONFIRMED-CLOSED + one MINOR Notes-count finding; this Notes-only truth
+correction; both passes SPENT), then **HARD STOP: PR #32 stays Draft, STOP before Ready**.
+NOT authorized: any further reviewer, code/test/protocol change, full-suite rerun, Ready,
+merge, D58-RUN, Della contact, worktree, submission, fit, render, evidence, poster-repo
+change, BMS*, holdout use, or paper work.

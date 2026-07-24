@@ -1,0 +1,634 @@
+"""D58 poster-driver guards (docs/d58-poster-execution-protocol.md; PREP).
+
+Hermetic by construction: synthetic tensors and tmp directories only — no
+real Mauna load, no network, no fit, no figure rendering. What is proven:
+
+  * source-level seal guard on the driver AND its Slurm script (training-only
+    loader present; full-loader call and holdout-array tokens absent) — the
+    test_mauna_provenance.py pattern extended to the D58 surfaces;
+  * the prediction grid ends exactly at the final training coordinate;
+  * the output-directory guard admits only fresh run directories strictly
+    inside runs/poster_d58/ (no namespace root, no runs/d19_*, no outside
+    path, no clobber of anything existing);
+  * the four-variable thread contract fails closed on conflicts and on
+    too-late application;
+  * the render gate refuses an incomplete or non-closed-world census, a
+    malformed/duplicated/miscounted manifest, and a hash mismatch, and
+    accepts a manifest the driver itself wrote (a prior render's figures/
+    directory is the one permitted extra only when it is a REAL (non-symlink)
+    directory);
+  * the four-variable conflict and five-module late-application failures are
+    fully parameterized, and an AST guard proves run_fit applies the pin
+    before any import while no import or attribute access reaches the full
+    loader (alias resistance);
+  * atomic_savez round-trips without stray temporaries; the divergence and
+    tree-depth-saturation derivations are unit-pinned;
+  * validate_saved_grid accepts exactly the training span and refuses
+    out-of-span, non-monotone, or non-finite grids;
+    enforce_training_boundary crops axes to [lo, hi] and strips the tracked
+    boundary annotations;
+  * the DecompositionResult field order backing the positional rebuild is
+    pinned, so a package-side reorder fails loudly here;
+  * module import is hermetic (no heavy imports at import time), so the
+    Slurm-argparse guard and these tests can load the driver safely;
+  * the P1a specification is byte-pinned in the argparse defaults, in
+    substring form in the Slurm script, and as the exact effective token
+    sequence of the joined Slurm invocation (order, values, duplicates, and
+    mode), with the firewall label transcribed independently.
+"""
+
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DRIVER_PATH = REPO_ROOT / "experiments" / "poster_d58_mauna.py"
+SLURM_PATH = REPO_ROOT / "experiments" / "submit_d58_poster_fit.slurm"
+
+FORBIDDEN_TOKENS = ("x_" + "test", "y_" + "test", "load_mauna_loa(")
+
+
+def _load_driver():
+    spec = importlib.util.spec_from_file_location("_d58_driver_under_test",
+                                                  DRIVER_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+driver = _load_driver()
+
+
+# ── source-level seal guard (plan §6.6; author boundary ruling 2026-07-23) ──
+
+def test_driver_stays_on_the_training_only_loader():
+    text = DRIVER_PATH.read_text()
+    assert "load_mauna_loa_training" in text, (
+        "driver must consume the §6.6 training-only loader")
+    for forbidden in FORBIDDEN_TOKENS:
+        assert forbidden not in text, (
+            f"driver references {forbidden!r}; sealed holdout values and the "
+            "full loader must not appear in D58 poster code (§6.6)")
+
+
+def test_slurm_script_carries_no_holdout_token():
+    text = SLURM_PATH.read_text()
+    for forbidden in FORBIDDEN_TOKENS:
+        assert forbidden not in text, (
+            f"Slurm script references {forbidden!r} (§6.6)")
+
+
+def test_driver_asserts_the_period_freeze_twice():
+    text = DRIVER_PATH.read_text()
+    assert text.count("assert_mauna_period_frozen(") >= 2, (
+        "A10: the driver must assert the frozen period after build AND after "
+        "the fit")
+
+
+def test_firewall_label_transcribed():
+    # Independently transcribed phrases (the D55 FIREWALL_NOTE lesson): a
+    # revert of the poster-only firewall label must fail here.
+    text = DRIVER_PATH.read_text()
+    assert "non-paper-grade" in text
+    assert "docs/d58-poster-execution-protocol.md" in text
+    assert "feeds no D19 gate" in text
+
+
+# ── training-span grid (boundary = final training coordinate) ───────────────
+
+def test_grid_spans_training_span_exactly():
+    torch = pytest.importorskip("torch")
+    x = torch.linspace(-2.31, 4.77, 37, dtype=torch.float64)
+    grid = driver.training_span_grid(x, 500)
+    assert len(grid) == 500
+    assert grid[0].item() == x.min().item()
+    assert grid[-1].item() == x.max().item()
+    assert bool((grid[1:] >= grid[:-1]).all())
+
+
+def test_grid_refuses_degenerate_span():
+    torch = pytest.importorskip("torch")
+    x = torch.full((5,), 1.25, dtype=torch.float64)
+    with pytest.raises(SystemExit, match="GRID-DEGENERATE"):
+        driver.training_span_grid(x, 10)
+
+
+# ── output-directory guard (unique namespace, fail-closed, no-clobber) ──────
+
+def test_output_dir_accepts_fresh_run_dir(tmp_path):
+    target = driver.resolve_output_dir("runs/poster_d58/fit_x",
+                                       repo_root=str(tmp_path))
+    assert Path(target).is_dir()
+    assert Path(target) == (tmp_path / "runs" / "poster_d58" / "fit_x").resolve()
+
+
+@pytest.mark.parametrize("raw", [
+    "runs/poster_d58",                # the namespace root itself
+    "runs/d19_a7_timing/fit_x",       # a D19 evidence namespace
+    "runs/figures_regen/fit_x",       # outside the D58 namespace
+    "experiments/results_bms_mauna_loa",  # tracked-artifact directory
+    "elsewhere/fit_x",                # outside runs/ entirely
+])
+def test_output_dir_refuses_foreign_namespaces(tmp_path, raw):
+    with pytest.raises(SystemExit, match="OUTPUT-DIR-NAMESPACE"):
+        driver.resolve_output_dir(raw, repo_root=str(tmp_path))
+
+
+def test_output_dir_refuses_absolute_escape(tmp_path):
+    outside = tmp_path.parent / "d58_escape"
+    with pytest.raises(SystemExit, match="OUTPUT-DIR-NAMESPACE"):
+        driver.resolve_output_dir(str(outside), repo_root=str(tmp_path))
+
+
+def test_output_dir_requires_a_value(tmp_path):
+    with pytest.raises(SystemExit, match="OUTPUT-DIR-MISSING"):
+        driver.resolve_output_dir("", repo_root=str(tmp_path))
+
+
+def test_output_dir_never_clobbers(tmp_path):
+    existing = tmp_path / "runs" / "poster_d58" / "fit_x"
+    existing.mkdir(parents=True)
+    with pytest.raises(SystemExit, match="OUTPUT-DIR-NO-CLOBBER"):
+        driver.resolve_output_dir("runs/poster_d58/fit_x",
+                                  repo_root=str(tmp_path))
+    (existing / "provenance.json").write_text("{}")
+    with pytest.raises(SystemExit, match="OUTPUT-DIR-NO-CLOBBER"):
+        driver.resolve_output_dir("runs/poster_d58/fit_x",
+                                  repo_root=str(tmp_path))
+
+
+# ── thread contract (v1.23 §6 pin; driver-owned, pre-import) ─────────────────
+
+def test_thread_pin_sets_all_four_variables():
+    env = {}
+    applied = driver.apply_thread_pin(environ=env, loaded_modules={})
+    assert applied == {var: "3" for var in driver.THREAD_VARS}
+    assert env == applied
+
+
+def test_thread_pin_accepts_matching_preset():
+    env = {"OMP_NUM_THREADS": "3"}
+    driver.apply_thread_pin(environ=env, loaded_modules={})
+    assert all(env[var] == "3" for var in driver.THREAD_VARS)
+
+
+@pytest.mark.parametrize("var", [
+    "OMP_NUM_THREADS", "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"])
+def test_thread_pin_fails_closed_on_conflict(var):
+    env = {var: "4"}
+    with pytest.raises(SystemExit, match="THREAD-PIN-CONFLICT"):
+        driver.apply_thread_pin(environ=env, loaded_modules={})
+
+
+@pytest.mark.parametrize("mod", [
+    "numpy", "torch", "gpytorch", "pyro", "bistar_gp"])
+def test_thread_pin_fails_closed_when_applied_late(mod):
+    with pytest.raises(SystemExit, match="THREAD-PIN-LATE"):
+        driver.apply_thread_pin(environ={}, loaded_modules={mod: object()})
+
+
+def _driver_ast():
+    import ast
+    return ast.parse(DRIVER_PATH.read_text())
+
+
+def test_fit_applies_the_pin_before_any_heavy_import():
+    # Structural call-order guard: inside run_fit, the apply_thread_pin()
+    # call must precede every import statement (torch and everything after).
+    import ast
+    tree = _driver_ast()
+    fit = next(n for n in tree.body
+               if isinstance(n, ast.FunctionDef) and n.name == "run_fit")
+    pin_index = None
+    first_import_index = None
+    for i, node in enumerate(fit.body):
+        for sub in ast.walk(node):
+            if (isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Name)
+                    and sub.func.id == "apply_thread_pin"
+                    and pin_index is None):
+                pin_index = i
+            if isinstance(sub, (ast.Import, ast.ImportFrom)) \
+                    and first_import_index is None:
+                first_import_index = i
+    assert pin_index is not None, "run_fit no longer applies the thread pin"
+    assert first_import_index is not None
+    assert pin_index < first_import_index, (
+        "run_fit imports a heavy module before applying the thread pin")
+
+
+def test_no_full_loader_import_or_attribute_anywhere():
+    # Alias-resistance: beyond the token guard, no import may bind the full
+    # loader name and no attribute access may reach it dynamically.
+    import ast
+    banned = "load_mauna_loa"
+    for node in ast.walk(_driver_ast()):
+        if isinstance(node, ast.ImportFrom):
+            assert all(alias.name != banned for alias in node.names), (
+                "driver imports the full loader by name")
+        if isinstance(node, ast.Attribute):
+            assert node.attr != banned, (
+                "driver reaches the full loader via attribute access")
+
+
+# ── atomic writers and diagnostics derivations ───────────────────────────────
+
+def test_atomic_savez_round_trips_without_stray_tmp(tmp_path, monkeypatch):
+    np = pytest.importorskip("numpy")
+    target = tmp_path / "samples.npz"
+    replace_calls = []
+    real_replace = driver.os.replace
+
+    def record_replace(source, destination):
+        source_path = Path(source)
+        destination_path = Path(destination)
+        assert source_path != destination_path
+        assert source_path.parent == destination_path.parent == target.parent
+        assert destination_path == target
+        assert not destination_path.exists(), (
+            "atomic_savez created the final path before os.replace")
+        replace_calls.append((source_path, destination_path))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(driver.os, "replace", record_replace)
+    driver.atomic_savez(str(target), {"kernels.0.site_prior": np.arange(4.0)})
+    assert replace_calls == [(Path(str(target) + ".tmp"), target)], (
+        "atomic_savez must invoke os.replace exactly once from its temporary "
+        "path to the previously absent final destination")
+    with np.load(target) as z:
+        assert z.files == ["kernels.0.site_prior"]
+        assert z["kernels.0.site_prior"].tolist() == [0.0, 1.0, 2.0, 3.0]
+    assert [p.name for p in tmp_path.iterdir()] == ["samples.npz"], (
+        "atomic_savez left a temporary file behind")
+
+
+def test_run_fit_routes_both_npz_outputs_through_atomic_savez():
+    import ast
+
+    fit = next(n for n in _driver_ast().body
+               if isinstance(n, ast.FunctionDef) and n.name == "run_fit")
+    atomic_calls = [
+        node for node in ast.walk(fit)
+        if (isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "atomic_savez")
+    ]
+    assert len(atomic_calls) == 2, (
+        "run_fit must make exactly two atomic_savez calls")
+    for artifact in ("samples.npz", "decomposition.npz"):
+        matching = [
+            call for call in atomic_calls
+            if any(isinstance(node, ast.Constant) and node.value == artifact
+                   for node in ast.walk(call))
+        ]
+        assert len(matching) == 1, (
+            f"run_fit must route {artifact} through exactly one atomic_savez "
+            "call")
+    direct_savez_calls = [
+        node for node in ast.walk(fit)
+        if (isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "savez")
+    ]
+    assert not direct_savez_calls, (
+        "run_fit must not bypass atomic_savez with a direct savez call")
+
+
+def test_divergence_total_derivation():
+    assert driver.divergence_total(None) is None
+    assert driver.divergence_total(((),)) == 0
+    assert driver.divergence_total(((3, 17), (5,))) == 3
+
+
+def test_td_saturated_count_derivation():
+    assert driver.td_saturated_count(None, 127) is None
+    assert driver.td_saturated_count(((126, 127, 130), (1,)), 127) == 2
+    assert driver.td_saturated_count(((1, 2), (3,)), 127) == 0
+
+
+# ── training-boundary enforcement (render post-processing) ───────────────────
+
+def test_enforce_training_boundary_crops_and_strips_annotations():
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots()
+    ax.plot([0.0, 1.0, 2.0], [0.0, 1.0, 4.0])
+    ax.text(1.8, 0.5, " forecast →")
+    ax.text(1.8, 0.4, "← train ")
+    ax.text(0.2, 0.9, "keep me")
+    driver.enforce_training_boundary(fig, 0.0, 1.5)
+    assert ax.get_xlim() == (0.0, 1.5)
+    remaining = [t.get_text() for t in ax.texts]
+    assert remaining == ["keep me"], (
+        f"boundary annotations survived or content lost: {remaining}")
+    plt.close(fig)
+
+
+def test_run_render_wraps_every_renderer_with_boundary_enforcement():
+    import ast
+
+    render = next(n for n in _driver_ast().body
+                  if isinstance(n, ast.FunctionDef) and n.name == "run_render")
+    fig_assignments = [
+        node for node in ast.walk(render)
+        if (isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "fig"
+                    for target in node.targets))
+    ]
+    assert fig_assignments, "run_render must assign at least one rendered fig"
+    for assignment in fig_assignments:
+        assert (isinstance(assignment.value, ast.Call)
+                and isinstance(assignment.value.func, ast.Name)
+                and assignment.value.func.id == "enforce_training_boundary"), (
+            "every fig assignment must wrap its renderer in "
+            "enforce_training_boundary")
+        assert not (
+            isinstance(assignment.value, ast.Call)
+            and isinstance(assignment.value.func, ast.Name)
+            and assignment.value.func.id == "make"
+        ), "run_render must not bind fig to a bare make() call"
+    savefig_calls = [
+        node for node in ast.walk(render)
+        if (isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "savefig")
+    ]
+    assert savefig_calls, "run_render must save at least one figure"
+    assert all(isinstance(call.func.value, ast.Name)
+               and call.func.value.id == "fig"
+               for call in savefig_calls), (
+        "every savefig call must use the boundary-enforced fig receiver")
+
+
+def test_validate_saved_grid_accepts_exact_training_span():
+    np = pytest.importorskip("numpy")
+    arrays = {"x_pred": np.linspace(-1.0, 2.0, 50),
+              "x_train": np.array([-1.0, 0.3, 2.0])}
+    assert driver.validate_saved_grid(arrays) == (-1.0, 2.0)
+
+
+def test_validate_saved_grid_refuses_out_of_span_endpoints():
+    np = pytest.importorskip("numpy")
+    arrays = {"x_pred": np.linspace(-1.0, 2.5, 50),
+              "x_train": np.array([-1.0, 0.3, 2.0])}
+    with pytest.raises(SystemExit, match="RENDER-GRID"):
+        driver.validate_saved_grid(arrays)
+
+
+def test_validate_saved_grid_refuses_non_monotone_or_non_finite():
+    np = pytest.importorskip("numpy")
+    bad_order = {"x_pred": np.array([0.0, 1.0, 0.5, 2.0]),
+                 "x_train": np.array([0.0, 2.0])}
+    with pytest.raises(SystemExit, match="RENDER-GRID"):
+        driver.validate_saved_grid(bad_order)
+    bad_finite = {"x_pred": np.array([0.0, np.nan, 2.0]),
+                  "x_train": np.array([0.0, 2.0])}
+    with pytest.raises(SystemExit, match="RENDER-GRID"):
+        driver.validate_saved_grid(bad_finite)
+
+
+# ── decomposition dataclass field order (positional rebuild contract) ────────
+
+def test_decomposition_dataclass_field_order_is_the_rebuild_contract():
+    pytest.importorskip("torch")
+    import dataclasses
+    from bistar_gp.debias import DecompositionResult
+    names = [f.name for f in dataclasses.fields(DecompositionResult)]
+    assert names == ["x_test", "x_train", "y_train", "components",
+                     "full_mean", "full_std", "noise_var"], (
+        "DecompositionResult field order changed; the driver's positional "
+        "rebuild (rebuild_decomposition_result) must be updated in the same "
+        "commit")
+
+
+# ── render gate (census + manifest hash gate) ────────────────────────────────
+
+def _make_payload(run_dir):
+    run_dir.mkdir(parents=True)
+    for name in driver.EXPECTED_ARTIFACTS:
+        if name == driver.MANIFEST_NAME:
+            continue
+        (run_dir / name).write_text(f"payload of {name}\n")
+
+
+def test_render_gate_accepts_a_driver_written_manifest(tmp_path):
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    driver.write_manifest(str(run_dir))
+    assert driver.verify_run_dir(str(run_dir)) is True
+
+
+def test_render_gate_refuses_incomplete_census(tmp_path):
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    driver.write_manifest(str(run_dir))
+    (run_dir / "samples.npz").unlink()
+    with pytest.raises(SystemExit, match="RENDER-CENSUS"):
+        driver.verify_run_dir(str(run_dir))
+
+
+def test_render_gate_refuses_hash_mismatch(tmp_path):
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    driver.write_manifest(str(run_dir))
+    (run_dir / "samples.npz").write_text("tampered\n")
+    with pytest.raises(SystemExit, match="RENDER-HASH-GATE"):
+        driver.verify_run_dir(str(run_dir))
+
+
+def test_render_gate_refuses_malformed_manifest(tmp_path):
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    (run_dir / driver.MANIFEST_NAME).write_text("not a manifest line\n")
+    with pytest.raises(SystemExit, match="RENDER-MANIFEST"):
+        driver.verify_run_dir(str(run_dir))
+
+
+def test_render_gate_is_closed_world_but_allows_prior_figures(tmp_path):
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    driver.write_manifest(str(run_dir))
+    (run_dir / "extra_artifact.json").write_text("{}")
+    with pytest.raises(SystemExit, match="RENDER-CENSUS"):
+        driver.verify_run_dir(str(run_dir))
+    (run_dir / "extra_artifact.json").unlink()
+    (run_dir / driver.FIGURES_DIR_NAME).mkdir()  # a prior render's output
+    assert driver.verify_run_dir(str(run_dir)) is True
+
+
+def test_render_gate_refuses_regular_file_named_figures(tmp_path):
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    driver.write_manifest(str(run_dir))
+    (run_dir / driver.FIGURES_DIR_NAME).write_text("not a directory\n")
+    with pytest.raises(SystemExit, match="RENDER-CENSUS"):
+        driver.verify_run_dir(str(run_dir))
+
+
+def test_render_gate_refuses_symlink_named_figures(tmp_path):
+    import os
+
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    driver.write_manifest(str(run_dir))
+    real_figures = tmp_path / "real_figures"
+    real_figures.mkdir()
+    os.symlink(real_figures, run_dir / driver.FIGURES_DIR_NAME)
+    with pytest.raises(SystemExit, match="RENDER-CENSUS"):
+        driver.verify_run_dir(str(run_dir))
+
+
+def test_render_gate_refuses_duplicate_and_miscounted_manifest(tmp_path):
+    run_dir = tmp_path / "fit_x"
+    _make_payload(run_dir)
+    driver.write_manifest(str(run_dir))
+    manifest = run_dir / driver.MANIFEST_NAME
+    lines = manifest.read_text().splitlines()
+    manifest.write_text("\n".join(lines[:-1] + [lines[0]]) + "\n")
+    with pytest.raises(SystemExit, match="RENDER-MANIFEST"):
+        driver.verify_run_dir(str(run_dir))
+    manifest.write_text("\n".join(lines[:-1]) + "\n")
+    with pytest.raises(SystemExit, match="RENDER-MANIFEST"):
+        driver.verify_run_dir(str(run_dir))
+
+
+# ── hermetic import + frozen census ──────────────────────────────────────────
+
+def test_module_import_is_hermetic():
+    code = (
+        "import importlib.util, sys\n"
+        f"spec = importlib.util.spec_from_file_location('m', {str(DRIVER_PATH)!r})\n"
+        "mod = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(mod)\n"
+        "heavy = [m for m in ('numpy', 'torch', 'gpytorch', 'pyro', 'bistar_gp')\n"
+        "         if m in sys.modules]\n"
+        "assert not heavy, f'heavy imports at module import: {heavy}'\n"
+        "assert len(mod.EXPECTED_ARTIFACTS) == 6\n"
+        "print('HERMETIC-OK')\n"
+    )
+    proc = subprocess.run([sys.executable, "-B", "-c", code],
+                          capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, proc.stderr
+    assert "HERMETIC-OK" in proc.stdout
+
+
+def test_expected_census_is_frozen():
+    assert driver.EXPECTED_ARTIFACTS == (
+        "fit_config.json", "samples.npz", "diagnostics.json",
+        "decomposition.npz", "provenance.json", "PROVENANCE.sha256")
+    assert driver.FIGURE_NAMES == (
+        "card6_mauna_decomposition.png", "card7_three_interpretations.png",
+        "card8_debiased_ppm.png", "card8_removed_bias.png")
+    assert driver.OUTPUT_NAMESPACE.replace("\\", "/") == "runs/poster_d58"
+
+
+# ── P1a specification byte-pins (argparse defaults + Slurm invocation) ───────
+
+def test_argparse_defaults_pin_the_p1_specification():
+    args = driver.build_parser().parse_args(
+        ["--mode", "fit", "--output-dir", "runs/poster_d58/fit_x"])
+    assert (args.seed, args.n_warmup, args.n_samples,
+            args.max_tree_depth, args.n_grid) == (0, 200, 200, 7, 500)
+
+
+def test_argparse_requires_mode_and_output_dir():
+    parser = driver.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--mode", "fit"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--output-dir", "runs/poster_d58/fit_x"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--mode", "science", "--output-dir", "x"])
+
+
+def test_slurm_invocation_pins_the_p1_specification():
+    text = SLURM_PATH.read_text()
+    for token in (
+        "#SBATCH --cpus-per-task=3",
+        "#SBATCH --mem=8G",
+        "#SBATCH --time=02:00:00",
+        "#SBATCH --chdir=/scratch/gpfs/SUYOGHC/bistar_gp_d58",
+        "#SBATCH --output=runs/poster_d58/slurm-%j.out",
+        "#SBATCH --constraint=cascade",
+        "#SBATCH --exclude=della-h12n[1-13],della-h12n[17-18],della-h17n1,della-i13n25",
+        'export PS1="${PS1-}"',
+        "intel,cascade,rh9",
+        "sbatch --export=NONE experiments/submit_d58_poster_fit.slurm",
+        "FIT_DIR=runs/poster_d58/fit_full461_seed0",
+        "--seed 0 --n-warmup 200 --n-samples 200 --max-tree-depth 7 --n-grid 500",
+        "no retry",
+    ):
+        assert token in text, f"Slurm script lost the pinned token {token!r}"
+
+
+def _logical_slurm_lines():
+    """Backslash-continuation-joined lines of the D58 Slurm script (the
+    tests/test_slurm_argparse.py joining rule, simplified for this script)."""
+    joined, pending = [], ""
+    for raw in SLURM_PATH.read_text().splitlines():
+        if pending:
+            raw = pending + raw
+            pending = ""
+        stripped = raw.rstrip()
+        if stripped.endswith("\\") and not raw.lstrip().startswith("#"):
+            pending = stripped[:-1]
+            continue
+        joined.append(raw)
+    return joined
+
+
+def test_slurm_effective_fit_command_is_exactly_the_p1_invocation():
+    import re
+    import shlex
+
+    invocations = [ln for ln in _logical_slurm_lines()
+                   if "poster_d58_mauna.py" in ln]
+    assert len(invocations) == 1, (
+        f"expected exactly one driver invocation, found {len(invocations)}")
+    tokens = shlex.split(invocations[0], posix=True)
+    script_at = next(i for i, t in enumerate(tokens)
+                     if t.endswith("poster_d58_mauna.py"))
+    pinned_flags = [
+        "--mode", "fit", "--output-dir", "$FIT_DIR",
+        "--seed", "0", "--n-warmup", "200", "--n-samples", "200",
+        "--max-tree-depth", "7", "--n-grid", "500"]
+    flags_end = script_at + 1 + len(pinned_flags)
+    assert tokens[script_at + 1:flags_end] == pinned_flags, (
+        "the effective fit command drifted from the ratified P1a invocation "
+        "(order, values, duplicates, and mode are all pinned)")
+    assert tokens[flags_end:] == ["||", "rc=$?"], (
+        "the complete fit command must end exactly with the single rc capture")
+
+    logical_tokens = [
+        token
+        for line in _logical_slurm_lines()
+        for token in shlex.split(line, posix=True)
+    ]
+    assert sum(token.endswith("poster_d58_mauna.py")
+               for token in logical_tokens) == 1, (
+        "the driver script token must appear exactly once in all logical "
+        "Slurm lines")
+
+    sbatch_lines = [
+        line for line in SLURM_PATH.read_text().splitlines()
+        if re.search(r"\bsbatch\b", line)
+    ]
+    assert len(sbatch_lines) == 1
+    assert sbatch_lines[0].lstrip().startswith("# Submission:"), (
+        "sbatch may appear only in the single Submission comment line")
+
+
+def test_slurm_pins_threads_to_three_nowhere_else():
+    # cpus-per-task is the only thread control the script owns (the driver
+    # owns the four variables + torch intra-op); no stray export of a thread
+    # variable may appear in the script.
+    text = SLURM_PATH.read_text()
+    for var in driver.THREAD_VARS:
+        assert f"export {var}" not in text, (
+            f"Slurm script exports {var}; the driver owns the pre-import "
+            "thread contract (D55/A7 division of responsibility)")

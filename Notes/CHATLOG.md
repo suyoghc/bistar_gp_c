@@ -1023,3 +1023,66 @@ opening are the immediate next acts under the standing authorization, then
 The plain-form push then succeeded (the denial was transient) and **Draft PR #31**
 was opened with the full lineage in its body; this pre-identified Notes line records
 the number. The PR remains **STOPPED before Ready**.
+
+## 2026-07-23 — D58 poster-first planning + PREP implementation (Fable orchestrator)
+
+Startup gate PASS at M57 `34d149de` (origin/main == M57; clean tracked tree; v1.23 + D57
+verified on origin/main; v1.23 §6 pin text verified). ONE fresh Codex gpt-5.6-sol xHigh
+read-only analyst (session `019f906d`; model/effort/sandbox rollout-verified) inspected the
+Mauna run paths; every load-bearing claim was independently re-verified with zero
+disagreements. Key facts: all on-disk Mauna poster figures are pre-freeze artifacts whose
+card-6/card-7 panels display sealed holdout values; the current `fit_hmc` is E1-backed
+(D27); the sealed training-only loader and the A10 period freeze are automatic in the
+current build path; `poster/` is a separate user-owned git repository.
+
+Author cast dispositions B1-B5 (Della pin-3 poster fit; crop at the training cutoff
+`max(x) - 5.0 y`; card-10 BMS* dropped; PREP branch now with evidence post-run; driver under
+`experiments/`), ballot P1(a)/P2(a)/P3(a), and the bounded D58-PREP authorization. PREP was
+implemented on `feat/d58-poster-prep` off M57: driver + dedicated Slurm script + 31 hermetic
+tests + execution protocol + Notes (the exact seven-file allowlist). Focused suites green
+(31 new; slurm-argparse guard + Mauna provenance/period/registry 45). D58 DECISIONS entry
+records the cast, the disclosed pre-review refinements, the firewall, and the STOP list.
+Next: full suite, ONE Codex exact-head review, Draft PR, HARD STOP before Ready/merge/Della.
+
+The exact-head review (ONE fresh Codex gpt-5.6-sol xHigh, session 019f90b0, read-only)
+returned REVISE: 2 BLOCKER (literal `M58` in the RUN template would burn the one-shot
+submission at the script's 40-hex guard; render did not enforce the training-boundary crop
+against plot annotations and matplotlib margins), 2 MAJOR (non-atomic NPZ writes; unfrozen
+sacct capture leaving A1 undecidable), 2 MINOR (non-closed-world render gate with duplicate
+manifest acceptance; test-discrimination gaps), 1 NOTE (render help text). Every finding was
+orchestrator-confirmed against source; the single bounded correction pass closed all seven
+(driver: validate_saved_grid + enforce_training_boundary + atomic_savez + closed-world
+verify_run_dir + derivation helpers; protocol: literal-sha40 template + frozen
+job_metadata.txt capture + A1/A2/A7 decidability; tests: parameterized guards, AST
+call-order and alias-loader checks, derivation/boundary/field-order pins, effective-Slurm
+token-sequence equality — focused 62 passed). D58 Update 1 records the round; the corrected
+head goes to full suite, push, Draft PR, then HARD STOP before Ready.
+
+Full suite at the corrected head 91de92d8: 1246 passed / 2 skipped / 0 failed. Branch pushed;
+**Draft PR #32** opened with the two-commit lineage (implementation 099cd728 reviewed at
+exact head; single bounded correction 91de92d8, pass SPENT) and the STOP list in its body.
+This pre-identified Notes line records the PR number. **HARD STOP before Ready.**
+
+Author-cast confirmation review at a3d992d8 (fresh Codex gpt-5.6-sol xHigh read-only,
+session 019f91a9) returned FINDINGS (F1 MAJOR sacct readiness/anchoring; F2 MINOR figures
+type; F3 MINOR five surviving mutants; F4 NOTE gitignore wording), all orchestrator-verified
+and returned to the author with no change. The author adopted option (a): a SECOND AND FINAL
+bounded correction pass. Implementer Codex gpt-5.6-sol xHigh (workspace-write, session
+019f91d5) closed F1-F4 in exactly the three technical files; the orchestrator read every
+changed line, ran the six-mutant battery (all KILLED, byte-identical restores verified), and
+recorded D58 Update 2. Full suite at the corrected tree: 1250 passed / 2 skipped / 0 failed.
+Next: the separate fresh read-only confirmation at the corrected head, then the cast's
+disposition (APPROVE = Notes tail + push + PR lineage update; FINDINGS = STOP). HARD STOP
+before Ready throughout.
+
+The FINAL confirmation at e274b36f (fresh Codex gpt-5.6-sol xHigh read-only, session
+019f91e5) returned F1-F4 CONFIRMED-CLOSED with byte-freeze and launch-path PASS and zero
+surviving mutants, plus ONE new MINOR: the focused-suite split recorded in D58 Update 2 and
+the SCRATCHPAD (52+13+14) was wrong; pytest --collect-only gives 53 driver + 13
+argparse-guard + 13 provenance = 79. Per the FINAL-pass rule nothing was changed and the
+finding went to the author, who adjudicated it record-accuracy-only and authorized ONE
+Notes-only truth correction (this commit): both attribution strings fixed in place, D58
+Update 3 records the episode, no technical byte changed after e274b36f, the Notes-only
+final head is NOT re-reviewed, both correction passes SPENT. Branch pushed normally with
+e274b36f plus this tail; Draft PR #32 body updated to the full lineage. HARD STOP before
+Ready.
