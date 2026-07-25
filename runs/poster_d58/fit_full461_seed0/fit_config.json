@@ -1,0 +1,47 @@
+{
+  "data": {
+    "canonical_sha256": "5bcdc813b4c3b570c9947acfaa0d3ff8cb5f89094b3e4e5121f72535a0cc0910",
+    "cutoff_rule": "max(x) - test_years",
+    "n_monthly": 521,
+    "n_raw": 2225,
+    "n_test": 60,
+    "n_train": 461,
+    "source": "vendored",
+    "test_years": 5.0,
+    "x_offset": 1977.7109544468547,
+    "y_mean": 336.18776211135213,
+    "y_std": 14.58342466738224
+  },
+  "design_label": "D58 poster-grade Mauna fit: poster-only presentation artifact; non-paper-grade; feeds no D19 gate, dossier, arm, strategy, BMS*, or selection (docs/d58-poster-execution-protocol.md)",
+  "driver": "experiments/poster_d58_mauna.py",
+  "git_dirty_tracked": false,
+  "git_sha": "6d391e5d7e45fe103dd7dad5a89c61eb7be6f1ea",
+  "hostname": "della-r3c2n10",
+  "init_to_map": true,
+  "max_tree_depth": 7,
+  "mode": "fit",
+  "n_grid": 500,
+  "n_posterior_samples": 200,
+  "n_samples": 200,
+  "n_warmup": 200,
+  "seed": 0,
+  "slurm_cpus_per_task": "3",
+  "slurm_job_id": "11572645",
+  "started_utc": "2026-07-24T18:31:58Z",
+  "target_accept_prob": 0.8,
+  "thread_env": {
+    "MKL_NUM_THREADS": "3",
+    "OMP_NUM_THREADS": "3",
+    "OPENBLAS_NUM_THREADS": "3",
+    "VECLIB_MAXIMUM_THREADS": "3"
+  },
+  "torch_inter_op_threads_observed": 32,
+  "torch_intra_op_threads": 3,
+  "versions": {
+    "gpytorch": "1.15.1",
+    "numpy": "2.4.2",
+    "pyro": "1.9.1",
+    "python": "3.11.14",
+    "torch": "2.10.0+cu128"
+  }
+}

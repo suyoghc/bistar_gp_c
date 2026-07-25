@@ -1,0 +1,80 @@
+ENV-OK /home/sc8918/.conda/envs/bistar_gp/bin/python 3.11.14 2.10.0+cu128 1.15.1 1.9.1 2.4.2
+Fri Jul 24 06:31:47 PM UTC 2026
+della-r3c2n10
+job=11572645 cpus=3 nodes=della-r3c2n10 sha=6d391e5d7e45fe103dd7dad5a89c61eb7be6f1ea
+Currently Loaded Modulefiles:
+ 1) anaconda3/2024.6  
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           46 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  32
+On-line CPU(s) list:                     0-31
+Vendor ID:                               GenuineIntel
+Model name:                              Intel(R) Xeon(R) Gold 6242 CPU @ 2.80GHz
+CPU family:                              6
+Model:                                   85
+Thread(s) per core:                      1
+Core(s) per socket:                      16
+Socket(s):                               2
+Stepping:                                7
+CPU(s) scaling MHz:                      79%
+CPU max MHz:                             3900.0000
+CPU min MHz:                             1200.0000
+BogoMIPS:                                5600.00
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 monitor ds_cpl smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cdp_l3 intel_ppin ssbd mba ibrs ibpb stibp ibrs_enhanced fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm mpx rdt_a avx512f avx512dq rdseed adx smap clflushopt clwb intel_pt avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local dtherm ida arat pln pts pku ospke avx512_vnni md_clear flush_l1d arch_capabilities
+L1d cache:                               1 MiB (32 instances)
+L1i cache:                               1 MiB (32 instances)
+L2 cache:                                32 MiB (32 instances)
+L3 cache:                                44 MiB (2 instances)
+NUMA node(s):                            2
+NUMA node0 CPU(s):                       0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30
+NUMA node1 CPU(s):                       1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31
+Vulnerability Gather data sampling:      Mitigation; Microcode
+Vulnerability Indirect target selection: Mitigation; Aligned branch/return thunks
+Vulnerability Itlb multihit:             KVM: Mitigation: VMX unsupported
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Mitigation; Clear CPU buffers; SMT disabled
+Vulnerability Old microcode:             Vulnerable
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Mitigation; Enhanced IBRS
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS SW sequence; BHI SW loop, KVM SW loop
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Mitigation; TSX disabled
+Vulnerability Vmscape:                   Mitigation; IBPB before exit to userspace
+   Priority=10750 Nice=0 Account=suyoghc QOS=short
+   RunTime=00:00:38 TimeLimit=02:00:00 TimeMin=N/A
+   Partition=cpu AllocNode:Sid=della9:1034328
+   ReqNodeList=(null) ExcNodeList=della-h12n[1-13,17-18],della-h17n1,della-i13n25
+   NodeList=della-r3c2n10
+   ReqTRES=cpu=3,mem=8G,node=1,billing=3
+   AllocTRES=cpu=3,mem=8G,node=1,billing=3
+   Features=cascade DelayBoot=00:00:00
+FIT start 2026-07-24T18:31:47Z
+
+                                                               mean       std    median      5.0%     95.0%     n_eff     r_hat
+covar_module.kernels.0.base_kernel.lengthscale_prior[0,0]      3.59      0.18      3.59      3.28      3.85    148.40      1.02
+                 covar_module.kernels.0.outputscale_prior      1.92      0.43      1.92      1.38      2.80    201.12      1.00
+covar_module.kernels.1.base_kernel.lengthscale_prior[0,0]      1.28      0.34      1.35      0.79      1.79    123.82      1.01
+                 covar_module.kernels.1.outputscale_prior     -0.91      0.99     -0.90     -2.58      0.66    126.30      1.00
+covar_module.kernels.2.base_kernel.lengthscale_prior[0,0]     -1.31      0.12     -1.30     -1.51     -1.11    187.68      1.00
+                 covar_module.kernels.2.outputscale_prior     -6.93      0.16     -6.93     -7.20     -6.69    175.75      1.01
+                    likelihood.noise_covar.noise_prior[0]     -8.41      0.10     -8.42     -8.58     -8.25    190.68      1.00
+
+Number of divergences: 0
+  Decomposed 200/200 MCMC samples successfully
+FIT-COMPLETE /scratch/gpfs/SUYOGHC/bistar_gp_d58/runs/poster_d58/fit_full461_seed0 fit=109.6s decomposition=9.7s n_success=200/200
+FIT exit 0 2026-07-24T18:33:58Z
+e7781e701bad10394865bcf96a92e8fb35a9e1753d2969379ee6aa3e2a73ca5a  runs/poster_d58/fit_full461_seed0/decomposition.npz
+b87bb8a4d3fed13a730c10c0e1e46172c8c759341a9e9c03f36a567bee34d699  runs/poster_d58/fit_full461_seed0/diagnostics.json
+a79e518e3ad659fa7be19b6c0459967978efcbc4e277a971b371eb7bb06fa43d  runs/poster_d58/fit_full461_seed0/fit_config.json
+fd648efd99ab9db6893da5d719c0297943a56ad5a3ee08cfee73b46f3e74008f  runs/poster_d58/fit_full461_seed0/provenance.json
+a5bcfc580a6b0ff79894adb9991a37b23d5c7f76b883a7be2e9a02c37904c69b  runs/poster_d58/fit_full461_seed0/PROVENANCE.sha256
+55ece150ca685194a1e9f28a0f1dff2cb4f54627dbd29b98159b45590b4722c6  runs/poster_d58/fit_full461_seed0/samples.npz
+FIT-COMPLETE 2026-07-24T18:33:58Z
