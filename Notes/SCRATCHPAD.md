@@ -2,7 +2,21 @@
 
 Working notes: current plan, open questions, in-progress state. Clean out completed items.
 
-## D58 poster-first Mauna milestone — PREP in flight; ONE pin-3 poster-grade Della fit prepared, NOT run (2026-07-23) — branch feat/d58-poster-prep off M57 34d149de
+## D58 poster-first Mauna milestone — RUN + raw-evidence + render-evidence MERGED (2026-07-26); ACT 3 Notes closeout recorded in this commit; remaining acts: D59 stash restore + poster hand-off
+
+- **Closeout (2026-07-26, D58 Update 4).** M58 `6d391e5d`; job 11572645 (della-r3c2n10,
+  COMPLETED 0:0, 2m49s): 0 divergences, 0 td-saturated draws (threshold 127; max leapfrogs
+  31, derived from the captured array), acceptance 1.0, 1 warmup not-PSD rejection then
+  none, step size 0.5545 (rounded), decomposition 200/200; A1-A7 ALL PASS (protocol §5
+  display gate only). Raw-evidence anchor `ddad136f` (PR #33); render-evidence anchor
+  `20223b4b` (PR #34): four figures + FIGURES.sha256 at their pins, author-rendered locally
+  ~08:15 BRT 2026-07-25 with the committed render command, then adopted without rerendering
+  after hash/manifest/boundary/dimension/visual checks. Caption obligation attaches to the
+  poster hand-off: report 0 divergences, 0 saturated draws, max leapfrogs 31, acceptance
+  1.0, and label td7 as an efficiency control. Poster-only, non-paper-grade: no holdout
+  access, no BMS*, no D19 gate/dossier/arm/strategy/selection use; the careful paper-grade
+  Mauna run stays a separate future authorization. D59 draft remains in stash `5280d1e1`
+  until its own branch and authorization.
 
 - **Cast.** B1 Della E1 fit (poster-grade, non-paper-grade) / B2 crop at the TRAINING cutoff `max(x) - 5.0 y` = `max(x_train)` (the earlier "2001" wording was wrong — that ends the sealed span) / B3 card-10 BMS* dropped / B4 PREP branch now, evidence post-run / B5 driver under `experiments/`; ballot P1(a) seed 0, 200+200, td7, 0.8, N=461, 500-pt training-span grid, 2h/8G, `runs/poster_d58/fit_full461_seed0/`; P2(a) data-only on Della, render local at POST; P3(a) ONE Codex gpt-5.6-sol xHigh PREP review. PREP authorization CAST 2026-07-23.
 - **Why not the legacy figures.** All on-disk Mauna PNGs are pre-freeze (Jul 7-8): card 6 + money panel scatter sealed holdout values (and the card-6 script scores holdout RMSE); fits ran the superseded pyro path (28h11m full-461) under the pre-A10 plug-in period. NOT poster-usable; superseded for poster purposes.

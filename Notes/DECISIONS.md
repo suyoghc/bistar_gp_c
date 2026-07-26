@@ -5625,3 +5625,94 @@ correction; both passes SPENT), then **HARD STOP: PR #32 stays Draft, STOP befor
 NOT authorized: any further reviewer, code/test/protocol change, full-suite rerun, Ready,
 merge, D58-RUN, Della contact, worktree, submission, fit, render, evidence, poster-repo
 change, BMS*, holdout use, or paper work.
+
+**D58 Update 4 — D58-POST ACT 3: factual closeout of the run, evidence, and render record
+(2026-07-26).** Author-cast Notes-only act on branch `notes/d58-post-closeout` off the
+render-evidence merge anchor; exactly DECISIONS + SCRATCHPAD + CHATLOG change; the stashed
+D59 draft (stash `5280d1e1523e95ce2a7353dfbc587aac1fa73d75`, blob `025cd1a5…`) is excluded
+and stays untouched until its own later branch and authorization. Pre-mutation checks all
+PASS: `origin/main` == anchor `20223b4b6e03d9e1ba268bd4e4d81f408d8f5780`; tracked tree
+clean; the five figure blobs re-hashed 4/4 against the committed `FIGURES.sha256` plus the
+manifest's own pin `0b32e028…` (372 B); the five files listed in the committed
+`PROVENANCE.sha256` re-hashed 5/5, with `job_metadata.txt` at `48d5537c…` (463 B) and the
+two log blobs at their census sizes 6230/35956 B; stash unchanged; the update number determined
+mechanically (Updates 1-3 present at the anchor, none higher).
+
+**Run record (captured).** The one authorized D58 fit ran as Slurm job **11572645** on
+**della-r3c2n10** (frozen pool), COMPLETED 0:0, elapsed 00:02:49, MaxRSS(batch) 1017232K,
+per the frozen post-terminal sacct capture `runs/poster_d58/job_metadata.txt`. Identity per
+`fit_config.json` and `provenance.json`: driver `experiments/poster_d58_mauna.py` at
+`git_sha` = M58 `6d391e5d7e45fe103dd7dad5a89c61eb7be6f1ea`, `git_dirty_tracked` false, mode
+fit, `init_to_map` true; **training-only N = 461** (`n_train` 461 of `n_monthly` 521 under
+`cutoff_rule` "max(x) - test_years", `test_years` 5.0; the 60-point test count appears as
+split metadata only, the sealed loader supplies training data alone, and no holdout value
+was read); seed 0; ONE chain; 200 warmup + 200 retained draws; `target_accept_prob` 0.8;
+`max_tree_depth` 7 (td7); 500-point training-span grid; thread pin three (Slurm
+cpus-per-task 3, all four thread environment variables 3, torch intra-op 3; torch inter-op
+OBSERVED 32, a captured observation outside the pin's scope); python 3.11.14 / torch
+2.10.0+cu128 / gpytorch 1.15.1 / pyro 1.9.1 / numpy 2.4.2; fit 109.6 s, decomposition
+9.7 s.
+
+**Sampler record (captured in `diagnostics.json`; sampler `nuts_e1`, schema 3), with
+derived counts labeled.** Captured: the divergence-draw list is EMPTY; acceptance rate 1.0;
+not-PSD rejections 1 total, 1 in warmup, and a per-draw zero vector afterward; step size
+0.554453…; the full per-draw leapfrog-count array; the saturation threshold 127; and the
+driver-derived fields `divergence_count_total` 0 and `tree_depth_saturated_draws` 0 stored
+in the blob. Derived in this entry: **0 divergences** and **0 tree-depth-saturated draws**
+restate those stored counts; **maximum leapfrog count 31** takes the maximum over the
+captured array (mostly 7s and 3s, four draws at 15, one at 31, threshold 127); "0.5545"
+rounds the captured step size. Decomposition **200/200** requested/success (captured in
+`provenance.json`; `samples_all_finite` and `decomposition_all_finite` true; run-log line
+"Decomposed 200/200 MCMC samples successfully").
+
+**Acceptance (recorded).** A1-A7, the frozen non-adaptive display-gate checks of protocol
+§5 (`docs/d58-poster-execution-protocol.md` at M58): **ALL PASS**, recorded locally in the
+committed raw-evidence lineage (evidence commit `18a1c559…` and the PR #33 merge commit)
+and, as a live-GitHub record verified via `gh` this session rather than a local committed
+object, in the PR #33 body. Display gate only; no scientific claim attaches.
+
+**Evidence topology (re-verified this act).** Raw-evidence merge anchor
+`ddad136fec6e3d4a467815abf5da17bf5a8b37df` (PR #33, the nine validated run files).
+Render-evidence merge anchor `20223b4b6e03d9e1ba268bd4e4d81f408d8f5780` (PR #34, the four
+figures and `FIGURES.sha256` merged): card6 `0fe67b15…` 803591 B, card7 `c3e34c65…`
+1133710 B, card8_debiased `6c16fbee…` 354875 B, card8_removed `7b02df4a…` 254820 B,
+manifest `0b32e028…` 372 B. The render was author-executed locally at approximately 08:15
+BRT on 2026-07-25 using the committed render command against the committed census, then
+ADOPTED without rerendering after strict hash, manifest, boundary, dimension (IHDR
+2381x2653 / 2972x2689 / 3094x985 / 3168x985), and visual verification, recorded in the
+committed render-evidence lineage at `783e434f…` and, as a live-GitHub record verified via
+`gh` this session rather than a local committed object, in the PR #34 body.
+
+**Poster caption obligation (attaches to the separately authorized poster hand-off).** Any
+poster use of these figures reports verbatim: 0 divergences; 0 tree-depth-saturated draws;
+maximum leapfrogs 31; acceptance 1.0; and labels td7 as an efficiency control, never
+convergence evidence.
+
+**Scope.** Poster-only and non-paper-grade; the committed `design_label` contains verbatim
+"poster-only presentation artifact; non-paper-grade; feeds no D19 gate, dossier, arm,
+strategy, BMS*, or selection". No holdout access occurred. The careful paper-grade Mauna
+run remains a separate future authorization.
+
+**Verification and correction lineage (events completed before this text was committed).**
+This closeout was verified statement-by-statement by Fable against the committed blobs and
+the protocol, including mechanical recomputation of the leapfrog histogram
+{7: 168, 3: 27, 15: 4, 31: 1}, the four IHDR dimension pairs, and both committed hash
+manifests. One fresh read-only Codex gpt-5.6-sol xHigh factual audit of the uncommitted
+three-file diff then ran (session `019f9e2f-a010-7df3-9dfa-37332edb8b86`; the session
+identity, model, sandbox, and effort are session-log facts read from the CLI banner, not
+committed objects) and returned **FINDINGS**: one MAJOR (the drafted CHATLOG/SCRATCHPAD
+text described the commit, push, and Draft PR of this act as already done — anticipatory
+tense), two NOTEs (self-referential lineage claims; live-GitHub/session facts not derivable
+from committed local objects), and PASS on every numeric, hash, size, dimension, seal,
+scope, and diagnostic check, with the two PR-body attributions NOT-LOCALLY-CHECKED in its
+no-network sandbox. The author accepted the report, CONFIRMED the MAJOR, accepted the PASS
+results, classed the NOTEs as provenance-labeling obligations, and authorized the single
+bounded Notes-only correction pass, applied as this corrected text; the pass is now
+**SPENT**. Under the continuation cast, the remaining steps of this act are a focused
+read-only confirmation scoped to the MAJOR closure, then one normal Notes-only commit (no
+Co-Authored-By), a normal push, and a Draft PR against main whose body carries the
+commit/push/PR lineage; no commit SHA or PR number is predicted here, and the Notes are not
+to be amended later merely to insert them. STOP before Ready or merge. NOT authorized: a
+second correction pass, restoring/applying/dropping stash `5280d1e1…`, D59 work, evidence
+or figure changes, poster-repository work, the captions themselves, Della contact, new
+computation, holdout access, BMS*, Ready, or merge.

@@ -1086,3 +1086,41 @@ Update 3 records the episode, no technical byte changed after e274b36f, the Note
 final head is NOT re-reviewed, both correction passes SPENT. Branch pushed normally with
 e274b36f plus this tail; Draft PR #32 body updated to the full lineage. HARD STOP before
 Ready.
+
+## 2026-07-26 — PR #34 merge; D58-POST ACT 3 Notes-only closeout
+
+Author-cast merge of PR #34 executed after a fresh nine-point read-only preflight (PR OPEN
+and Ready at head 783e434f; origin/main at the raw anchor ddad136f; MERGEABLE/CLEAN; the
+anchor-to-head diff exactly the five figure-evidence files; rendered pins re-proven 4/4
+plus manifest; the nine raw blobs byte-identical to the anchor with the 9/9 size census;
+tracked tree clean; stash 5280d1e1 unchanged). Sole mutation: `gh pr merge 34 --merge`.
+Session-record labeling: the PR state labels, the nine preflight steps, and the
+sole-mutation statement come from this session's live `gh` and read-only checks and are not
+reproducible from committed local objects; the topology that follows is. Render-evidence
+merge anchor **20223b4b6e03d9e1ba268bd4e4d81f408d8f5780** verified: exactly two parents
+(ddad136f first, 783e434f second), origin/main equal to the merge, merge tree
+byte-identical to the PR-head tree, evidence branch and stash preserved. STOP held after
+the merge.
+
+The author then cast D58-POST ACT 3, the Notes-only closeout. Five pre-mutation checks
+PASSED (anchor equality, clean tracked tree, evidence re-hash at the anchor, stash
+identity, mechanical Update-4 numbering); branch notes/d58-post-closeout was created at the
+anchor; exactly DECISIONS + SCRATCHPAD + CHATLOG were edited; D58 Update 4 records the run,
+sampler, acceptance, evidence-topology, caption-obligation, and scope facts with captured
+and derived values distinguished. Fable verified every statement against the committed
+blobs and protocol §5, mechanically recomputing the leapfrog histogram, the IHDR
+dimensions, and both hash manifests. One fresh read-only Codex gpt-5.6-sol xHigh factual
+audit of the uncommitted three-file diff (session 019f9e2f-a010-7df3-9dfa-37332edb8b86, a
+session-log identity) returned FINDINGS: one MAJOR (this log and the SCRATCHPAD described
+the commit, push, and Draft PR of this act as already done, an anticipatory-tense error),
+two provenance NOTEs, and PASS on every numeric, hash, seal, scope, and diagnostic check.
+An author session-synchronization STOP then froze the act pre-commit with the three edits
+preserved uncommitted. The author accepted the audit, CONFIRMED the MAJOR, classed the
+NOTEs as labeling obligations, and authorized the single bounded Notes-only correction
+pass, applied as this corrected text; the pass is now SPENT. Per the continuation cast, a
+focused read-only Codex confirmation scoped to the MAJOR closure, provenance labeling, and
+regression detection gates the commit; the single Notes-only commit, normal push, and Draft
+PR against main follow only after it returns closed, with the commit/push/PR lineage
+carried by the PR body (no SHA or PR number predicted here). STOP before Ready or merge.
+The D59 stash stays untouched; the poster hand-off and the captions themselves remain
+separate author acts.
