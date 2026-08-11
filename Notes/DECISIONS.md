@@ -5716,3 +5716,61 @@ to be amended later merely to insert them. STOP before Ready or merge. NOT autho
 second correction pass, restoring/applying/dropping stash `5280d1e1…`, D59 work, evidence
 or figure changes, poster-repository work, the captions themselves, Della contact, new
 computation, holdout access, BMS*, Ready, or merge.
+
+## D62: Case B Occam dial and E6 nesting check — 2026-08-11
+
+**Problem:** Case B needed a regenerable E4 figure that separated the D17
+estimator and `occam` changes, plus an E6 numerical check of the claim that an
+encompassing model cannot have a worse best achievable divergence than either
+of its exact restrictions. The local `runs/viz_unification/` directory contains
+figures and logs only and cannot serve as an input. The canonical visualization
+box also starts the sinusoid amplitude at 0.01, while exact Linear nesting
+requires A=0.
+
+**Decision:** Added `experiments/occam_dial_figure.py` and
+`experiments/e6_nesting_monotonicity.py`, both writing to
+`runs/occam_dial/`. Both scripts build the `informative`-configuration,
+MAP-based averaged GP through `bistar_viz/scripts/_viz_spaces.py` at n=50,
+with data seed 42, 80 evaluation points, and primary metric `pw_kl_vcal`.
+The figure runs the p1 pure-Laplace `occam=True`, p2 IS `occam=True`, and p3 IS
+`occam=False` arms at τ=0.3, IS seed 0, `n_is=40000`, and five seeded
+perturbations per start. Its absolute anchor tolerance equals 0.003, allowing
+three-decimal source rounding and small cross-platform optimizer variation
+while remaining below the p2 decision gap. E6 calls
+`_multistart_G_optima`, `compute_G_at_params`, and `is_log_Z_Mx` from
+`bistar_gp/laplace_evidence.py`; it does not reimplement Ḡ. E6 extends
+only the encompassing amplitude boundary to A=0, seeds its optimizer with
+the exact restricted optima, and uses `n_is=100000` over 161 log-spaced
+temperatures from 0.031623 through 316.227766. One IS call per model supplies
+the raw sweep, and the package reference-volume helper supplies the
+`occam=True` sweep. The min-Ḡ tolerance equals 10^-8, with a 10^-10
+exact-embedding check.
+
+**Alternatives considered:** Reading `delta_table.md` or the local logs as the
+figure data source was rejected because those artifacts remain local and
+untracked; the table now provides an optional cross-check only. Comparing p1
+directly with p3 as a pure `occam` ablation was rejected because the arms also
+change the Z_M estimator; p2 isolates the estimator step. Retaining the
+0.01 amplitude cutoff for E6 was rejected because it excludes the stated
+A=0 restriction. Reimplementing the divergence or optimizer was rejected
+in favor of the package machinery required by the work order.
+
+**Result:** `runs/occam_dial/figure_results.json` reproduces the n=50 arms:
+p1 Linear 0.534121, Sinusoidal 0.075747, Sin+Linear 0.382052, Quadratic
+0.008080; p2 Linear 0.506877, Sinusoidal 0.020499, Sin+Linear 0.464791,
+Quadratic 0.007834; p3 Linear 0.007040, Sinusoidal 0.001093, Sin+Linear
+0.991758, Quadratic 0.000109. The p1-to-p2 estimator change narrows the Linear
+versus Sin+Linear gap, and the p2-to-p3 convention change decides the verdict.
+D17's legacy 0.934 and 0.693 values remain explicitly labeled as recorded
+legacy findings and are not recomputed by the new scripts.
+
+E6 found min-Ḡ 0.045516783 for Sin+Linear, 2.424774370 for Linear, and
+2.546229649 for Sinusoidal, giving restricted-minus-encompassing margins
+2.379257587 and 2.500712865. Both nesting inequalities hold. Under
+`occam=False`, neither pair crosses on the tested τ grid. Under
+`occam=True`, Linear overtakes Sin+Linear at τ=0.295184 within the bracket
+[0.281838, 0.298538], and Sinusoidal overtakes at τ=1.484355 within
+[1.412538, 1.496236]. Minimum ESS values equal 14903 for Linear, 1373 for
+Sinusoidal, and 831 for Sin+Linear. The figure remains below the 2 MB
+limit. Exact rerun commands: `python experiments/occam_dial_figure.py` and
+`python experiments/e6_nesting_monotonicity.py`.

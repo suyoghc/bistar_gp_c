@@ -1,0 +1,194 @@
+{
+  "anchor_checks": {
+    "p1_priors_lap_occam": {
+      "Linear": {
+        "absolute_error": 0.00012117610177397875,
+        "actual": 0.534121176101774,
+        "expected": 0.534,
+        "passed": true
+      },
+      "Sin+Linear": {
+        "absolute_error": 5.16271444940819e-05,
+        "actual": 0.3820516271444941,
+        "expected": 0.382,
+        "passed": true
+      }
+    },
+    "p2_priors_is_occam": {
+      "Linear": {
+        "absolute_error": 0.0001234753523423615,
+        "actual": 0.5068765246476576,
+        "expected": 0.507,
+        "passed": true
+      },
+      "Sin+Linear": {
+        "absolute_error": 0.00020914428525986573,
+        "actual": 0.46479085571474016,
+        "expected": 0.465,
+        "passed": true
+      }
+    },
+    "p3_priors_canonical": {
+      "Sin+Linear": {
+        "absolute_error": 0.00024230569270233815,
+        "actual": 0.9917576943072977,
+        "expected": 0.992,
+        "passed": true
+      }
+    }
+  },
+  "anchor_tolerance_absolute_probability": 0.003,
+  "arms": {
+    "p1_priors_lap_occam": {
+      "ess": {
+        "Linear": null,
+        "Quadratic": null,
+        "Sin+Linear": null,
+        "Sinusoidal": null
+      },
+      "estimator": "laplace",
+      "log_Z_M": {
+        "Linear": -15.165401538600314,
+        "Quadratic": -19.3566141369075,
+        "Sin+Linear": -15.500468524289005,
+        "Sinusoidal": -17.118624784446126
+      },
+      "model_posterior": {
+        "Linear": 0.534121176101774,
+        "Quadratic": 0.008080147573789803,
+        "Sin+Linear": 0.3820516271444941,
+        "Sinusoidal": 0.07574704917994204
+      },
+      "occam": true
+    },
+    "p2_priors_is_occam": {
+      "ess": {
+        "Linear": 11363.35016462474,
+        "Quadratic": 9409.970831256755,
+        "Sin+Linear": 3180.462456067874,
+        "Sinusoidal": 680.849114003975
+      },
+      "estimator": "is",
+      "log_Z_M": {
+        "Linear": -15.174751675190652,
+        "Quadratic": -19.344539317824736,
+        "Sin+Linear": -15.261431576239175,
+        "Sinusoidal": -18.382664063985942
+      },
+      "model_posterior": {
+        "Linear": 0.5068765246476576,
+        "Quadratic": 0.00783405135143996,
+        "Sin+Linear": 0.46479085571474016,
+        "Sinusoidal": 0.020498568286162287
+      },
+      "occam": true
+    },
+    "p3_priors_canonical": {
+      "ess": {
+        "Linear": 11363.35016462474,
+        "Quadratic": 9409.970831256755,
+        "Sin+Linear": 3180.462456067874,
+        "Sinusoidal": 680.849114003975
+      },
+      "estimator": "is",
+      "log_Z_M": {
+        "Linear": -11.485872221076717,
+        "Quadratic": -15.655659863710799,
+        "Sin+Linear": -6.538003940835886,
+        "Sinusoidal": -13.348115882696586
+      },
+      "model_posterior": {
+        "Linear": 0.007040016665579024,
+        "Quadratic": 0.00010880727236574364,
+        "Sin+Linear": 0.9917576943072977,
+        "Sinusoidal": 0.001093481754757355
+      },
+      "occam": false
+    }
+  },
+  "artifact": "occam_dial_figure",
+  "case": "B",
+  "interpretation_scope": "informative-config, MAP-based methods-validation and legacy-comparison material; the comparison evaluates the occam convention, not which model generated the data",
+  "legacy_context_not_recomputed": {
+    "legacy_priors_Linear_n50": 0.693,
+    "legacy_trajectory_Sin+Linear_n50": 0.934,
+    "pinned_legacy_commit": "a87356a",
+    "regeneration_script": "bistar_viz/scripts/viz_unification_compare.py",
+    "source": "Notes/DECISIONS.md D17"
+  },
+  "optional_local_crosscheck": {
+    "available": true,
+    "checks": {
+      "p1_priors_lap_occam": {
+        "absolute_errors": {
+          "Linear": 0.00012117610177397875,
+          "Quadratic": 8.014757378980303e-05,
+          "Sin+Linear": 5.16271444940819e-05,
+          "Sinusoidal": 0.0002529508200579539
+        },
+        "found": true,
+        "passed": true,
+        "table_values": {
+          "Linear": 0.534,
+          "Quadratic": 0.008,
+          "Sin+Linear": 0.382,
+          "Sinusoidal": 0.076
+        }
+      },
+      "p2_priors_is_occam": {
+        "absolute_errors": {
+          "Linear": 0.0001234753523423615,
+          "Quadratic": 0.00016594864856003984,
+          "Sin+Linear": 0.00020914428525986573,
+          "Sinusoidal": 0.0004985682861622862
+        },
+        "found": true,
+        "passed": true,
+        "table_values": {
+          "Linear": 0.507,
+          "Quadratic": 0.008,
+          "Sin+Linear": 0.465,
+          "Sinusoidal": 0.02
+        }
+      },
+      "p3_priors_canonical": {
+        "absolute_errors": {
+          "Linear": 4.0016665579023676e-05,
+          "Quadratic": 0.00010880727236574364,
+          "Sin+Linear": 0.00024230569270233815,
+          "Sinusoidal": 9.3481754757355e-05
+        },
+        "found": true,
+        "passed": true,
+        "table_values": {
+          "Linear": 0.007,
+          "Quadratic": 0.0,
+          "Sin+Linear": 0.992,
+          "Sinusoidal": 0.001
+        }
+      }
+    },
+    "path": "runs/viz_unification/delta_table.md"
+  },
+  "provenance": {
+    "data_seed": 42,
+    "evidence": "bistar_gp/laplace_evidence.py",
+    "gp_config": "informative",
+    "gp_method": "map",
+    "gp_predictives_retained": 1,
+    "is_seed": 0,
+    "metric": "pw_kl_vcal",
+    "n": 50,
+    "n_draws_requested": 150,
+    "n_is": 40000,
+    "n_perturb": 5,
+    "spaces": "bistar_viz/scripts/_viz_spaces.py:canonical_spaces",
+    "tau": 0.3,
+    "x_eval_count": 80,
+    "x_eval_range": [
+      -10.0,
+      10.0
+    ]
+  },
+  "schema_version": 1
+}
