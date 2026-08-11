@@ -5716,3 +5716,83 @@ to be amended later merely to insert them. STOP before Ready or merge. NOT autho
 second correction pass, restoring/applying/dropping stash `5280d1e1…`, D59 work, evidence
 or figure changes, poster-repository work, the captions themselves, Della contact, new
 computation, holdout access, BMS*, Ready, or merge.
+
+## D63: Case C nested slope constraint under BMS* and PSIS-LOO — 2026-08-11
+
+**Problem:** Case C needed a direct mirror of Haaf, Klaassen, and Rouder's
+parameter-region comparison, not the toy example's cross-family nesting. The
+comparison had to use the constraint-consistent, data-elicited $N=20$ toy
+instance and place a free Sin+Linear candidate beside an otherwise identical
+$b\geq0$ candidate. BMS* had to follow the validated `toy_elicited` SIR path
+under both pooled and expected-posterior aggregation, while PSIS-LOO had to fit
+Bayesian versions of the same pair on identical observations. The original
+directional claim could not determine how the comparison came out.
+
+**Decision:** Added `experiments/haaf_nested_constraint.py`, which writes
+`runs/haaf_nested_constraint/{results.json,README.md}`. The canonical command
+`python experiments/haaf_nested_constraint.py` uses
+`generate_toy_data()` defaults ($N=20$, data seed 42, true $b=0.25$, noise
+standard deviation 0.5). Both candidates call
+`bistar_gp.candidates.CandidateModel._fit_mle`; they share all starts and
+bounds except the lower slope bound, unrestricted for the free candidate and
+zero for the restricted candidate. A common log-sigma bound of [-10, 5]
+prevents exploratory underflow. Each shared $\psi$ receives a fresh fit, so the
+per-draw free-slope sign can account for the BMS* gap.
+
+The BMS* arm imports `prior_sensitivity_study.py`, loads the local
+`toy_elicited` prior-IS caches for seeds 0, 1, and 2, and calls the validated
+stage-IS machinery with SIR seed 42 and `n_pred=1000`. It imports the pooled
+and expected-posterior aggregations from
+`e7_convention_sensitivity.py`, reports $\tau\in\{0.1,0.3,1,3,10\}$, uses
+`pw_kl_vcal` as the primary metric, and confines `kl_forward` to an appendix
+stress table. Candidate-parameter priors do not enter BMS*.
+
+The LOO arm alone uses weakly informative priors: $A\sim$ HalfNormal(5),
+$\omega\sim$ LogNormal(0, 0.7), $\phi\sim$ Uniform($-\pi,\pi$),
+$c\sim$ Normal(0, 5), and $\sigma\sim$ HalfNormal(2); the free candidate uses
+$b\sim$ Normal(0, 5), while the restricted candidate uses $b\sim$
+HalfNormal(5). Pyro NUTS runs sequential chains with seeds 20260811 and
+20260812, each with 1,000 warmup iterations and 1,000 retained draws, target
+acceptance probability 0.90, and maximum tree depth 8. ArviZ computes
+pointwise PSIS-LOO. Structural G tolerances equal $2\times10^{-7}$ for both
+interior equality and one-sided nesting; cross-machine artifact tolerances
+equal 0.005 for probabilities and the slope fraction, 0.25 elpd for each LOO
+estimate, and 0.25 elpd for the paired difference.
+
+**Alternatives considered:** Drawing new data was rejected because it would
+break the binding between the $N=20$ observations, their data-elicited GP
+prior, and the validated M2bR basis. Changing `bistar_gp/` was rejected because
+the existing protected `_fit_mle(..., bounds=...)` hook supplies the needed
+constraint. Fitting each candidate only once to the observations was rejected
+because the positive observed-data slope would make the two predictions
+identical and could not produce the required per-$\psi$ slope diagnostic.
+Reimplementing the SIR or aggregation formulas was rejected in favor of the
+required imports. One NUTS chain was allowed by the work order, but two seeded
+chains provide rank-normalized $\widehat R$ diagnostics. A figure was omitted
+because the table and slope-sign count contain the full comparison.
+
+**Result:** The pooled prior-IS ESS equals 4,464.53, and the 1,000 SIR rows
+contain 883 unique cached draws. The free best-fit slope falls below zero on
+1/1,000 rows, a fraction of 0.001. The remaining 999 rows have identical
+primary G values for both candidates to the recorded tolerance. On the one
+negative-slope row, restricted minus free G equals 0.000360, so the one-sided
+nesting check passes with zero violations.
+
+At $\tau=1$, pooled BMS* assigns 0.500000112 to the free candidate and
+0.499999888 to the restricted candidate; expected-posterior aggregation
+assigns 0.500000090 and 0.499999910. The restricted pooled probability ranges
+from 0.499996100 at $\tau=0.1$ to 0.499999991 at $\tau=10$; its
+expected-posterior probability ranges from 0.499999100 to 0.499999991. Thus
+BMS* reports an effective tie throughout the sweep.
+
+PSIS-LOO reports `elpd_loo=-13.074` (SE 3.458, `p_loo=5.343`) for the free
+candidate and `elpd_loo=-12.661` (SE 3.594, `p_loo=5.169`) for the restricted
+candidate. The restricted-minus-free difference equals 0.413 with paired SE
+0.263. Both NUTS fits have zero divergences; maximum rank-normalized
+$\widehat R$ equals 1.003 free and 1.002 restricted, and minimum bulk ESS
+equals 1,004 and 1,638. The free maximum Pareto $k$ equals 0.564 with no
+warning. The restricted maximum equals 0.718, and ArviZ flags one observation
+above its 0.697 good-$k$ threshold. The direction favors the restriction under
+LOO but requires that qualification. Case C therefore records a split null:
+LOO gives a small, diagnostically qualified advantage to the restricted
+candidate, while BMS* gives neither candidate a meaningful advantage.
