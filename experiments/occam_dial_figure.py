@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -337,18 +338,90 @@ def _seed_crossing_text(pair: dict[str, Any], convention: str) -> str:
     return "; ".join(pieces)
 
 
+def _outward_rounded_interval(
+    intervals: list[list[float]], digits: int
+) -> tuple[float, float]:
+    """Return the intervals' union with endpoints rounded outward."""
+    scale = 10**digits
+    lower = min(endpoint for interval in intervals for endpoint in interval)
+    upper = max(endpoint for interval in intervals for endpoint in interval)
+    return math.floor(lower * scale) / scale, math.ceil(upper * scale) / scale
+
+
 def _resolution_paragraph(e6: dict[str, Any]) -> str:
     linear = e6["nested_pairs"]["Linear_within_Sin+Linear"]
     sinusoidal = e6["nested_pairs"]["Sinusoidal_within_Sin+Linear"]
     linear_u = linear["crossing_uncertainty"]["occam_true"]
     sinusoidal_u = sinusoidal["crossing_uncertainty"]["occam_true"]
-    linear_se = linear_u["ess_implied_one_se_common_mode_shift_seed_0"]
-    sinusoidal_se = sinusoidal_u["ess_implied_one_se_common_mode_shift_seed_0"]
-    linear_se_interval = linear_se["tau_interval_log_interpolated"]
-    sinusoidal_se_interval = sinusoidal_se["tau_interval_log_interpolated"]
-    sinusoidal_shift_upper_grid = sinusoidal_se[
-        "shifted_crossing_grid_brackets"
-    ][1][1]
+
+    if linear_u is None:
+        linear_resolution = (
+            "With `occam=True`, Linear has no crossing on the tested grid."
+        )
+    else:
+        linear_se = linear_u["ess_implied_one_se_common_mode_shift_seed_0"]
+        linear_se_interval = linear_se["tau_interval_log_interpolated"]
+        linear_resolution = (
+            "With `occam=True`, Linear crosses at "
+            f"{_seed_crossing_text(linear, 'occam_true')}; the per-seed "
+            "interpolant spread is "
+            f"[{linear_u['per_seed_interpolant_spread'][0]:.3f}, "
+            f"{linear_u['per_seed_interpolant_spread'][1]:.3f}]"
+        )
+        if linear_se_interval is None:
+            linear_resolution += (
+                ". The seed-0 ESS-implied shifted Linear curves have no crossing "
+                "on the tested grid."
+            )
+        else:
+            linear_resolution += (
+                ", and the seed-0 ESS-implied one-SE shift interval is "
+                f"[{linear_se_interval[0]:.3f}, {linear_se_interval[1]:.3f}]. "
+                "Its seed-0 bracket delta swing "
+                f"({linear_se['delta_log_Z_swing_across_nominal_bracket']:.3f} "
+                "nats) exceeds the ESS-implied SE "
+                f"({max(linear_se['delta_log_Z_se_at_nominal_bracket']):.3f} "
+                "nats), which supports reporting τ=0.295."
+            )
+
+    if sinusoidal_u is None:
+        sinusoidal_resolution = (
+            "Sinusoidal has no crossing on the tested grid."
+        )
+    else:
+        sinusoidal_se = sinusoidal_u[
+            "ess_implied_one_se_common_mode_shift_seed_0"
+        ]
+        sinusoidal_se_interval = sinusoidal_se[
+            "tau_interval_log_interpolated"
+        ]
+        sinusoidal_resolution = (
+            "Sinusoidal crosses at "
+            f"{_seed_crossing_text(sinusoidal, 'occam_true')}; the supported "
+            "summary is τ ≈ 1.5, with per-seed interpolant spread "
+            f"[{sinusoidal_u['per_seed_interpolant_spread'][0]:.3f}, "
+            f"{sinusoidal_u['per_seed_interpolant_spread'][1]:.3f}]"
+        )
+        shifted_brackets = sinusoidal_se["shifted_crossing_grid_brackets"]
+        if sinusoidal_se_interval is None or shifted_brackets is None:
+            sinusoidal_resolution += (
+                ". The seed-0 ESS-implied shifted Sinusoidal curves have no "
+                "crossing on the tested grid."
+            )
+        else:
+            enclosing_interval = _outward_rounded_interval(
+                shifted_brackets
+                + [sinusoidal_u["per_seed_interpolant_spread"]],
+                digits=2,
+            )
+            sinusoidal_resolution += (
+                " and seed-0 ESS-implied shift roots "
+                f"[{sinusoidal_se_interval[0]:.3f}, "
+                f"{sinusoidal_se_interval[1]:.3f}]. The enclosing grid-and-seed "
+                "uncertainty interval is about τ "
+                f"{enclosing_interval[0]:.2f} to {enclosing_interval[1]:.2f}."
+            )
+
     return (
         "**Resolution (RESOLVED, E6):** Given exact embeddings and the mean-only "
         "`pw_kl_vcal` divergence, each min-Ḡ inequality follows analytically from "
@@ -357,28 +430,31 @@ def _resolution_paragraph(e6: dict[str, Any]) -> str:
         f"{linear['margin_restricted_minus_encompassing']:.3f} nats for Linear and "
         f"{sinusoidal['margin_restricted_minus_encompassing']:.3f} nats for "
         "Sinusoidal. Across 161 τ values and IS seeds 0, 1, and 2, raw Lebesgue "
-        "`occam=False` yields no pairwise crossing. With `occam=True`, Linear "
-        f"crosses at {_seed_crossing_text(linear, 'occam_true')}; the per-seed "
-        f"interpolant spread is [{linear_u['per_seed_interpolant_spread'][0]:.3f}, "
-        f"{linear_u['per_seed_interpolant_spread'][1]:.3f}], and the seed-0 "
-        f"ESS-implied one-SE shift interval is [{linear_se_interval[0]:.3f}, "
-        f"{linear_se_interval[1]:.3f}]. Its seed-0 bracket delta swing "
-        f"({linear_se['delta_log_Z_swing_across_nominal_bracket']:.3f} nats) "
-        "exceeds the ESS-implied SE "
-        f"({max(linear_se['delta_log_Z_se_at_nominal_bracket']):.3f} nats), "
-        "which supports reporting τ=0.295. Sinusoidal crosses at "
-        f"{_seed_crossing_text(sinusoidal, 'occam_true')}; the supported summary "
-        "is τ ≈ 1.5, with per-seed interpolant spread "
-        f"[{sinusoidal_u['per_seed_interpolant_spread'][0]:.3f}, "
-        f"{sinusoidal_u['per_seed_interpolant_spread'][1]:.3f}] and seed-0 "
-        f"ESS-implied shift roots [{sinusoidal_se_interval[0]:.3f}, "
-        f"{sinusoidal_se_interval[1]:.3f}]. The enclosing shifted-root grid "
-        f"bracket gives the uncertainty statement τ about "
-        f"{sinusoidal_se_interval[0]:.2f} to {sinusoidal_shift_upper_grid:.2f}. "
+        f"`occam=False` yields no pairwise crossing. {linear_resolution} "
+        f"{sinusoidal_resolution} "
         "Crossing resolution is set by the larger of grid spacing and Monte "
         "Carlo error. The empirical content comprises the margins and finite-τ "
         "Z_M crossings."
     )
+
+
+def _self_test_resolution_paragraph_no_crossing() -> None:
+    synthetic = {
+        "nested_pairs": {
+            "Linear_within_Sin+Linear": {
+                "margin_restricted_minus_encompassing": 1.0,
+                "crossing_uncertainty": {"occam_true": None},
+            },
+            "Sinusoidal_within_Sin+Linear": {
+                "margin_restricted_minus_encompassing": 2.0,
+                "crossing_uncertainty": {"occam_true": None},
+            },
+        }
+    }
+    prose = _resolution_paragraph(synthetic)
+    assert isinstance(prose, str) and prose
+    assert "Linear has no crossing on the tested grid." in prose
+    assert "Sinusoidal has no crossing on the tested grid." in prose
 
 
 def write_combined_readme(out_dir: Path) -> None:
@@ -628,6 +704,7 @@ def main() -> None:
         "--anchor-tolerance", type=float, default=ANCHOR_TOLERANCE
     )
     args = parser.parse_args()
+    _self_test_resolution_paragraph_no_crossing()
     results = run(
         args.out_dir.resolve(),
         n_is=args.n_is,

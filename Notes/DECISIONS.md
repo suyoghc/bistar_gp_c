@@ -5785,11 +5785,13 @@ swing of 0.354 nats exceeds the approximately 0.012-nat SE, supporting the
 three-decimal crossing. The Sinusoidal crossing occurs at 1.484, 1.584, and
 1.382 and supports only τ ≈ 1.5; the seed-0 bracket is [1.413, 1.496], the
 per-seed spread is [1.382, 1.584], and the ESS shift roots are [1.392, 1.563].
-The enclosing shifted-root grid bracket gives an uncertainty interval of about
-τ 1.39 to 1.58. Crossing resolution is set by the larger of grid spacing and
+The enclosing grid-and-seed uncertainty interval is about τ 1.33 to 1.59.
+Crossing resolution is set by the larger of grid spacing and
 Monte Carlo error. The empirical content comprises these margins and finite-τ
 crossings. The REVIEW_AND_VET resolution text is mirrored into the committed
 `runs/occam_dial/README.md` because `kb/` is gitignored. The figure remains
 below the 2 MB limit. Exact rerun commands:
 `python experiments/occam_dial_figure.py` and
 `python experiments/e6_nesting_monotonicity.py`.
+
+**Review outcome (2026-08-11):** §4 four-model protocol complete (Codex gpt-5.6-sol xhigh; Opus 5; Gemini 3.1 Pro via author-directed API substitution; Kimi K3 author-run pending) — round-1 REVISE with 11 cross-verified findings (0 refuted), all RESOLVED via fix pass c15a65f plus a bounded micro-fix for two hunk-introduced defects (driver-verified mechanically; no third review round per rule 4); full record runs/occam_dial/reviews/VERDICTS.md; author adjudications open: F2/NEW-1 and O2 statistical sign-offs, kb force-add variant, Kimi round.

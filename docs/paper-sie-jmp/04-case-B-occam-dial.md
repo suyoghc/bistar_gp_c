@@ -88,7 +88,7 @@ the three-decimal Linear crossing is sign-supported. The Sinusoidal crossing
 occurs at 1.484, 1.584, and 1.382 across those seeds; it should be summarized
 only as τ ≈ 1.5. Its seed-0 bracket is [1.413, 1.496], the per-seed spread is
 [1.382, 1.584], and the seed-0 ESS shift roots are [1.392, 1.563]. The enclosing
-shifted-root grid bracket gives an uncertainty interval of about τ 1.39 to 1.58.
+grid-and-seed uncertainty interval is about τ 1.33 to 1.59.
 Crossing resolution is set by the larger of grid spacing and Monte Carlo error.
 Thus low temperature supports Popper's encompassing constraint in both
 conventions for this example, while V_ref normalization permits the
