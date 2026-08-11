@@ -47,13 +47,31 @@
         "Sinusoidal": null
       },
       "estimator": "laplace",
+      "laplace_diagnostics": {
+        "Linear": {
+          "converged": true,
+          "n_clipped": 0
+        },
+        "Quadratic": {
+          "converged": true,
+          "n_clipped": 0
+        },
+        "Sin+Linear": {
+          "converged": true,
+          "n_clipped": 0
+        },
+        "Sinusoidal": {
+          "converged": true,
+          "n_clipped": 0
+        }
+      },
       "log_Z_M": {
         "Linear": -15.165401538600314,
         "Quadratic": -19.3566141369075,
         "Sin+Linear": -15.500468524289005,
         "Sinusoidal": -17.118624784446126
       },
-      "model_posterior": {
+      "model_prior": {
         "Linear": 0.534121176101774,
         "Quadratic": 0.008080147573789803,
         "Sin+Linear": 0.3820516271444941,
@@ -75,7 +93,7 @@
         "Sin+Linear": -15.261431576239175,
         "Sinusoidal": -18.382664063985942
       },
-      "model_posterior": {
+      "model_prior": {
         "Linear": 0.5068765246476576,
         "Quadratic": 0.00783405135143996,
         "Sin+Linear": 0.46479085571474016,
@@ -97,7 +115,7 @@
         "Sin+Linear": -6.538003940835886,
         "Sinusoidal": -13.348115882696586
       },
-      "model_posterior": {
+      "model_prior": {
         "Linear": 0.007040016665579024,
         "Quadratic": 0.00010880727236574364,
         "Sin+Linear": 0.9917576943072977,
@@ -168,6 +186,7 @@
         }
       }
     },
+    "machine_dependent": true,
     "path": "runs/viz_unification/delta_table.md"
   },
   "provenance": {
@@ -190,5 +209,5 @@
       10.0
     ]
   },
-  "schema_version": 1
+  "schema_version": 2
 }

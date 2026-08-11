@@ -2,9 +2,10 @@
 """Run the Case B E6 nesting and finite-τ ordering check.
 
 The script uses the existing multi-start Ḡ optimizer and defensive-mixture IS
-implementation. It tests exact Linear and Sinusoidal restrictions inside an
-encompassing Sin+Linear parameter space, then computes both reference-measure
-conventions over one shared τ grid.
+implementation. Exact embeddings and a mean-only divergence make the min-Ḡ
+inequality an analytic consequence of box containment; E6 checks that the
+implementation reproduces it, quantifies the margins, and computes both
+reference-measure conventions over one shared τ grid.
 """
 
 from __future__ import annotations
@@ -37,7 +38,6 @@ from bistar_gp.laplace_evidence import (  # noqa: E402
 from occam_dial_figure import (  # noqa: E402
     DATA_SEED,
     DEFAULT_OUT_DIR,
-    IS_SEED,
     MODEL_NAMES,
     N_DRAWS,
     N_PERTURB,
@@ -47,6 +47,7 @@ from occam_dial_figure import (  # noqa: E402
 
 
 N_IS = 100_000
+IS_SEEDS = (0, 1, 2)
 TAUS = np.logspace(-1.5, 2.5, 161)
 MIN_G_TOLERANCE = 1e-8
 EMBEDDING_TOLERANCE = 1e-10
@@ -107,8 +108,21 @@ def _crossings(taus: np.ndarray, delta: np.ndarray) -> list[dict[str, Any]]:
     found = []
     for index in range(len(taus) - 1):
         left, right = float(delta[index]), float(delta[index + 1])
+        if left == 0.0 and right == 0.0:
+            continue
+        if (
+            left == 0.0
+            and found
+            and found[-1].get("exact_grid_index") == index
+        ):
+            continue
+        exact_grid_index = None
         if left == 0.0:
             estimate = float(taus[index])
+            exact_grid_index = index
+        elif right == 0.0:
+            estimate = float(taus[index + 1])
+            exact_grid_index = index + 1
         elif left * right > 0.0:
             continue
         else:
@@ -116,16 +130,21 @@ def _crossings(taus: np.ndarray, delta: np.ndarray) -> list[dict[str, Any]]:
             estimate = float(
                 10.0 ** (log_left - left * (log_right - log_left) / (right - left))
             )
-        found.append(
-            {
-                "lower_grid_index": index,
-                "tau_bracket": [float(taus[index]), float(taus[index + 1])],
-                "delta_log_Z_bracket": [left, right],
-                "tau_log_interpolated": estimate,
-                "winner_below": "encompassing" if left > 0.0 else "restricted",
-                "winner_above": "encompassing" if right > 0.0 else "restricted",
-            }
-        )
+        crossing = {
+            "lower_grid_index": index,
+            "tau_bracket": [float(taus[index]), float(taus[index + 1])],
+            "delta_log_Z_bracket": [left, right],
+            "tau_log_interpolated": estimate,
+            "winner_below": (
+                "encompassing" if left > 0.0 else "restricted" if left < 0.0 else "tie"
+            ),
+            "winner_above": (
+                "encompassing" if right > 0.0 else "restricted" if right < 0.0 else "tie"
+            ),
+        }
+        if exact_grid_index is not None:
+            crossing["exact_grid_index"] = exact_grid_index
+        found.append(crossing)
     return found
 
 
@@ -140,14 +159,103 @@ def _ordering_summary(
         "delta_definition": "log Z_M(encompassing) - log Z_M(restricted)",
         "delta_log_Z": delta,
         "crossings": crossings,
-        "winner_at_tau_min": "encompassing" if delta[0] > 0.0 else "restricted",
-        "winner_at_tau_max": "encompassing" if delta[-1] > 0.0 else "restricted",
+        "winner_at_tau_min": (
+            "encompassing" if delta[0] > 0.0 else "restricted" if delta[0] < 0.0 else "tie"
+        ),
+        "winner_at_tau_max": (
+            "encompassing" if delta[-1] > 0.0 else "restricted" if delta[-1] < 0.0 else "tie"
+        ),
         "delta_at_tau_min": float(delta[0]),
         "delta_at_tau_max": float(delta[-1]),
         "minimum_absolute_delta_grid_point": {
             "tau": float(taus[int(np.argmin(np.abs(delta)))]),
             "delta_log_Z": float(delta[int(np.argmin(np.abs(delta)))]),
         },
+    }
+
+
+def _nearest_crossing(
+    crossings: list[dict[str, Any]], target: float
+) -> dict[str, Any] | None:
+    if not crossings:
+        return None
+    return min(crossings, key=lambda item: abs(item["tau_log_interpolated"] - target))
+
+
+def _crossing_uncertainty(
+    orderings_by_seed: dict[str, dict[str, Any]],
+    sweeps_by_seed: dict[str, dict[str, Any]],
+    restricted_name: str,
+    convention: str,
+) -> dict[str, Any] | None:
+    """Combine grid, seed, and ESS information for a single crossing."""
+    per_seed = {
+        seed: ordering[convention]["crossings"]
+        for seed, ordering in orderings_by_seed.items()
+    }
+    estimates = [
+        crossing["tau_log_interpolated"]
+        for crossings in per_seed.values()
+        for crossing in crossings
+    ]
+    seed_zero_crossings = per_seed.get("0", [])
+    if not estimates or not seed_zero_crossings:
+        return None
+
+    seed_zero = seed_zero_crossings[0]
+    nominal = float(seed_zero["tau_log_interpolated"])
+    seed_zero_ordering = orderings_by_seed["0"][convention]
+    delta = np.asarray(seed_zero_ordering["delta_log_Z"], dtype=float)
+    restricted_ess = np.asarray(
+        sweeps_by_seed["0"][restricted_name][convention]["ess"], dtype=float
+    )
+    encompassing_ess = np.asarray(
+        sweeps_by_seed["0"]["Sin+Linear"][convention]["ess"], dtype=float
+    )
+    delta_se = np.sqrt(1.0 / restricted_ess + 1.0 / encompassing_ess)
+    lower = _nearest_crossing(_crossings(TAUS, delta - delta_se), nominal)
+    upper = _nearest_crossing(_crossings(TAUS, delta + delta_se), nominal)
+    if lower is None or upper is None:
+        one_se_interval = None
+        shifted_brackets = None
+    else:
+        shifted = sorted(
+            [lower, upper], key=lambda item: item["tau_log_interpolated"]
+        )
+        one_se_interval = [
+            float(shifted[0]["tau_log_interpolated"]),
+            float(shifted[1]["tau_log_interpolated"]),
+        ]
+        shifted_brackets = [
+            shifted[0]["tau_bracket"],
+            shifted[1]["tau_bracket"],
+        ]
+
+    bracket_index = int(seed_zero["lower_grid_index"])
+    bracket_delta = np.asarray(seed_zero["delta_log_Z_bracket"], dtype=float)
+    return {
+        "grid_bracket_seed_0": seed_zero["tau_bracket"],
+        "per_seed_crossings": per_seed,
+        "per_seed_interpolant_spread": [float(min(estimates)), float(max(estimates))],
+        "ess_implied_one_se_common_mode_shift_seed_0": {
+            "method": (
+                "shift the seed-0 delta-log-Z curve by plus or minus "
+                "sqrt(1/ESS_encompassing + 1/ESS_restricted) at each grid point"
+            ),
+            "tau_interval_log_interpolated": one_se_interval,
+            "shifted_crossing_grid_brackets": shifted_brackets,
+            "delta_log_Z_se_at_nominal_bracket": [
+                float(delta_se[bracket_index]),
+                float(delta_se[bracket_index + 1]),
+            ],
+            "delta_log_Z_swing_across_nominal_bracket": float(
+                abs(bracket_delta[1] - bracket_delta[0])
+            ),
+        },
+        "resolution_rule": (
+            "crossing resolution is set by the larger of grid spacing and "
+            "Monte Carlo error"
+        ),
     }
 
 
@@ -232,48 +340,52 @@ def run(out_dir: Path, *, n_is: int) -> dict[str, Any]:
         # instead uses interior starts plus the best encompassing optimum.
         "Sin+Linear": starts["Sin+Linear"] + [encompassing_phi],
     }
-    sweeps: dict[str, dict[str, Any]] = {}
-    for name, param_space in spaces.items():
-        # One package IS call computes the full τ sweep. The package's
-        # reference-volume helper then applies the documented occam variant.
-        # NumPy 2 on Accelerate can emit spurious matmul floating warnings for
-        # the large proposal draw even when every returned diagnostic remains
-        # finite, so the scoped errstate accompanies explicit finiteness checks.
-        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-            result = is_log_Z_Mx(
-                param_space,
-                x_eval,
-                avg_gp,
-                TAUS,
-                n_is=n_is,
-                seed=IS_SEED,
-                starts=starts_by_model[name],
-                metric_name="pw_kl_vcal",
-                occam=False,
-            )
-        if not np.all(np.isfinite(result.log_Z)) or not np.all(
-            np.isfinite(result.ess)
-        ):
-            raise AssertionError(f"non-finite IS result for {name}")
-        log_volume = float(_log_reference_volume(param_space))
-        normalized_log_z = result.log_Z - log_volume
-        sweeps[name] = {
-            "occam_false": {
-                "log_Z_M": result.log_Z,
-                "ess": result.ess,
-                "min_ess": float(np.min(result.ess)),
-            },
-            "occam_true": {
-                "log_Z_M": normalized_log_z,
-                "ess": result.ess,
-                "min_ess": float(np.min(result.ess)),
-                "derived_from_raw_with": (
-                    "bistar_gp.laplace_evidence._log_reference_volume"
-                ),
-            },
-            "log_reference_volume": log_volume,
-            "is_calls": 1,
-        }
+    sweeps_by_seed: dict[str, dict[str, Any]] = {}
+    for seed in IS_SEEDS:
+        sweeps: dict[str, dict[str, Any]] = {}
+        for name, param_space in spaces.items():
+            # One package IS call per model and seed computes the full τ sweep.
+            # The reference-volume helper then applies the occam variant.
+            # NumPy 2 on Accelerate can emit spurious matmul floating warnings
+            # for the large proposal draw even when every returned diagnostic
+            # remains finite, so the scoped errstate accompanies explicit
+            # finiteness checks.
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                result = is_log_Z_Mx(
+                    param_space,
+                    x_eval,
+                    avg_gp,
+                    TAUS,
+                    n_is=n_is,
+                    seed=seed,
+                    starts=starts_by_model[name],
+                    metric_name="pw_kl_vcal",
+                    occam=False,
+                )
+            if not np.all(np.isfinite(result.log_Z)) or not np.all(
+                np.isfinite(result.ess)
+            ):
+                raise AssertionError(f"non-finite IS result for {name}, seed {seed}")
+            log_volume = float(_log_reference_volume(param_space))
+            normalized_log_z = result.log_Z - log_volume
+            sweeps[name] = {
+                "occam_false": {
+                    "log_Z_M": result.log_Z,
+                    "ess": result.ess,
+                    "min_ess": float(np.min(result.ess)),
+                },
+                "occam_true": {
+                    "log_Z_M": normalized_log_z,
+                    "ess": result.ess,
+                    "min_ess": float(np.min(result.ess)),
+                    "derived_from_raw_with": (
+                        "bistar_gp.laplace_evidence._log_reference_volume"
+                    ),
+                },
+                "log_reference_volume": log_volume,
+                "is_calls": 1,
+            }
+        sweeps_by_seed[str(seed)] = sweeps
 
     pair_inputs = {
         "Linear_within_Sin+Linear": {
@@ -306,13 +418,25 @@ def run(out_dir: Path, *, n_is: int) -> dict[str, Any]:
         margin = restricted_min - encompassing_min
         holds = margin >= -MIN_G_TOLERANCE
         all_hold = all_hold and holds
-        orderings = {}
-        for convention in ("occam_false", "occam_true"):
-            orderings[convention] = _ordering_summary(
-                TAUS,
-                np.asarray(sweeps["Sin+Linear"][convention]["log_Z_M"]),
-                np.asarray(sweeps[restricted_name][convention]["log_Z_M"]),
+        orderings_by_seed = {}
+        for seed, sweeps in sweeps_by_seed.items():
+            orderings = {}
+            for convention in ("occam_false", "occam_true"):
+                orderings[convention] = _ordering_summary(
+                    TAUS,
+                    np.asarray(sweeps["Sin+Linear"][convention]["log_Z_M"]),
+                    np.asarray(sweeps[restricted_name][convention]["log_Z_M"]),
+                )
+            orderings_by_seed[seed] = orderings
+        crossing_uncertainty = {
+            convention: _crossing_uncertainty(
+                orderings_by_seed,
+                sweeps_by_seed,
+                restricted_name,
+                convention,
             )
+            for convention in ("occam_false", "occam_true")
+        }
         nested_pairs[pair_name] = {
             "restricted_model": restricted_name,
             "encompassing_model": "Sin+Linear",
@@ -340,21 +464,23 @@ def run(out_dir: Path, *, n_is: int) -> dict[str, Any]:
             "inequality_holds": holds,
             "verified_for_tau_count": len(TAUS),
             "minimum_is_tau_independent": True,
-            "Z_M_ordering": orderings,
+            "Z_M_ordering_by_seed": orderings_by_seed,
+            "crossing_uncertainty": crossing_uncertainty,
         }
 
     verdict_text = (
-        "Both numerical min-Ḡ inequalities hold on the n=50 informative-config, "
-        "MAP-based toy GP. E6 supports the reachable-set claim for these two "
-        "exact restrictions, while the finite-τ Z_M ordering still depends on "
-        "the reference-measure convention."
+        "Exact embeddings and the mean-only divergence make both min-Ḡ "
+        "inequalities analytic consequences of box containment. E6 confirms "
+        "that the implementation reproduces those consequences and quantifies "
+        "the margins; the finite-τ Z_M crossings provide the remaining empirical content."
         if all_hold
         else
-        "At least one numerical min-Ḡ inequality fails on the n=50 informative-config, "
-        "MAP-based toy GP, so E6 reports a counterexample to the reachable-set claim."
+        "The implementation failed to reproduce a min-Ḡ inequality that follows "
+        "analytically from exact embedding and box containment. E6 therefore "
+        "reports a machinery regression, not a counterexample to the containment argument."
     )
     results = {
-        "schema_version": 1,
+        "schema_version": 2,
         "case": "B",
         "artifact": "e6_nesting_monotonicity",
         "provenance": {
@@ -363,12 +489,13 @@ def run(out_dir: Path, *, n_is: int) -> dict[str, Any]:
             "metric": "pw_kl_vcal",
             "n": 50,
             "data_seed": DATA_SEED,
-            "is_seed": IS_SEED,
+            "is_seeds": list(IS_SEEDS),
             "x_eval_count": len(x_eval),
             "x_eval_range": [float(x_eval[0]), float(x_eval[-1])],
             "n_draws_requested": N_DRAWS,
             "gp_predictives_retained": retained,
             "n_is": n_is,
+            "is_calls_per_model_per_seed": 1,
             "n_perturb": N_PERTURB,
             "tau_grid": {
                 "definition": "numpy.logspace(-1.5, 2.5, 161)",
@@ -397,13 +524,13 @@ def run(out_dir: Path, *, n_is: int) -> dict[str, Any]:
             "exact_embedding_Gbar": EMBEDDING_TOLERANCE,
         },
         "nested_pairs": nested_pairs,
-        "model_sweeps": sweeps,
+        "model_sweeps_by_seed": sweeps_by_seed,
         "verdict": {
             "all_min_Gbar_inequalities_hold": all_hold,
             "statement": verdict_text,
             "scope": (
-                "numerical check on one n=50 informative-config, MAP-based averaged GP; "
-                "not a proof over all data priors or parameterizations"
+                "machinery check and margin/crossing quantification on one n=50 "
+                "informative-config, MAP-based averaged GP"
             ),
         },
     }
@@ -429,15 +556,19 @@ def main() -> None:
             f"margin={pair['margin_restricted_minus_encompassing']:.9f}; "
             f"holds={pair['inequality_holds']}"
         )
-        for convention in ("occam_false", "occam_true"):
-            crossings = pair["Z_M_ordering"][convention]["crossings"]
-            if crossings:
-                locations = ", ".join(
-                    f"{item['tau_log_interpolated']:.6f}" for item in crossings
+        for seed, orderings in pair["Z_M_ordering_by_seed"].items():
+            for convention in ("occam_false", "occam_true"):
+                crossings = orderings[convention]["crossings"]
+                if crossings:
+                    locations = ", ".join(
+                        f"{item['tau_log_interpolated']:.3f}"
+                        for item in crossings
+                    )
+                else:
+                    locations = "none on grid"
+                print(
+                    f"  seed {seed}, {convention} Z_M τ crossings: {locations}"
                 )
-            else:
-                locations = "none on grid"
-            print(f"  {convention} Z_M τ crossings: {locations}")
     print(results["verdict"]["statement"])
     print(f"wrote {args.out_dir.resolve() / 'e6_results.json'}")
 

@@ -29,6 +29,7 @@ if str(VIZ_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(VIZ_SCRIPTS))
 
 import _viz_spaces as V  # noqa: E402
+from bistar_gp.laplace_evidence import laplace_log_Z_Mx  # noqa: E402
 
 
 MODEL_NAMES = ["Linear", "Sinusoidal", "Sin+Linear", "Quadratic"]
@@ -85,7 +86,7 @@ def _arm(
     occam: bool,
     n_is: int,
 ) -> dict[str, Any]:
-    names, log_z, posterior, diagnostics = V.model_prior_curves(
+    names, log_z, priors, diagnostics = V.model_prior_curves(
         spaces,
         x_eval,
         avg_gp,
@@ -100,8 +101,8 @@ def _arm(
         "estimator": estimator,
         "occam": occam,
         "log_Z_M": {name: float(log_z[0, j]) for j, name in enumerate(names)},
-        "model_posterior": {
-            name: float(posterior[0, j]) for j, name in enumerate(names)
+        "model_prior": {
+            name: float(priors[0, j]) for j, name in enumerate(names)
         },
         "ess": {
             name: None
@@ -117,7 +118,7 @@ def _assert_anchors(arms: dict[str, dict[str, Any]], tolerance: float) -> dict:
     for arm_name, expected_by_model in ANCHORS.items():
         checks[arm_name] = {}
         for model_name, expected in expected_by_model.items():
-            actual = arms[arm_name]["model_posterior"][model_name]
+            actual = arms[arm_name]["model_prior"][model_name]
             error = abs(actual - expected)
             passed = error <= tolerance
             checks[arm_name][model_name] = {
@@ -140,7 +141,11 @@ def _crosscheck_local_table(
     """Compare against the optional local D17 table without sourcing data."""
     path = REPO_ROOT / "runs" / "viz_unification" / "delta_table.md"
     if not path.exists():
-        return {"available": False, "path": str(path.relative_to(REPO_ROOT))}
+        return {
+            "available": False,
+            "machine_dependent": True,
+            "path": str(path.relative_to(REPO_ROOT)),
+        }
 
     rows: dict[str, list[float]] = {}
     wanted = {f"{arm_name}/n=50" for arm_name in arms}
@@ -160,7 +165,7 @@ def _crosscheck_local_table(
             checks[arm_name] = {"found": False}
             continue
         errors = {
-            model: abs(arms[arm_name]["model_posterior"][model] - rows[key][j])
+            model: abs(arms[arm_name]["model_prior"][model] - rows[key][j])
             for j, model in enumerate(MODEL_NAMES)
         }
         passed = max(errors.values()) <= tolerance
@@ -177,9 +182,42 @@ def _crosscheck_local_table(
             )
     return {
         "available": True,
+        "machine_dependent": True,
         "path": str(path.relative_to(REPO_ROOT)),
         "checks": checks,
     }
+
+
+def _p1_laplace_diagnostics(
+    spaces,
+    x_eval,
+    avg_gp,
+    starts_map,
+    arm: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Obtain public-API diagnostics and verify the existing p1 values."""
+    diagnostics = {}
+    for name, param_space in spaces.items():
+        result = laplace_log_Z_Mx(
+            param_space,
+            x_eval,
+            avg_gp,
+            metric_name="pw_kl_vcal",
+            tau=TAU,
+            occam=True,
+            starts=starts_map[name],
+        )
+        expected = arm["log_Z_M"][name]
+        if not np.isclose(result.log_Z, expected, rtol=0.0, atol=1e-12):
+            raise AssertionError(
+                f"direct p1 Laplace log Z for {name} ({result.log_Z}) does not "
+                f"match the arm value ({expected})"
+            )
+        diagnostics[name] = {
+            "converged": bool(result.converged),
+            "n_clipped": int(result.n_clipped),
+        }
+    return diagnostics
 
 
 def _plot(arms: dict[str, dict[str, Any]], out_path: Path) -> None:
@@ -205,7 +243,7 @@ def _plot(arms: dict[str, dict[str, Any]], out_path: Path) -> None:
     for panel_index, (ax, (arm_name, title, alpha)) in enumerate(
         zip(axes, panels)
     ):
-        values = [arms[arm_name]["model_posterior"][name] for name in MODEL_NAMES]
+        values = [arms[arm_name]["model_prior"][name] for name in MODEL_NAMES]
         bars = ax.bar(
             np.arange(len(MODEL_NAMES)),
             values,
@@ -277,9 +315,69 @@ def _plot(arms: dict[str, dict[str, Any]], out_path: Path) -> None:
     plt.close(fig)
 
 
-def _fmt_posteriors(arm: dict[str, Any]) -> str:
+def _fmt_priors(arm: dict[str, Any]) -> str:
     return ", ".join(
-        f"{name} {arm['model_posterior'][name]:.6f}" for name in MODEL_NAMES
+        f"{name} {arm['model_prior'][name]:.3f}" for name in MODEL_NAMES
+    )
+
+
+def _seed_crossing_text(pair: dict[str, Any], convention: str) -> str:
+    pieces = []
+    for seed, orderings in pair["Z_M_ordering_by_seed"].items():
+        crossings = orderings[convention]["crossings"]
+        if not crossings:
+            pieces.append(f"seed {seed}: none on the grid")
+            continue
+        formatted = ", ".join(
+            f"{item['tau_log_interpolated']:.3f} within "
+            f"[{item['tau_bracket'][0]:.3f}, {item['tau_bracket'][1]:.3f}]"
+            for item in crossings
+        )
+        pieces.append(f"seed {seed}: {formatted}")
+    return "; ".join(pieces)
+
+
+def _resolution_paragraph(e6: dict[str, Any]) -> str:
+    linear = e6["nested_pairs"]["Linear_within_Sin+Linear"]
+    sinusoidal = e6["nested_pairs"]["Sinusoidal_within_Sin+Linear"]
+    linear_u = linear["crossing_uncertainty"]["occam_true"]
+    sinusoidal_u = sinusoidal["crossing_uncertainty"]["occam_true"]
+    linear_se = linear_u["ess_implied_one_se_common_mode_shift_seed_0"]
+    sinusoidal_se = sinusoidal_u["ess_implied_one_se_common_mode_shift_seed_0"]
+    linear_se_interval = linear_se["tau_interval_log_interpolated"]
+    sinusoidal_se_interval = sinusoidal_se["tau_interval_log_interpolated"]
+    sinusoidal_shift_upper_grid = sinusoidal_se[
+        "shifted_crossing_grid_brackets"
+    ][1][1]
+    return (
+        "**Resolution (RESOLVED, E6):** Given exact embeddings and the mean-only "
+        "`pw_kl_vcal` divergence, each min-Ḡ inequality follows analytically from "
+        "box containment. E6 confirms that the implementation reproduces this "
+        "consequence and quantifies restricted-minus-encompassing margins of "
+        f"{linear['margin_restricted_minus_encompassing']:.3f} nats for Linear and "
+        f"{sinusoidal['margin_restricted_minus_encompassing']:.3f} nats for "
+        "Sinusoidal. Across 161 τ values and IS seeds 0, 1, and 2, raw Lebesgue "
+        "`occam=False` yields no pairwise crossing. With `occam=True`, Linear "
+        f"crosses at {_seed_crossing_text(linear, 'occam_true')}; the per-seed "
+        f"interpolant spread is [{linear_u['per_seed_interpolant_spread'][0]:.3f}, "
+        f"{linear_u['per_seed_interpolant_spread'][1]:.3f}], and the seed-0 "
+        f"ESS-implied one-SE shift interval is [{linear_se_interval[0]:.3f}, "
+        f"{linear_se_interval[1]:.3f}]. Its seed-0 bracket delta swing "
+        f"({linear_se['delta_log_Z_swing_across_nominal_bracket']:.3f} nats) "
+        "exceeds the ESS-implied SE "
+        f"({max(linear_se['delta_log_Z_se_at_nominal_bracket']):.3f} nats), "
+        "which supports reporting τ=0.295. Sinusoidal crosses at "
+        f"{_seed_crossing_text(sinusoidal, 'occam_true')}; the supported summary "
+        "is τ ≈ 1.5, with per-seed interpolant spread "
+        f"[{sinusoidal_u['per_seed_interpolant_spread'][0]:.3f}, "
+        f"{sinusoidal_u['per_seed_interpolant_spread'][1]:.3f}] and seed-0 "
+        f"ESS-implied shift roots [{sinusoidal_se_interval[0]:.3f}, "
+        f"{sinusoidal_se_interval[1]:.3f}]. The enclosing shifted-root grid "
+        f"bracket gives the uncertainty statement τ about "
+        f"{sinusoidal_se_interval[0]:.2f} to {sinusoidal_shift_upper_grid:.2f}. "
+        "Crossing resolution is set by the larger of grid spacing and Monte "
+        "Carlo error. The empirical content comprises the margins and finite-τ "
+        "Z_M crossings."
     )
 
 
@@ -289,6 +387,10 @@ def write_combined_readme(out_dir: Path) -> None:
     e6_path = out_dir / "e6_results.json"
     figure = json.loads(figure_path.read_text(encoding="utf-8")) if figure_path.exists() else None
     e6 = json.loads(e6_path.read_text(encoding="utf-8")) if e6_path.exists() else None
+    if figure is not None and figure.get("schema_version") != 2:
+        figure = None
+    if e6 is not None and e6.get("schema_version") != 2:
+        e6 = None
 
     lines = [
         "# Case B: Occam dial and nesting monotonicity",
@@ -311,29 +413,41 @@ def write_combined_readme(out_dir: Path) -> None:
         "",
         "`occam_dial.png` and `figure_results.json` use τ=0.3, IS seed 0, "
         "n_is=40,000, five seeded perturbations per legacy start, and the canonical "
-        "visualization parameter boxes. The optional `runs/viz_unification/delta_table.md` "
-        "only supplies a cross-check when present.",
+        "visualization parameter boxes.",
         "",
-        "The anchor tolerance equals 0.003 in absolute model probability. The published "
-        "anchors were rounded to three decimals, and the remaining allowance covers small "
-        "cross-platform optimizer differences. The tolerance remains well below the 0.042 "
-        "p2 Linear versus Sin+Linear gap.",
+        "The 0.003 absolute-probability anchor tolerance provides a same-seed "
+        "reproduction gate for three-decimal source anchors, not an accuracy claim.",
+        "",
+        "At p2, ESS implies SE(log Z) of approximately 0.008, 0.017, and 0.038 "
+        "nats for Linear, Sin+Linear, and Sinusoidal, respectively; the induced "
+        "model-probability SE is approximately 0.005.",
+        "",
+        "The script cross-checks against `runs/viz_unification/delta_table.md` when "
+        "that local untracked file exists; availability is machine-dependent and "
+        "recorded in `figure_results.json`.",
     ]
     if figure is not None:
-        lines.extend(["", "Fresh n=50 posteriors:", ""])
+        lines.extend(["", "### Fresh n=50 induced model priors", ""])
         for arm_name in (
             "p1_priors_lap_occam",
             "p2_priors_is_occam",
             "p3_priors_canonical",
         ):
-            lines.append(f"- `{arm_name}`: {_fmt_posteriors(figure['arms'][arm_name])}")
-        cross = figure["optional_local_crosscheck"]
-        lines.extend(
-            [
-                "",
-                f"The optional D17 table cross-check was {'available' if cross['available'] else 'not available'}.",
-            ]
+            lines.append(f"- `{arm_name}`: {_fmt_priors(figure['arms'][arm_name])}")
+        diagnostics = figure["arms"]["p1_priors_lap_occam"][
+            "laplace_diagnostics"
+        ]
+        diagnostics_text = "; ".join(
+            f"{name} n_clipped={diagnostics[name]['n_clipped']}, "
+            f"converged={diagnostics[name]['converged']}"
+            for name in MODEL_NAMES
         )
+        lines.extend(["", f"Direct p1 Laplace diagnostics: {diagnostics_text}."])
+        if any(item["n_clipped"] > 0 for item in diagnostics.values()):
+            lines.append(
+                "At least one p1 Hessian eigenvalue was clipped, so the affected "
+                "log integral contains a floor- or cap-dependent regularization term."
+            )
 
     lines.extend(
         [
@@ -345,10 +459,11 @@ def write_combined_readme(out_dir: Path) -> None:
             "",
             "## E6 computation",
             "",
-            "E6 uses 161 log-spaced τ values from 10^-1.5 through 10^2.5, IS seed 0, "
-            "n_is=100,000, and the same five perturbations per start. One "
-            "`is_log_Z_Mx` call per model computes the full raw sweep; the package's "
-            "`_log_reference_volume` helper supplies the occam-normalized sweep. The visualization "
+            "E6 uses 161 log-spaced τ values from 10^-1.5 through 10^2.5, IS seeds "
+            "0, 1, and 2, n_is=100,000 per seed, and the same five perturbations "
+            "per start. One `is_log_Z_Mx` call per model per seed computes the full "
+            "raw sweep; the package's `_log_reference_volume` helper supplies the "
+            "occam-normalized sweep. The visualization "
             "box uses A >= 0.01 for numerical plotting. E6 alone extends the encompassing "
             "Sin+Linear box to A >= 0 so Linear at A=0 forms an exact restriction. All "
             "other bounds match the canonical visualization boxes. The embedded restricted "
@@ -356,33 +471,37 @@ def write_combined_readme(out_dir: Path) -> None:
             "starts plus the best encompassing optimum, which avoids flat boundary-Hessian "
             "components without changing the integral.",
             "",
-            "The min-Ḡ comparison tolerance equals 1e-8 in Ḡ units. It only classifies "
-            "floating-point near-ties and remains many orders of magnitude below the observed "
-            "margins. τ crossings use linear interpolation in log10(τ) inside the reported "
-            "adjacent grid bracket; the bracket, rather than extra decimal places in the "
-            "interpolant, provides the resolution statement.",
+            "Given the exact embeddings and mean-only divergence, the min-Ḡ inequality "
+            "follows analytically from box containment. The retained check confirms that "
+            "the implementation reproduces that consequence and quantifies the margins. "
+            "The 1e-8 comparison tolerance only classifies floating-point near-ties. "
+            "Crossing resolution is set by the larger of grid spacing and Monte Carlo error.",
         ]
     )
     if e6 is not None:
         lines.extend(["", "Fresh E6 results:", ""])
         for pair_name, pair in e6["nested_pairs"].items():
             lines.append(
-                f"- `{pair_name}`: min Ḡ(restricted)={pair['restricted']['min_Gbar']:.9f}, "
-                f"min Ḡ(encompassing)={pair['encompassing']['min_Gbar']:.9f}, "
-                f"margin={pair['margin_restricted_minus_encompassing']:.9f}, "
+                f"- `{pair_name}`: min Ḡ(restricted)={pair['restricted']['min_Gbar']:.3f}, "
+                f"min Ḡ(encompassing)={pair['encompassing']['min_Gbar']:.3f}, "
+                f"margin={pair['margin_restricted_minus_encompassing']:.3f}, "
                 f"holds={pair['inequality_holds']}."
             )
             for convention in ("occam_false", "occam_true"):
-                crossing_text = ", ".join(
-                    f"{item['tau_log_interpolated']:.6f} within "
-                    f"[{item['tau_bracket'][0]:.6f}, {item['tau_bracket'][1]:.6f}]"
-                    for item in pair["Z_M_ordering"][convention]["crossings"]
-                ) or "no crossing on the grid"
-                lines.append(f"  - `{convention}`: {crossing_text}.")
+                lines.append(
+                    f"  - `{convention}`: {_seed_crossing_text(pair, convention)}."
+                )
         lines.extend(
             [
                 "",
                 f"E6 verdict: {e6['verdict']['statement']}",
+                "",
+                "## REVIEW_AND_VET resolution (mirrored)",
+                "",
+                "The `kb/` tree is local by design and gitignored; this committed mirror "
+                "preserves the resolution for clean checkouts.",
+                "",
+                _resolution_paragraph(e6),
             ]
         )
 
@@ -394,7 +513,7 @@ def write_combined_readme(out_dir: Path) -> None:
             "- `occam_dial.png`: E4 attribution-ladder figure, kept below 2 MB.",
             "- `figure_results.json`: all freshly computed E4 arm values and anchor checks.",
             "- `e6_results.json`: min-Ḡ optima, exact-embedding checks, both Z_M conventions, "
-            "ESS diagnostics, the full τ grid, and crossing brackets.",
+            "three-seed ESS diagnostics, the full τ grid, and crossing uncertainty.",
         ]
     )
     (out_dir / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -438,11 +557,20 @@ def run(out_dir: Path, *, n_is: int, anchor_tolerance: float) -> dict[str, Any]:
             n_is=n_is,
         ),
     }
+    arms["p1_priors_lap_occam"]["laplace_diagnostics"] = (
+        _p1_laplace_diagnostics(
+            spaces,
+            x_eval,
+            avg_gp,
+            starts_map,
+            arms["p1_priors_lap_occam"],
+        )
+    )
     anchor_checks = _assert_anchors(arms, anchor_tolerance)
     local_crosscheck = _crosscheck_local_table(arms, anchor_tolerance)
 
     results = {
-        "schema_version": 1,
+        "schema_version": 2,
         "case": "B",
         "artifact": "occam_dial_figure",
         "provenance": {
@@ -505,9 +633,9 @@ def main() -> None:
         n_is=args.n_is,
         anchor_tolerance=args.anchor_tolerance,
     )
-    print("n=50 model posteriors")
+    print("n=50 induced model priors")
     for arm_name, arm in results["arms"].items():
-        print(f"  {arm_name}: {_fmt_posteriors(arm)}")
+        print(f"  {arm_name}: {_fmt_priors(arm)}")
     print(f"wrote {args.out_dir.resolve() / 'figure_results.json'}")
     print(f"wrote {args.out_dir.resolve() / 'occam_dial.png'}")
 
