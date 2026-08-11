@@ -334,6 +334,43 @@ def observed_pair(x: np.ndarray, y: np.ndarray,
     return results, parameters
 
 
+def local_gaussian_slope_diagnostic(
+    x: np.ndarray,
+    parameters: Dict[str, float],
+) -> Dict:
+    """Approximate the full-data slope margin from local observed information."""
+    A = parameters["A"]
+    omega = parameters["omega"]
+    phi = parameters["phi"]
+    sigma = parameters["sigma"]
+    angle = omega * x + phi
+    jacobian = np.column_stack([
+        np.sin(angle),
+        A * np.cos(angle) * x,
+        A * np.cos(angle),
+        x,
+        np.ones_like(x),
+    ])
+    covariance = sigma ** 2 * np.linalg.inv(jacobian.T @ jacobian)
+    slope_sd = float(np.sqrt(covariance[3, 3]))
+    boundary_distance = float(parameters["b"] / slope_sd)
+    gaussian_tail = float(
+        0.5 * math.erfc(boundary_distance / math.sqrt(2.0)))
+    return {
+        "approximation": (
+            "full-data local Gaussian approximation at the observed-data MLE "
+            "from the mean-function Jacobian"
+        ),
+        "posterior_sd_b": slope_sd,
+        "boundary_distance_sd": boundary_distance,
+        "gaussian_left_tail_probability": gaussian_tail,
+        "scope_caveat": (
+            "local full-data approximation only; it does not establish global "
+            "posterior mass or any leave-one-out fold posterior"
+        ),
+    }
+
+
 def validated_sir_predictives(
     x: torch.Tensor,
     y: torch.Tensor,
@@ -433,6 +470,11 @@ def run_loo_candidate(
     chain_seeds: Sequence[int],
 ) -> Dict:
     """Run explicit seeded Pyro chains and compute PSIS-LOO with ArviZ."""
+    initial_values = _initial_values(mle_parameters, constrained)
+    initial_values_record = {
+        name: float(value.detach().cpu().item())
+        for name, value in initial_values.items()
+    }
     per_chain = []
     diverging = []
     acceptance_rates = []
@@ -445,7 +487,8 @@ def run_loo_candidate(
             lambda x_data, y_data: pyro_sin_linear(
                 x_data, y_data, constrained),
             init_strategy=init_to_value(
-                values=_initial_values(mle_parameters, constrained)),
+                values={name: value.clone()
+                        for name, value in initial_values.items()}),
             target_accept_prob=LOO_TARGET_ACCEPT,
             max_tree_depth=LOO_MAX_TREE_DEPTH,
         )
@@ -525,6 +568,11 @@ def run_loo_candidate(
             "chain_seeds": list(chain_seeds),
             "target_accept_prob": LOO_TARGET_ACCEPT,
             "max_tree_depth": LOO_MAX_TREE_DEPTH,
+            "init_strategy": {
+                "name": "init_to_value",
+                "initial_values": initial_values_record,
+                "same_values_for_every_chain": True,
+            },
             "divergences_by_chain": [int(mask.sum()) for mask in diverging],
             "divergences_total": int(sum(mask.sum() for mask in diverging)),
             "acceptance_rate_by_chain": acceptance_rates,
@@ -544,11 +592,15 @@ def loo_comparison(free: Dict, constrained: Dict) -> Dict:
     pointwise = (np.asarray(constrained["pointwise_elpd"], dtype=float)
                  - np.asarray(free["pointwise_elpd"], dtype=float))
     difference = constrained["elpd_loo"] - free["elpd_loo"]
-    se = float(np.sqrt(len(pointwise) * np.var(pointwise, ddof=1)))
+    se_ddof = 0
+    se = float(np.sqrt(len(pointwise) * np.var(pointwise, ddof=se_ddof)))
     return {
         "direction": "constrained_minus_free",
         "elpd_difference": float(difference),
         "se": se,
+        "se_ddof": se_ddof,
+        "se_formula": "sqrt(n * var(pointwise_differences, ddof=0))",
+        "se_convention": "matches the ArviZ az.loo and az.compare convention",
         "pointwise_differences": [float(value) for value in pointwise],
     }
 
@@ -557,6 +609,11 @@ def render_readme(results: Dict) -> str:
     bms = results["bms_star"]
     loo = results["psis_loo"]
     headline = bms["tables"][PRIMARY_METRIC]["1.0"]
+    appendix = bms["appendix_metric_diagnostic"]
+    local = results["candidate_definition"]["local_gaussian_slope_diagnostic"]
+    aliases = loo["sampled_grid_alias_diagnostic"]
+    initial = loo["candidates"]["free"]["sampler"]["init_strategy"]
+    initial_values = initial["initial_values"]
     lines = [
         "# Haaf-style nested constraint: BMS* and PSIS-LOO",
         "",
@@ -595,19 +652,59 @@ def render_readme(results: Dict) -> str:
         "- `runs/prior_sensitivity/is_draws_toy_elicited_s1.npz`",
         "- `runs/prior_sensitivity/is_draws_toy_elicited_s2.npz`",
         "",
-        "For each shared predictive pattern, both candidates minimize the ",
-        "primary G over their parameter regions through ",
-        "`CandidateModel._fit_mle`. No candidate-parameter prior contributes ",
-        "to the BMS* calculation.",
+        "For each shared predictive pattern, both candidates receive four shared ",
+        "base starts. The restricted fit additionally receives every free ",
+        "solution, clipped at b = 0 when necessary, and each candidate's ",
+        "selection pool retains the other candidate's feasible vectors. This ",
+        "deliberate asymmetry forces exact equality at shared optima instead of ",
+        "turning optimizer noise into a model gap.",
+        "",
+        "Because the restricted region forms a subset of the free region, the ",
+        "protocol has min G over the restricted region greater than or equal to ",
+        "min G over the free region for every predictive. The restricted BMS* ",
+        "probability therefore cannot exceed the free probability under either ",
+        "aggregation at any τ. Only the gap magnitude comes from the sampled ",
+        "predictives. The runtime tolerance gates guard against machinery ",
+        "regressions; they do not empirically test nesting.",
         "",
         "At τ = 1, pooled BMS* assigns "
-        f"{headline['pooled'][0]:.6f} to the free candidate and "
-        f"{headline['pooled'][1]:.6f} to the restricted candidate. "
-        "Expected-posterior aggregation assigns "
-        f"{headline['expected_posterior'][0]:.6f} and "
-        f"{headline['expected_posterior'][1]:.6f}, respectively. The free-fit "
-        f"slope falls below zero for {bms['slope_sign']['negative_fraction']:.6f} "
-        "of SIR predictives.",
+        f"{headline['pooled'][0]:.3f} to the free candidate and "
+        f"{headline['pooled'][1]:.3f} to the restricted candidate. "
+        "Expected-posterior aggregation also assigns "
+        f"{headline['expected_posterior'][0]:.3f} and "
+        f"{headline['expected_posterior'][1]:.3f}. The free-minus-restricted ",
+        "gap remains smaller than 1e-5 at every τ under both conventions and ",
+        f"comes from the {bms['slope_sign']['negative_count']} negative-slope "
+        "draw among 1,000 SIR predictives. Its monotone contraction with τ ",
+        "follows deterministically from Boltzmann aggregation, not from a ",
+        "measured temperature effect.",
+        "",
+        "## Appendix-only `kl_forward` stress note",
+        "",
+        "The pooled `kl_forward` column is degenerate at exactly [0.5, 0.5] ",
+        "for every τ. The single differing row has a `kl_forward` value of ",
+        f"{appendix['differing_row']['free_G']:.3f} for the free candidate and "
+        f"{appendix['differing_row']['constrained_G']:.3f} for the restricted "
+        f"candidate, compared with a grid median of "
+        f"{appendix['grid_median']['free']:.1f}. The approximately "
+        f"{appendix['global_max_row']['free_G']:.2e} global maximum occurs on "
+        "a separate row where both candidate values are equal. Under the global ",
+        "max-shift, the differing row contributes below float64 aggregate ",
+        "resolution, so the pooled result carries no directional information. ",
+        "The expected-posterior calculation reverses the primary-metric sign: ",
+        "the differing row favors the restricted candidate by "
+        f"{abs(appendix['differing_row']['constrained_minus_free_G']):.3f} nats, "
+        "and at τ = 1 it assigns "
+        f"{bms['tables'][APPENDIX_METRIC]['1.0']['expected_posterior'][0]:.12f} "
+        "to the free candidate and "
+        f"{bms['tables'][APPENDIX_METRIC]['1.0']['expected_posterior'][1]:.12f} "
+        "to the restricted candidate.",
+        "",
+        "These `kl_forward` values evaluate the candidate instances selected at ",
+        "the `pw_kl_vcal` optima, with sigma reset from unweighted RMS residuals ",
+        "after the primary-metric fit. They do not minimize `kl_forward` over ",
+        "either parameter region, so the primary nesting inequality does not ",
+        "apply to this appendix stress calculation.",
         "",
         "## PSIS-LOO priors and sampler",
         "",
@@ -623,6 +720,18 @@ def render_readme(results: Dict) -> str:
         "20260812, 1,000 warmup iterations and 1,000 retained draws per chain, ",
         "target acceptance probability 0.90, and maximum tree depth 8. ArviZ ",
         "receives the pointwise Normal log likelihoods and computes PSIS-LOO.",
+        "",
+        "Every chain for both candidates initializes deterministically at the ",
+        f"common observed-data MLE through `{initial['name']}`: A = "
+        f"{initial_values['A']:.6f}, omega = {initial_values['omega']:.6f}, "
+        f"phi = {initial_values['phi']:.6f}, b = {initial_values['b']:.6f}, "
+        f"c = {initial_values['c']:.6f}, and sigma = "
+        f"{initial_values['sigma']:.6f}. The sampled x grid admits likelihood "
+        f"aliases near omega = {aliases['alias_omega'][0]:.3f} and "
+        f"{aliases['alias_omega'][1]:.3f} around the initialized mode at "
+        f"{aliases['mle_omega']:.4f}. The likelihood is therefore multimodal, ",
+        "so the reported R-hat and ESS values support within-mode convergence ",
+        "only; they do not establish exploration across modes.",
         "",
         "## Headline PSIS-LOO",
         "",
@@ -642,11 +751,25 @@ def render_readme(results: Dict) -> str:
     lines += [
         "",
         "The paired constrained-minus-free elpd difference equals "
-        f"{pair['elpd_difference']:.3f} with SE {pair['se']:.3f}.",
-        "ArviZ flags the constrained estimate because "
+        f"{pair['elpd_difference']:.3f} with SE {pair['se']:.3f}, computed with "
+        f"ddof={pair['se_ddof']} to match the ArviZ convention. The difference ",
+        "is directionally inconclusive because it is smaller than twice its ",
+        "paired SE, and ArviZ flags the constrained estimate because "
         f"{loo['candidates']['constrained']['pareto_k']['n_over_good_k_threshold']} "
-        "observation exceeds its sample-size-specific good-k threshold. Interpret "
-        "the direction with that qualification.",
+        "observation exceeds its sample-size-specific good-k threshold. The ",
+        "paired SE covers data-level pointwise variability only and does not ",
+        "include MCMC error. A null-to-inconclusive LOO difference matches the ",
+        "failure mode reported for satisfied nested constraints.",
+        "",
+        "The two slope priors coincide up to normalization on b > 0. The ",
+        "artifact's full-data local Gaussian approximation gives posterior SD ",
+        f"{local['posterior_sd_b']:.7f} for b, places the boundary "
+        f"{local['boundary_distance_sd']:.4f} SDs away, and gives a Gaussian ",
+        f"left-tail probability of {local['gaussian_left_tail_probability']:.2e}. "
+        "This local approximation supports the reading that the constraint ",
+        "binds only where the locally approximated posterior carries negligible ",
+        "mass. It does not prove exact posterior identity or show that the entire ",
+        "observed gap comes from estimator noise.",
         "",
         "## Determinism and tolerances",
         "",
@@ -660,10 +783,11 @@ def render_readme(results: Dict) -> str:
         lines.append(f"- `{key}`: {value}")
     lines += [
         "",
-        f"The primary nesting gates use {G_EQUAL_ATOL:g} absolute tolerance "
-        "for equality on nonnegative free-slope rows and "
+        f"The primary machinery-regression gates use {G_EQUAL_ATOL:g} absolute "
+        "tolerance for equality on nonnegative free-slope rows and "
         f"{G_ORDER_ATOL:g} for the one-sided G ordering on negative-slope rows. ",
-        "A failure stops the run before artifact replacement.",
+        "A failure stops the run before artifact replacement; passing the gates ",
+        "does not supply an empirical nesting test.",
         "",
         "No figure accompanies the case because the comparison table and the ",
         "slope-sign diagnostic convey the full result without an additional ",
@@ -694,6 +818,17 @@ def main() -> None:
 
     observed_results, observed_parameters = observed_pair(
         x_np, y_np, x_eval_np)
+    local_slope = local_gaussian_slope_diagnostic(
+        x_np, observed_parameters[MODEL_NAMES[0]])
+    x_spacing = float(np.diff(x_np)[0])
+    if not np.allclose(np.diff(x_np), x_spacing):
+        raise RuntimeError("sampled-grid alias diagnostic requires equal x spacing")
+    alias_period = 2.0 * math.pi / abs(x_spacing)
+    mle_omega = observed_parameters[MODEL_NAMES[0]]["omega"]
+    alias_omega = sorted([
+        abs(alias_period - mle_omega),
+        alias_period + mle_omega,
+    ])
     print("Loading validated SIR predictives")
     predictives, pss_anchor, sir_indices, pooled_ess = validated_sir_predictives(
         x, y, x_eval, observed_results, n_pred)
@@ -727,6 +862,62 @@ def main() -> None:
         APPENDIX_METRIC: appendix_G,
     }
     tables = aggregate_tables(G_by_metric)
+    appendix_gap = appendix_G[:, 1] - appendix_G[:, 0]
+    appendix_differing_indices = np.flatnonzero(appendix_gap != 0.0)
+    appendix_differing_row = None
+    if len(appendix_differing_indices):
+        appendix_index = int(appendix_differing_indices[0])
+        appendix_differing_row = {
+            "index": appendix_index,
+            "free_G": float(appendix_G[appendix_index, 0]),
+            "constrained_G": float(appendix_G[appendix_index, 1]),
+            "constrained_minus_free_G": float(appendix_gap[appendix_index]),
+            "reverses_primary_metric_direction": bool(
+                np.sign(appendix_gap[appendix_index])
+                == -np.sign(gap[appendix_index])),
+        }
+    pooled_exact_half = all(
+        tables[APPENDIX_METRIC][str(tau)]["pooled"] == [0.5, 0.5]
+        for tau in TAUS
+    )
+    differing_row_underflow_by_tau = {
+        str(tau): bool(len(appendix_differing_indices)) and bool(np.all(
+            np.exp(-appendix_G / tau - np.max(-appendix_G / tau))[
+                appendix_differing_indices] == 0.0
+        ))
+        for tau in TAUS
+    }
+    appendix_max_index = int(np.argmax(np.max(appendix_G, axis=1)))
+    appendix_global_max_row = {
+        "index": appendix_max_index,
+        "free_G": float(appendix_G[appendix_max_index, 0]),
+        "constrained_G": float(appendix_G[appendix_max_index, 1]),
+        "constrained_minus_free_G": float(appendix_gap[appendix_max_index]),
+    }
+    appendix_diagnostic = {
+        "evaluation_point": (
+            "pw_kl_vcal-optimal candidate instances with sigma reset from "
+            "unweighted RMS residuals after the primary-metric fit"
+        ),
+        "minimized_over_region_for_kl_forward": False,
+        "primary_nesting_inequality_applies": False,
+        "differing_row_count": int(len(appendix_differing_indices)),
+        "differing_row": appendix_differing_row,
+        "grid_median": {
+            "free": float(np.median(appendix_G[:, 0])),
+            "constrained": float(np.median(appendix_G[:, 1])),
+        },
+        "pooled_exact_half_at_every_tau": pooled_exact_half,
+        "differing_row_weight_underflow_by_tau": (
+            differing_row_underflow_by_tau
+        ),
+        "global_max_row": appendix_global_max_row,
+        "pooled_degeneracy_cause": (
+            "the global max-shift suppresses the differing row below float64 "
+            "aggregate resolution; the much larger global-maximum row has "
+            "equal candidate values"
+        ),
+    }
 
     print("Running PSIS-LOO models")
     free_loo = run_loo_candidate(
@@ -757,6 +948,10 @@ def main() -> None:
             "n": int(len(x_np)),
             "seed": DATA_SEED,
             "x_range": [float(x_np.min()), float(x_np.max())],
+            "x_eval": {
+                "n": int(len(x_eval_np)),
+                "range": [float(x_eval_np.min()), float(x_eval_np.max())],
+            },
             "true_bias_slope": float(info["bias_slope"]),
             "noise_std": float(info["noise_std"]),
             "xy_sha256_float64_le": _sha256_arrays(x_np, y_np),
@@ -768,7 +963,19 @@ def main() -> None:
             "constrained_bounds": NestedSinLinearModel(True).bounds,
             "only_bound_difference_index": 3,
             "only_bound_difference_parameter": "b",
+            "fit_protocol": {
+                "shared_base_starts": len(NestedSinLinearModel.base_starts()),
+                "restricted_extra_starts": (
+                    "all free solutions, clipped at b=0 when necessary"
+                ),
+                "cross_seeded_selection_pools": True,
+                "purpose": (
+                    "force exact equality on shared optima instead of optimizer "
+                    "noise"
+                ),
+            },
             "observed_data_mle": observed_parameters,
+            "local_gaussian_slope_diagnostic": local_slope,
         },
         "bms_star": {
             "config": CONFIG,
@@ -822,6 +1029,7 @@ def main() -> None:
                     },
                 },
             },
+            "appendix_metric_diagnostic": appendix_diagnostic,
             "validated_pss_observed_fit_anchor": {
                 "metric": PRIMARY_METRIC,
                 "tau": 1.0,
@@ -833,6 +1041,16 @@ def main() -> None:
         "psis_loo": {
             "priors_apply_only_to_loo": True,
             "priors": PRIOR_DESCRIPTIONS,
+            "sampled_grid_alias_diagnostic": {
+                "x_spacing": x_spacing,
+                "alias_period": alias_period,
+                "mle_omega": float(mle_omega),
+                "alias_omega": [float(value) for value in alias_omega],
+                "diagnostic_scope": (
+                    "the likelihood is multimodal; R-hat and ESS from common-MLE "
+                    "initializations support within-mode convergence only"
+                ),
+            },
             "candidates": {
                 "free": free_loo,
                 "constrained": constrained_loo,

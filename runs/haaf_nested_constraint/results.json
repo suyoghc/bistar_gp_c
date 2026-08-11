@@ -10,6 +10,13 @@
       -10.0,
       10.0
     ],
+    "x_eval": {
+      "n": 60,
+      "range": [
+        -11.0,
+        11.0
+      ]
+    },
     "true_bias_slope": 0.25,
     "noise_std": 0.5,
     "xy_sha256_float64_le": "f54c873f48f6d049778d12989b3209d78605002f747a2805551cedfd9d4eedb5"
@@ -74,6 +81,12 @@
     ],
     "only_bound_difference_index": 3,
     "only_bound_difference_parameter": "b",
+    "fit_protocol": {
+      "shared_base_starts": 4,
+      "restricted_extra_starts": "all free solutions, clipped at b=0 when necessary",
+      "cross_seeded_selection_pools": true,
+      "purpose": "force exact equality on shared optima instead of optimizer noise"
+    },
     "observed_data_mle": {
       "Free Sin+Linear": {
         "A": 0.8863515558683248,
@@ -91,6 +104,13 @@
         "c": 0.02872270880462028,
         "sigma": 0.32123190979141125
       }
+    },
+    "local_gaussian_slope_diagnostic": {
+      "approximation": "full-data local Gaussian approximation at the observed-data MLE from the mean-function Jacobian",
+      "posterior_sd_b": 0.012950550589627553,
+      "boundary_distance_sd": 19.402803798893753,
+      "gaussian_left_tail_probability": 3.653754311948442e-84,
+      "scope_caveat": "local full-data approximation only; it does not establish global posterior mass or any leave-one-out fold posterior"
     }
   },
   "bms_star": {
@@ -282,6 +302,38 @@
         }
       }
     },
+    "appendix_metric_diagnostic": {
+      "evaluation_point": "pw_kl_vcal-optimal candidate instances with sigma reset from unweighted RMS residuals after the primary-metric fit",
+      "minimized_over_region_for_kl_forward": false,
+      "primary_nesting_inequality_applies": false,
+      "differing_row_count": 1,
+      "differing_row": {
+        "index": 984,
+        "free_G": 500.1419747964646,
+        "constrained_G": 488.98168850611455,
+        "constrained_minus_free_G": -11.16028629035003,
+        "reverses_primary_metric_direction": true
+      },
+      "grid_median": {
+        "free": 55.77955486646584,
+        "constrained": 55.77955486646584
+      },
+      "pooled_exact_half_at_every_tau": true,
+      "differing_row_weight_underflow_by_tau": {
+        "0.1": true,
+        "0.3": true,
+        "1.0": false,
+        "3.0": false,
+        "10.0": false
+      },
+      "global_max_row": {
+        "index": 733,
+        "free_G": 59227845231.42128,
+        "constrained_G": 59227845231.42128,
+        "constrained_minus_free_G": 0.0
+      },
+      "pooled_degeneracy_cause": "the global max-shift suppresses the differing row below float64 aggregate resolution; the much larger global-maximum row has equal candidate values"
+    },
     "validated_pss_observed_fit_anchor": {
       "metric": "pw_kl_vcal",
       "tau": 1.0,
@@ -302,6 +354,16 @@
       "b_constrained": "HalfNormal(scale=5), the zero-truncated counterpart",
       "c": "Normal(loc=0, scale=5)",
       "sigma": "HalfNormal(scale=2)"
+    },
+    "sampled_grid_alias_diagnostic": {
+      "x_spacing": 1.0526315789473681,
+      "alias_period": 5.969026041820609,
+      "mle_omega": 1.030239891010187,
+      "alias_omega": [
+        4.938786150810421,
+        6.999265932830796
+      ],
+      "diagnostic_scope": "the likelihood is multimodal; R-hat and ESS from common-MLE initializations support within-mode convergence only"
     },
     "candidates": {
       "free": {
@@ -371,6 +433,18 @@
           ],
           "target_accept_prob": 0.9,
           "max_tree_depth": 8,
+          "init_strategy": {
+            "name": "init_to_value",
+            "initial_values": {
+              "A": 0.8863515558683248,
+              "omega": 1.030239891010187,
+              "phi": -0.02988145356722502,
+              "b": 0.2512769921781912,
+              "c": 0.02872270880462028,
+              "sigma": 0.32123190979141125
+            },
+            "same_values_for_every_chain": true
+          },
           "divergences_by_chain": [
             0,
             0
@@ -476,6 +550,18 @@
           ],
           "target_accept_prob": 0.9,
           "max_tree_depth": 8,
+          "init_strategy": {
+            "name": "init_to_value",
+            "initial_values": {
+              "A": 0.8863515558683248,
+              "omega": 1.030239891010187,
+              "phi": -0.02988145356722502,
+              "b": 0.2512769921781912,
+              "c": 0.02872270880462028,
+              "sigma": 0.32123190979141125
+            },
+            "same_values_for_every_chain": true
+          },
           "divergences_by_chain": [
             0,
             0
@@ -518,7 +604,10 @@
     "pairwise": {
       "direction": "constrained_minus_free",
       "elpd_difference": 0.4126590617546153,
-      "se": 0.262534386964351,
+      "se": 0.25588686781820247,
+      "se_ddof": 0,
+      "se_formula": "sqrt(n * var(pointwise_differences, ddof=0))",
+      "se_convention": "matches the ArviZ az.loo and az.compare convention",
       "pointwise_differences": [
         0.031462166005881365,
         0.019099698330638404,

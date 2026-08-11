@@ -5733,11 +5733,16 @@ directional claim could not determine how the comparison came out.
 `python experiments/haaf_nested_constraint.py` uses
 `generate_toy_data()` defaults ($N=20$, data seed 42, true $b=0.25$, noise
 standard deviation 0.5). Both candidates call
-`bistar_gp.candidates.CandidateModel._fit_mle`; they share all starts and
-bounds except the lower slope bound, unrestricted for the free candidate and
-zero for the restricted candidate. A common log-sigma bound of [-10, 5]
-prevents exploratory underflow. Each shared $\psi$ receives a fresh fit, so the
-per-draw free-slope sign can account for the BMS* gap.
+`bistar_gp.candidates.CandidateModel._fit_mle`; they receive four shared base
+starts and share all bounds except the lower slope bound, unrestricted for the
+free candidate and zero for the restricted candidate. The restricted fit also
+receives the free solutions, clipped at $b=0$ when necessary, and each
+candidate's selection pool includes the other candidate's feasible vectors.
+This deliberate asymmetric warm start and candidate pooling forces exact
+equality at shared optima instead of turning optimizer noise into a gap. A
+common log-sigma bound of [-10, 5] prevents exploratory underflow. Each shared
+$\psi$ receives a fresh fit, so the per-draw free-slope sign can account for
+the BMS* gap.
 
 The BMS* arm imports `prior_sensitivity_study.py`, loads the local
 `toy_elicited` prior-IS caches for seeds 0, 1, and 2, and calls the validated
@@ -5753,11 +5758,13 @@ $c\sim$ Normal(0, 5), and $\sigma\sim$ HalfNormal(2); the free candidate uses
 $b\sim$ Normal(0, 5), while the restricted candidate uses $b\sim$
 HalfNormal(5). Pyro NUTS runs sequential chains with seeds 20260811 and
 20260812, each with 1,000 warmup iterations and 1,000 retained draws, target
-acceptance probability 0.90, and maximum tree depth 8. ArviZ computes
-pointwise PSIS-LOO. Structural G tolerances equal $2\times10^{-7}$ for both
-interior equality and one-sided nesting; cross-machine artifact tolerances
-equal 0.005 for probabilities and the slope fraction, 0.25 elpd for each LOO
-estimate, and 0.25 elpd for the paired difference.
+acceptance probability 0.90, and maximum tree depth 8. Every chain initializes
+deterministically at the common observed-data MLE through `init_to_value`.
+ArviZ computes pointwise PSIS-LOO. The $2\times10^{-7}$ structural G gates
+guard machinery regressions rather than empirically testing nesting;
+cross-machine artifact tolerances equal 0.005 for probabilities and the slope
+fraction, 0.25 elpd for each LOO estimate, and 0.25 elpd for the paired
+difference.
 
 **Alternatives considered:** Drawing new data was rejected because it would
 break the binding between the $N=20$ observations, their data-elicited GP
@@ -5774,25 +5781,45 @@ because the table and slope-sign count contain the full comparison.
 **Result:** The pooled prior-IS ESS equals 4,464.53, and the 1,000 SIR rows
 contain 883 unique cached draws. The free best-fit slope falls below zero on
 1/1,000 rows, a fraction of 0.001. The remaining 999 rows have identical
-primary G values for both candidates to the recorded tolerance. On the one
-negative-slope row, restricted minus free G equals 0.000360, so the one-sided
-nesting check passes with zero violations.
+primary G values for both candidates because the same feasible vector is
+re-evaluated. On the one negative-slope row, restricted minus free G equals
+0.000360. The one-sided ordering follows by set inclusion; the runtime gates
+record zero machinery-regression violations.
 
-At $\tau=1$, pooled BMS* assigns 0.500000112 to the free candidate and
-0.499999888 to the restricted candidate; expected-posterior aggregation
-assigns 0.500000090 and 0.499999910. The restricted pooled probability ranges
-from 0.499996100 at $\tau=0.1$ to 0.499999991 at $\tau=10$; its
-expected-posterior probability ranges from 0.499999100 to 0.499999991. Thus
-BMS* reports an effective tie throughout the sweep.
+At $\tau=1$, both aggregation conventions assign 0.500 to each candidate.
+The free-minus-restricted probability gap remains smaller than $10^{-5}$ at
+every $\tau$ under both conventions and comes entirely from the single
+negative-slope draw. Its monotone contraction with $\tau$ follows
+deterministically from Boltzmann aggregation, not from a measured temperature
+effect. The restricted candidate cannot exceed the free candidate because the
+restricted region is a subset; only the gap magnitude is empirical.
 
 PSIS-LOO reports `elpd_loo=-13.074` (SE 3.458, `p_loo=5.343`) for the free
 candidate and `elpd_loo=-12.661` (SE 3.594, `p_loo=5.169`) for the restricted
 candidate. The restricted-minus-free difference equals 0.413 with paired SE
-0.263. Both NUTS fits have zero divergences; maximum rank-normalized
+0.256, computed with `ddof=0` to match the ArviZ convention. Both NUTS fits
+have zero divergences; maximum rank-normalized
 $\widehat R$ equals 1.003 free and 1.002 restricted, and minimum bulk ESS
 equals 1,004 and 1,638. The free maximum Pareto $k$ equals 0.564 with no
 warning. The restricted maximum equals 0.718, and ArviZ flags one observation
-above its 0.697 good-$k$ threshold. The direction favors the restriction under
-LOO but requires that qualification. Case C therefore records a split null:
-LOO gives a small, diagnostically qualified advantage to the restricted
-candidate, while BMS* gives neither candidate a meaningful advantage.
+above its 0.697 good-$k$ threshold. Because both candidates' chains initialize
+at the same MLE and sampled-grid aliases occur near $\omega=4.939$ and 6.999,
+the $\widehat R$ and ESS values support within-mode convergence only.
+
+The difference is directionally inconclusive: its magnitude is smaller than
+twice its paired SE, the constrained estimate carries a Pareto-$k$ warning,
+and the paired SE covers data-level pointwise variability only, without MCMC
+error. Haaf, Klaassen, and Rouder report this kind of null-to-inconclusive LOO
+difference as the failure mode for a satisfied nested constraint.
+
+The two slope priors coincide up to normalization on $b>0$, so LOO has no
+structural contrast wherever negative-slope posterior mass is negligible. The
+artifact's own full-data local Gaussian diagnostic gives posterior SD
+0.0129506 for $b$, places the boundary 19.4028 SDs away, and gives a Gaussian
+left-tail probability of $3.65\times10^{-84}$. This local approximation
+supports the reading that the constraint binds only where the locally
+approximated posterior carries negligible mass. It does not prove that the
+global posteriors or leave-one-out fold posteriors are exactly identical, and
+it does not establish that the entire observed gap comes from estimator
+noise. Case C therefore records a null-to-inconclusive LOO comparison and an
+effective BMS* tie without a directional claim.

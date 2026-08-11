@@ -19,9 +19,13 @@ $$
 
 with unrestricted $b$. The restricted candidate $M_r \subset M_e$ uses the
 same expression and imposes $b\geq 0$. Both candidates call the same bounded
-MLE routine, use the same starts, and share every bound except the lower bound
-on $b$. The frozen $N=20$ data use seed 42 and the true slope $b=0.25$, so the
-restriction holds in truth.[^2]
+MLE routine, receive four shared base starts, and share every bound except the
+lower bound on $b$. The restricted fit additionally receives the free
+solutions, clipped at $b=0$ when necessary, and each candidate's selection
+pool includes the other candidate's feasible vectors. This deliberate
+asymmetry forces exact equality at shared optima instead of turning optimizer
+noise into a gap. The frozen $N=20$ data use seed 42 and the true slope
+$b=0.25$, so the restriction holds in truth.[^2]
 
 ## 5.1 BMS* comparison
 
@@ -34,11 +38,21 @@ Thus the calculation supplies candidate instances from a shared $\psi$ rather
 than introducing candidate-parameter priors. Such priors contribute only to
 the separate LOO comparison below.[^2]
 
-The nesting check passed at a $2\times10^{-7}$ absolute tolerance. On 999
-predictives, the free optimum had $b\geq0$, and both candidates produced
-identical primary $G$ values. One predictive had a negative free optimum, for
-a fraction of 0.001. On that row, restricted minus free $G$ equaled
-0.000360, so the required one-sided ordering also held.[^2]
+The nesting relation fixes the primary-metric ordering as an identity of the
+protocol: $M_r\subset M_e$ implies
+$\min_{\theta\in M_r}G\geq\min_{\theta\in M_e}G$ for every predictive. The
+cross-seeded candidate pools enforce this set inclusion numerically, while
+re-evaluation of the same feasible vector gives exact equality at a shared
+optimum. The $2\times10^{-7}$ runtime gates guard against machinery
+regressions; they do not provide an empirical nesting test. On 999
+predictives, the free optimum had $b\geq0$ and the primary $G$ gap equaled
+exactly zero. One predictive had a negative free optimum, for a fraction of
+0.001, and restricted minus free $G$ equaled 0.000360 on that row.[^2]
+
+This same set inclusion fixes the probability direction before Table 5.1.
+The restricted candidate can never exceed the free candidate under either
+aggregation at any $\tau$; only the gap's magnitude depends on the sampled
+predictives.[^2]
 
 Table 5.1 reports both aggregation conventions across the preregistered
 temperature grid. Each pair normalizes over only the free and restricted
@@ -46,20 +60,21 @@ candidates.[^2]
 
 | $\tau$ | pooled free | pooled restricted | expected-posterior free | expected-posterior restricted |
 |---:|---:|---:|---:|---:|
-| 0.1 | 0.500003900 | 0.499996100 | 0.500000900 | 0.499999100 |
-| 0.3 | 0.500000570 | 0.499999430 | 0.500000300 | 0.499999700 |
-| 1.0 | 0.500000112 | 0.499999888 | 0.500000090 | 0.499999910 |
-| 3.0 | 0.500000032 | 0.499999968 | 0.500000030 | 0.499999970 |
-| 10.0 | 0.500000009 | 0.499999991 | 0.500000009 | 0.499999991 |
+| 0.1 | 0.500 | 0.500 | 0.500 | 0.500 |
+| 0.3 | 0.500 | 0.500 | 0.500 | 0.500 |
+| 1.0 | 0.500 | 0.500 | 0.500 | 0.500 |
+| 3.0 | 0.500 | 0.500 | 0.500 | 0.500 |
+| 10.0 | 0.500 | 0.500 | 0.500 | 0.500 |
 
 At the headline value $\tau=1$, both conventions therefore give an effective
-tie. The free candidate's advantage decreases monotonically as $\tau$
-increases, and neither aggregation choice changes the conclusion. The
-appendix-only `kl_forward` calculation also remains within 0.0006 of an equal
-split across the grid.[^2]
+tie. The free-minus-restricted probability gap remains smaller than
+$10^{-5}$ at every $\tau$ under both conventions and comes entirely from the
+single negative-slope draw. Its monotone contraction with $\tau$ follows
+deterministically from the Boltzmann aggregation, not from a measured
+temperature effect.[^2]
 
 The result does not support a claim that BMS* preferentially rewards a
-satisfied restriction in this instance. BMS* assigns the restricted candidate
+satisfied restriction. BMS* assigns the restricted candidate
 essentially half the probability without partitioning the parameter space,
 but the encompassing candidate can reproduce every restricted optimum. The
 single predictive with a negative slope creates the entire primary-metric gap.
@@ -80,10 +95,15 @@ No prior from this list enters the BMS* calculation.[^2]
 
 Pyro NUTS ran two sequential chains with seeds 20260811 and 20260812. Each
 chain used 1,000 warmup iterations and retained 1,000 draws, with target
-acceptance probability 0.90 and maximum tree depth 8. Both fits recorded zero
-divergences. Rank-normalized $\widehat R$ reached at most 1.003 for the free
-fit and 1.002 for the restricted fit; minimum bulk effective sample sizes were
-1,004 and 1,638, respectively.[^2]
+acceptance probability 0.90 and maximum tree depth 8. Both chains for both
+candidates initialized deterministically at the same observed-data MLE through
+`init_to_value`: $A=0.886352$, $\omega=1.030240$, $\phi=-0.029881$,
+$b=0.251277$, $c=0.028723$, and $\sigma=0.321232$. Sampled-grid aliases near
+$\omega=4.939$ and $6.999$ make the $\omega$/$\phi$ likelihood multimodal.
+Both fits recorded zero divergences. Rank-normalized $\widehat R$ reached at
+most 1.003 for the free fit and 1.002 for the restricted fit; minimum bulk
+effective sample sizes were 1,004 and 1,638, respectively. These diagnostics
+support within-mode convergence only, not exploration across modes.[^2]
 
 | candidate | `elpd_loo` | SE | `p_loo` | max Pareto $k$ | warning |
 |---|---:|---:|---:|---:|---|
@@ -91,20 +111,32 @@ fit and 1.002 for the restricted fit; minimum bulk effective sample sizes were
 | slope-constrained Sin+Linear | -12.661 | 3.594 | 5.169 | 0.718 | yes, one observation |
 
 The constrained-minus-free `elpd_loo` difference equals 0.413 with a paired SE
-of 0.263.[^2] On its face, PSIS-LOO assigns the higher predictive score to the
-restricted candidate, while BMS* produces an effective tie. ArviZ nevertheless
-flags the restricted estimate because one observation exceeds the
-sample-size-specific good-$k$ threshold of 0.697. Pareto shape values above
-about 0.7 can make the importance-sampling approximation unreliable, so the
-direction should not support a decisive claim without exact refits or a more
-robust cross-validation calculation.[^3]
+of 0.256, computed with `ddof=0` to match the ArviZ convention.[^2] The
+difference is directionally inconclusive: its magnitude is smaller than twice
+its paired SE, the constrained estimate carries a Pareto-$k$ warning because
+one observation exceeds the 0.697 good-$k$ threshold, and the paired SE covers
+data-level pointwise variability only, without MCMC error. Haaf, Klaassen, and
+Rouder report this kind of null-to-inconclusive LOO difference as the failure
+mode for a satisfied nested constraint.[^1] Pareto shape values above about
+0.7 can make the importance-sampling approximation unreliable, so a decisive
+direction would require exact refits or a more robust cross-validation
+calculation.[^3]
 
-This head-to-head does not reproduce a categorical LOO failure, and it does
-not show preferential BMS* credit for the satisfied constraint. It instead
-separates two mechanisms on identical data. LOO changes because the two
-Bayesian fits use different support for $b$; BMS* changes only when a shared
-$\psi$ has a negative free optimum. Here that event occurs once in 1,000 SIR
-predictives, leaving the BMS* result numerically indistinguishable from a tie.
+The two slope priors coincide up to normalization on $b>0$, so LOO has no
+structural contrast wherever negative-slope posterior mass is negligible. The
+artifact's own full-data local Gaussian diagnostic gives posterior SD
+0.0129506 for $b$, places the boundary 19.4028 SDs away, and gives a Gaussian
+left-tail probability of $3.65\times10^{-84}$. This local approximation
+supports the reading that the constraint binds only where the locally
+approximated posterior carries negligible mass. It does not prove that the
+global posteriors or leave-one-out fold posteriors are exactly identical, and
+it does not establish that the entire observed gap comes from estimator
+noise.[^2]
+
+The LOO arm therefore reproduces the null-to-inconclusive failure mode without
+supporting a directional claim. BMS* also gives a numerical tie, with a
+one-sided direction fixed by nesting and a magnitude determined by the single
+negative-slope SIR draw.
 
 [^1]: 🟢 peer-reviewed — Haaf, Klaassen, and Rouder (2025). Bayes factor vs. posterior predictive model assessment: Insights from ordinal constraints. *Computational Brain & Behavior*. https://doi.org/10.1007/s42113-025-00240-0
 [^2]: 🟠 empirical — `experiments/haaf_nested_constraint.py`; `runs/haaf_nested_constraint/results.json` and `README.md` (data seed 42; prior-IS seeds 0, 1, 2; SIR seed 42; NUTS seeds 20260811 and 20260812).
