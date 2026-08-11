@@ -689,8 +689,10 @@ def render_readme(results: Dict) -> str:
         f"{appendix['grid_median']['free']:.1f}. The approximately "
         f"{appendix['global_max_row']['free_G']:.2e} global maximum occurs on "
         "a separate row where both candidate values are equal. Under the global ",
-        "max-shift, the differing row contributes below float64 aggregate ",
-        "resolution, so the pooled result carries no directional information. ",
+        "max-shift, the differing-row weight is exactly zero from exponential ",
+        "underflow at τ = 0.1 and 0.3; at τ = 1, 3, and 10, it is nonzero ",
+        "but contributes below aggregate float64 resolution, so the pooled result ",
+        "carries no directional information. ",
         "The expected-posterior calculation reverses the primary-metric sign: ",
         "the differing row favors the restricted candidate by "
         f"{abs(appendix['differing_row']['constrained_minus_free_G']):.3f} nats, "
@@ -823,11 +825,11 @@ def main() -> None:
     x_spacing = float(np.diff(x_np)[0])
     if not np.allclose(np.diff(x_np), x_spacing):
         raise RuntimeError("sampled-grid alias diagnostic requires equal x spacing")
-    alias_period = 2.0 * math.pi / abs(x_spacing)
+    sampling_angular_frequency = 2.0 * math.pi / abs(x_spacing)
     mle_omega = observed_parameters[MODEL_NAMES[0]]["omega"]
     alias_omega = sorted([
-        abs(alias_period - mle_omega),
-        alias_period + mle_omega,
+        abs(sampling_angular_frequency - mle_omega),
+        sampling_angular_frequency + mle_omega,
     ])
     print("Loading validated SIR predictives")
     predictives, pss_anchor, sir_indices, pooled_ess = validated_sir_predictives(
@@ -1043,7 +1045,7 @@ def main() -> None:
             "priors": PRIOR_DESCRIPTIONS,
             "sampled_grid_alias_diagnostic": {
                 "x_spacing": x_spacing,
-                "alias_period": alias_period,
+                "sampling_angular_frequency": sampling_angular_frequency,
                 "mle_omega": float(mle_omega),
                 "alias_omega": [float(value) for value in alias_omega],
                 "diagnostic_scope": (

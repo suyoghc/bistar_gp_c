@@ -61,8 +61,10 @@ measured temperature effect.
 The pooled `kl_forward` column is degenerate at exactly [0.5, 0.5]
 for every τ. The single differing row has a `kl_forward` value of
 500.142 for the free candidate and 488.982 for the restricted candidate, compared with a grid median of 55.8. The approximately 5.92e+10 global maximum occurs on a separate row where both candidate values are equal. Under the global
-max-shift, the differing row contributes below float64 aggregate
-resolution, so the pooled result carries no directional information.
+max-shift, the differing-row weight is exactly zero from exponential
+underflow at τ = 0.1 and 0.3; at τ = 1, 3, and 10, it is nonzero
+but contributes below aggregate float64 resolution, so the pooled result
+carries no directional information.
 The expected-posterior calculation reverses the primary-metric sign:
 the differing row favors the restricted candidate by 11.160 nats, and at τ = 1 it assigns 0.499500014228 to the free candidate and 0.500499985772 to the restricted candidate.
 

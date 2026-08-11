@@ -357,7 +357,7 @@
     },
     "sampled_grid_alias_diagnostic": {
       "x_spacing": 1.0526315789473681,
-      "alias_period": 5.969026041820609,
+      "sampling_angular_frequency": 5.969026041820609,
       "mle_omega": 1.030239891010187,
       "alias_omega": [
         4.938786150810421,
