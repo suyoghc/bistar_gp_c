@@ -5754,8 +5754,9 @@ The verification paragraph reflects the completed case review archives. All
 four reviewer rounds are recorded for every case, with the fourth, Kimi K3, run
 at the author's direction on the same round-1 packages; the findings,
 refutations, fixes, and author sign-off records are committed under
-`runs/<case>/reviews/` in this repository. D65 records the D17 local
-methods-validation provenance exception, which Section 8 states explicitly.
+`runs/<case>/reviews/` in this repository. D65 records the provenance exception
+for the D17-recorded local methods-validation reach check, which Section 8
+states explicitly in the same terms.
 
 The case sections remain on their source branches and are cited at their
 assembled-manuscript paths: Case A from `paper/case-a-vanbork` at

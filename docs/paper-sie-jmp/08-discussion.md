@@ -13,15 +13,17 @@ the convention.[^discussion-dials]
 
 Case A prices aggregation most directly. Expected-posterior aggregation obtains
 external correspondence with van Bork, Romeijn, and Wagenmakers, while pooled
-aggregation retains absolute divergence magnitudes needed for an M-open
-reading. The same case gives the hybrid \(Z_M\) construction a passing
-shared-family special-case test. Case B then shows how \(\tau\) and `occam`
-interact in nested comparisons: low temperature emphasizes best achievable
-divergence, while reference-volume normalization can permit a finite-temperature
-simplicity preference. Case C shows that changing \(\tau\) or the table-path
-aggregation cannot reverse containment. Case D adds the scale qualification:
-temperature has meaning only relative to the scale of \(G\), so comparisons
-across metrics require tau-free draw-win fractions alongside soft probabilities.[^discussion-dials]
+aggregation retains absolute divergence magnitudes needed for an M-open reading
+yet does not reproduce their non-overlapping target, and naming aggregation as a
+dial states that price instead of concealing it. The same case gives the hybrid
+\(Z_M\) construction a passing shared-family special-case test. Case B then
+shows how \(\tau\) and `occam` interact in nested comparisons: low temperature
+emphasizes best achievable divergence, while reference-volume normalization can
+permit a finite-temperature simplicity preference. Case C shows that changing
+\(\tau\) or the table-path aggregation cannot reverse containment. Case D adds
+the scale qualification: temperature has meaning only relative to the scale of
+\(G\), so comparisons across metrics require tau-free draw-win fractions
+alongside soft probabilities.[^discussion-dials]
 
 The bridge from Case B to Case C resolves an apparent tension. Case C shows
 that neither the table path nor LOO credits a satisfied constraint in its
@@ -57,8 +59,10 @@ The relation to elpd and PSIS-LOO concerns shared operations rather than an
 identity of inferential targets. Both traditions use pointwise predictive
 evaluation and can use importance weighting over posterior draws. PSIS-LOO
 fits each candidate with its own parameter prior and estimates held-out
-predictive accuracy; its importance ratios approximate leave-one-out
-posteriors, with Pareto smoothing diagnosing unstable ratios. BMS*-GP instead
+predictive accuracy: reweighting its posterior draws by the importance ratios
+approximates each leave-one-out predictive quantity, a generalized Pareto fit to
+the largest of those ratios stabilizes them, and the fitted shape estimate flags
+cases where the approximation becomes unreliable. BMS*-GP instead
 evaluates all candidates against shared data patterns \(\psi\), uses
 `pw_kl_vcal` as the primary divergence, and reserves within-model priors for an
 explicit hybrid extension. Its target concerns proximity to a common
@@ -110,8 +114,10 @@ The method moves judgment into the data prior, kernel, metric, temperature,
 reference measure, and aggregation rule. These choices become visible and
 testable, but they still require substantive knowledge. When beliefs about a
 bias process come largely from outside the observed data, additional sample
-size need not remove the associated uncertainty; honest inference can retain an
-uncertainty floor.
+size need not remove the associated uncertainty, and honest inference can retain
+an uncertainty floor. That expectation belongs to the program rather than to
+any of the four cases reported here; section 7 develops the debiasing
+construction that makes it concrete.[^discussion-floor]
 
 Two scope conditions follow from Case D. Under F1, the GP scaffold may fail to
 represent the feature that distinguishes the candidates, so comparison reflects
@@ -121,21 +127,23 @@ so no scoring rule can recover information that the data do not contain. The
 synthetic case could not identify which mechanism produced its asymmetry, and
 its deviation curves covered only part of the region used by the stored
 aggregate scores. BMS*-GP should therefore report scaffold checks, local
-deviation diagnostics, and the possibility of unresolved F1/F2
-non-identifiability rather than treating every weak separation as a demand for
-a sharper posterior.[^discussion-limits]
+deviation diagnostics, and the possibility that a weak separation remains
+unresolved across all four sources Case D leaves open, namely F1
+representability, F2 mimicry, metric behavior, and sampling noise, rather than
+treating every weak separation as a demand for a sharper
+posterior.[^discussion-limits]
 
 ## 8.6 Verification and reproducibility
 
 Every reported number has a named regenerating `experiments/` script and a
-corresponding `runs/` artifact; D17 records the provenance exception for the
-local methods-validation reach check. Each case section underwent independent
-review within a four-model adversarial cross-verification protocol. All four
-reviewer rounds are recorded for every case, with the fourth, Kimi K3, run at
-the author's direction on the same round-1 packages. The findings, refutations,
-fixes, and author sign-off records are committed under `runs/<case>/reviews/`
-in this repository, and the corresponding `Notes/DECISIONS.md` entry records
-the review outcome.[^discussion-repro]
+corresponding `runs/` artifact; D65 records the provenance exception for the
+D17-recorded local methods-validation reach check. Each case section underwent
+independent review within a four-model adversarial cross-verification protocol.
+All four reviewer rounds are recorded for every case, with the fourth, Kimi K3,
+run at the author's direction on the same round-1 packages. The findings,
+refutations, fixes, and author sign-off records are committed under
+`runs/<case>/reviews/` in this repository, and the corresponding
+`Notes/DECISIONS.md` entry records the review outcome.[^discussion-repro]
 
 [^discussion-dials]: 🟠 empirical — assembled-manuscript sections 3–6 and their case artifacts: `runs/vanbork_external_validation/`, `runs/e7_convention_sensitivity/`, `runs/occam_dial/`, `runs/haaf_nested_constraint/`, and `runs/regret_curves_mopen/`; Notes/DECISIONS.md D60–D64.
 [^discussion-bridge]: 🟠 empirical — assembled-manuscript sections 4 and 5 on `paper/case-b-occam-dial` and `paper/case-c-haaf`; `runs/occam_dial/e6_results.json`; `runs/haaf_nested_constraint/results.json`; Notes/DECISIONS.md D62 and D63.
@@ -144,6 +152,7 @@ the review outcome.[^discussion-repro]
 [^discussion-loo-case]: 🟠 empirical — `experiments/haaf_nested_constraint.py`; `runs/haaf_nested_constraint/results.json` and `README.md`; Notes/DECISIONS.md D63. 🟢 peer-reviewed — Haaf, Klaassen, and Rouder (2025), “Bayes factor vs. posterior predictive model assessment: Insights from ordinal constraints,” *Computational Brain & Behavior*.
 [^discussion-hybrid]: 🟠 empirical — assembled-manuscript section 3 on `paper/case-a-vanbork`; `experiments/vanbork_external_validation.py`; `runs/vanbork_external_validation/results.json`; Notes/DECISIONS.md D60 Resolution and Precision addenda.
 [^discussion-limits]: 🟠 empirical — assembled-manuscript section 6; `experiments/regret_curves_mopen.py`; `runs/regret_curves_mopen/`; Notes/DECISIONS.md D64.
+[^discussion-floor]: 🟠 empirical — assembled-manuscript section 7, `docs/paper-sie-jmp/07-debias-bridge.md`, which develops the debiasing bridge and refers the full treatment to the companion paper and thesis chapter 5; none of the four cases reported here estimates an uncertainty floor.
 [^discussion-repro]: 🟠 empirical — case review archives under `runs/vanbork_external_validation/reviews/`, `runs/occam_dial/reviews/`, `runs/haaf_nested_constraint/reviews/`, and `runs/regret_curves_mopen/reviews/`; corresponding review outcomes in Notes/DECISIONS.md D62–D65.
 
 ---

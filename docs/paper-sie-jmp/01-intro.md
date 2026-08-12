@@ -58,9 +58,12 @@ inspectable distribution over data patterns.
 candidate predictions and integrating compatibility, without requiring a
 separate hand-specified parameter prior for every model.
 
-(iii) It subjects the machinery to four cases covering external validation,
-nested-model reference measures, a satisfied parameter constraint against
-PSIS-LOO, and calibration under known synthetic truth.[^intro-cases]
+(iii) It subjects the machinery to four cases. The first provides external
+validation of the induced-prior and soft-transfer computations against data
+priors supplied by other authors, which leaves the GP scaffold itself untested;
+the remaining three cover nested-model reference measures, a satisfied parameter
+constraint against PSIS-LOO, and calibration under known synthetic
+truth.[^intro-cases]
 
 (iv) It makes the evaluative choices explicit as dials rather than burying them
 in an implementation. Case B, section 4, jointly prices \(\tau\) and `occam`;
@@ -71,14 +74,18 @@ numerical \(\tau\) cannot support probability comparisons across differently
 scaled metrics.
 
 The cases produce deliberately mixed outcomes. Case A reproduces independent
-closed-form targets, validates a hybrid \(Z_M\) special case, and exposes the
-aggregation trade. Case B uses an `informative`-configuration, MAP-based
-methods-validation example to show that reference-volume normalization can
-change a nested-model comparison at finite temperature. Case C returns the
-important null: the table path gives an effective tie with a direction fixed by
-containment, while PSIS-LOO remains directionally inconclusive for the satisfied
-constraint. Case D remains synthetic-only; it contributes known-truth reference
-material and a metric-scale warning without claiming a real-data result or
+closed-form targets and validates a hybrid \(Z_M\) special case, though its
+examples insert the published data priors directly and therefore exercise the
+induced-prior and soft-transfer machinery without testing the GP scaffold. It
+also exposes the aggregation trade, because the canonical pooled convention does
+not reproduce the non-overlapping target that the per-draw routes recover. Case
+B uses an `informative`-configuration, MAP-based methods-validation example to
+show that reference-volume normalization can change a nested-model comparison at
+finite temperature. Case C returns the important null: the table path gives an
+effective tie with a direction fixed by containment, while PSIS-LOO remains
+directionally inconclusive for the satisfied constraint. Case D remains
+synthetic-only; it contributes known-truth reference material and a
+metric-scale warning without claiming a real-data result or
 setting an inadequacy threshold.[^intro-cases]
 
 [^intro-special]: 🟢 peer-reviewed — Myung, Forster, and Browne (2000) and Wagenmakers and Waldorp (2006), earlier *Journal of Mathematical Psychology* special-issue contributions on model selection and evaluation.
