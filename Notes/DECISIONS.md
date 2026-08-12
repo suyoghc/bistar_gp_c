@@ -5716,3 +5716,75 @@ to be amended later merely to insert them. STOP before Ready or merge. NOT autho
 second correction pass, restoring/applying/dropping stash `5280d1e1…`, D59 work, evidence
 or figure changes, poster-repository work, the captions themselves, Della contact, new
 computation, holdout access, BMS*, Ready, or merge.
+
+## D66: Synthesis sections integrate the four case studies — 2026-08-12
+
+**Problem:** The synthesis branch still contained stubs for the Introduction,
+Machinery, and Discussion after the four case sections were completed on their
+separate branches. The assembled manuscript needed those sections to adopt the
+case prose conventions, expose the author-resolved evaluation dials, carry the
+Case B-to-C nesting logic into the general account, and state the Case D scale
+and calibration limits without copying case results or treating knowledge-base
+files as numerical authority.
+
+**Decision:** Replaced the stubs in `docs/paper-sie-jmp/01-intro.md`,
+`docs/paper-sie-jmp/02-machinery.md`, and
+`docs/paper-sie-jmp/08-discussion.md` with final manuscript prose under the
+frozen notation in `docs/paper-sie-jmp/00-notation.md`.
+
+Section 1 frames the contribution for the third JMP model-evaluation special
+issue, treats data priors as the through-line from the foundational JMP papers,
+connects the construction to Bonifay and Cai's fit-propensity program, makes the
+three evaluation dials the unifying contribution, and previews the four cases
+with Case C's null and Case D's synthetic-only scope stated directly. Section 2
+develops the data prior, projection and induced priors, \(Z_M\), soft transfer,
+aggregation, and metric roles. It adds a numbered containment remark: for
+\(M_r\subset M_e\), best-instance divergence orders the encompassing candidate
+no worse on every shared pattern, so no listed table-path aggregation can favor
+the restriction at any \(\tau\); restriction credit belongs to the
+reference-measure side controlled by `occam`. It also records the D60
+Resolution, retains W1 and the D61 `kl_forward` attribution, and adds the Case D
+scale-invariance reporting rule. Section 8 revisits the dials, states the Case
+B-to-C bridge, preserves M-open calibration as open while recognizing Case D's
+known-truth reference material, upgrades hybrid \(Z_M\) with the Case A Target B
+test, distinguishes BMS*-GP from elpd and PSIS-LOO using Case C, records the
+verification protocol, and treats F1 and F2 as scope conditions.
+
+The verification paragraph reflects the completed case review archives. All
+four reviewer rounds are recorded for every case, with the fourth, Kimi K3, run
+at the author's direction on the same round-1 packages; the findings,
+refutations, fixes, and author sign-off records are committed under
+`runs/<case>/reviews/` in this repository. D65 records the provenance exception
+for the D17-recorded local methods-validation reach check, which Section 8
+states explicitly in the same terms.
+
+The case sections remain on their source branches and are cited at their
+assembled-manuscript paths: Case A from `paper/case-a-vanbork` at
+`docs/paper-sie-jmp/03-case-A-external-validation.md`; Case B from
+`paper/case-b-occam-dial` at
+`docs/paper-sie-jmp/04-case-B-occam-dial.md`; Case C from
+`paper/case-c-haaf` at
+`docs/paper-sie-jmp/05-case-C-nested-constraints.md`; and Case D from
+`paper/case-d-mopen` at
+`docs/paper-sie-jmp/06-case-D-mopen-calibration.md`. Synthesis footnotes name
+the case-generating `experiments/` scripts, `runs/` artifacts, and decision
+entries. Knowledge-base paths support arguments only.
+
+**Alternatives considered:** Re-quoting case headline values was rejected in
+favor of a zero-new-empirical-numbers policy. Copying the absent case files onto
+the synthesis branch was rejected because final assembly supplies sections 3
+through 6 from their case branches. Choosing a new canonical aggregation or
+`occam` convention was rejected in favor of the D60 Resolution and the frozen
+defaults. Treating the local `kb/` vault or an uncommitted visualization path as
+numerical authority was rejected; cross-branch case artifacts and decision
+records provide the empirical provenance.
+
+**Result:** The three synthesis sections contain no re-quoted empirical
+estimate. Their only numerals belong to section and equation references,
+notation, decision identifiers, and bibliographic metadata. All requested
+case-derived additions appear in the designated sections, provenance footers
+name the supporting scripts, artifacts, and decisions, and D66 was appended at
+the end of the decision log. No experiment, artifact-generation command,
+network request, or state-mutating git operation ran during the synthesis pass.
+
+**Review outcome (2026-08-12):** §4 protocol complete with ALL FOUR reviewers live in round 1 (Codex gpt-5.6-sol xhigh REVISE-5; Opus 5 fresh-agent REVISE-12; Gemini 3.1 Pro APPROVE-0; Kimi K3 APPROVE-2) — 19 collated findings; 9 confirmed + 1 checker-split (SC2, driver-adjudicated to fix) fixed in d6ee868 by a DISCLOSED SUBSTITUTE implementer (fresh Opus subagent; Codex usage-locked to 2026-08-18 after round 1, its cross-checks rerouted to non-originators and its re-review replaced by driver mechanical verification); 8 findings REFUTED and logged; re-review by available raisers all RESOLVED; three hunk-introduced defects fixed by micro-fix (plug-in-surrogate framing; section-7 forward-reference; projection softening) and driver-verified; full record runs/synthesis_sections/reviews/VERDICTS.md; author adjudications open: SC1 Gbar surrogate + frozen-notation amendment, SC2 pooled-limit sign-off, substitute-implementer ratification, uncommitted-local-material policy.
