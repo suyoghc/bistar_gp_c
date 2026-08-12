@@ -36,9 +36,9 @@ weight factors out of the minimization, and the variance-calibrated argmin
 coincides with the Gaussian maximum-likelihood refit. The correspondence holds
 algebraically rather than as a sampled regularity. Where the pattern variance
 varies across locations, the weights no longer factor out and the two
-projections separate. The collection of fitted instances should be read as
-samples from the pushforward of \(p_0(\psi)\) through this projection, not as
-draws from a separately elicited within-model parameter
+projections need no longer coincide. The collection of fitted instances should
+be read as samples from the pushforward of \(p_0(\psi)\) through this
+projection, not as draws from a separately elicited within-model parameter
 prior.[^machinery-projection]
 
 Model-level induction averages before integrating. For candidate parameters
@@ -58,8 +58,10 @@ against \(\bar\psi\). The computed object therefore reports the divergence from
 discrepancy between them varies with \(\phi\), so it does not cancel from a
 normalized comparison across candidates. Take the notation's "averaged across
 data patterns" gloss as the intended reading of \(\bar G(\phi)\) and the
-moment-matched evaluation as the estimator of it used
-throughout.[^machinery-gbar]
+moment-matched evaluation as the plug-in surrogate for it used throughout. The
+surrogate is not consistent for the per-draw average, because the gap between
+them reflects the construction rather than sampling error that accumulating
+draws would remove.[^machinery-gbar]
 
 With `occam=False`, the integral uses raw Lebesgue measure, which follows the
 canonical BI* convention. With `occam=True`, division by \(V_{\mathrm{ref}}\)

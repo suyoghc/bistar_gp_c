@@ -116,8 +116,9 @@ testable, but they still require substantive knowledge. When beliefs about a
 bias process come largely from outside the observed data, additional sample
 size need not remove the associated uncertainty, and honest inference can retain
 an uncertainty floor. That expectation belongs to the program rather than to
-any of the four cases reported here; section 7 develops the debiasing
-construction that makes it concrete.[^discussion-floor]
+any of the four cases reported here, and section 7 of the assembled manuscript
+carries the debiasing development that would make it
+concrete.[^discussion-floor]
 
 Two scope conditions follow from Case D. Under F1, the GP scaffold may fail to
 represent the feature that distinguishes the candidates, so comparison reflects
@@ -152,7 +153,7 @@ refutations, fixes, and author sign-off records are committed under
 [^discussion-loo-case]: 🟠 empirical — `experiments/haaf_nested_constraint.py`; `runs/haaf_nested_constraint/results.json` and `README.md`; Notes/DECISIONS.md D63. 🟢 peer-reviewed — Haaf, Klaassen, and Rouder (2025), “Bayes factor vs. posterior predictive model assessment: Insights from ordinal constraints,” *Computational Brain & Behavior*.
 [^discussion-hybrid]: 🟠 empirical — assembled-manuscript section 3 on `paper/case-a-vanbork`; `experiments/vanbork_external_validation.py`; `runs/vanbork_external_validation/results.json`; Notes/DECISIONS.md D60 Resolution and Precision addenda.
 [^discussion-limits]: 🟠 empirical — assembled-manuscript section 6; `experiments/regret_curves_mopen.py`; `runs/regret_curves_mopen/`; Notes/DECISIONS.md D64.
-[^discussion-floor]: 🟠 empirical — assembled-manuscript section 7, `docs/paper-sie-jmp/07-debias-bridge.md`, which develops the debiasing bridge and refers the full treatment to the companion paper and thesis chapter 5; none of the four cases reported here estimates an uncertainty floor.
+[^discussion-floor]: 🟠 empirical — forward reference to assembled-manuscript section 7, drafted at `docs/paper-sie-jmp/07-debias-bridge.md`, local material that remains uncommitted in this repository and supplies no reported number; none of the four cases reported here estimates an uncertainty floor.
 [^discussion-repro]: 🟠 empirical — case review archives under `runs/vanbork_external_validation/reviews/`, `runs/occam_dial/reviews/`, `runs/haaf_nested_constraint/reviews/`, and `runs/regret_curves_mopen/reviews/`; corresponding review outcomes in Notes/DECISIONS.md D62–D65.
 
 ---
