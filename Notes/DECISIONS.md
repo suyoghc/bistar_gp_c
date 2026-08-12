@@ -5753,9 +5753,13 @@ deviation of the latent function,
 so it describes dispersion rather than a confidence interval for the mean. A
 dashed overlay reports the mean-based plug-in
 `abs(E[f(t)|y,eta_hat] - mu_theta(t))`, aggregated over the same 25 subjects.
-Jensen's inequality makes the latent-draw deviation no smaller per subject,
-candidate, and trial; unequal inflation changes the candidate gap
-trial-dependently, which motivates reporting both estimands.
+Jensen's inequality orders the exact estimands: the exact latent-draw deviation
+is no smaller than the plug-in deviation per subject, candidate, and trial. The
+finite 100-draw Monte Carlo estimates carry Monte Carlo error and may invert
+locally, as at trial 1 for the Power candidate under Power truth (116.333 versus
+116.506) and Exponential truth (131.415 versus 131.572). Unequal inflation
+changes the candidate gap trial-dependently, which motivates reporting both
+estimands.
 The formal limits-note equation and the Case D work order specify an absolute
 difference; a chat-derived Q&A in the same note says squared difference, and
 the binding absolute form takes precedence.
@@ -5831,9 +5835,10 @@ Every one of the 300 stored `mean_G` pairs satisfies
 absolute error `1.78e-15`; the divisor `2*sigma_theta^2` ranges from 743 to
 7,161. Shared-temperature probability magnitudes therefore do not support a
 cross-metric confidence contrast. No temperature on the stored 15-point grid
-closes the gap: the power-cohort `pw_nll` medians peak around the review's
-`~0.573` summary at `tau=0.1`, while the all-subject practitioner `pw_mse`
-median remains 0.987 at `tau=31.6`. On the tau-free practitioner `pw_nll`
+closes the gap: at `tau=0.1`, the power-cohort `pw_nll` medians are 0.581, 0.569,
+and 0.557 for practitioner, moderate, and agnostic, respectively, while the
+all-subject practitioner `pw_mse` median remains 0.987 at `tau=31.6`. On the
+tau-free practitioner `pw_nll`
 diagnostic, the true family wins 974/2,500 draws (39.0%) under power truth, with
 9/25 subject majorities, versus 2,467/2,500 (98.7%) and 25/25 under exponential
 truth. Moderate gives 39.9% with 8/25 versus 94.6% with 25/25; agnostic gives
@@ -5848,3 +5853,5 @@ tau-free asymmetry only within the shared early-trial region.
 The bytewise inventory hash for every file under
 `experiments/practice_EvansEtAL/` remained
 `528fea7d955841cf496883df4f96bb85b8357b4a` before and after execution.
+
+**Review outcome (2026-08-12):** §4 four-model protocol complete (Codex gpt-5.6-sol xhigh REVISE-4; Opus 5 fresh-agent REVISE-11; Gemini 3.1 Pro package-only APPROVE-0 via author-directed API substitution; Kimi K3 author-run pending) — 14 collated findings; two-reporter clusters F-D1 (pw_nll/pw_mse contrast a unit artifact; exact affine identity; thesis re-carried by tau-free raw_draw_wins 39.0/39.9/41.5 vs 98.7/94.6/92.1 percent) and F-D2 (estimand relabeled MAP-conditional; posterior-mean plug-in added, asymmetry survives) plus DC4/DO5/DO8/DO9/DO11 confirmed and fixed in c57a70e; DO2/DO3/DO6/DO7/DO10 REFUTED in adversarial cross-check and logged; two hunk-introduced S3s fixed by bounded micro-fix with driver mechanical verification (no third round per rule 4); full record runs/regret_curves_mopen/reviews/VERDICTS.md; author adjudications open: F-D1/F-D2 statistical sign-offs, F-D3 framing, Kimi round.

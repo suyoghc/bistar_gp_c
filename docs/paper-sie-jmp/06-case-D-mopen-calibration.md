@@ -79,9 +79,10 @@ candidate-specific affine map to the same squared-error statistic; the divisor
 `2 sigma_theta^2` ranges from 743 to 7,161, approximately 750 to 7,150. BMS*
 scores `exp(-G/tau)` at a shared $\tau$, so soft-transfer probability magnitudes
 are not comparable across metrics on different scales. No value on the stored
-15-point grid removes the gap: the power-cohort `pw_nll` medians peak around
-0.57 (approximately 0.573 in the review summary) at $\tau=0.1$, while the
-all-subject practitioner `pw_mse` median remains 0.987 at $\tau=31.6$.[^case-d-empirical]
+15-point grid removes the gap: at $\tau=0.1$, the power-cohort `pw_nll` medians
+are 0.581, 0.569, and 0.557 for practitioner, moderate, and agnostic,
+respectively, while the all-subject practitioner `pw_mse` median remains 0.987
+at $\tau=31.6$.[^case-d-empirical]
 
 The tau-free, scale-invariant `pw_nll` `raw_draw_wins` diagnostic carries the
 asymmetry instead:
@@ -161,11 +162,14 @@ R^{\mathrm{mean}}_{\theta}(t)
   -\mu_{\theta}(t)\right|.
 \]
 
-Jensen's inequality makes $R^{\mathrm{draw}}_{\theta}(t)$ no smaller than
-$R^{\mathrm{mean}}_{\theta}(t)$ for each subject, candidate, and trial. Latent
-posterior spread therefore inflates candidate deviations and generally
-compresses their gap by a trial-dependent amount, so the two estimands should
-not be substituted silently.
+Jensen's inequality orders the exact estimands: the exact
+$R^{\mathrm{draw}}_{\theta}(t)$ is no smaller than
+$R^{\mathrm{mean}}_{\theta}(t)$ for each subject, candidate, and trial. The
+finite 100-draw Monte Carlo estimates carry Monte Carlo error and may invert
+locally, as at trial 1 for the Power candidate under Power truth (116.333 versus
+116.506) and Exponential truth (131.415 versus 131.572). Latent posterior spread
+therefore inflates candidate deviations and generally compresses their gap by a
+trial-dependent amount, so the two estimands should not be substituted silently.
 
 Each solid line pools 25 subjects and 100 draws within a truth cohort. Its band
 spans the pooled 10th and 90th percentiles of the resulting 2,500 absolute
