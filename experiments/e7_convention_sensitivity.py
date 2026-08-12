@@ -42,7 +42,6 @@ import torch
 torch.set_default_dtype(torch.float64)
 
 import prior_sensitivity_study as pss
-import fit_method_metric_comparison as fmc
 from bistar_gp import generate_toy_data
 from bistar_gp.candidates import build_toy_candidates
 

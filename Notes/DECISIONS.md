@@ -5850,9 +5850,9 @@ The multi-parameter paragraph follows W4: it labels
 `runs/viz_unification/p3_priors_canonical/` as an
 `informative`-configuration, MAP-based methods-validation check. Because that
 directory remains local and untracked, its 0.992 Sin+Linear value at \(n=50\)
-and 0.93–0.99 range across evaluated \(n\) use the committed D17-recorded
-citation pattern and name the regenerating `bistar_viz` scripts explicitly.
-They do not enter the validated `toy_elicited` SIR headline.
+and values at or above 0.93 across evaluated \(n\) use the committed
+D17-recorded citation pattern and name the regenerating `bistar_viz` scripts
+explicitly. They do not enter the validated `toy_elicited` SIR headline.
 
 **Alternatives considered:** Selecting pooled aggregation was rejected because
 it would preempt the author and would leave Target A unresolved. Selecting
@@ -5865,7 +5865,8 @@ and modifying scripts or run artifacts were all rejected by the Case A work
 order.
 
 **Result:** The section reports Target B's progression from 0.792607 to
-0.841419 against the published 0.841420, with absolute error
+0.841419 against their closed form evaluated at double precision (0.841420 to
+six decimals), with absolute error against that evaluated limit
 \(6.4\times10^{-7}\), and connects the agreement to cancellation of shared
 Bernoulli curvature in the hybrid Laplace approximation. It reports Target A
 as 0.000/1.000 under pooled aggregation versus the exact 0.400/0.600 under both
@@ -5876,4 +5877,6 @@ the 0.31, 0.072, and 0.001 maximum movements, and the appendix-only
 under expected-posterior aggregation, equal to 696/1000 hard wins at the
 reported precision. This branch commits D60 and D61, which record the finalized
 compute provenance, together with D65. No experiment or artifact-generation
-command ran, and neither finalized run directory was modified.
+command ran during the original section-drafting pass. The review fix pass ran
+the single authorized E7 verification; its regenerated JSON differed only in
+the generated-date field, and the saved artifact was restored afterward.
