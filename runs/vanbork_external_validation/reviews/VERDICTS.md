@@ -168,3 +168,13 @@ paragraph, the D60 entry gains a dated Resolution addendum (body immutable),
 and D61 a dated status line. Ledger items now open: the proposed D60
 precision addendum (item 1 of the original ledger), author-record policy
 ratification, and the per-case statistical sign-offs.
+
+## Author sign-off and Ready (2026-08-12)
+
+The author signed off the statistical items by direct instruction. The fork
+resolution stands (resolved above). The proposed D60 precision addendum is
+APPROVED and implemented as a second dated addendum inside D60 (rowmin vs
+Eq.-4 semantics at finite τ; "0.841420" as the evaluated closed form); the
+entry body remains untouched. The author-record policy remains the operating
+disposition (addenda only). All four Kimi rounds are complete. At the
+author's direction, PR #39 leaves Draft: **READY**.

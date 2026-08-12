@@ -5798,6 +5798,17 @@ attribution stays appendix-only (W1). Neither convention is declared universally
 correct. This closes the fork left OPEN above; the adjudication paragraph stands
 as written for the record.
 
+**Precision addendum (2026-08-12, author-approved via the Case A review):** two
+clarifications recorded without altering the body above. (1) The Target A
+table's row (c) reports the shipped `soft_transfer(..., normalize_per_draw=
+True)` semantics: per-draw minimum shift with a single post-pooling
+normalization. That computation differs from row (b)'s per-atom
+renormalization at finite tau and coincides with it in the tau-to-zero
+unique-winner limit the table reports, which is why both rows read
+0.400/0.600. (2) "0.841420" above denotes the authors' closed form evaluated
+at double precision; the paper prints 7.96, 1.50, and approximately 0.84
+(printed-density quotient 0.841438).
+
 ## D61: E7 aggregation-convention sensitivity on the validated toy path — winner robust; kl_forward fragility attributed to pooled aggregation — 2026-08-11
 
 **Problem:** D60's external validation showed the shipped pooled soft-transfer
