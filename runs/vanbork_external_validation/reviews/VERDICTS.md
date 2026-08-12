@@ -154,3 +154,17 @@ output: `round1_kimi-k3.md`.
   action.
 - Every number Kimi checked reproduced exactly (its verification list
   includes a hand-recomputed KL cell and the monotone Target B rows).
+
+## Fork resolution (author, 2026-08-12) — ledger item resolved
+
+The author decided the D60 fork: **aggregation as an explicit evaluation
+dial** alongside τ and occam (the E7 candidate stance, ratified). Canonical
+reporting stays pooled (M-open magnitudes, ratified-number continuity,
+shipped default unchanged); the Eq.-4 expected-posterior variant is reported
+alongside where external correspondence matters; the kl_forward attribution
+stays appendix-only. Implemented on this branch under author authority (rule
+5): the section's [FORK-DECISION-PLACEHOLDER] replaced with the decision
+paragraph, the D60 entry gains a dated Resolution addendum (body immutable),
+and D61 a dated status line. Ledger items now open: the proposed D60
+precision addendum (item 1 of the original ledger), author-record policy
+ratification, and the per-case statistical sign-offs.

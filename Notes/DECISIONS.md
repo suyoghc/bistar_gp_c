@@ -5786,6 +5786,18 @@ the scaffold has nothing to construct; (b) declare the default convention wrong
 and switch it — rejected, the M-open tension above makes this an author-level
 modeling decision, not a fix.
 
+**Resolution (2026-08-12, author):** the aggregation convention is adopted as
+an explicit evaluation dial alongside tau and occam (the E7 README's candidate
+stance, ratified). Canonical reporting keeps pooled aggregation: absolute
+divergence magnitudes, the M-open signal, and continuity with all ratified
+numbers are preserved, and the shipped normalize_per_draw=False default is
+unchanged. The expected-posterior (Eq. 4) variant is reported alongside wherever
+external correspondence matters; paper Case A reports both, and its section 3
+replaces the fork placeholder with this statement. The kl_forward aggregation
+attribution stays appendix-only (W1). Neither convention is declared universally
+correct. This closes the fork left OPEN above; the adjudication paragraph stands
+as written for the record.
+
 ## D61: E7 aggregation-convention sensitivity on the validated toy path — winner robust; kl_forward fragility attributed to pooled aggregation — 2026-08-11
 
 **Problem:** D60's external validation showed the shipped pooled soft-transfer
@@ -5822,6 +5834,10 @@ dial alongside tau and occam.
 
 **Status:** E7 CLOSED as an experiment; D60 fork remains OPEN pending author
 call. Paper Case A blocked only on that call.
+
+**Status update (2026-08-12):** the D60 fork is RESOLVED (see the D60 Resolution
+addendum: aggregation adopted as an explicit evaluation dial; pooled canonical);
+Case A is unblocked and its placeholder is replaced.
 
 ## D65: Case A external-validation section with the aggregation fork preserved — 2026-08-12
 
