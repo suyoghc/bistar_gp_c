@@ -153,3 +153,15 @@ the ORIGINAL round-1 package (pre-fix state). **Verdict: REVISE (minor)** —
 Net: two new prose fixes (KC2, KC3), one refuted with the prereg record,
 two convergences with resolved findings. Independent reconfirmation of all
 LOO and BMS* numbers.
+
+## Author sign-off and Ready (2026-08-12)
+
+The author signed off the statistical items by direct instruction: item 1
+(the OC1′ narrowed LOO interpretation: directionally inconclusive, the
+null-to-inconclusive difference identified as the Haaf/Klaassen/Rouder
+failure mode, the local Gaussian diagnostic cited without exact-identity
+claims) and item 2 (the kl_forward degeneracy documentation and the
+0.500-precision policy). Item 3 (the arviz manifest scope note) is
+acknowledged as work-order-authorized. The Kimi K3 round is complete (two
+prose fixes landed at cd2aac3; the prereg-grid finding refuted with the
+record). At the author's direction, PR #37 leaves Draft: **READY**.
