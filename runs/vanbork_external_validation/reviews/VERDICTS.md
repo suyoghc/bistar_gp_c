@@ -132,3 +132,25 @@ to the ledger:**
 4. Kimi K3 round: run `kimi_k3_package.md`; findings enter a fresh
    cross-verification cycle.
 Nothing merges autonomously (§4).
+
+## Kimi K3 round (author-directed, 2026-08-12)
+
+Channel: `moonshotai/kimi-k3` via OpenRouter (author's key), package-only, on
+the ORIGINAL round-1 package. **Verdict: APPROVE** (3 findings, all S4). Raw
+output: `round1_kimi-k3.md`.
+
+- KA1 (metric scope of the highest-weight sentence): re-raises AO5, which a
+  single-reporter cross-check had REFUTED on paragraph-scope grounds. With
+  two independent reviewers (Opus + Kimi) reading the same sentence as
+  misparse-prone, rule 1's two-reporter presumption supersedes the
+  refutation: FIXED post-round ("Under this metric, …" inline scope; commit
+  on this branch). AO5's rejection entry stands as history; this supersession
+  is the protocol working as designed.
+- KA2 (D60 Mauna mention): converges with the REFUTED AC3 and with ledger
+  item 3 — Kimi itself proposes only author confirmation, matching the
+  author-record policy disposition. No action beyond the standing ledger.
+- KA3 (footnote em-dash tags): the established house citation convention
+  across all four case sections; reviewers in every case accepted it. No
+  action.
+- Every number Kimi checked reproduced exactly (its verification list
+  includes a hand-recomputed KL cell and the monotone Target B rows).

@@ -106,7 +106,7 @@ E7 evaluates the fork on the validated `toy_elicited` SIR path. Under the
 primary `pw_kl_vcal` metric at \(\tau=1\), pooled aggregation gives model
 probabilities 0.183, 0.192, 0.441, and 0.184 for Linear, Sinusoidal,
 Sin+Linear, and Quadratic, respectively. This row reproduces the ratified SIR
-headline. Sin+Linear remains the highest-weight candidate under
+headline. Under this metric, Sin+Linear remains the highest-weight candidate at
 every tested aggregation variant and temperature. The maximum absolute movement
 between pooled and expected-posterior aggregation equals 0.31 at \(\tau=0.1\),
 0.072 at \(\tau=1\), and 0.001 at \(\tau=10\); at \(\tau=1\), the Sin+Linear
