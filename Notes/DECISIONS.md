@@ -5716,3 +5716,99 @@ to be amended later merely to insert them. STOP before Ready or merge. NOT autho
 second correction pass, restoring/applying/dropping stash `5280d1e1…`, D59 work, evidence
 or figure changes, poster-repository work, the captions themselves, Della contact, new
 computation, holdout access, BMS*, Ready, or merge.
+
+## D64: Case D synthetic distinguishability calibration and regret localization — 2026-08-11
+
+**Problem:** Case D needed per-trial regret curves and an honest M-open
+calibration argument from the existing practice-law artifacts, without rerunning
+`experiments/practice_EvansEtAL/run.py`, changing its artifacts, or starting new
+HMC. Inventory found no regret implementation and no files under the practice
+data directory. The 50 `results_hmc/` subject files therefore concern only
+`generate_demo_data(n_subjects=50, seed=42)`, with 25 power-generated and 25
+exponential-generated series. Both generating forms appear in the fitted pair,
+so the cohort supports a distinguishability and mimicry study plus
+correct-specification reference levels for stored divergence magnitudes, not a
+real-Evans-data analysis or a direct M-open misspecification finding. Direct
+inspection also corrected one work-order shorthand: the stored and regenerated
+training series range from 20 to 79 trials rather than containing 20 trials
+each; every series contains the common trials 1 through 20 used in the figure.
+
+**Decision:** Added `experiments/regret_curves_mopen.py`, which writes
+`runs/regret_curves_mopen/{results.json,README.md,regret_curves.png}`. It prefers
+the read-only `experiments/practice_EvansEtAL/results_hmc/` directory, imports
+`generate_demo_data` and the Power and Exponential classes from the practice
+experiment rather than copying them, and evaluates stored fitted parameters on
+the regenerated full subject series before any regret calculation. Data seed
+42 regenerates the observations. Subject `i` receives posterior-function seed
+`20260811 + i`, with 100 latent conditional GP draws and no added observation
+noise. The common evaluation grid contains trials 1 through 20. At each trial,
+the curve reports
+`regret_theta(t) = E_draws[abs(mu_GP(t) - mu_theta(t))]`; its band spans the
+pooled 10th and 90th percentiles across 25 subjects times 100 draws within each
+truth cohort, so it describes dispersion rather than a confidence interval for
+the mean. The formal limits-note equation and the Case D work order specify the
+absolute difference; a chat-derived Q&A in the same note says squared
+difference, and the binding absolute formula takes precedence.
+
+`run.py` loops through practitioner, moderate, and agnostic configurations. It
+sets the single `gp_hyperparameters` block only while that block remains empty,
+immediately after a successful configuration MAP fit and before the HMC branch.
+All 50 source files contain every configuration's diagnostics, so their stored
+lengthscale, outputscale, and noise values come from the first, practitioner MAP
+fit even in `results_hmc/`. The subject JSONs do not retain HMC hyperparameter
+draws. The regret script therefore rebuilds the practitioner RBF GP at that
+stored point and performs exact conditioning with normalized-variance jitter
+`1e-6`; it neither refits hyperparameters nor reconstructs HMC trajectories.
+The stored `bistar_G_diagnostics` values are aggregated without recomputing G.
+Those artifacts predate W1 and contain `pw_nll`, `pw_mse`, and
+`pw_hellinger`, not `pw_kl_vcal`; `pw_nll` receives closest-role framing but no
+renaming. `docs/paper-sie-jmp/06-case-D-mopen-calibration.md` states these
+limits, separates F1 scaffold representability from F2 intrinsic mimicry, and
+positions the result against Navarro, Pitt, and Myung (2004), Evans et al.
+(2018), and Averell and Heathcote (2011).
+
+**Alternatives considered:** Using `results/` was rejected because the work
+order prefers the HMC-mode artifacts. `results_diag/` and
+`results_hierarchical/` were not consulted because no documented need emerged.
+Rerunning the practice scripts, refitting candidate or GP parameters, and
+starting HMC were rejected by scope and because the required reconstruction
+uses frozen artifacts. A squared regret was rejected because it conflicts with
+the binding formula. A normalized 20-point refit was rejected in favor of
+conditioning on every regenerated observation and evaluating only the common
+20-trial grid. The optional transform-space E8b module was deferred by the
+driver; no `experiments/e8b_transform_space.py` was created, and the section
+retains an explicit `[E8B-PLACEHOLDER]` block for later commissioning or clean
+excision.
+
+**Result:** The fidelity gate recomputed 100 stored candidate BIC log marginal
+likelihoods from regenerated observations and stored parameters. Maximum and
+mean absolute errors equal `5.684e-14` and `5.116e-15`, below the asserted
+`1e-8` tolerance. The minimum posterior-covariance eigenvalue across subjects
+equals `-2.400e-15`, within the `1e-8` numerical PSD tolerance. Two consecutive
+runs produced identical SHA-1 values for all three outputs. The figure occupies
+159,881 bytes, below 2 MB.
+
+For power-generated curves, mean regret across 20 trials equals 21.383 for
+Power and 20.681 for Exponential. The gap peaks at 33.782 on trial 1; trials 1
+through 5 account for 70.0% of its summed gap and trials 1 through 10 account
+for 82.2%. For exponential-generated curves, the corresponding means equal
+35.587 and 14.855, the trial-1 peak equals 91.452, and the two early shares
+equal 41.7% and 77.7%. The signal therefore concentrates early without
+vanishing after the first few exponential-cohort trials. The power cohort also
+shows the wrong exponential candidate closer at the largest-gap trial, which
+localizes the stored method's asymmetric recovery failure rather than hiding it
+behind a winner count.
+
+The aggregated stored practitioner `pw_nll` means equal 4.799 for Power and
+4.775 for Exponential under power truth, versus 5.003 and 4.582 under
+exponential truth. Synthetic exponential subject 25 supplies a particularly
+clear mimicry example: 4.881 for Power and 4.852 for Exponential, an absolute
+difference of 0.029. These known-truth levels show what a future absolute
+inadequacy calibration must condition on; Case D sets no rejection threshold.
+The `pw_nll` soft read remains weak despite stable winner labels: median maximum
+candidate probabilities equal 0.522, 0.522, and 0.518 for practitioner,
+moderate, and agnostic. The section confines its warranted-decline claim to
+that legacy closest-role metric because `pw_mse` behaves much more sharply.
+The bytewise inventory hash for every file under
+`experiments/practice_EvansEtAL/` remained
+`528fea7d955841cf496883df4f96bb85b8357b4a` before and after execution.
