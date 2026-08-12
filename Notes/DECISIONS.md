@@ -5716,3 +5716,82 @@ to be amended later merely to insert them. STOP before Ready or merge. NOT autho
 second correction pass, restoring/applying/dropping stash `5280d1e1…`, D59 work, evidence
 or figure changes, poster-repository work, the captions themselves, Della contact, new
 computation, holdout access, BMS*, Ready, or merge.
+
+## D62: Case B Occam dial and E6 nesting check — 2026-08-11
+
+**Problem:** Case B needed a regenerable E4 figure that separated the D17
+estimator and `occam` changes, plus an E6 numerical check of the claim that an
+encompassing model cannot have a worse best achievable divergence than either
+of its exact restrictions. The local untracked `runs/viz_unification/` directory
+contains figures, logs, `delta_table.md`, `ess_by_stage.md` diagnostics, and
+extracted legacy scripts, so it cannot serve as the authoritative committed data
+source and the figure arms must be recomputed. When `delta_table.md` is present,
+the figure script parses it and enforces a 0.003 same-seed cross-check gate. The
+canonical visualization box also starts the sinusoid amplitude at 0.01, while
+exact Linear nesting requires A=0.
+
+**Decision:** Added `experiments/occam_dial_figure.py` and
+`experiments/e6_nesting_monotonicity.py`, both writing to
+`runs/occam_dial/`. Both scripts build the `informative`-configuration,
+MAP-based averaged GP through `bistar_viz/scripts/_viz_spaces.py` at n=50,
+with data seed 42, 80 evaluation points, and primary metric `pw_kl_vcal`.
+The figure runs the p1 pure-Laplace `occam=True`, p2 IS `occam=True`, and p3 IS
+`occam=False` arms at τ=0.3, IS seed 0, `n_is=40000`, and five seeded
+perturbations per start. Its 0.003 absolute-probability anchor tolerance provides
+a same-seed reproduction gate for three-decimal source anchors, not an accuracy
+claim. The p1 arm calls `laplace_log_Z_Mx` directly to retain each model's
+`n_clipped` and `converged` diagnostics and asserts that those direct log Z_M
+values match the arm values. E6 calls
+`_multistart_G_optima`, `compute_G_at_params`, and `is_log_Z_Mx` from
+`bistar_gp/laplace_evidence.py`; it does not reimplement Ḡ. E6 extends
+only the encompassing amplitude boundary to A=0, seeds its optimizer with
+the exact restricted optima, and uses seeds 0, 1, and 2 with `n_is=100000` per
+seed over 161 log-spaced temperatures. One IS call per model per seed supplies
+the raw sweep, and the package reference-volume helper supplies the
+`occam=True` sweep. Given the exact embeddings and mean-only divergence, each
+min-Ḡ inequality follows analytically from box containment; the retained check
+confirms the implementation reproduces that consequence and quantifies the
+margins. The min-Ḡ tolerance equals 10^-8, with a 10^-10 exact-embedding check.
+
+**Alternatives considered:** Reading `delta_table.md` or the local logs as the
+figure data source was rejected because those artifacts remain local and
+untracked; the table provides only the machine-dependent 0.003 same-seed
+cross-check when present. Comparing p1 directly with p3 as a pure `occam`
+ablation was rejected because the arms also
+change the Z_M estimator; p2 isolates the estimator step. Retaining the
+0.01 amplitude cutoff for E6 was rejected because it excludes the stated
+A=0 restriction. Reimplementing the divergence or optimizer was rejected
+in favor of the package machinery required by the work order.
+
+**Result:** `runs/occam_dial/figure_results.json` reproduces the n=50 induced
+model priors: p1 Linear 0.534, Sinusoidal 0.076, Sin+Linear 0.382, Quadratic
+0.008; p2 Linear 0.507, Sinusoidal 0.020, Sin+Linear 0.465, Quadratic 0.008;
+p3 Linear 0.007, Sinusoidal 0.001, Sin+Linear 0.992, Quadratic 0.000. At p2,
+ESS implies SE(log Z) of approximately 0.008, 0.017, and 0.038 nats for Linear,
+Sin+Linear, and Sinusoidal, respectively, with probability SE approximately
+0.005. Every p1 model has `n_clipped=0` and `converged=True`. The p1-to-p2
+estimator change narrows the Linear versus Sin+Linear gap, and the p2-to-p3
+convention change provides the robust magnitude change. D17's legacy 0.934 and
+0.693 values remain explicitly labeled as recorded legacy findings and are not
+recomputed by the new scripts.
+
+E6 confirms the analytic box-containment consequence and quantifies
+restricted-minus-encompassing margins of 2.379 nats for Linear and 2.501 nats
+for Sinusoidal. Under `occam=False`, neither pair crosses for seeds 0, 1, or 2.
+Under `occam=True`, the Linear crossing occurs at τ=0.295, 0.295, and 0.296;
+the seed-0 bracket is [0.282, 0.299], the per-seed spread is [0.295, 0.296],
+and the ESS-implied one-SE shift interval is [0.295, 0.296]. Its bracket delta
+swing of 0.354 nats exceeds the approximately 0.012-nat SE, supporting the
+three-decimal crossing. The Sinusoidal crossing occurs at 1.484, 1.584, and
+1.382 and supports only τ ≈ 1.5; the seed-0 bracket is [1.413, 1.496], the
+per-seed spread is [1.382, 1.584], and the ESS shift roots are [1.392, 1.563].
+The enclosing grid-and-seed uncertainty interval is about τ 1.33 to 1.59.
+Crossing resolution is set by the larger of grid spacing and
+Monte Carlo error. The empirical content comprises these margins and finite-τ
+crossings. The REVIEW_AND_VET resolution text is mirrored into the committed
+`runs/occam_dial/README.md` because `kb/` is gitignored. The figure remains
+below the 2 MB limit. Exact rerun commands:
+`python experiments/occam_dial_figure.py` and
+`python experiments/e6_nesting_monotonicity.py`.
+
+**Review outcome (2026-08-11):** §4 four-model protocol complete (Codex gpt-5.6-sol xhigh; Opus 5; Gemini 3.1 Pro via author-directed API substitution; Kimi K3 author-run pending) — round-1 REVISE with 11 cross-verified findings (0 refuted), all RESOLVED via fix pass c15a65f plus a bounded micro-fix for two hunk-introduced defects (driver-verified mechanically; no third review round per rule 4); full record runs/occam_dial/reviews/VERDICTS.md; author adjudications open: F2/NEW-1 and O2 statistical sign-offs, kb force-add variant, Kimi round.
