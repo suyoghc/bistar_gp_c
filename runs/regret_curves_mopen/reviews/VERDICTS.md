@@ -119,3 +119,27 @@ merge, subject to the ledger:**
 4. Kimi K3 round: run `kimi_k3_package.md`; findings enter a fresh
    cross-verification cycle.
 Nothing merges autonomously (§4).
+
+## Kimi K3 round (author-directed, 2026-08-12)
+
+Channel: `moonshotai/kimi-k3` via OpenRouter (author's key), package-only, on
+the ORIGINAL round-1 package (pre-fix state). **Verdict: APPROVE** — 3
+findings, raw output `round1_kimi-k3.md`. Collation against the completed
+record:
+
+- KD1 [S3] (agreement row misparse-prone under Power/Exponential headers):
+  converges with DO8, already resolved in c57a70e (F-D5 moved the counts out
+  of the table into prose). Third independent voice on that defect.
+- KD2 [S4] ("pw_nll combines mean mismatch with pointwise variance
+  calibration" undefined by any packaged artifact): converges with the
+  RESOLVED F-D1 — that definitional sentence was removed entirely by the fix
+  pass (and shown wrong in substance: pw_nll weights by candidate variance).
+- KD3 [S4] (footnote em-dash tags): house citation convention. No action.
+- Kimi's bonus note that the dead posterior_sd fields are "worth deleting"
+  converges with DO9, already resolved (F-D6 deleted them).
+- Its verification list independently reconfirms every number it could
+  reach, including all twelve cohort mean_G values and both regret tables.
+
+Net: zero new actionable findings; all three substantive observations
+converge with already-resolved items. APPROVE against the pre-fix state;
+the current tip is strictly stronger.
