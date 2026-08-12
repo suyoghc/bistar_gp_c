@@ -14,12 +14,17 @@ data directory contains no Evans et al. observations. `run.py` instead generated
 50 synthetic series with seed 42, divided equally between power and exponential
 truth. Each subject's generating form appears among the two fitted candidates.
 The source artifacts record between 20 and 79 observations per subject, and the
-regret analysis uses their common first 20 trials. We use these data to study
-distinguishability and mimicry and to establish correct-specification reference
-levels for (G); we do not infer how either candidate fits the real Evans
-corpus.[^case-d-empirical] Evans et al.'s broader candidate discussion motivates
-the context, while every result below concerns only Power and Exponential, the
-pair retained in the stored fits.[^case-d-evans]
+stored practice (G) values were computed on 50 uniformly spaced points spanning
+each subject's full series. The reconstructed deviation curves instead cover
+integer trials 1 through 20. For the longest subjects, that early grid spans
+19/78, or 24.4%, of the full continuous trial range. Any linkage between those
+curves and the stored aggregate comparisons therefore applies only to their
+shared early-trial region. We use these data to study distinguishability and
+mimicry and to establish correct-specification reference levels for (G); we do
+not infer how either candidate fits the real Evans corpus.[^case-d-empirical]
+Evans et al.'s broader candidate discussion motivates the context, while every
+result below concerns only Power and Exponential, the pair retained in the
+stored fits.[^case-d-evans]
 
 ## Two failure geometries
 
@@ -56,20 +61,41 @@ pointwise metric:
 | practitioner | 22 / 28 | 6 / 44 | 10 / 40 |
 | moderate | 32 / 18 | 7 / 43 | 12 / 38 |
 | agnostic | 27 / 23 | 7 / 43 | 12 / 38 |
-| all configurations agree | 39 / 50 | 49 / 50 | 48 / 50 |
+
+Across the 50 subjects, all three configurations select the same winner for 39
+subjects under `pw_hellinger`, 49 under `pw_mse`, and 48 under `pw_nll`.
 
 These practice artifacts predate W1. They contain `pw_nll`, `pw_mse`, and
 `pw_hellinger`, not the manuscript's primary `pw_kl_vcal`; no new metric was
 authorized for Case D, and we do not relabel the stored quantities.
-`pw_nll` comes closest to the W1 primary role because it combines mean mismatch
-with pointwise variance calibration. Under `pw_nll`, known-truth accuracy equals
-35 of 50 for practitioner and 37 of 50 for both moderate and agnostic. More
-importantly for a decline, median winning probabilities equal only 0.522, 0.522,
-and 0.518 across those configurations. Winner stability therefore coexists with
-weak pairwise separation and a systematic preference for Exponential. The
-much sharper `pw_mse` decisions prevent a metric-general claim that BMS*
-declined. The calibrated claim applies to the `pw_nll` read and its associated
-regret geometry.[^case-d-empirical]
+Legacy `pw_nll` weights squared error by the candidate's fitted noise variance,
+whereas `pw_kl_vcal` weights it by the GP variance. On that weighting axis,
+`pw_mse` lies closer to the manuscript primary.
+
+For all 300 stored configuration-by-subject-by-candidate `mean_G` pairs,
+`pw_nll = 0.5 log(2 pi sigma_theta^2) + pw_mse/(2 sigma_theta^2)` to maximum
+absolute error $1.78 \times 10^{-15}$. Thus `pw_nll` and `pw_mse` apply a
+candidate-specific affine map to the same squared-error statistic; the divisor
+`2 sigma_theta^2` ranges from 743 to 7,161, approximately 750 to 7,150. BMS*
+scores `exp(-G/tau)` at a shared $\tau$, so soft-transfer probability magnitudes
+are not comparable across metrics on different scales. No value on the stored
+15-point grid removes the gap: the power-cohort `pw_nll` medians peak around
+0.57 (approximately 0.573 in the review summary) at $\tau=0.1$, while the
+all-subject practitioner `pw_mse` median remains 0.987 at $\tau=31.6$.[^case-d-empirical]
+
+The tau-free, scale-invariant `pw_nll` `raw_draw_wins` diagnostic carries the
+asymmetry instead:
+
+| GP configuration | Power truth: true-family draw wins / subject majorities | Exponential truth: true-family draw wins / subject majorities |
+|---|---:|---:|
+| practitioner | 39.0% / 9 of 25 | 98.7% / 25 of 25 |
+| moderate | 39.9% / 8 of 25 | 94.6% / 25 of 25 |
+| agnostic | 41.5% / 9 of 25 | 92.1% / 25 of 25 |
+
+These `pw_nll` counts describe how often the known-truth candidate attains the
+smaller raw divergence on the 100 stored GP draws per subject. They support a
+metric-specific asymmetric-recovery statement without interpreting a
+temperature-dependent probability magnitude.[^case-d-empirical]
 
 ## Absolute divergence magnitudes
 
@@ -84,69 +110,95 @@ script aggregates them without recomputing (G).
 | moderate | 4.858 | 4.830 | 5.045 | 4.688 |
 | agnostic | 4.834 | 4.811 | 5.045 | 4.715 |
 
-The power-generated rows exhibit the mimicry signature: both magnitudes nearly
-coincide, and the wrong exponential candidate has the slightly smaller cohort
-mean. The exponential-generated rows separate more clearly and favor the known
-truth. At synthetic exponential subject 25, the practitioner `pw_nll` means
+Within these `pw_nll` summaries, the power-generated rows exhibit the mimicry
+signature: both magnitudes nearly coincide, and the wrong exponential candidate
+has the slightly smaller cohort mean. The `pw_nll` exponential-generated rows
+separate more clearly and favor the known truth. At synthetic exponential
+subject 25, the practitioner `pw_nll` means
 equal 4.881 for Power and 4.852 for Exponential, an absolute difference of
 0.029. A ranking reports only Exponential; the paired magnitudes show how
 little separates the candidates for that subject.[^case-d-empirical]
 
-The table also blocks an overstatement about M-open inadequacy. Correctly
-specified candidates can produce mean (G) values from 4.582 to 4.858 in these
-cohort summaries, while a wrong but mimicking candidate can occupy much of the
-same scale. A future inadequacy rule must compare an observed magnitude with a
+The `pw_nll` table also blocks an overstatement about M-open inadequacy.
+Correctly specified candidates can produce `pw_nll` mean (G) values from 4.582
+to 4.858 in these cohort summaries, while a wrong but mimicking candidate can
+occupy much of the same scale. A future inadequacy rule must compare an observed
+magnitude with a
 reference distribution under correct specification, conditional on metric,
 configuration, sample size, and noise. These known-truth `mean_G` distributions
 supply the kind of calibration material such a rule needs, but Case D does not
 set a rejection threshold.
 
-## Regret localizes the comparison
+## MAP-conditional deviation localizes the comparison
 
 The subject JSONs omit GP curves and draws. The new reconstruction regenerates
 the synthetic observations, verifies each stored candidate fit through its BIC
 residual structure, rebuilds an exact GP at the stored hyperparameters, and
-draws 100 seeded latent posterior functions per subject. No refitting and no
-new HMC occur. For candidate θ and trial (t), the reported estimand follows the
-binding absolute-difference formula
+computes its latent posterior mean plus 100 seeded latent posterior functions
+per subject. No refitting and no new HMC occur.
 
-\[
-\operatorname{regret}_{\theta}(t)
-= \mathbb{E}_{\mathrm{draws}}
-  \left[\left|\mu_{\mathrm{GP}}(t)-\mu_{\theta}(t)\right|\right].
-\]
-
-Each line pools 25 subjects and 100 draws within a truth cohort. The shaded band
-spans the pooled 10th and 90th percentiles of the resulting 2,500 absolute
-errors at each trial; it describes subject-and-draw dispersion, not uncertainty
-in the cohort mean.
-
-![Regret curves for the two synthetic truth cohorts](../../runs/regret_curves_mopen/regret_curves.png)
-
-| Truth cohort | Mean Power regret | Mean Exponential regret | Peak discrimination gap | Gap in trials 1–5 | Gap in trials 1–10 |
-|---|---:|---:|---:|---:|---:|
-| Power | 21.383 | 20.681 | 33.782 at trial 1 | 70.0% | 82.2% |
-| Exponential | 35.587 | 14.855 | 91.452 at trial 1 | 41.7% | 77.7% |
-
-The discrimination profile concentrates toward the beginning but does not
-collapse to only the first few trials. For power-generated curves, trial 1
-produces regrets of 116.333 for Power and 82.551 for Exponential, so the GP
-reconstruction favors the wrong family precisely where the largest gap occurs.
-The later gap rapidly contracts. For exponential-generated curves, trial 1
-produces regrets of 131.415 for Power and 39.963 for Exponential, and appreciable
-separation continues through the first half of the grid. Regret therefore
-explains both sides of the aggregate result: strong localization can support
-correct recovery, as in the exponential cohort, or expose a scaffold-induced
-preference for the wrong mimicking curve, as in the power cohort.[^case-d-empirical]
-
-One provenance limitation matters. `run.py` writes one
+One provenance and estimand limitation matters. `run.py` writes one
 `gp_hyperparameters` block immediately after the first successful configuration
 MAP fit. With the default order, all 50 source files record the practitioner MAP
 point even though `results_hmc/` subsequently uses HMC samples for its stored
-BMS* diagnostics. The JSONs do not retain those HMC hyperparameter draws. The
-regret curves consequently condition at the stored practitioner MAP point and
-sample functions from that exact conditional GP; they should not be described
-as reconstructed HMC trajectories.
+BMS* diagnostics. The JSONs do not retain those HMC hyperparameter draws, so
+neither reconstruction below averages posterior mean functions over
+hyperparameter draws as in the limits-note formula. The solid curves instead
+report the MAP-conditional posterior expected absolute deviation of the latent
+function,
+
+\[
+R^{\mathrm{draw}}_{\theta}(t)
+= \mathbb{E}_{f\mid y,\hat{\eta}}
+  \left[\left|f(t)-\mu_{\theta}(t)\right|\right],
+\]
+
+and the dashed curves report the mean-based plug-in at the same MAP point,
+
+\[
+R^{\mathrm{mean}}_{\theta}(t)
+= \left|\mathbb{E}\!\left[f(t)\mid y,\hat{\eta}\right]
+  -\mu_{\theta}(t)\right|.
+\]
+
+Jensen's inequality makes $R^{\mathrm{draw}}_{\theta}(t)$ no smaller than
+$R^{\mathrm{mean}}_{\theta}(t)$ for each subject, candidate, and trial. Latent
+posterior spread therefore inflates candidate deviations and generally
+compresses their gap by a trial-dependent amount, so the two estimands should
+not be substituted silently.
+
+Each solid line pools 25 subjects and 100 draws within a truth cohort. Its band
+spans the pooled 10th and 90th percentiles of the resulting 2,500 absolute
+errors at each trial; it describes subject-and-draw dispersion, not uncertainty
+in the cohort mean. Each dashed line averages the 25 subject-level plug-in
+deviations; corresponding subject quantiles remain in `results.json`.
+
+![MAP-conditional deviation curves for the two synthetic truth cohorts](../../runs/regret_curves_mopen/regret_curves.png)
+
+| Estimand | Truth cohort | Mean Power deviation (RT units) | Mean Exponential deviation (RT units) | Peak gap (RT units) | Gap in trials 1–5 | Gap in trials 1–10 |
+|---|---|---:|---:|---:|---:|---:|
+| MAP-conditional posterior expected absolute deviation | Power | 21.383 | 20.681 | 33.782 at trial 1 | 70.0% | 82.2% |
+| Posterior-mean plug-in | Power | 17.638 | 17.325 | 34.052 at trial 1 | 63.3% | 74.0% |
+| MAP-conditional posterior expected absolute deviation | Exponential | 35.587 | 14.855 | 91.452 at trial 1 | 41.7% | 77.7% |
+| Posterior-mean plug-in | Exponential | 33.901 | 10.764 | 92.890 at trial 1 | 40.0% | 75.0% |
+
+Both profiles concentrate toward the beginning but do not collapse to only the
+first few trials. For the MAP-conditional posterior expected absolute deviation
+under power truth, trial 1 produces 116.333 RT units for Power and 82.551 for
+Exponential, with the wrong family closer where the largest gap occurs. Under
+exponential truth, the corresponding values equal 131.415 and 39.963, and
+appreciable separation continues through the first half of the grid. The two
+estimands therefore show a consistent descriptive localization under the
+stored practitioner-MAP scaffold. Within the shared early-trial region, that
+localization agrees with the asymmetric practitioner `pw_nll` raw-draw result;
+it cannot explain the portion of the stored aggregate comparison evaluated
+later in each subject's full series.[^case-d-empirical]
+
+The branch contains exactly one practitioner-MAP RBF reconstruction, and all
+three stored configurations use the RBF family. These artifacts cannot identify
+whether the localized `pw_nll` recovery asymmetry originates in F1
+representability, F2 mimicry, metric behavior, or sampling noise. That
+non-identifiability matches the F1/F2-agnostic interpretation above.
 
 ## Positioning and optional extension
 
@@ -155,10 +207,11 @@ forgetting can change between individual-level and population-level analyses.
 Their result warns against treating one comparison procedure or aggregation
 level as a resolution of the functional-form debate.[^case-d-averell] Case D
 supports a narrower conclusion. On synthetic practice curves, the legacy
-`pw_nll` comparison expresses weak confidence, its raw divergence magnitudes
-provide correct-specification reference levels, and regret identifies where
-the scaffold helps or misleads. Nothing here adjudicates the real practice data
-or the forgetting literature.
+`pw_nll` raw-draw results show asymmetric recovery, its raw divergence
+magnitudes provide correct-specification reference levels, and both
+MAP-conditional deviation estimands descriptively localize part of that
+asymmetry in the shared early-trial region. Nothing here identifies its cause or
+adjudicates the real practice data or the forgetting literature.
 
 > **[E8B-PLACEHOLDER] UNBUILT OPTIONAL MODULE.** The proposed extension would
 > refit in semi-log and log-log spaces, with an explicit lognormal or

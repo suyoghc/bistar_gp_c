@@ -1,7 +1,7 @@
 {
   "discrimination_gap": {
     "exponential_truth": {
-      "absolute_mean_regret_gap": [
+      "absolute_mean_deviation_gap": [
         91.45226548806231,
         6.217294677623162,
         10.69216541526142,
@@ -23,10 +23,11 @@
         6.5971093264756195,
         6.328691469171558
       ],
-      "definition": "Absolute difference between pooled candidate mean regrets at each trial"
+      "definition": "Absolute difference between the two candidates' pooled mean absolute deviations at each trial",
+      "estimand": "MAP-conditional posterior expected absolute deviation of the latent function"
     },
     "power_truth": {
-      "absolute_mean_regret_gap": [
+      "absolute_mean_deviation_gap": [
         33.782138761936736,
         10.260790246432315,
         3.702287263473522,
@@ -48,11 +49,13 @@
         1.5235891323442736,
         1.720119931839486
       ],
-      "definition": "Absolute difference between pooled candidate mean regrets at each trial"
+      "definition": "Absolute difference between the two candidates' pooled mean absolute deviations at each trial",
+      "estimand": "MAP-conditional posterior expected absolute deviation of the latent function"
     }
   },
   "headline_regret": {
     "exponential_truth": {
+      "estimand": "MAP-conditional posterior expected absolute deviation of the latent function",
       "exponential_regret_mean_over_20_trials": 14.854941889408892,
       "first_five_fraction_of_total_gap": 0.41675465581851007,
       "first_ten_fraction_of_total_gap": 0.7773072434636453,
@@ -63,6 +66,7 @@
       "power_regret_mean_over_20_trials": 35.587111976304655
     },
     "power_truth": {
+      "estimand": "MAP-conditional posterior expected absolute deviation of the latent function",
       "exponential_regret_mean_over_20_trials": 20.68093643079586,
       "first_five_fraction_of_total_gap": 0.6998945245662028,
       "first_ten_fraction_of_total_gap": 0.8218809329867263,
@@ -73,14 +77,1579 @@
       "power_regret_mean_over_20_trials": 21.382523020596416
     }
   },
+  "mean_based_discrimination_gap": {
+    "exponential_truth": {
+      "absolute_mean_deviation_gap": [
+        92.88999713781251,
+        5.694803955967547,
+        13.450973977232064,
+        33.62294037015669,
+        39.594628187526034,
+        38.61760308963348,
+        36.016483554241475,
+        32.81598933072226,
+        29.19784494163418,
+        24.97560132781865,
+        19.187654094085758,
+        15.521618284255856,
+        12.815058968657095,
+        10.779846430699777,
+        9.2986783384905,
+        9.529999670625365,
+        10.050515703284661,
+        10.036050062323781,
+        9.590559411378244,
+        9.050064238856802
+      ],
+      "definition": "Absolute difference between the two candidates' pooled mean absolute deviations at each trial",
+      "estimand": "Posterior-mean plug-in absolute deviation at the MAP point"
+    },
+    "power_truth": {
+      "absolute_mean_deviation_gap": [
+        34.05167565471554,
+        11.07335573595175,
+        4.148307625009332,
+        10.29047312710496,
+        5.281736057514834,
+        0.584498864073435,
+        1.3859674174990921,
+        2.782580297498173,
+        3.103291163373198,
+        3.0631954055064305,
+        3.562636317553883,
+        3.4822554919102284,
+        3.1791073174463964,
+        2.437689808122391,
+        1.9965323408880202,
+        2.391583276735502,
+        2.5240334255231023,
+        2.7190588743179394,
+        2.2807899067032746,
+        2.1058002722942284
+      ],
+      "definition": "Absolute difference between the two candidates' pooled mean absolute deviations at each trial",
+      "estimand": "Posterior-mean plug-in absolute deviation at the MAP point"
+    }
+  },
+  "mean_based_headline_regret": {
+    "exponential_truth": {
+      "estimand": "Posterior-mean plug-in absolute deviation at the MAP point",
+      "exponential_regret_mean_over_20_trials": 10.764172709047234,
+      "first_five_fraction_of_total_gap": 0.40034269839889197,
+      "first_ten_fraction_of_total_gap": 0.7496200488234263,
+      "mean_gap_trials_1_to_5": 37.05066872573897,
+      "mean_gap_trials_6_to_20": 18.498904496447196,
+      "peak_gap": 92.88999713781251,
+      "peak_trial": 1,
+      "power_regret_mean_over_20_trials": 33.901018262817374
+    },
+    "power_truth": {
+      "estimand": "Posterior-mean plug-in absolute deviation at the MAP point",
+      "exponential_regret_mean_over_20_trials": 17.32462457616572,
+      "first_five_fraction_of_total_gap": 0.6329818088541972,
+      "first_ten_fraction_of_total_gap": 0.7395714828667208,
+      "mean_gap_trials_1_to_5": 12.969109640059282,
+      "mean_gap_trials_6_to_20": 2.5066013452963536,
+      "peak_gap": 34.05167565471554,
+      "peak_trial": 1,
+      "power_regret_mean_over_20_trials": 17.63806529002045
+    }
+  },
+  "mean_based_regret_band": {
+    "aggregation": "Pooled across the 25 subject-level posterior-mean plug-in absolute deviations within each truth cohort",
+    "estimand": "Posterior-mean plug-in absolute deviation at the MAP point",
+    "lower_quantile": 0.1,
+    "upper_quantile": 0.9
+  },
+  "mean_based_regret_curves": {
+    "exponential_truth": {
+      "Exponential": {
+        "atom_description": "One latent posterior mean function at the stored MAP point",
+        "band_q10": [
+          21.747846158647462,
+          7.082412806382718,
+          2.7377694687531857,
+          1.964314015506534,
+          1.526082284868017,
+          3.8582369322376513,
+          3.2948527567405455,
+          2.6717923050463015,
+          2.887978354655411,
+          1.7955541592902253,
+          3.401666663805782,
+          2.586713988923635,
+          3.8361987189236175,
+          2.951960153665175,
+          0.6420592273960892,
+          1.7272936594955242,
+          0.6538254208390527,
+          0.11095494770183906,
+          0.7630186304521772,
+          0.367870108164027
+        ],
+        "band_q90": [
+          54.293563041725385,
+          35.27754246392763,
+          16.13005307450503,
+          14.866506158255723,
+          16.28429322478055,
+          20.129254372935304,
+          19.773557293739078,
+          21.19657371996566,
+          17.346268319964555,
+          16.679792949832272,
+          16.95626246674153,
+          16.315072173077215,
+          18.616200489652787,
+          19.36892791172725,
+          13.96400984455503,
+          11.526295602771098,
+          11.114262480953478,
+          13.709253541406408,
+          15.947640494525814,
+          14.593420342625588
+        ],
+        "estimand": "Posterior-mean plug-in absolute deviation at the MAP point",
+        "mean": [
+          38.68220488060546,
+          19.88193972596966,
+          9.263164939126693,
+          7.15000754447133,
+          8.907462995400946,
+          11.217326044750418,
+          11.989506730598984,
+          11.22507859194171,
+          9.510975663725214,
+          8.038659932209704,
+          9.20146331110062,
+          10.30102800716225,
+          10.738412455227419,
+          9.882736574030435,
+          7.888606847234317,
+          6.015178559215658,
+          5.20636359800775,
+          6.040085885867627,
+          6.881255243289295,
+          7.261996651009156
+        ],
+        "n_atoms_per_subject": 1,
+        "n_pooled_atoms_per_trial": 25,
+        "n_subjects": 25
+      },
+      "Power": {
+        "atom_description": "One latent posterior mean function at the stored MAP point",
+        "band_q10": [
+          67.7485117672013,
+          2.4762155115983435,
+          2.490568461114595,
+          18.562630172005495,
+          24.584203062393566,
+          17.223925946138205,
+          13.263117999707061,
+          13.95614674950723,
+          14.185035531811014,
+          6.9491481216322315,
+          3.578150949536348,
+          6.258719060297734,
+          8.280562024118513,
+          7.270359958958057,
+          2.9916402362679606,
+          5.578688297711188,
+          3.458843986117279,
+          3.8645036579691694,
+          2.0106838871903845,
+          2.956490201243856
+        ],
+        "band_q90": [
+          200.9789833939314,
+          51.13993549867656,
+          39.81169117162108,
+          65.62755242562137,
+          76.35274333856286,
+          77.07349312573686,
+          75.09835231184331,
+          74.50264947991825,
+          68.1609238500661,
+          62.61148704376777,
+          59.3768049638196,
+          53.499285193408404,
+          47.490999909713146,
+          41.93907259247927,
+          33.954342425554366,
+          30.744533065127655,
+          27.24532405172968,
+          30.351728667840646,
+          33.335318176988885,
+          34.46453090228213
+        ],
+        "estimand": "Posterior-mean plug-in absolute deviation at the MAP point",
+        "mean": [
+          131.57220201841798,
+          25.576743681937206,
+          22.714138916358756,
+          40.77294791462802,
+          48.50209118292698,
+          49.8349291343839,
+          48.00599028484046,
+          44.04106792266397,
+          38.70882060535939,
+          33.014261260028356,
+          28.38911740518638,
+          25.822646291418106,
+          23.553471423884513,
+          20.662583004730212,
+          17.187285185724818,
+          15.545178229841024,
+          15.256879301292411,
+          16.076135948191407,
+          16.47181465466754,
+          16.312060889865958
+        ],
+        "n_atoms_per_subject": 1,
+        "n_pooled_atoms_per_trial": 25,
+        "n_subjects": 25
+      }
+    },
+    "power_truth": {
+      "Exponential": {
+        "atom_description": "One latent posterior mean function at the stored MAP point",
+        "band_q10": [
+          26.12722870055168,
+          12.252887894092124,
+          5.989314620073606,
+          1.6065088330196435,
+          3.7648820729394745,
+          3.414934361322651,
+          1.6542472816742588,
+          1.258259892963054,
+          0.7155224973314261,
+          1.3683099211366994,
+          1.7904867541912384,
+          2.2584598708573025,
+          2.4401821970094035,
+          0.9184403811762311,
+          0.5667886075925255,
+          1.5203058315025262,
+          2.889053435585879,
+          2.540867006217161,
+          0.9265830320570332,
+          0.8002568860742031
+        ],
+        "band_q90": [
+          155.15281579009218,
+          69.30258340936432,
+          23.04566298455634,
+          26.26281259214527,
+          30.40675480736802,
+          39.35910820899644,
+          38.342887922471746,
+          36.465976785297876,
+          33.72895041282863,
+          30.173878553722297,
+          28.93763718185112,
+          25.15512973465409,
+          21.132512850547315,
+          19.644089021985337,
+          22.47217064437006,
+          20.825394844337815,
+          19.820057327157247,
+          21.211163051055976,
+          22.28667562436746,
+          20.970484894843867
+        ],
+        "estimand": "Posterior-mean plug-in absolute deviation at the MAP point",
+        "mean": [
+          82.45391238964753,
+          33.77764885010754,
+          15.219164475824227,
+          13.574276896370893,
+          17.177739531900908,
+          17.876590672831863,
+          17.018941525650927,
+          15.620249578715589,
+          13.639757380811197,
+          11.960364925837016,
+          11.885741048404045,
+          11.941137771906897,
+          11.567123315576776,
+          10.784301461113532,
+          10.078818200771863,
+          10.37312535829868,
+          10.658590712455082,
+          10.509417205201075,
+          10.12857375192545,
+          10.247016469963368
+        ],
+        "n_atoms_per_subject": 1,
+        "n_pooled_atoms_per_trial": 25,
+        "n_subjects": 25
+      },
+      "Power": {
+        "atom_description": "One latent posterior mean function at the stored MAP point",
+        "band_q10": [
+          47.52091883034876,
+          9.904906346495569,
+          6.383508131399617,
+          5.085863923665738,
+          5.3925580575040275,
+          3.9049574111456424,
+          4.206400900765721,
+          3.135404997917567,
+          2.4341748711889304,
+          1.7058078241300794,
+          1.0345735325711303,
+          2.0085268420914995,
+          1.1877551912651145,
+          2.1938002120942772,
+          1.3087764216677555,
+          0.6978959670639483,
+          1.9951655639772188,
+          0.5812538838239221,
+          0.9312582249735897,
+          1.3942139625951655
+        ],
+        "band_q90": [
+          214.40544659761045,
+          43.5946463460022,
+          40.40314756778859,
+          40.62556674197247,
+          43.90592037568337,
+          33.47316519092161,
+          26.78966558333721,
+          23.108467582543085,
+          21.549382197322824,
+          19.508773368327322,
+          17.600223970115987,
+          15.641106429272531,
+          14.415666882267763,
+          14.535712717998184,
+          13.892683582755353,
+          14.307373899642744,
+          15.28604190785916,
+          15.374531402863502,
+          16.35437256272679,
+          17.176779985961456
+        ],
+        "estimand": "Posterior-mean plug-in absolute deviation at the MAP point",
+        "mean": [
+          116.50558804436307,
+          22.70429311415579,
+          19.36747210083356,
+          23.864750023475853,
+          22.459475589415742,
+          18.4610895369053,
+          15.632974108151835,
+          12.837669281217416,
+          10.536466217437999,
+          8.897169520330586,
+          8.323104730850162,
+          8.458882279996669,
+          8.38801599813038,
+          8.346611652991141,
+          8.082285859883843,
+          7.981542081563178,
+          8.13455728693198,
+          7.7903583308831355,
+          7.847783845222175,
+          8.14121619766914
+        ],
+        "n_atoms_per_subject": 1,
+        "n_pooled_atoms_per_trial": 25,
+        "n_subjects": 25
+      }
+    }
+  },
+  "metric_scale_diagnostics": {
+    "affine_identity": {
+      "description": "Candidate-specific affine identity checked on every stored configuration, subject, and candidate mean_G pair",
+      "formula": "pw_nll = 0.5 * log(2 * pi * sigma_theta^2) + pw_mse / (2 * sigma_theta^2)",
+      "max_absolute_error": 1.7763568394002505e-15,
+      "n_stored_mean_G_pairs_checked": 300,
+      "non_invariance_note": "BMS* scores exp(-G/tau) at one shared tau, so probability magnitudes are not comparable across differently scaled metrics.",
+      "shared_tau_invariance": false,
+      "two_sigma_squared_divisor_max": 7161.481610527603,
+      "two_sigma_squared_divisor_min": 743.3198609618871
+    },
+    "stored_tau_grid_probability_medians": {
+      "by_configuration_metric_cohort": {
+        "agnostic": {
+          "pw_mse": {
+            "all_subjects": [
+              {
+                "median_max_candidate_probability": 0.915,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.915,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.915,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.915,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.9150000000000177,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.9150000000570124,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.9150000119023511,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.9150003603100036,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.9150009811511262,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.9149612604232349,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.914590716260785,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.9129981463815752,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.907597749876616,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.8910460767164242,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.8760581649681496,
+                "tau": 31.622776601683793
+              }
+            ],
+            "exponential_truth": [
+              {
+                "median_max_candidate_probability": 0.95,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.95,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.95,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.95,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.95,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.95,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.9500000000000004,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.9500000000047544,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.9500000026519956,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.9500001072919255,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.9499999513872672,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.9499959147337118,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.9499256932933022,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.9494572228762864,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.9476529265374657,
+                "tau": 31.622776601683793
+              }
+            ],
+            "power_truth": [
+              {
+                "median_max_candidate_probability": 0.8100000002044463,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.8100000456833233,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.8100016479901869,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.8100177475343467,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.8100857071435189,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.8102409154969914,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.8104418754759447,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.8104470254947259,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.8097461005330455,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.8076847869494385,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.8030364511159224,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.7921323437638692,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.7780873926090749,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.7443954804984806,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.6997146784576921,
+                "tau": 31.622776601683793
+              }
+            ]
+          },
+          "pw_nll": {
+            "all_subjects": [
+              {
+                "median_max_candidate_probability": 0.7291517750166245,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.6769791900962778,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.6318723722560831,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.5898313928044461,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.5604295265447139,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.5403855820972432,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.5268963071283329,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.5178784875172757,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.5118713003165127,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.507877508334843,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.5052253022254443,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.5034652090473655,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.5022976359187309,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.5015233173951615,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.5010098850691336,
+                "tau": 31.622776601683793
+              }
+            ],
+            "exponential_truth": [
+              {
+                "median_max_candidate_probability": 0.8854941916887752,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.835991661998517,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.7589096924957632,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.6862789055912326,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.6324201356968516,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.5912387726188197,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.5617842470611764,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.5414501482127541,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.527668122706233,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.5184168184776906,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.512239144374903,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.5081259491559378,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.5053919432938695,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.5035765102908517,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.5023717773055637,
+                "tau": 31.622776601683793
+              }
+            ],
+            "power_truth": [
+              {
+                "median_max_candidate_probability": 0.5569539724953905,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.5399307466854822,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.5274544799227111,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.5184510869517727,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.5123211541843508,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.5084043594457774,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.5056087749217772,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.5037345056678135,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.5024827978725015,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.5016489838431978,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.5010944735533458,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.5007261141447422,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.5004815920101173,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.5003193527884595,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.5002117420991279,
+                "tau": 31.622776601683793
+              }
+            ]
+          }
+        },
+        "moderate": {
+          "pw_mse": {
+            "all_subjects": [
+              {
+                "median_max_candidate_probability": 0.955,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.955,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.955,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.9549999999999975,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.9549999999657125,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.9549999809232025,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.9549987435941014,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.9549799063756428,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.9533667774796155,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.9508699603675239,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.949894526214015,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.9492979106584034,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.9473634173613938,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.9402622321910321,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.9308761773493088,
+                "tau": 31.622776601683793
+              }
+            ],
+            "exponential_truth": [
+              {
+                "median_max_candidate_probability": 0.97,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.97,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.9700000000000641,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.9700000001166174,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.9700000168999316,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.9700004575327431,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.9700040734319523,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.9700173469724119,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.9700452966393274,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.9700855191348232,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.970130241917534,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.9701720565485196,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.9702068804663365,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.9702334517184702,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.9702407576415744,
+                "tau": 31.622776601683793
+              }
+            ],
+            "power_truth": [
+              {
+                "median_max_candidate_probability": 0.8182032701872491,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.8170090622630442,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.8158091241768657,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.8147579484162503,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.8138889947125224,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.8131013907799379,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.8122473099731344,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.8118621272186263,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.8123211803475034,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.8127927746440574,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.8131534182290407,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.8130703746819997,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.8115875029157339,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.8066830741913835,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.777933163467259,
+                "tau": 31.622776601683793
+              }
+            ]
+          },
+          "pw_nll": {
+            "all_subjects": [
+              {
+                "median_max_candidate_probability": 0.7684416824689437,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.7050165576140018,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.6510312643728859,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.6064005188015069,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.5728376790370007,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.549062380079238,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.5327732643741806,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.5218032192123964,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.5144771494857767,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.5096040594814581,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.5063686249781556,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.5042223328116183,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.5027991088474325,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.5018555310904111,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.5012300065170814,
+                "tau": 31.622776601683793
+              }
+            ],
+            "exponential_truth": [
+              {
+                "median_max_candidate_probability": 0.9106962858063502,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.8610975827917601,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.7851703528190683,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.7057973441295453,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.646479574055951,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.6012975630371092,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.5687290257563039,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.5461559137483315,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.5308256889924515,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.5205245602220382,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.5136421069754696,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.5090582867873802,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.5060109395455245,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.5039872369955071,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.5026442121073115,
+                "tau": 31.622776601683793
+              }
+            ],
+            "power_truth": [
+              {
+                "median_max_candidate_probability": 0.5690660110284153,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.5468277170482767,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.5314748734612056,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.5220576062114068,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.5146681583087076,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.5097414983093281,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.5064647848761865,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.5042883851255595,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.5028439347020137,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.5018857103140345,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.5012502182396696,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.500828835165358,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.500549454884783,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.500364236830318,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.5002414503134274,
+                "tau": 31.622776601683793
+              }
+            ]
+          }
+        },
+        "practitioner": {
+          "pw_mse": {
+            "all_subjects": [
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.9999999999999825,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.9999999998577981,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.9999999415304355,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.999996724743484,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.9999518537967576,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.9997113732119901,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.9990503528609163,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.9970354952860109,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.9928559552365088,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.9917116853822014,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.9865572479420387,
+                "tau": 31.622776601683793
+              }
+            ],
+            "exponential_truth": [
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 1.0,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.9999999999949309,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.999999993104361,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.9999991757824439,
+                "tau": 31.622776601683793
+              }
+            ],
+            "power_truth": [
+              {
+                "median_max_candidate_probability": 0.950000001338247,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.9500001011971192,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.9500017799419247,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.9500118422169733,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.9500383630939216,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.9500456429876923,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.9498705149863425,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.9492500201774884,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.9478749474360448,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.9451913129439374,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.939921937065564,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.9287685903090902,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.9149910912120246,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.8926894442772615,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.8223661426878969,
+                "tau": 31.622776601683793
+              }
+            ]
+          },
+          "pw_nll": {
+            "all_subjects": [
+              {
+                "median_max_candidate_probability": 0.7914527215345899,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.7149278089831728,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.657048903966694,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.6106999438433625,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.5751993133856355,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.5503338442820387,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.5335481444207733,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.5223093599124856,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.5148167681382014,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.5098333239280545,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.5065231309981664,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.504326077854293,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.5028685253994187,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.5019018483670812,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.5012608475694812,
+                "tau": 31.622776601683793
+              }
+            ],
+            "exponential_truth": [
+              {
+                "median_max_candidate_probability": 0.9631470594707544,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.9110513932425167,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.8331411932720818,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.7572631148395917,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.6821299711432761,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.6247652199881675,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.5840544639925019,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.5561689408759257,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.5373868781596636,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.5248370151785461,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.5164836405107585,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.5109341019235226,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.5072508829563425,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.5048076095552504,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.5031873261411676,
+                "tau": 31.622776601683793
+              }
+            ],
+            "power_truth": [
+              {
+                "median_max_candidate_probability": 0.5810374753655416,
+                "tau": 0.1
+              },
+              {
+                "median_max_candidate_probability": 0.5556587972980823,
+                "tau": 0.15085907086001785
+              },
+              {
+                "median_max_candidate_probability": 0.5371151342204393,
+                "tau": 0.22758459260747887
+              },
+              {
+                "median_max_candidate_probability": 0.5261296586851232,
+                "tau": 0.3433320018281994
+              },
+              {
+                "median_max_candidate_probability": 0.5174877400515677,
+                "tau": 0.5179474679231211
+              },
+              {
+                "median_max_candidate_probability": 0.5116646764774314,
+                "tau": 0.7813707376518095
+              },
+              {
+                "median_max_candidate_probability": 0.5077637730018814,
+                "tau": 1.1787686347935873
+              },
+              {
+                "median_max_candidate_probability": 0.5051601741615739,
+                "tau": 1.7782794100389228
+              },
+              {
+                "median_max_candidate_probability": 0.5034265631423782,
+                "tau": 2.682695795279726
+              },
+              {
+                "median_max_candidate_probability": 0.5022740116262242,
+                "tau": 4.047089950759761
+              },
+              {
+                "median_max_candidate_probability": 0.5015085344953824,
+                "tau": 6.105402296585329
+              },
+              {
+                "median_max_candidate_probability": 0.5010004716089225,
+                "tau": 9.21055317689482
+              },
+              {
+                "median_max_candidate_probability": 0.5006634063247704,
+                "tau": 13.894954943731374
+              },
+              {
+                "median_max_candidate_probability": 0.5004398504589764,
+                "tau": 20.961799924531277
+              },
+              {
+                "median_max_candidate_probability": 0.5002916068997112,
+                "tau": 31.622776601683793
+              }
+            ]
+          }
+        }
+      },
+      "description": "Median maximum candidate probabilities from the stored 15-point tau grid; retained only to demonstrate metric-scale non-invariance",
+      "n_tau_values": 15,
+      "tau_grid": [
+        0.1,
+        0.15085907086001785,
+        0.22758459260747887,
+        0.3433320018281994,
+        0.5179474679231211,
+        0.7813707376518095,
+        1.1787686347935873,
+        1.7782794100389228,
+        2.682695795279726,
+        4.047089950759761,
+        6.105402296585329,
+        9.21055317689482,
+        13.894954943731374,
+        20.961799924531277,
+        31.622776601683793
+      ]
+    }
+  },
   "provenance": {
-    "band_definition": "At each trial, q10 and q90 pool the 25 subjects by 100 posterior function draws within a truth cohort and describe dispersion rather than confidence limits for the mean.",
+    "band_definition": "For the MAP-conditional posterior expected absolute deviation of the latent function, q10 and q90 pool 25 subjects by 100 posterior function draws within a truth cohort. For the posterior-mean plug-in, q10 and q90 pool 25 subject values. Both describe dispersion rather than confidence limits for a cohort mean.",
     "cohort_sizes": {
       "exponential_truth": 25,
       "power_truth": 25
     },
     "conditioning_jitter_normalized_variance": 1e-06,
     "data_seed": 42,
+    "estimand_relation_note": "By Jensen's inequality, the MAP-conditional posterior expected absolute deviation of the latent function is no smaller than the posterior-mean plug-in for each subject, candidate, and trial. Unequal inflation changes the candidate gap by a trial-dependent amount.",
+    "evaluation_domains": {
+      "linkage_limit": "Reconstructed deviation curves can localize stored aggregate comparisons only within the shared early-trial region.",
+      "longest_subject_continuous_span_overlap_fraction": 0.24358974358974358,
+      "reconstructed_deviation_curves": "Integer trials 1 through 20 only",
+      "reconstructed_deviation_n_points": 20,
+      "shared_region": "Integer trials 1 through 20",
+      "stored_practice_G": "50-point uniform grid spanning each subject's full observed trial series",
+      "stored_practice_G_n_points": 50,
+      "stored_practice_G_subject_trial_count_range": {
+        "max": 79,
+        "min": 20
+      }
+    },
     "evaluation_trial_grid": [
       1.0,
       2.0,
@@ -103,11 +1672,13 @@
       19.0,
       20.0
     ],
-    "formula": "regret_theta(t) = E_draws[abs(mu_GP(t) - mu_theta(t))]",
+    "formula": "MAP-conditional posterior expected absolute deviation of the latent function: E_{f | y, eta_hat}[abs(f(t) - mu_theta(t))]",
     "formula_discrepancy_note": "The formal limits-note equation and Case D work order use absolute difference. A chat-derived Q&A in the same note says squared difference; this artifact follows the binding absolute formula.",
     "gp_hyperparameters_provenance": "run.py stores gp_hyperparameters once, immediately after the first successful configuration MAP fit. The default loop order starts with practitioner, so all 50 source files carry practitioner MAP values even though results_hmc subsequently runs HMC for GP samples.",
     "gp_reconstruction": "Exact zero-mean RBF GP conditioning at stored lengthscale, outputscale, and noise; no refit and no hyperparameter sampling; latent posterior function draws exclude fresh observation noise.",
-    "legacy_metric_note": "Stored diagnostics contain pw_nll, pw_mse, and pw_hellinger. They predate W1 and contain no pw_kl_vcal. pw_nll receives closest-role framing without relabeling or recomputation.",
+    "legacy_metric_note": "Stored diagnostics contain pw_nll, pw_mse, and pw_hellinger. They predate W1 and contain no pw_kl_vcal. pw_nll weights squared error by candidate fitted noise variance; pw_kl_vcal weights it by GP variance.",
+    "mean_based_plugin_formula": "Posterior-mean plug-in absolute deviation at the MAP point: abs(E[f(t) | y, eta_hat] - mu_theta(t))",
+    "mean_vs_draw_substitution": "The limits-note target averages posterior mean functions over hyperparameter draws. The stored files do not retain those draws. This artifact reports both the MAP-conditional posterior expected absolute deviation of the latent function and a posterior-mean plug-in at the same stored MAP point.",
     "n_draws_per_subject": 100,
     "n_subjects": 50,
     "posterior_function_draw_seed_base": 20260811,
@@ -1078,13 +2649,15 @@
     }
   },
   "regret_band": {
-    "aggregation": "Pooled across subjects and posterior function draws within each truth cohort",
+    "aggregation": "Pooled across subjects and posterior function draws for the MAP-conditional posterior expected absolute deviation of the latent function within each truth cohort",
+    "estimand": "MAP-conditional posterior expected absolute deviation of the latent function",
     "lower_quantile": 0.1,
     "upper_quantile": 0.9
   },
   "regret_curves": {
     "exponential_truth": {
       "Exponential": {
+        "atom_description": "Seeded latent function draw conditional on the stored MAP point",
         "band_q10": [
           11.288214751967974,
           4.396261801712922,
@@ -1129,6 +2702,7 @@
           25.807652124303647,
           25.89586646244694
         ],
+        "estimand": "MAP-conditional posterior expected absolute deviation of the latent function",
         "mean": [
           39.96296194466747,
           23.330847840986245,
@@ -1151,11 +2725,12 @@
           12.149311591202997,
           12.393108452381844
         ],
-        "n_draws_per_subject": 100,
-        "n_subject_draw_atoms_per_trial": 2500,
+        "n_atoms_per_subject": 100,
+        "n_pooled_atoms_per_trial": 2500,
         "n_subjects": 25
       },
       "Power": {
+        "atom_description": "Seeded latent function draw conditional on the stored MAP point",
         "band_q10": [
           63.1866949387295,
           4.048060579904677,
@@ -1200,6 +2775,7 @@
           39.42512863354807,
           39.16367860146126
         ],
+        "estimand": "MAP-conditional posterior expected absolute deviation of the latent function",
         "mean": [
           131.41522743272978,
           29.548142518609406,
@@ -1222,13 +2798,14 @@
           18.746420917678616,
           18.7217999215534
         ],
-        "n_draws_per_subject": 100,
-        "n_subject_draw_atoms_per_trial": 2500,
+        "n_atoms_per_subject": 100,
+        "n_pooled_atoms_per_trial": 2500,
         "n_subjects": 25
       }
     },
     "power_truth": {
       "Exponential": {
+        "atom_description": "Seeded latent function draw conditional on the stored MAP point",
         "band_q10": [
           20.166734822508374,
           5.9451322376609825,
@@ -1273,6 +2850,7 @@
           31.306763681184584,
           31.87773548988951
         ],
+        "estimand": "MAP-conditional posterior expected absolute deviation of the latent function",
         "mean": [
           82.55131856714787,
           35.498748994348915,
@@ -1295,11 +2873,12 @@
           14.250730790457578,
           14.6561233376211
         ],
-        "n_draws_per_subject": 100,
-        "n_subject_draw_atoms_per_trial": 2500,
+        "n_atoms_per_subject": 100,
+        "n_pooled_atoms_per_trial": 2500,
         "n_subjects": 25
       },
       "Power": {
+        "atom_description": "Seeded latent function draw conditional on the stored MAP point",
         "band_q10": [
           39.91884334259193,
           4.237254226050231,
@@ -1344,6 +2923,7 @@
           27.72055134884421,
           27.767894354485318
         ],
+        "estimand": "MAP-conditional posterior expected absolute deviation of the latent function",
         "mean": [
           116.33345732908461,
           25.2379587479166,
@@ -1366,13 +2946,13 @@
           12.727141658113304,
           12.936003405781614
         ],
-        "n_draws_per_subject": 100,
-        "n_subject_draw_atoms_per_trial": 2500,
+        "n_atoms_per_subject": 100,
+        "n_pooled_atoms_per_trial": 2500,
         "n_subjects": 25
       }
     }
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "stored_mean_G_summaries": {
     "agnostic": {
       "pw_hellinger": {
@@ -2304,6 +3884,79 @@
         "fraction_all_configs_agree": 0.96
       }
     }
+  },
+  "stored_truth_raw_draw_wins": {
+    "by_configuration": {
+      "agnostic": {
+        "exponential_truth": {
+          "n_draws_per_subject": 100,
+          "n_draws_total": 2500,
+          "n_subjects": 25,
+          "n_subjects_truth_exact_tie": 0,
+          "n_subjects_truth_strict_majority": 25,
+          "truth_candidate": "Exponential",
+          "truth_raw_draw_win_fraction": 0.9208,
+          "truth_raw_draw_wins": 2302
+        },
+        "power_truth": {
+          "n_draws_per_subject": 100,
+          "n_draws_total": 2500,
+          "n_subjects": 25,
+          "n_subjects_truth_exact_tie": 0,
+          "n_subjects_truth_strict_majority": 9,
+          "truth_candidate": "Power",
+          "truth_raw_draw_win_fraction": 0.4148,
+          "truth_raw_draw_wins": 1037
+        }
+      },
+      "moderate": {
+        "exponential_truth": {
+          "n_draws_per_subject": 100,
+          "n_draws_total": 2500,
+          "n_subjects": 25,
+          "n_subjects_truth_exact_tie": 0,
+          "n_subjects_truth_strict_majority": 25,
+          "truth_candidate": "Exponential",
+          "truth_raw_draw_win_fraction": 0.9456,
+          "truth_raw_draw_wins": 2364
+        },
+        "power_truth": {
+          "n_draws_per_subject": 100,
+          "n_draws_total": 2500,
+          "n_subjects": 25,
+          "n_subjects_truth_exact_tie": 1,
+          "n_subjects_truth_strict_majority": 8,
+          "truth_candidate": "Power",
+          "truth_raw_draw_win_fraction": 0.3992,
+          "truth_raw_draw_wins": 998
+        }
+      },
+      "practitioner": {
+        "exponential_truth": {
+          "n_draws_per_subject": 100,
+          "n_draws_total": 2500,
+          "n_subjects": 25,
+          "n_subjects_truth_exact_tie": 0,
+          "n_subjects_truth_strict_majority": 25,
+          "truth_candidate": "Exponential",
+          "truth_raw_draw_win_fraction": 0.9868,
+          "truth_raw_draw_wins": 2467
+        },
+        "power_truth": {
+          "n_draws_per_subject": 100,
+          "n_draws_total": 2500,
+          "n_subjects": 25,
+          "n_subjects_truth_exact_tie": 0,
+          "n_subjects_truth_strict_majority": 9,
+          "truth_candidate": "Power",
+          "truth_raw_draw_win_fraction": 0.3896,
+          "truth_raw_draw_wins": 974
+        }
+      }
+    },
+    "description": "Tau-free fraction of stored GP draws on which the known-truth candidate has the smaller raw G value",
+    "metric": "pw_nll",
+    "subject_majority_definition": "Strictly more than half of a subject's stored draws"
   },
   "trial_grid": [
     1.0,
