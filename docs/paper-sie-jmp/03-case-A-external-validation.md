@@ -48,22 +48,23 @@ point, 7.9589 for \(M_x\) and 1.5000 for \(M_z\), also reproduce the quoted
 7.96 and 1.50 values.[^2]
 
 The agreement follows from a Laplace special case. With a point data prior,
-\(\bar G(\phi)=G(\psi^*,\phi)\). Around the common candidate optimum
-\(\theta^*=\psi^*=1/2\),
+\(\bar G(\phi)=G(\psi^*,\phi)\). Around the candidate optimum
+\(\theta^*=1/2\), which coincides with the data-prior atom,
 
 \[
 Z_M \approx p_M(\theta^*)
 \sqrt{\frac{2\pi\tau}{\bar G_M''(\theta^*)}}.
 \]
 
-Both models use the same Bernoulli family, so they share the local curvature
-\(\bar G_M''(\theta^*)\). That factor and the remaining common terms cancel after
-normalization across models. As \(\tau\) approaches zero, the normalized
-hybrid scores consequently converge to the ratio of the within-model prior
-densities at \(\theta^*\). The authors' published formula thus coincides with
-the shared-family, point-data-prior, zero-temperature limit of the hybrid
-\(Z_M\). Target B supplies the first passing test of this within-model-prior
-extension, which had previously remained an open implementation question.[^2]
+Both models use the same Bernoulli family, so they share the local curvature:
+\(\bar G_x''(\theta^*)=\bar G_z''(\theta^*)\). That factor and the remaining
+common terms cancel after normalization across models. As \(\tau\) approaches
+zero, the normalized hybrid scores consequently converge to the ratio of the
+within-model prior densities at \(\theta^*\). The authors' published formula
+thus coincides with the shared-family, point-data-prior, zero-temperature limit
+of the hybrid \(Z_M\). Target B supplies the first passing test of this
+within-model-prior extension, which had previously remained an open
+implementation question.[^2]
 
 ## 3.3 Target A: aggregation changes the limiting answer
 
@@ -105,14 +106,14 @@ E7 evaluates the fork on the validated `toy_elicited` SIR path. Under the
 primary `pw_kl_vcal` metric at \(\tau=1\), pooled aggregation gives model
 probabilities 0.183, 0.192, 0.441, and 0.184 for Linear, Sinusoidal,
 Sin+Linear, and Quadratic, respectively. This row reproduces the ratified SIR
-headline. Within each metric, all three aggregation variants use the same
-\(G\) matrix from one SIR realization (\(n_{\mathrm{pred}}=1000\)), so the
-reported movements are paired differences rather than differences of
-independent estimates. Sin+Linear remains the highest-weight candidate under
+headline. Sin+Linear remains the highest-weight candidate under
 every tested aggregation variant and temperature. The maximum absolute movement
 between pooled and expected-posterior aggregation equals 0.31 at \(\tau=0.1\),
 0.072 at \(\tau=1\), and 0.001 at \(\tau=10\); at \(\tau=1\), the Sin+Linear
-weight changes from 0.441 to 0.513.[^3]
+weight changes from 0.441 to 0.513.[^3] Within each metric, all three
+aggregation variants use the same \(G\) matrix from one SIR realization
+(\(n_{\mathrm{pred}}=1000\)), so the reported movements are paired differences
+rather than differences of independent estimates.
 
 The appendix-only `kl_forward` stress metric reveals a sharper attribution.
 With pooled aggregation, the Sin+Linear weight collapses to approximately
