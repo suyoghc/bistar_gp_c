@@ -6,7 +6,9 @@ cites the BI*/BMS* line as related prior work, but their closed-form examples
 were developed without reference to the present implementation. They therefore
 provide external checks on the induced-prior and soft-transfer machinery.
 Because their examples supply the data prior directly, these checks bypass its
-GP construction.[^1]
+GP construction.[^1] The section reproduces both of their closed-form targets,
+locates their construction inside the induced-prior machinery, and returns one
+counterclaim about what their aggregation semantics costs.
 
 ## 3.1 Correspondence of the constructions
 
@@ -103,6 +105,33 @@ Neither convention is declared universally correct.[^2]
 
 The E7 README recorded this stance as a candidate, which the author adopted on
 2026-08-12.[^3]
+
+**Claim:** van Bork, Romeijn, and Wagenmakers advance the expected-support
+construction as a principled source of prior model probability: candidates
+earn probability through expected predictive alignment with the data prior,
+and even completely overlapping models become distinguishable, grounding a
+Wrinch-Jeffreys-style simplicity preference in prediction rather than
+fiat.[^1] Section 3.2 locates that construction inside the present framework:
+their formula arises from the hybrid \(Z_M\) in the zero-temperature,
+shared-family, point-data-prior limit, and the case reproduces both published
+targets. Containment rather than rivalry describes the relation: the framework
+exposes through explicit controls what their construction fixes implicitly,
+namely \(\tau\), `occam`, and the aggregation dial.
+
+**Counterclaim:** the framework identifies a cost. Their Eq. 4 semantics
+forces per-draw normalization, so every data-prior draw spends one full unit of
+credit even when no candidate fits it, and absolute divergence magnitudes
+disappear. Those magnitudes carry the framework's misspecification signal:
+uniformly high divergence indicates that no candidate is adequate, as
+exercised by the M-open reading in Case D, section 6. Adopted as canonical,
+their construction would therefore silently foreclose misspecification
+diagnosis, a cost the published account does not price. The evaluation dial
+prices it explicitly: pooled aggregation retains the magnitudes, the Eq. 4
+variant purchases external correspondence, and the trade remains visible at
+the point of use.[^3] Neither reading restores set-additive probabilities over
+a hypothesis space (mapping row 5), so Popper's nesting constraint is dissolved
+rather than answered by this family of constructions; section 4 prices the
+residual disagreement empirically through the `occam` dial.
 
 ## 3.4 Measured sensitivity on the validated toy path
 
