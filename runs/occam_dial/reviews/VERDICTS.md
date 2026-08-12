@@ -157,3 +157,14 @@ against the completed record:
 Net: zero new actionable findings; the one blocking item was already fixed.
 The Kimi round strengthens F1's evidence (four independent reporters) and
 adds an independent full-number verification pass.
+
+## Author sign-off and Ready (2026-08-12)
+
+The author signed off the statistical items by direct instruction: item 1
+(the F2 + NEW-1 crossing-uncertainty treatment: τ ≈ 1.5 with the enclosing
+grid-and-seed interval 1.33 to 1.59) and item 2 (the O2 reframing: E6 as a
+machinery check with measured margins). Item 3 (kb force-add variant): the
+committed README mirror stands as the resolution carrier; no kb/ file is
+force-added. The Kimi K3 round is complete (fourth-reporter convergence on
+the resolved F1; zero new findings). At the author's direction, PR #36
+leaves Draft: **READY**.
