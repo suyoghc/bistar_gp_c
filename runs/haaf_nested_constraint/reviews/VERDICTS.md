@@ -120,3 +120,36 @@ to the ledger:**
 4. Kimi K3 round: run `kimi_k3_package.md`; findings enter a fresh
    cross-verification cycle.
 Nothing merges autonomously (§4).
+
+## Kimi K3 round (author-directed, 2026-08-12)
+
+Channel: `moonshotai/kimi-k3` via OpenRouter (author's key), package-only, on
+the ORIGINAL round-1 package (pre-fix state). **Verdict: REVISE (minor)** —
+5 findings, raw output `round1_kimi-k3.md`. Collation:
+
+- KC1 [S3] ("use the same starts" asymmetry): fourth-reporter convergence
+  with CC3/OC7, already resolved in 0ce03ba (FIX-3). No action.
+- KC2 [S3] (D63 attributes the one-chain allowance to the work order):
+  NEW; survived driver verification at the current tip and Codex adversarial
+  check (CONFIRMED: the work order fixes no chain count; the allowance came
+  from the driver implementation prompt). FIXED post-round: D63 reattributed
+  in place ("The work order does not fix a chain count; the driver prompt
+  allowed a single chain at this scale; two seeded chains were used
+  instead").
+- KC3 [S4] (optimizer-objective compression): NEW; Codex CONFIRMED (the
+  MLE stage minimizes variance-weighted Gaussian NLL; G enters at pool
+  selection). FIXED post-round with the clarifying clause in 5.1.
+- KC4 [S4] ("preregistered temperature grid" unverifiable): Codex REFUTED
+  with the record — the τ grid {0.1, 0.3, 1, 3, 10} appears verbatim in
+  docs/m2br-corrected-impact-protocol.md and is incorporated into
+  preregistration v1.9 by hash (docs/prereg-addenda-d19.md), later
+  ratified. "Preregistered" stands. REJECTED (logged).
+- KC5 [S4] (arviz manifests unverifiable from package): convergence with
+  CC1/OC2, already resolved in 0ce03ba (FIX-1). No action.
+- Note: Kimi verified the round-1 kl_forward "0.0006" sentence against the
+  round-1 package; that sentence was later removed per W1 (CC2/OC3), so no
+  conflict with the current tip.
+
+Net: two new prose fixes (KC2, KC3), one refuted with the prereg record,
+two convergences with resolved findings. Independent reconfirmation of all
+LOO and BMS* numbers.

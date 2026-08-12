@@ -5774,8 +5774,9 @@ constraint. Fitting each candidate only once to the observations was rejected
 because the positive observed-data slope would make the two predictions
 identical and could not produce the required per-$\psi$ slope diagnostic.
 Reimplementing the SIR or aggregation formulas was rejected in favor of the
-required imports. One NUTS chain was allowed by the work order, but two seeded
-chains provide rank-normalized $\widehat R$ diagnostics. A figure was omitted
+required imports. The work order does not fix a chain count; the driver prompt
+allowed a single chain at this scale; two seeded chains were used instead to
+obtain rank-normalized $\widehat R$ diagnostics. A figure was omitted
 because the table and slope-sign count contain the full comparison.
 
 **Result:** The pooled prior-IS ESS equals 4,464.53, and the 1,000 SIR rows

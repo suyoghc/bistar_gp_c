@@ -32,8 +32,10 @@ $b=0.25$, so the restriction holds in truth.[^2]
 The BMS* calculation follows the validated `toy_elicited` stage-IS path. It
 pools prior-IS caches from seeds 0, 1, and 2, draws 1,000 SIR predictives with
 seed 42, and evaluates 60 locations. For every predictive data pattern
-$\psi$, the free and restricted fits minimize the primary
-`pw_kl_vcal` value $G(\psi,\theta)$ over their respective parameter regions.
+$\psi$, the fits are obtained by variance-weighted maximum likelihood toward
+each $\psi$; the primary `pw_kl_vcal` value $G(\psi,\theta)$ is then minimized
+by selection over the shared candidate pool, within each candidate's parameter
+region.
 Thus the calculation supplies candidate instances from a shared $\psi$ rather
 than introducing candidate-parameter priors. Such priors contribute only to
 the separate LOO comparison below.[^2]
