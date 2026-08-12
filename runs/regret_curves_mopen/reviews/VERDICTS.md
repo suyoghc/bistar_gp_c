@@ -143,3 +143,14 @@ record:
 Net: zero new actionable findings; all three substantive observations
 converge with already-resolved items. APPROVE against the pre-fix state;
 the current tip is strictly stronger.
+
+## Author sign-off and Ready (2026-08-12)
+
+The author signed off the statistical items by direct instruction: item 1
+(the F-D1 rewrite: the affine-identity disclosure and the raw-draw-wins
+asymmetry carrying the thesis), item 2 (the F-D2 dual-estimand
+presentation: MAP-conditional posterior expected absolute deviation plus
+the posterior-mean plug-in, with Jensen scoped to the exact estimands), and
+item 3 (the F-D3 non-identifiability framing of the failure source). The
+Kimi K3 round is complete (full convergence with resolved findings). At the
+author's direction, PR #38 leaves Draft: **READY**.
