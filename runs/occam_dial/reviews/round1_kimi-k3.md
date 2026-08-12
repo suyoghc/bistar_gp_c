@@ -1,0 +1,25 @@
+# Round-1 review — Kimi K3 (moonshotai/kimi-k3 via OpenRouter, author-directed; package-only, no repo access)
+# Channel note: run 2026-08-12 on the ORIGINAL round-1 package (branch tip 9d6d95c state), AFTER the fix passes had landed; convergences with already-resolved findings are noted in VERDICTS. Temperature 0.3, reasoning budget 24576, completion 49152; first attempt (16384) exhausted on reasoning and was retried.
+
+VERDICT: REVISE
+
+Findings:
+
+1. [S1] [branch diff vs work order item 2] The commissioned edit to `kb/Wiki/REVIEW_AND_VET.md` (mark the "Nesting monotonicity" entry resolved with the E6 numbers, one paragraph) is absent from the diff. The work order explicitly commissions it, and the reviewer note confirms it is in scope. The diff contains only DECISIONS.md, the section file, two scripts, and runs/ artifacts. Fix: add the `kb/Wiki/REVIEW_AND_VET.md` edit marking the entry resolved, citing min-Ḡ 0.045516783 (Sin+Linear) vs 2.424774370 (Linear) and 2.546229649 (Sinusoidal), margins 2.379257587 / 2.500712865, holds=True for both pairs.
+
+2. [S3] [experiments/e6_nesting_monotonicity.py, `normalized_log_z = result.log_Z - log_volume`] The claim that the `occam=True` sweep equals the raw IS sweep minus `_log_reference_volume(param_space)` cannot be verified from this package — `bistar_gp/laplace_evidence.py` is not included, so I cannot confirm the package's occam normalization is a τ-independent additive constant in log space, nor that the helper's volume matches the `occam=True` path inside `is_log_Z_Mx`. The internal arithmetic is at least self-consistent (e.g., Linear: -82.322460 - 3.688879 = -86.011339 ✓; Sin+Linear: -13.672982 - 8.725430 = -22.398412 ✓). Fix: none required for correctness if the package documents this equivalence, but the section/README should cite the package docstring or test that establishes `is_log_Z_Mx(..., occam=True) == is_log_Z_Mx(..., occam=False) - _log_reference_volume(space)`; flag as unverifiable from the package otherwise.
+
+3. [S4] [docs/paper-sie-jmp/04-case-B-occam-dial.md footnotes [^1]–[^4]] The footnote provenance labels use em-dashes ("🟢 peer-reviewed —", "🟠 empirical —") in four places, against the §0 "minimal em-dashes" style rule. If this badge-plus-dash format is the established house convention across other case sections, disregard; I cannot verify that from the package. Fix: replace with a colon or parentheses if no house convention mandates the dash.
+
+4. [S4] [docs/paper-sie-jmp/04-case-B-occam-dial.md, footnote [^2]] The attribution of the `occam=False`/`occam=True` convention definitions to "Notes/DECISIONS.md D3, D5, and D17" cannot be verified from the package (those entries are not excerpted). The D17 portion is anchored by the reviewer note; D3/D5 are not. Fix: confirm D3/D5 actually define the raw-Lebesgue vs V_ref-normalized convention, or narrow the citation.
+
+Verified as correct (no findings):
+
+- All section numbers match the JSONs: p1/p2/p3 posteriors (0.534121/0.382052, 0.506877/0.464791, 0.007040/0.991758), min-Ḡ values (0.045516783, 2.424774370, 2.546229649), margins (2.379257587, 2.500712865), crossing locations and brackets (0.295184 in [0.281838, 0.298538]; 1.484355 in [1.412538, 1.496236]), τ grid endpoints (0.031623–316.227766, 161 points), ESS minima in D62 (14903/1373/831).
+- "Low temperature supports Popper's constraint in both conventions": `winner_at_tau_min` is "encompassing" in all four ordering blocks ✓. "occam=False: neither pair crosses": `crossings: []` in both ✓.
+- Internal consistency: crossing at τ≈0.295 for occam=True is consistent with the τ=0.3 p2 arm showing Linear (0.507) above Sin+Linear (0.465) ✓. The 0.042 p2 gap cited for the anchor tolerance matches 0.506877 - 0.464791 = 0.042086 ✓.
+- Constraint compliance: no withdrawn HMC cache or `toy_tau_metric_comparison` cited; `pw_kl_vcal` is the only metric; viz_unification material framed as informative-config/MAP/methods-validation throughout (section, README, JSON `interpretation_scope`); no Mauna Loa; no `bistar_gp/` changes (imports only); PNG is 155,658 bytes (< 2 MB); D62 DECISIONS entry present with rerun commands; D17 legacy 0.934/0.693 quoted with explicit "not recomputed" provenance ✓.
+- Statistical method logic: exact-embedding checks (absolute error 0.0 ≤ 1e-10), restricted-optimum seeding of the encompassing multi-start, the A≥0 extension disclosed as E6-only, the scope disclaimer ("does not prove the claim for every data prior or parameterization"), and the bracket-rather-than-interpolant resolution statement are all sound and supported by the artifacts.
+- Style: no arrow glyphs, no "X is the Y" role-noun constructions, no "lives/sits" for abstracta found in the prose body.
+
+The single blocking item is finding 1 (missing commissioned wiki resolution); findings 2–4 are minor. Once the `REVIEW_AND_VET.md` edit is added, this branch satisfies the work order and constraints.

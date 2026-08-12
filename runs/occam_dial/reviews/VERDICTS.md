@@ -129,3 +129,31 @@ the author for merge, subject to the ledger:**
 4. Kimi K3 round: run `kimi_k3_package.md`; any findings enter a fresh
    cross-verification cycle before merge.
 Nothing merges autonomously (§4).
+
+## Kimi K3 round (author-directed, 2026-08-12)
+
+Channel: `moonshotai/kimi-k3` via OpenRouter (author's key), package-only, on
+the ORIGINAL round-1 package (pre-fix state). **Verdict: REVISE (against the
+round-1 state)** — 4 findings, raw output `round1_kimi-k3.md`. Collation
+against the completed record:
+
+- KB1 [S1] (kb/Wiki resolution absent from the diff): the FOURTH independent
+  reporter of F1, already resolved in c15a65f (committed README mirror;
+  kb/ gitignored by design). Convergent validation of the fix; no action.
+- KB2 [S3] (occam=True sweep = raw minus log-volume, unverifiable from
+  package): package-access limitation, and Kimi's own internal arithmetic
+  cross-check passed. The equivalence was verified with repo access in
+  round 1 (Opus: p2 minus p3 log Z equals each model's _log_reference_volume
+  to ~1e-15). No action.
+- KB3 [S4] (footnote em-dash tags): house citation convention, correctly
+  hedged by Kimi itself. No action.
+- KB4 [S4] (D3/D5 citation): driver-verified against the committed baseline
+  — D3 defines the Z_Mx/model-prior machinery and D5 the reference-volume
+  consistency, exactly the occam-convention provenance; the frozen notation
+  file carries the same D3/D5/D17 citation. Citation stands; no action.
+- Kimi's verified-correct list independently reconfirms every headline
+  number, the crossing consistency, and full constraint compliance.
+
+Net: zero new actionable findings; the one blocking item was already fixed.
+The Kimi round strengthens F1's evidence (four independent reporters) and
+adds an independent full-number verification pass.
