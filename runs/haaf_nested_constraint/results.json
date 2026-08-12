@@ -1,0 +1,654 @@
+{
+  "case": "Case C, nested slope constraint",
+  "protocol_date": "2026-08-11",
+  "quick": false,
+  "data": {
+    "generator": "bistar_gp.generate_toy_data defaults",
+    "n": 20,
+    "seed": 42,
+    "x_range": [
+      -10.0,
+      10.0
+    ],
+    "x_eval": {
+      "n": 60,
+      "range": [
+        -11.0,
+        11.0
+      ]
+    },
+    "true_bias_slope": 0.25,
+    "noise_std": 0.5,
+    "xy_sha256_float64_le": "f54c873f48f6d049778d12989b3209d78605002f747a2805551cedfd9d4eedb5"
+  },
+  "candidate_definition": {
+    "functional_form": "A sin(omega x + phi) + b x + c",
+    "model_names": [
+      "Free Sin+Linear",
+      "Slope-constrained Sin+Linear"
+    ],
+    "free_bounds": [
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        -10.0,
+        5.0
+      ]
+    ],
+    "constrained_bounds": [
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        0.0,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        -10.0,
+        5.0
+      ]
+    ],
+    "only_bound_difference_index": 3,
+    "only_bound_difference_parameter": "b",
+    "fit_protocol": {
+      "shared_base_starts": 4,
+      "restricted_extra_starts": "all free solutions, clipped at b=0 when necessary",
+      "cross_seeded_selection_pools": true,
+      "purpose": "force exact equality on shared optima instead of optimizer noise"
+    },
+    "observed_data_mle": {
+      "Free Sin+Linear": {
+        "A": 0.8863515558683248,
+        "omega": 1.030239891010187,
+        "phi": -0.02988145356722502,
+        "b": 0.2512769921781912,
+        "c": 0.02872270880462028,
+        "sigma": 0.32123190979141125
+      },
+      "Slope-constrained Sin+Linear": {
+        "A": 0.8863515558683248,
+        "omega": 1.030239891010187,
+        "phi": -0.02988145356722502,
+        "b": 0.2512769921781912,
+        "c": 0.02872270880462028,
+        "sigma": 0.32123190979141125
+      }
+    },
+    "local_gaussian_slope_diagnostic": {
+      "approximation": "full-data local Gaussian approximation at the observed-data MLE from the mean-function Jacobian",
+      "posterior_sd_b": 0.012950550589627553,
+      "boundary_distance_sd": 19.402803798893753,
+      "gaussian_left_tail_probability": 3.653754311948442e-84,
+      "scope_caveat": "local full-data approximation only; it does not establish global posterior mass or any leave-one-out fold posterior"
+    }
+  },
+  "bms_star": {
+    "config": "toy_elicited",
+    "is_seeds": [
+      0,
+      1,
+      2
+    ],
+    "sir_seed": 42,
+    "n_sir_draws": 1000,
+    "n_unique_sir_draws": 883,
+    "pooled_is_ess": 4464.532791988796,
+    "cache_dependencies": [
+      {
+        "seed": 0,
+        "path": "runs/prior_sensitivity/is_draws_toy_elicited_s0.npz",
+        "n_draws": 60000,
+        "sha256": "a07c4c8e2dc95e37d00334d4555c569fa36d47dae2bb083bbc94e2d32220a552"
+      },
+      {
+        "seed": 1,
+        "path": "runs/prior_sensitivity/is_draws_toy_elicited_s1.npz",
+        "n_draws": 60000,
+        "sha256": "60d2bdf48235f8baca5f1f2cf15121ea6a518c227927b6cfab890fd8cc37350b"
+      },
+      {
+        "seed": 2,
+        "path": "runs/prior_sensitivity/is_draws_toy_elicited_s2.npz",
+        "n_draws": 60000,
+        "sha256": "5efb94beec2040cf3eecdb862d4d657d05e6fad385f8a275e79961ceaf3d0a8f"
+      }
+    ],
+    "primary_metric": "pw_kl_vcal",
+    "appendix_metric": "kl_forward",
+    "taus": [
+      0.1,
+      0.3,
+      1.0,
+      3.0,
+      10.0
+    ],
+    "aggregation_variants": [
+      "pooled",
+      "expected_posterior"
+    ],
+    "tables": {
+      "pw_kl_vcal": {
+        "0.1": {
+          "pooled": [
+            0.5000038998478196,
+            0.49999610015218043
+          ],
+          "expected_posterior": [
+            0.5000009002844767,
+            0.49999909971552325
+          ]
+        },
+        "0.3": {
+          "pooled": [
+            0.5000005696716678,
+            0.4999994303283322
+          ],
+          "expected_posterior": [
+            0.5000003000951139,
+            0.49999969990488613
+          ]
+        },
+        "1.0": {
+          "pooled": [
+            0.5000001121319367,
+            0.49999988786806315
+          ],
+          "expected_posterior": [
+            0.500000090028544,
+            0.49999990997145605
+          ]
+        },
+        "3.0": {
+          "pooled": [
+            0.5000000324017109,
+            0.499999967598289
+          ],
+          "expected_posterior": [
+            0.500000030009515,
+            0.49999996999048507
+          ]
+        },
+        "10.0": {
+          "pooled": [
+            0.5000000092162471,
+            0.4999999907837529
+          ],
+          "expected_posterior": [
+            0.5000000090028545,
+            0.49999999099714554
+          ]
+        }
+      },
+      "kl_forward": {
+        "0.1": {
+          "pooled": [
+            0.5,
+            0.5
+          ],
+          "expected_posterior": [
+            0.4995,
+            0.5005
+          ]
+        },
+        "0.3": {
+          "pooled": [
+            0.5,
+            0.5
+          ],
+          "expected_posterior": [
+            0.4995,
+            0.5005
+          ]
+        },
+        "1.0": {
+          "pooled": [
+            0.5,
+            0.5
+          ],
+          "expected_posterior": [
+            0.4995000142279742,
+            0.5004999857720258
+          ]
+        },
+        "3.0": {
+          "pooled": [
+            0.5,
+            0.5
+          ],
+          "expected_posterior": [
+            0.4995236583737479,
+            0.5004763416262521
+          ]
+        },
+        "10.0": {
+          "pooled": [
+            0.5,
+            0.5
+          ],
+          "expected_posterior": [
+            0.4997467486749119,
+            0.500253251325088
+          ]
+        }
+      }
+    },
+    "slope_sign": {
+      "negative_count": 1,
+      "nonnegative_count": 999,
+      "negative_fraction": 0.001,
+      "free_slope_min": -2.740556026196546,
+      "free_slope_median": 0.24992808854452286,
+      "free_slope_max": 0.2561836749400731
+    },
+    "sanity_identity_primary_G": {
+      "metric": "pw_kl_vcal",
+      "equality_atol": 2e-07,
+      "order_atol": 2e-07,
+      "max_abs_gap_on_nonnegative_free_slope": 0.0,
+      "min_constrained_minus_free_G_on_negative_free_slope": 0.00036011417986084315,
+      "violations": 0
+    },
+    "G_summary": {
+      "pw_kl_vcal": {
+        "Free Sin+Linear": {
+          "mean": 0.2624501953762448,
+          "median": 0.21240332889150088
+        },
+        "Slope-constrained Sin+Linear": {
+          "mean": 0.2624505554904247,
+          "median": 0.21240332889150088
+        },
+        "mean_constrained_minus_free": 3.6011417986084316e-07
+      },
+      "kl_forward": {
+        "Free Sin+Linear": {
+          "mean": 62711373.94763098,
+          "median": 55.77955486646584
+        },
+        "Slope-constrained Sin+Linear": {
+          "mean": 62711373.936470695,
+          "median": 55.77955486646584
+        }
+      }
+    },
+    "appendix_metric_diagnostic": {
+      "evaluation_point": "pw_kl_vcal-optimal candidate instances with sigma reset from unweighted RMS residuals after the primary-metric fit",
+      "minimized_over_region_for_kl_forward": false,
+      "primary_nesting_inequality_applies": false,
+      "differing_row_count": 1,
+      "differing_row": {
+        "index": 984,
+        "free_G": 500.1419747964646,
+        "constrained_G": 488.98168850611455,
+        "constrained_minus_free_G": -11.16028629035003,
+        "reverses_primary_metric_direction": true
+      },
+      "grid_median": {
+        "free": 55.77955486646584,
+        "constrained": 55.77955486646584
+      },
+      "pooled_exact_half_at_every_tau": true,
+      "differing_row_weight_underflow_by_tau": {
+        "0.1": true,
+        "0.3": true,
+        "1.0": false,
+        "3.0": false,
+        "10.0": false
+      },
+      "global_max_row": {
+        "index": 733,
+        "free_G": 59227845231.42128,
+        "constrained_G": 59227845231.42128,
+        "constrained_minus_free_G": 0.0
+      },
+      "pooled_degeneracy_cause": "the global max-shift suppresses the differing row below float64 aggregate resolution; the much larger global-maximum row has equal candidate values"
+    },
+    "validated_pss_observed_fit_anchor": {
+      "metric": "pw_kl_vcal",
+      "tau": 1.0,
+      "pooled_probabilities": [
+        0.5,
+        0.5
+      ],
+      "observed_candidate_predictions_identical": true
+    }
+  },
+  "psis_loo": {
+    "priors_apply_only_to_loo": true,
+    "priors": {
+      "A": "HalfNormal(scale=5)",
+      "omega": "LogNormal(loc=0, scale=0.7)",
+      "phi": "Uniform(-pi, pi)",
+      "b_free": "Normal(loc=0, scale=5)",
+      "b_constrained": "HalfNormal(scale=5), the zero-truncated counterpart",
+      "c": "Normal(loc=0, scale=5)",
+      "sigma": "HalfNormal(scale=2)"
+    },
+    "sampled_grid_alias_diagnostic": {
+      "x_spacing": 1.0526315789473681,
+      "sampling_angular_frequency": 5.969026041820609,
+      "mle_omega": 1.030239891010187,
+      "alias_omega": [
+        4.938786150810421,
+        6.999265932830796
+      ],
+      "diagnostic_scope": "the likelihood is multimodal; R-hat and ESS from common-MLE initializations support within-mode convergence only"
+    },
+    "candidates": {
+      "free": {
+        "elpd_loo": -13.074035199760031,
+        "se": 3.457658432262354,
+        "p_loo": 5.3425180223319035,
+        "pointwise_elpd": [
+          -0.21155629476330606,
+          -0.43926962300042316,
+          -0.20719821594875842,
+          -0.2361651234683606,
+          -0.4226011004547363,
+          -2.0652754755042784,
+          -0.12736686775851602,
+          -0.18822889368121043,
+          -0.21485785502532995,
+          -0.18244473313072174,
+          -3.1356277558931103,
+          -0.17212033900921142,
+          -0.42340045460782605,
+          -1.1776824907532264,
+          -0.3857673072787069,
+          -0.4901979252335966,
+          -0.28427848341864603,
+          -0.5362899197571522,
+          -1.8088032429869152,
+          -0.36490309808599797
+        ],
+        "pareto_k": {
+          "max": 0.56433444203386,
+          "good_k_threshold": 0.6970642492453765,
+          "warning": false,
+          "n_over_good_k_threshold": 0,
+          "n_over_0_5": 4,
+          "n_over_0_7": 0,
+          "n_over_1_0": 0,
+          "values": [
+            0.3375728534467342,
+            0.2012959331566071,
+            0.3841381306806338,
+            0.20993827363907794,
+            0.5478633098143861,
+            0.5260322750894596,
+            0.10269805482506851,
+            0.3732058250621627,
+            0.2312628196351459,
+            0.28545804852125023,
+            0.56433444203386,
+            0.18117722566553335,
+            0.40889762466289403,
+            0.44866077852480507,
+            0.43193724825145835,
+            0.3735030007370231,
+            0.37745979566745264,
+            0.47510620894643435,
+            0.5020553621914025,
+            0.48371240471020577
+          ]
+        },
+        "sampler": {
+          "chains": 2,
+          "warmup_per_chain": 1000,
+          "draws_per_chain": 1000,
+          "chain_seeds": [
+            20260811,
+            20260812
+          ],
+          "target_accept_prob": 0.9,
+          "max_tree_depth": 8,
+          "init_strategy": {
+            "name": "init_to_value",
+            "initial_values": {
+              "A": 0.8863515558683248,
+              "omega": 1.030239891010187,
+              "phi": -0.02988145356722502,
+              "b": 0.2512769921781912,
+              "c": 0.02872270880462028,
+              "sigma": 0.32123190979141125
+            },
+            "same_values_for_every_chain": true
+          },
+          "divergences_by_chain": [
+            0,
+            0
+          ],
+          "divergences_total": 0,
+          "acceptance_rate_by_chain": [
+            1.0,
+            0.997
+          ],
+          "r_hat": {
+            "A": 1.0021779256815142,
+            "omega": 1.000345794126434,
+            "phi": 1.0004711765829615,
+            "b": 1.0003334427482566,
+            "c": 1.0026623905081171,
+            "sigma": 1.0017171836801422
+          },
+          "r_hat_max": 1.0026623905081171,
+          "ess_bulk": {
+            "A": 1578.5422136990771,
+            "omega": 1682.8810514518743,
+            "phi": 1622.7358100655185,
+            "b": 1734.6441569567678,
+            "c": 1504.9794243136823,
+            "sigma": 1004.1756676042146
+          },
+          "ess_bulk_min": 1004.1756676042146,
+          "ess_tail": {
+            "A": 1048.5480175608104,
+            "omega": 1395.318973231408,
+            "phi": 1215.2131371265382,
+            "b": 1529.632189759994,
+            "c": 976.4286801081233,
+            "sigma": 1198.1492536746052
+          },
+          "ess_tail_min": 976.4286801081233
+        }
+      },
+      "constrained": {
+        "elpd_loo": -12.661376138005416,
+        "se": 3.593844557536322,
+        "p_loo": 5.169193999240674,
+        "pointwise_elpd": [
+          -0.1800941287574247,
+          -0.42016992466978476,
+          -0.15434077798912327,
+          -0.20929934443788767,
+          -0.4073675395332659,
+          -2.0935369019362025,
+          -0.1078674215861195,
+          -0.15857842457300642,
+          -0.17731310309399628,
+          -0.15574465766583412,
+          -3.3043938783522897,
+          -0.15303684255469907,
+          -0.3805443681813099,
+          -1.185193076132145,
+          -0.39494352321351034,
+          -0.4929921892755429,
+          -0.2754431413619107,
+          -0.461345161954239,
+          -1.657964283014448,
+          -0.291207449722676
+        ],
+        "pareto_k": {
+          "max": 0.7182546199391353,
+          "good_k_threshold": 0.6970642492453765,
+          "warning": true,
+          "n_over_good_k_threshold": 1,
+          "n_over_0_5": 4,
+          "n_over_0_7": 1,
+          "n_over_1_0": 0,
+          "values": [
+            0.15441142640734165,
+            0.29633185258099387,
+            0.27270946441404176,
+            0.29566889483930986,
+            0.32138749989195053,
+            0.7182546199391353,
+            0.09818048865950656,
+            0.029063955554477914,
+            0.08319147392416558,
+            0.04775309292109709,
+            0.4745683259763115,
+            0.2549629577876692,
+            0.35251782241265806,
+            0.4106324853246572,
+            0.25526691818542246,
+            0.606530857456,
+            0.6033338832223576,
+            0.17594206418835584,
+            0.5643109072287471,
+            0.4385118962465545
+          ]
+        },
+        "sampler": {
+          "chains": 2,
+          "warmup_per_chain": 1000,
+          "draws_per_chain": 1000,
+          "chain_seeds": [
+            20260811,
+            20260812
+          ],
+          "target_accept_prob": 0.9,
+          "max_tree_depth": 8,
+          "init_strategy": {
+            "name": "init_to_value",
+            "initial_values": {
+              "A": 0.8863515558683248,
+              "omega": 1.030239891010187,
+              "phi": -0.02988145356722502,
+              "b": 0.2512769921781912,
+              "c": 0.02872270880462028,
+              "sigma": 0.32123190979141125
+            },
+            "same_values_for_every_chain": true
+          },
+          "divergences_by_chain": [
+            0,
+            0
+          ],
+          "divergences_total": 0,
+          "acceptance_rate_by_chain": [
+            1.0,
+            0.999
+          ],
+          "r_hat": {
+            "A": 0.9996110580196691,
+            "omega": 1.0018726549522892,
+            "phi": 1.0003446815445542,
+            "b": 1.0019608793754489,
+            "c": 0.9994023363149376,
+            "sigma": 1.0011641982754624
+          },
+          "r_hat_max": 1.0019608793754489,
+          "ess_bulk": {
+            "A": 2129.102192398176,
+            "omega": 1721.2813249175815,
+            "phi": 2071.0224454556114,
+            "b": 1804.4172698799557,
+            "c": 2116.2916155268513,
+            "sigma": 1638.0890639710935
+          },
+          "ess_bulk_min": 1638.0890639710935,
+          "ess_tail": {
+            "A": 1203.637068515664,
+            "omega": 1192.2911786469801,
+            "phi": 1382.6965173555689,
+            "b": 1497.3311200217663,
+            "c": 1582.8357646041945,
+            "sigma": 1269.7691958043156
+          },
+          "ess_tail_min": 1192.2911786469801
+        }
+      }
+    },
+    "pairwise": {
+      "direction": "constrained_minus_free",
+      "elpd_difference": 0.4126590617546153,
+      "se": 0.25588686781820247,
+      "se_ddof": 0,
+      "se_formula": "sqrt(n * var(pointwise_differences, ddof=0))",
+      "se_convention": "matches the ArviZ az.loo and az.compare convention",
+      "pointwise_differences": [
+        0.031462166005881365,
+        0.019099698330638404,
+        0.052857437959635156,
+        0.026865779030472936,
+        0.015233560921470435,
+        -0.028261426431924086,
+        0.019499446172396517,
+        0.029650469108204014,
+        0.037544751931333664,
+        0.026700075464887618,
+        -0.16876612245917944,
+        0.01908349645451235,
+        0.04285608642651617,
+        -0.007510585378918577,
+        -0.009176215934803444,
+        -0.0027942640419462705,
+        0.008835342056735307,
+        0.07494475780291321,
+        0.1508389599724671,
+        0.07369564836332199
+      ]
+    }
+  },
+  "tolerances": {
+    "structural": {
+      "G_equality_atol": 2e-07,
+      "G_order_atol": 2e-07,
+      "slope_bound_atol": 1e-10
+    },
+    "cross_machine_rerun": {
+      "bms_probability_abs": 0.005,
+      "loo_elpd_abs": 0.25,
+      "loo_pairwise_difference_abs": 0.25,
+      "negative_slope_fraction_abs": 0.005
+    }
+  },
+  "versions": {
+    "numpy": "1.26.4",
+    "torch": "2.10.0",
+    "pyro": "1.9.1",
+    "arviz": "0.23.4"
+  }
+}
