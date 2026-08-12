@@ -1,0 +1,11 @@
+# Round-1 review — Codex gpt-5.6-sol xhigh, fresh session, repo access
+
+REVISE
+
+1. [severity S2] [docs/paper-sie-jmp/06-case-D-mopen-calibration.md:64] `pw_nll` is presented as closest to the W1 primary metric and later called calibrated — legacy `pw_nll` weights error by candidate variance, whereas `pw_kl_vcal` weights it by GP variance specifically to remove candidate-width matching; it cannot proxy the primary metric — describe it as legacy candidate-variance NLL, remove “closest” and “calibrated,” and keep its conclusions explicitly metric-specific.
+
+2. [severity S2] [docs/paper-sie-jmp/06-case-D-mopen-calibration.md:67] probabilities near 0.52 are interpreted as weak separation and contrasted with sharper `pw_mse` decisions — soft-transfer sharpness depends on τ and metric scale; the stored `pw_nll` medians rise to 0.729–0.791 at τ = 0.1, while `pw_mse`, `pw_nll`, and `pw_hellinger` have radically different numerical scales — report the already-stored τ sweep or remove the weak/sharp and cross-metric confidence inference.
+
+3. [severity S2] [experiments/regret_curves_mopen.py:164] the output is labeled as the binding \(E_{\mathrm{draws}}|\mu_{\mathrm{GP}}-\mu_\theta|\) regret — the code instead samples latent functions at one MAP hyperparameter point and estimates \(E_{f\mid y,\hat\eta}|f-\mu_\theta|\); this differs from averaging GP conditional means over HMC draws and incorporates latent-function dispersion — relabel the estimand throughout as MAP-conditional posterior expected absolute deviation using \(f(t)\), or use the deterministic MAP conditional mean as an explicitly plug-in approximation.
+
+4. [severity S2] [docs/paper-sie-jmp/06-case-D-mopen-calibration.md:138] the regret curves are said to explain the aggregate result and expose a “scaffold-induced” preference — the artifacts contain only one practitioner-MAP RBF reconstruction, while the cited `pw_nll` results use HMC diagnostics across configurations; no scaffold comparison separates F1 from mimicry, metric behavior, or sampling noise — retain the descriptive trial localization but replace the causal language with “under the stored practitioner-MAP scaffold” and state that these artifacts cannot identify the failure source.
