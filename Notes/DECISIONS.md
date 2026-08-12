@@ -5716,3 +5716,164 @@ to be amended later merely to insert them. STOP before Ready or merge. NOT autho
 second correction pass, restoring/applying/dropping stash `5280d1e1…`, D59 work, evidence
 or figure changes, poster-repository work, the captions themselves, Della contact, new
 computation, holdout access, BMS*, Ready, or merge.
+
+## D60: External validation against van Bork, Romeijn & Wagenmakers (2025) — two published closed-form targets reproduced; the aggregation convention is adjudicated, and the M-open signal is in tension with it — 2026-08-11
+
+**Problem:** Every demonstration of the induced-prior / soft-transfer machinery
+to date is self-validating: we generate data from a known process and check that
+the framework recovers it. That establishes internal consistency, not external
+correctness. The full-text ingest of van Bork, Romeijn & Wagenmakers (2025,
+*Synthese*, doi:10.1007/s11229-025-05286-y) surfaced two model probabilities the
+authors derive in closed form from Rosenkrantz-style expected support against a
+"data prior" — independent ground truth, computed with no reference to this
+implementation.
+
+**Decision:** New driver `experiments/vanbork_external_validation.py`
+(local, seconds, no HMC and no GP: the paper supplies the data prior directly,
+so only the scoring half is under test). Outputs to
+`runs/vanbork_external_validation/{results.json, README.md}`.
+
+**Result — both targets reproduced.**
+
+*Target B (completely overlapping models, their beta example):* data prior a
+point mass at s/n = 1/2; M_x: theta ~ beta(50,50) vs M_z: theta ~ beta(2,2).
+Paper's answer 7.96/(7.96+1.50) = 0.841420. Ours converges to **0.841419** by
+tau = 1e-7 (abs err 6.4e-7); our densities at the MLE (7.9589, 1.5000) match
+their quoted 7.96/1.50. This required the HYBRID form
+Z_M = ∫ p_M(theta) exp(-G(theta)/tau) d theta, i.e. a within-model parameter
+prior in place of the Lebesgue/V_ref reference measure — the hybrid listed as an
+OPEN question. Analytic account: Laplace gives Z_M ≈ p_M(theta*)·sqrt(2 pi tau /
+G''(theta*)); both models share the Bernoulli family, so G'' cancels and the
+normalized ratio converges to the ratio of prior densities at theta*. **Their
+published formula is therefore the tau→0, shared-family, point-data-prior
+special case of Z_M.** The hybrid open question now has a passing test.
+
+*Target A (non-overlapping point models):* data prior 0.4 on s/n→0.16, 0.6 on
+s/n→0.19; models theta=0.15 vs theta=0.20; paper's answer 0.4/0.6. Three
+aggregation variants at tau→0:
+- pooled (**shipped default, `normalize_per_draw=False`**): → **0.000/1.000, FAILS**
+- per-atom renormalization then average (paper Eq. 4): → 0.400/0.600, exact
+- shipped `soft_transfer(..., normalize_per_draw=True)`: → 0.400/0.600, exact
+
+**Adjudication and the tension it exposes (OPEN — author call required):** the
+paper defines the prior model probability as the *expected posterior* across the
+data prior (their Eq. 4), which mandates normalizing each data-prior atom into a
+posterior over models before averaging. Under that reading the canonical default
+is wrong and `normalize_per_draw=True` is correct. But the two conventions serve
+different goals and the choice is not free:
+- **Per-draw** matches the expected-posterior derivation, but destroys absolute
+  divergence magnitudes — every draw must spend one full unit of credit, so a
+  draw that no candidate fits votes exactly as forcefully as one that all
+  candidates fit.
+- **Pooled** preserves absolute magnitudes, which is precisely what carries the
+  **M-open inadequacy signal** (uniformly high divergence ⇒ no candidate is
+  adequate) that D-series work and the poster both claim as a distinguishing
+  feature.
+So the framework cannot simultaneously have the paper's expected-posterior
+semantics and the M-open magnitude signal from a single aggregation. This is a
+substantive modeling fork, not a bug, and it is recorded here unresolved.
+
+**Scope note:** no poster figure is invalidated by this entry. All toy and Mauna
+runs use equal-weight GP draws, where the two conventions differ far less than
+in Target A's unequal-mass two-atom construction, and no claim on the poster
+depends on the unequal-mass case. Whether the toy/Mauna posteriors move
+materially under `normalize_per_draw=True` is UNTESTED — that check (E7) should
+precede any published claim that the framework reproduces the paper's targets.
+
+**Alternatives considered:** (a) validate against the paper's coin example using
+the GP scaffold — rejected, the example is binomial with a given data prior, so
+the scaffold has nothing to construct; (b) declare the default convention wrong
+and switch it — rejected, the M-open tension above makes this an author-level
+modeling decision, not a fix.
+
+## D61: E7 aggregation-convention sensitivity on the validated toy path — winner robust; kl_forward fragility attributed to pooled aggregation — 2026-08-11
+
+**Problem:** D60's external validation showed the shipped pooled soft-transfer
+convention fails van Bork et al.'s Target A while per-draw conventions
+reproduce it, exposing a fork (expected-posterior semantics vs M-open
+magnitudes). Before the JMP special-issue paper can cite either, the movement
+of the paper-facing toy numbers under the conventions had to be measured on the
+VALIDATED estimator path (M2bR banner: `toy_elicited` SIR; no withdrawn HMC).
+
+**Decision:** New driver `experiments/e7_convention_sensitivity.py`: reuses
+`prior_sensitivity_study.py`'s stage-IS machinery verbatim (pooled 3-seed
+prior-IS, SIR n_pred=1000, same seeds/subsample conventions), computes G for
+pw_kl_vcal (W1 primary) and kl_forward (W1 appendix), aggregates under (a)
+pooled/shipped default, (b) shipped normalize_per_draw=True (row-min), (c)
+expected-posterior (van Bork Eq. 4). Output
+`runs/e7_convention_sensitivity/{results.json, README.md}`. Anchor check: the
+pooled pw_kl_vcal tau=1 row reproduces the ratified SIR headline exactly
+(0.183/0.192/0.441/0.184).
+
+**Result:** (1) pw_kl_vcal: Sin+Linear wins under every variant at every tau;
+max movement 0.313 at tau=0.1, 0.072 at tau=1 (0.441 to 0.513), 0.001 at
+tau=10 — qualitative claims convention-robust. (2) NEW ATTRIBUTION: the
+kl_forward fragility recorded in W1/D18 is largely pooled-aggregation outlier
+sensitivity, not intrinsic to the metric: pooled collapses Sin+Linear to
+~0.000 at tau<=1 while expected-posterior yields 0.696 at tau=0.1, exactly the
+raw hard-best-match fraction (696/1000) — the tau->0 identity between
+expected-posterior aggregation and hard-win rates holds by construction and
+passed numerically. (3) Fork (OPEN, author): pooled keeps M-open magnitudes
+and continuity with all ratified numbers but fails van Bork Target A;
+expected-posterior matches their Eq.-4 semantics and rescues kl_forward but
+spends exactly one unit of credit per draw. Candidate paper stance recorded in
+the run README: treat the aggregation convention as an explicit evaluation
+dial alongside tau and occam.
+
+**Status:** E7 CLOSED as an experiment; D60 fork remains OPEN pending author
+call. Paper Case A blocked only on that call.
+
+## D65: Case A external-validation section with the aggregation fork preserved — 2026-08-12
+
+**Problem:** The Case A manuscript stub needed a self-contained external
+validation argument from the finalized D60 and D61 artifacts: an honest mapping
+to van Bork, Romeijn, and Wagenmakers; the six-decimal completely-overlapping
+target and its Laplace explanation; the non-overlapping target's dependence on
+aggregation; the validated toy-path sensitivity; the appendix-only
+`kl_forward` attribution; and a multi-parameter reach paragraph. The author has
+not yet selected a canonical aggregation convention, and the writing task did
+not authorize new compute or artifact regeneration.
+
+**Decision:** Replaced the stub in
+`docs/paper-sie-jmp/03-case-A-external-validation.md` with a mapping table and
+the full Case A account. Numerical claims use
+`runs/vanbork_external_validation/{results.json,README.md}` and
+`runs/e7_convention_sensitivity/{results.json,README.md}`, generated by
+`experiments/vanbork_external_validation.py` and
+`experiments/e7_convention_sensitivity.py`. The section keeps the author-decision
+placeholder on a standalone line at the canonical-convention slot. Surrounding
+prose states both sides of the fork and labels the E7
+evaluation-dial framing as a candidate rather than a decision. It treats
+`pw_kl_vcal` as primary and confines `kl_forward` to an appendix attribution.
+
+The multi-parameter paragraph follows W4: it labels
+`runs/viz_unification/p3_priors_canonical/` as an
+`informative`-configuration, MAP-based methods-validation check. Because that
+directory remains local and untracked, its 0.992 Sin+Linear value at \(n=50\)
+and 0.93–0.99 range across evaluated \(n\) use the committed D17-recorded
+citation pattern and name the regenerating `bistar_viz` scripts explicitly.
+They do not enter the validated `toy_elicited` SIR headline.
+
+**Alternatives considered:** Selecting pooled aggregation was rejected because
+it would preempt the author and would leave Target A unresolved. Selecting
+expected-posterior aggregation was rejected because it would also preempt the
+author and would discard the absolute divergence magnitudes used for the
+M-open signal. Treating the untracked viz-unification directory as committed
+numerical authority was rejected in favor of the authorized D17-recorded
+provenance exception. New computation, rerunning either finalized experiment,
+and modifying scripts or run artifacts were all rejected by the Case A work
+order.
+
+**Result:** The section reports Target B's progression from 0.792607 to
+0.841419 against the published 0.841420, with absolute error
+\(6.4\times10^{-7}\), and connects the agreement to cancellation of shared
+Bernoulli curvature in the hybrid Laplace approximation. It reports Target A
+as 0.000/1.000 under pooled aggregation versus the exact 0.400/0.600 under both
+per-draw routes, with convergence by \(\tau=10^{-4}\). On the validated
+`toy_elicited` SIR path, it records the 0.183/0.192/0.441/0.184 pooled anchor,
+the 0.31, 0.072, and 0.001 maximum movements, and the appendix-only
+`kl_forward` change from approximately 0.000 under pooled aggregation to 0.696
+under expected-posterior aggregation, equal to 696/1000 hard wins at the
+reported precision. This branch commits D60 and D61, which record the finalized
+compute provenance, together with D65. No experiment or artifact-generation
+command ran, and neither finalized run directory was modified.
