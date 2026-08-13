@@ -14,7 +14,7 @@
       "n": 201,
       "spacing": "equally spaced, inside the training span"
     },
-    "init_strategy": "init_to_map: both chains start at the same MAP point, so R-hat is within-mode evidence about mixing around the optimizer's mode, not between-mode agreement from dispersed starts (the toy hyperparameter posterior is multi-basin, D12)",
+    "init_strategy": "init_to_map: both chains start at the same MAP point, so R-hat is within-mode evidence about mixing around the optimizer's mode, not between-mode agreement from dispersed starts. The D12 multi-basin finding is scoped to the `informative` configuration and does not describe this one: the wide-start mode hunt for `toy_elicited` (runs/prior_sensitivity/stage_a_toy_elicited.json, local material not committed in this repository) reports coherent_geometry true, no separating valley, and a single verified local maximum holding pooled prior-IS mass 1.0, whose converged point agrees with the MAP recorded above to within 2e-8 in every hyperparameter. The shared start is still disclosed because a common initialization leaves R-hat silent about regions no chain visited",
     "interval_method": "exact central interval of the equally weighted Gaussian mixture over retained draws, by CDF bisection",
     "map_iters": 500,
     "map_lr": 0.05,
@@ -64,6 +64,7 @@
     ]
   },
   "decomposition": {
+    "jitter_escalation_note": "compute_cholesky escalates jitter silently when the base value fails, so each draw's Cholesky is probed at the base jitter 0.0001 first and the escalations are counted here",
     "linear_component_structure_check": {
       "max_abs_deviation_from_exact_linearity": 4.4564352208453784e-13,
       "max_abs_deviation_from_rank_one_variance": 1.89605275924265e-15,
@@ -71,6 +72,7 @@
     },
     "machinery": "bistar_gp.decompose.decompose_additive_gp for components; bistar_gp.decompose.decompose_component on the summed kernel blocks for the joint posterior",
     "n_attempted": 1000,
+    "n_draws_needing_extra_jitter": 0,
     "n_failed": 0,
     "n_ok": 1000
   },
@@ -81,8 +83,14 @@
     "torch": "2.10.0"
   },
   "recovery": {
+    "bias_band_mean_width": 1.4584026383414934,
+    "bias_component_mean_total_variance": 0.17521904311580203,
     "bias_process_grid_rms": 1.4505745987941008,
+    "component_correlation_from_mean_total_variances": -0.8477010316953286,
+    "component_covariance_note": "grid means of the law-of-total-variance variances; the composite total variance equals the two component total variances plus twice their total cross-covariance, so the cross-covariance and correlation reported here are read off those three numbers rather than estimated separately. They describe THIS N=20 instance and carry no claim about how the gap between the composite and the component bands behaves as N grows",
+    "component_mean_cross_covariance": -0.17268944637104106,
     "composite_band_mean_width": 1.0319893656930352,
+    "composite_mean_total_variance": 0.06668550257966654,
     "coverage": 0.8656716417910447,
     "coverage_caveat": "a pointwise summary over a correlated grid, not a calibration test with independent trials: neighboring grid points share nearly the same posterior, so the effective number of checks is far below 201",
     "coverage_nominal": 0.95,
@@ -111,13 +119,10 @@
     },
     "slope_interval_contains_generating": true,
     "slope_minus_generating": -0.05250495546125858,
-    "true_process_grid_rms": 0.6901815271460361
+    "true_process_grid_rms": 0.6901815271460361,
+    "truth_component_mean_total_variance": 0.2368453522059466
   },
   "sampler": {
-    "acceptance_rate_by_chain": [
-      0.992,
-      0.998
-    ],
     "arviz_version": "0.23.4",
     "chain_seeds": [
       20260813,
@@ -153,6 +158,11 @@
     ],
     "initial_step_size": 0.1,
     "max_tree_depth": 8,
+    "move_fraction_by_chain": [
+      0.992,
+      0.998
+    ],
+    "move_fraction_note": "pyro's per-chain 'acceptance rate' counts the fraction of post-warmup iterations whose returned state differs from the previous one, so it is NOT the targeted mean Metropolis acceptance probability that target_accept_prob sets; the two are not comparable and a move fraction near 1 does not indicate over-acceptance against the 0.8 target",
     "r_hat_max": 1.002489522142068,
     "r_hat_rank_normalized": {
       "covar_module.kernels.0.base_kernel.lengthscale_prior": 1.0011566039709776,

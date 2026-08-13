@@ -22,11 +22,11 @@ Method
    Hyperparameters are sampled on the CORRECTED NUTS path, ``bistar_gp.fit
    .fit_hmc`` (the ``nuts_e1`` sampler), in two seeded chains.
 2. Decompose every retained draw's GP posterior additively with the package
-   machinery ``bistar_gp.decompose.decompose_additive_gp``: the SE component is
-   the truth candidate, the linear component the bias candidate. The joint
-   posterior of f = f_SE + f_lin comes from ``decompose_component`` applied to
-   the summed kernel blocks, so it retains the inter-component cross-covariance
-   that a sum of component covariances would drop.
+   machinery ``bistar_gp.decompose.decompose_additive_gp``: the SE component
+   serves as the truth candidate, the linear component as the bias candidate.
+   The joint posterior of f = f_SE + f_lin comes from ``decompose_component``
+   applied to the summed kernel blocks, so it retains the inter-component
+   cross-covariance that a sum of component covariances would drop.
 3. Debias by marginalization. Within a draw, the SE-component posterior that
    ``decompose_additive_gp`` returns is already marginal over the linear
    component (it is the marginal of the joint conditional Gaussian). Across
@@ -121,9 +121,11 @@ CHAIN_SEEDS = (20260813, 20260814)      # one pyro seed per chain
 N_WARMUP = 500                          # per chain
 N_DRAWS = 500                           # retained per chain
 MAX_TREE_DEPTH = 8
-TARGET_ACCEPT = 0.8                     # fixed inside fit_hmc_e1
+TARGET_ACCEPT = 0.8                     # fixed inside fit_hmc_e1; guarded below
 INIT_STEP_SIZE = 0.1                    # fixed inside fit_hmc_e1, then adapted
+STEP_SIZE_ADAPTED = True                # fixed inside fit_hmc_e1; guarded below
 DECOMP_JITTER = 1e-4                    # matches the existing figure scripts
+SAMPLER_NAME = "nuts_e1"                # corrected path; guarded below
 
 GRID_LO, GRID_HI, GRID_N = -10.0, 10.0, 201
 CREDIBLE_MASS = 0.95
@@ -142,6 +144,80 @@ COLOR_DATA = "#222222"
 # ── Fitting ──────────────────────────────────────────────────────────────────
 
 
+def assert_library_sampler_settings():
+    """Fail loudly if the library's corrected-path NUTS settings have drifted.
+
+    ``TARGET_ACCEPT``, ``INIT_STEP_SIZE`` and ``STEP_SIZE_ADAPTED`` are not
+    arguments this script can pass: they are fixed inside
+    ``bistar_gp.e1_potential.fit_hmc_e1``, and the copies above are mirrors
+    that ``results.json`` reports as configuration. A library edit could
+    therefore make the recorded configuration false without any error here, so
+    the actual values are read back from the library surface and compared.
+
+    Two surfaces are checked. The literal keyword arguments ``fit_hmc_e1``
+    passes to ``_run_e1_nuts_route`` govern the run, and are read back from its
+    parsed source; the signature defaults of ``_run_e1_nuts_route`` would
+    govern only if those literals disappeared, so they must agree. Any mismatch
+    raises.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    from bistar_gp import e1_potential
+    from bistar_gp import fit as fit_module
+
+    expected = {
+        "target_accept_prob": TARGET_ACCEPT,
+        "step_size": INIT_STEP_SIZE,
+        "adapt_step_size": STEP_SIZE_ADAPTED,
+        "sampler_name": SAMPLER_NAME,
+    }
+
+    route_name = "_run_e1_nuts_route"
+    tree = ast.parse(textwrap.dedent(inspect.getsource(e1_potential.fit_hmc_e1)))
+    passed = {}
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call)
+                and getattr(node.func, "id", None) == route_name):
+            for keyword in node.keywords:
+                if keyword.arg in expected and isinstance(keyword.value, ast.Constant):
+                    passed[keyword.arg] = keyword.value.value
+    missing = sorted(set(expected) - set(passed))
+    if missing:
+        raise RuntimeError(
+            f"sampler-settings guard: fit_hmc_e1 no longer passes literal "
+            f"{missing} to {route_name}; the values this script mirrors into "
+            f"results.json can no longer be verified. Re-derive them from "
+            f"bistar_gp/e1_potential.py and update the constants.")
+
+    defaults = {
+        name: parameter.default
+        for name, parameter in inspect.signature(
+            getattr(e1_potential, route_name)).parameters.items()
+    }
+    for name, want in expected.items():
+        got = passed[name]
+        if got != want:
+            raise RuntimeError(
+                f"sampler-settings guard: fit_hmc_e1 passes {name}={got!r} but "
+                f"this script records {want!r}. results.json would misreport "
+                f"the run; update the constant or the section prose.")
+        fallback = defaults.get(name, want)
+        if fallback is not inspect.Parameter.empty and fallback != want:
+            raise RuntimeError(
+                f"sampler-settings guard: {route_name} defaults {name}="
+                f"{fallback!r} while fit_hmc_e1 passes {want!r}; the library's "
+                f"two surfaces disagree, so the recorded configuration is "
+                f"no longer unambiguous.")
+
+    routed = inspect.getsource(fit_module.fit_hmc)
+    if "fit_hmc_e1" not in routed:
+        raise RuntimeError(
+            "sampler-settings guard: bistar_gp.fit.fit_hmc no longer routes to "
+            "fit_hmc_e1, so the guarded settings do not describe this run.")
+
+
 def _fresh_model(prior_config, x, y):
     kernels, names = build_kernels_from_config(prior_config)
     likelihood = build_likelihood_from_config(prior_config)
@@ -154,9 +230,14 @@ def _map_fitted_model(prior_config, x, y):
 
     Both chains start from this point, so R-hat below is WITHIN-MODE evidence:
     it reports mixing around the mode the MAP optimizer selected, not
-    between-mode agreement from dispersed starts. The toy hyperparameter
-    posterior is known to be multi-basin (D12), which is exactly why the
-    disclosure matters.
+    between-mode agreement from dispersed starts. The multi-basin geometry
+    recorded in D12 belongs to the `informative` configuration and does NOT
+    describe this one: the wide-start mode hunt for `toy_elicited`
+    (``runs/prior_sensitivity/stage_a_toy_elicited.json``) verified a single
+    local maximum holding the whole pooled prior-IS mass, with no separating
+    valley, and its converged point agrees with the MAP taken here. The
+    disclosure still matters, because a shared start leaves R-hat silent about
+    regions no chain visited.
     """
     model, likelihood, names = _fresh_model(prior_config, x, y)
     torch.manual_seed(MAP_SEED)
@@ -224,7 +305,7 @@ def sampler_diagnostics_block(chain_samples, chain_diagnostics):
         "target_accept_prob": TARGET_ACCEPT,
         "max_tree_depth": MAX_TREE_DEPTH,
         "initial_step_size": INIT_STEP_SIZE,
-        "step_size_adapted": True,
+        "step_size_adapted": STEP_SIZE_ADAPTED,
         "final_step_size_by_chain": [
             None if d.step_size is None else float(d.step_size)
             for d in chain_diagnostics],
@@ -232,8 +313,15 @@ def sampler_diagnostics_block(chain_samples, chain_diagnostics):
                                  for d in chain_diagnostics],
         "divergences_total": int(sum(len(c) for d in chain_diagnostics
                                      for c in d.divergence_draws)),
-        "acceptance_rate_by_chain": [float(d.acceptance_rate[0])
-                                     for d in chain_diagnostics],
+        "move_fraction_by_chain": [float(d.acceptance_rate[0])
+                                   for d in chain_diagnostics],
+        "move_fraction_note": (
+            "pyro's per-chain 'acceptance rate' counts the fraction of "
+            "post-warmup iterations whose returned state differs from the "
+            "previous one, so it is NOT the targeted mean Metropolis "
+            "acceptance probability that target_accept_prob sets; the two are "
+            "not comparable and a move fraction near 1 does not indicate "
+            "over-acceptance against the 0.8 target"),
         "depth_saturated_draws": saturated,
         "depth_saturation_rate": (saturated / n_leapfrog_draws
                                   if n_leapfrog_draws else None),
@@ -270,19 +358,41 @@ def decompose_draws(prior_config, x, y, x_grid, pooled_samples):
     max_linearity_dev = 0.0
     max_rank_one_dev = 0.0
     n_fail = 0
+    n_extra_jitter = 0
 
     for i in range(n_total):
         kernels_i, names_i = build_kernels_from_config(prior_config)
         likelihood_i = build_likelihood_from_config(prior_config)
         model_i, likelihood_i = build_model(x, y, kernels_i, names_i, likelihood_i)
         for site in sites:
-            apply_hp_value(model_i, likelihood_i, site, float(pooled_samples[site][i]))
+            # apply_hp_value returns False on an unrecognized site name and
+            # leaves the model at its prior-initialized value, which would
+            # silently decompose the WRONG posterior. Fail instead.
+            if not apply_hp_value(model_i, likelihood_i, site,
+                                  float(pooled_samples[site][i])):
+                raise RuntimeError(
+                    f"apply_hp_value did not match sample site {site!r} to any "
+                    f"model hyperparameter; draw {i} would have been decomposed "
+                    f"at an unset value. Site naming in bistar_gp.model has "
+                    f"drifted from select_hmc_sites.")
         model_i.eval()
         likelihood_i.eval()
         noise_var = likelihood_i.noise.item()
         blocks = model_i.get_component_kernel_matrices(x, x_grid)
+        k_sum_xx = sum(blocks[n]["XX"] for n in names_i)
 
         with torch.no_grad():
+            # compute_cholesky escalates jitter silently on failure, so probe
+            # the base DECOMP_JITTER first and count the draws that would need
+            # the escalation. Observation only: the probe changes nothing.
+            try:
+                torch.linalg.cholesky(
+                    k_sum_xx + (noise_var + DECOMP_JITTER) * torch.eye(
+                        k_sum_xx.shape[0], dtype=k_sum_xx.dtype,
+                        device=k_sum_xx.device))
+            except RuntimeError:
+                n_extra_jitter += 1
+
             try:
                 per_component = decompose_additive_gp(
                     [blocks[n]["XX"] for n in names_i],
@@ -291,8 +401,7 @@ def decompose_draws(prior_config, x, y, x_grid, pooled_samples):
                     [blocks[n]["XXstar"] for n in names_i],
                     noise_var, y, DECOMP_JITTER,
                 )
-                chol = compute_cholesky(
-                    sum(blocks[n]["XX"] for n in names_i), noise_var, DECOMP_JITTER)
+                chol = compute_cholesky(k_sum_xx, noise_var, DECOMP_JITTER)
                 f_mean, f_cov = decompose_component(
                     sum(blocks[n]["XstarX"] for n in names_i),
                     sum(blocks[n]["XstarXstar"] for n in names_i),
@@ -340,6 +449,7 @@ def decompose_draws(prior_config, x, y, x_grid, pooled_samples):
         "n_attempted": n_total,
         "n_ok": n_ok,
         "n_failed": n_fail,
+        "n_draws_needing_extra_jitter": n_extra_jitter,
         "max_linearity_deviation": max_linearity_dev,
         "max_rank_one_variance_deviation": max_rank_one_dev,
     }
@@ -389,7 +499,9 @@ def make_figure(path, xg, x_np, y_np, truth, summary):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig, axes = plt.subplots(1, 3, figsize=(15.0, 4.6), sharex=True)
+    # sharey as well as sharex: the section's second limit rests on the band
+    # WIDTH contrast between panels, which independent y scales would hide.
+    fig, axes = plt.subplots(1, 3, figsize=(15.0, 4.6), sharex=True, sharey=True)
 
     ax = axes[0]
     ax.fill_between(xg, summary["joint_lo"], summary["joint_hi"],
@@ -403,6 +515,12 @@ def make_figure(path, xg, x_np, y_np, truth, summary):
                label="observed data (N=20)")
     ax.set_title("(a) Composite posterior predictive", fontsize=11)
     ax.set_ylabel("y", fontsize=10)
+    ax.annotate(
+        "mean band width {:.3f}".format(summary["composite_band_mean_width"]),
+        xy=(0.03, 0.97), xycoords="axes fraction", va="top", ha="left",
+        fontsize=8.5,
+        bbox=dict(boxstyle="round,pad=0.35", facecolor="white",
+                  edgecolor=COLOR_PRIMARY, alpha=0.9))
 
     ax = axes[1]
     ax.fill_between(xg, summary["truth_lo"], summary["truth_hi"],
@@ -440,9 +558,9 @@ def make_figure(path, xg, x_np, y_np, truth, summary):
     ax.set_title("(c) Debiased predictive against the known truth", fontsize=11)
     ax.annotate(
         "RMSE vs sin x\ncomposite mean {:.3f}\ndebiased mean {:.3f}"
-        "\ncoverage of sin x {:.3f}".format(
+        "\ncoverage of sin x {:.3f}\nmean band width {:.3f}".format(
             summary["rmse_composite"], summary["rmse_debiased"],
-            summary["coverage"]),
+            summary["coverage"], summary["debiased_band_mean_width"]),
         xy=(0.03, 0.97), xycoords="axes fraction", va="top", ha="left",
         fontsize=8.5,
         bbox=dict(boxstyle="round,pad=0.35", facecolor="white",
@@ -491,8 +609,8 @@ def write_readme(path, results):
         "Synthetic toy only. This script imports, executes, and cites no Mauna",
         "Loa script or artifact, so the D58 preregistration boundary is not",
         "touched. The real-data development of the debiasing program, including",
-        "the preregistered study, belongs to the companion line; thesis ch. 5 is",
-        "the source of the program. Nothing here forecasts those numbers.",
+        "the preregistered study, belongs to the companion line; the program",
+        "originates in thesis ch. 5. Nothing here forecasts those numbers.",
         "",
         "Identifying the linear component as bias is a modeling CHOICE. It is",
         "licensed here because `generate_toy_data` built the data that way",
@@ -519,7 +637,15 @@ def write_readme(path, results):
         f"{results['config']['map_iters']} iterations, lr {results['config']['map_lr']}). "
         "R-hat below is therefore WITHIN-MODE evidence: it reports mixing around "
         "the mode the optimizer selected, not agreement between dispersed starts. "
-        "The toy hyperparameter posterior is known to be multi-basin (D12).",
+        "The D12 multi-basin finding is scoped to the `informative` configuration "
+        "and does not describe this one: the wide-start mode hunt for "
+        "`toy_elicited` (`runs/prior_sensitivity/stage_a_toy_elicited.json`, local "
+        "material not committed in this repository) reports `coherent_geometry` "
+        "true, no separating valley, and a single verified local maximum holding "
+        "pooled prior-IS mass 1.0, whose converged point agrees with the MAP used "
+        "here to within 2e-8 in every hyperparameter. The shared start is still "
+        "disclosed, because a common initialization leaves R-hat silent about "
+        "regions no chain visited.",
         f"- Evaluation grid: {results['config']['grid']['n']} equally spaced points "
         f"on [{results['config']['grid']['lo']}, {results['config']['grid']['hi']}], "
         "inside the training span, so no extrapolation enters the numbers.",
@@ -535,8 +661,15 @@ def write_readme(path, results):
         f"- Bulk ESS minimum {diag['ess_bulk_min']:.1f}; "
         f"tail ESS minimum {diag['ess_tail_min']:.1f}.",
         f"- Tree-depth saturation rate: {diag['depth_saturation_rate']:.4f}.",
+        f"- Move fraction by chain: {diag['move_fraction_by_chain'][0]:.3f} and "
+        f"{diag['move_fraction_by_chain'][1]:.3f}, the fraction of post-warmup "
+        "iterations that moved. NOT comparable to `target_accept_prob` "
+        f"{diag['target_accept_prob']}, which sets the targeted mean Metropolis "
+        "acceptance probability.",
         f"- Decomposition: {dec['n_ok']} of {dec['n_attempted']} draws succeeded, "
-        f"{dec['n_failed']} failed.",
+        f"{dec['n_failed']} failed; "
+        f"{dec['n_draws_needing_extra_jitter']} of {dec['n_attempted']} needed "
+        f"jitter above the base {results['config']['decomposition_jitter']:g}.",
         "",
         "## Recovery",
         "",
@@ -560,6 +693,20 @@ def write_readme(path, results):
         f"points, nominal {rec['coverage_nominal']:.2f} |",
         f"| mean width, debiased band | {rec['debiased_band_mean_width']:.3f} | "
         f"composite band {rec['composite_band_mean_width']:.3f} on the same grid |",
+        f"| mean width, bias-component band | {rec['bias_band_mean_width']:.3f} | "
+        "the linear component's own mixture band, same grid |",
+        f"| component cross-covariance | "
+        f"{rec['component_mean_cross_covariance']:.3f} | correlation "
+        f"{rec['component_correlation_from_mean_total_variances']:.2f}; read off "
+        f"the mean total variances {rec['truth_component_mean_total_variance']:.4f} "
+        f"(SE), {rec['bias_component_mean_total_variance']:.4f} (linear), "
+        f"{rec['composite_mean_total_variance']:.4f} (composite) |",
+        "",
+        "The composite band is narrower than either component band because the",
+        "two components are strongly negatively correlated a posteriori: at this",
+        "sample size the observations pin the SUM far better than the SPLIT.",
+        "Those numbers describe this N=20 instance only and say nothing about how",
+        "the gap behaves as N grows.",
         "",
         "Scale references on the same grid, both known by construction: the bias",
         f"process 0.25x has RMS {rec['bias_process_grid_rms']:.3f} and the true",
@@ -621,12 +768,18 @@ def main():
         "combined": np.sin(xg) + float(info["bias_slope"]) * xg,
     }
 
+    assert_library_sampler_settings()
+
     if verbose:
         print(f"Case E toy debias demo — N={len(x)}, prior {PRIOR_KEY}")
         print("Sampling hyperparameters on the corrected NUTS path (nuts_e1)...")
     chain_samples, chain_diagnostics, map_point = run_chains(
         prior_config, x, y, verbose=verbose)
     diag = sampler_diagnostics_block(chain_samples, chain_diagnostics)
+    if diag["sampler"] != SAMPLER_NAME:
+        raise RuntimeError(
+            f"expected the corrected path {SAMPLER_NAME!r} but the run reports "
+            f"{diag['sampler']!r}")
 
     pooled = {site: np.concatenate([chain[site] for chain in chain_samples])
               for site in chain_samples[0]}
@@ -674,6 +827,22 @@ def main():
     covered = (sin_grid >= truth_lo) & (sin_grid <= truth_hi)
     coverage = float(covered.mean())
 
+    # Grid-mean total variances of the two components and of the composite.
+    # Means add exactly across the decomposition and the law of total variance
+    # is linear, so the composite total variance equals the sum of the two
+    # component total variances plus twice their TOTAL cross-covariance
+    # (within-draw covariance plus across-draw covariance of the component
+    # means). Inverting that identity recovers the cross-covariance the bands
+    # already encode; no new estimator enters.
+    truth_total_var = float(np.mean(
+        truth_var_draws.mean(axis=0) + truth_mean_draws.var(axis=0)))
+    bias_total_var = float(np.mean(
+        bias_var_draws.mean(axis=0) + bias_mean_draws.var(axis=0)))
+    composite_total_var = float(np.mean(
+        dec["joint_var"].mean(axis=0) + dec["joint_mean"].var(axis=0)))
+    cross_cov = 0.5 * (composite_total_var - truth_total_var - bias_total_var)
+    cross_corr = float(cross_cov / np.sqrt(truth_total_var * bias_total_var))
+
     recovery = {
         "generating_slope": float(info["bias_slope"]),
         "slope": slope,
@@ -699,6 +868,20 @@ def main():
             f"{int(covered.size)}"),
         "debiased_band_mean_width": float(np.mean(truth_hi - truth_lo)),
         "composite_band_mean_width": float(np.mean(joint_hi - joint_lo)),
+        "bias_band_mean_width": float(np.mean(bias_hi - bias_lo)),
+        "truth_component_mean_total_variance": truth_total_var,
+        "bias_component_mean_total_variance": bias_total_var,
+        "composite_mean_total_variance": composite_total_var,
+        "component_mean_cross_covariance": float(cross_cov),
+        "component_correlation_from_mean_total_variances": cross_corr,
+        "component_covariance_note": (
+            "grid means of the law-of-total-variance variances; the composite "
+            "total variance equals the two component total variances plus "
+            "twice their total cross-covariance, so the cross-covariance and "
+            "correlation reported here are read off those three numbers rather "
+            "than estimated separately. They describe THIS N=20 instance and "
+            "carry no claim about how the gap between the composite and the "
+            "component bands behaves as N grows"),
         "bias_process_grid_rms": rmse(truth["bias"], 0.0),
         "true_process_grid_rms": rmse(sin_grid, 0.0),
     }
@@ -710,6 +893,8 @@ def main():
         "slope": slope, "generating_slope": float(info["bias_slope"]),
         "rmse_composite": rmse_composite, "rmse_debiased": rmse_debiased,
         "coverage": coverage,
+        "composite_band_mean_width": recovery["composite_band_mean_width"],
+        "debiased_band_mean_width": recovery["debiased_band_mean_width"],
     }
     figure_path = out_dir / "debias_figure.png"
     make_figure(figure_path, xg, x.numpy(), y.numpy(), truth, summary)
@@ -753,8 +938,16 @@ def main():
             "init_strategy": (
                 "init_to_map: both chains start at the same MAP point, so R-hat is "
                 "within-mode evidence about mixing around the optimizer's mode, not "
-                "between-mode agreement from dispersed starts (the toy "
-                "hyperparameter posterior is multi-basin, D12)"),
+                "between-mode agreement from dispersed starts. The D12 multi-basin "
+                "finding is scoped to the `informative` configuration and does not "
+                "describe this one: the wide-start mode hunt for `toy_elicited` "
+                "(runs/prior_sensitivity/stage_a_toy_elicited.json, local material "
+                "not committed in this repository) reports coherent_geometry true, "
+                "no separating valley, and a single verified local maximum holding "
+                "pooled prior-IS mass 1.0, whose converged point agrees with the MAP "
+                "recorded above to within 2e-8 in every hyperparameter. The shared "
+                "start is still disclosed because a common initialization leaves "
+                "R-hat silent about regions no chain visited"),
             "map_point": map_point,
             "grid": {"lo": GRID_LO, "hi": GRID_HI, "n": GRID_N,
                      "spacing": "equally spaced, inside the training span"},
@@ -774,6 +967,11 @@ def main():
             "n_attempted": dec["n_attempted"],
             "n_ok": dec["n_ok"],
             "n_failed": dec["n_failed"],
+            "n_draws_needing_extra_jitter": dec["n_draws_needing_extra_jitter"],
+            "jitter_escalation_note": (
+                "compute_cholesky escalates jitter silently when the base value "
+                "fails, so each draw's Cholesky is probed at the base jitter "
+                f"{DECOMP_JITTER:g} first and the escalations are counted here"),
             "linear_component_structure_check": {
                 "max_abs_deviation_from_exact_linearity":
                     dec["max_linearity_deviation"],

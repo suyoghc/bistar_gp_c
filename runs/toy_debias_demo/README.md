@@ -20,8 +20,8 @@ local CPU, single process, about one minute.
 Synthetic toy only. This script imports, executes, and cites no Mauna
 Loa script or artifact, so the D58 preregistration boundary is not
 touched. The real-data development of the debiasing program, including
-the preregistered study, belongs to the companion line; thesis ch. 5 is
-the source of the program. Nothing here forecasts those numbers.
+the preregistered study, belongs to the companion line; the program
+originates in thesis ch. 5. Nothing here forecasts those numbers.
 
 Identifying the linear component as bias is a modeling CHOICE. It is
 licensed here because `generate_toy_data` built the data that way
@@ -35,7 +35,7 @@ kernel labeling on substantive grounds.
 - Sampler: `nuts_e1` via `bistar_gp.fit.fit_hmc` (the corrected NUTS path; the pre-correction Pyro setup is not used).
 - 2 chains, seeds [20260813, 20260814], 500 warmup and 500 retained draws each (1000 pooled).
 - `target_accept_prob` 0.8, `max_tree_depth` 8, initial step size 0.1 with adaptation.
-- Init: BOTH chains start at the SAME MAP point (`fit_map`, torch seed 42, 500 iterations, lr 0.05). R-hat below is therefore WITHIN-MODE evidence: it reports mixing around the mode the optimizer selected, not agreement between dispersed starts. The toy hyperparameter posterior is known to be multi-basin (D12).
+- Init: BOTH chains start at the SAME MAP point (`fit_map`, torch seed 42, 500 iterations, lr 0.05). R-hat below is therefore WITHIN-MODE evidence: it reports mixing around the mode the optimizer selected, not agreement between dispersed starts. The D12 multi-basin finding is scoped to the `informative` configuration and does not describe this one: the wide-start mode hunt for `toy_elicited` (`runs/prior_sensitivity/stage_a_toy_elicited.json`, local material not committed in this repository) reports `coherent_geometry` true, no separating valley, and a single verified local maximum holding pooled prior-IS mass 1.0, whose converged point agrees with the MAP used here to within 2e-8 in every hyperparameter. The shared start is still disclosed, because a common initialization leaves R-hat silent about regions no chain visited.
 - Evaluation grid: 201 equally spaced points on [-10.0, 10.0], inside the training span, so no extrapolation enters the numbers.
 - Bands: latent-function, no observation noise; intervals are exact 95% central intervals of the draw mixture, obtained by CDF bisection.
 
@@ -45,7 +45,8 @@ kernel labeling on substantive grounds.
 - Rank-normalized R-hat, maximum over sites: 1.0025.
 - Bulk ESS minimum 602.4; tail ESS minimum 502.6.
 - Tree-depth saturation rate: 0.0000.
-- Decomposition: 1000 of 1000 draws succeeded, 0 failed.
+- Move fraction by chain: 0.992 and 0.998, the fraction of post-warmup iterations that moved. NOT comparable to `target_accept_prob` 0.8, which sets the targeted mean Metropolis acceptance probability.
+- Decomposition: 1000 of 1000 draws succeeded, 0 failed; 0 of 1000 needed jitter above the base 0.0001.
 
 ## Recovery
 
@@ -58,6 +59,14 @@ kernel labeling on substantive grounds.
 | RMSE reduction | 1.028 | 71.9% of the composite RMSE |
 | coverage of sin x by the debiased band | 0.866 | 174 of 201 grid points, nominal 0.95 |
 | mean width, debiased band | 1.836 | composite band 1.032 on the same grid |
+| mean width, bias-component band | 1.458 | the linear component's own mixture band, same grid |
+| component cross-covariance | -0.173 | correlation -0.85; read off the mean total variances 0.2368 (SE), 0.1752 (linear), 0.0667 (composite) |
+
+The composite band is narrower than either component band because the
+two components are strongly negatively correlated a posteriori: at this
+sample size the observations pin the SUM far better than the SPLIT.
+Those numbers describe this N=20 instance only and say nothing about how
+the gap behaves as N grows.
 
 Scale references on the same grid, both known by construction: the bias
 process 0.25x has RMS 1.451 and the true

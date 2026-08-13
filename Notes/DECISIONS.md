@@ -5836,3 +5836,157 @@ and needs regeneration through `docs/paper-sie-jmp/build_tex.py` at assembly
 time. No review round has been run on this case yet (HANDOFF §4 protocol not
 yet applied to Case E). No git mutation was performed by the implementing
 session.
+
+**Review-fix addendum (2026-08-13):** The HANDOFF §4 round-1 review has since
+run against branch tip `8f1326d`, and this pass implements its confirmed queue.
+The body above is left as committed; everything below records what changed.
+
+Round-1 verdicts (`runs/toy_debias_demo/reviews/VERDICTS.md`, raw outputs
+`round1_*.md`, checker notes `check_*.md`): Opus 5 REVISE with 15 findings and
+an independent bit-exact reproduction of every committed number; Gemini
+(`gemini-3.1-pro-preview`, HIGH) APPROVE; Kimi K3
+(`moonshotai/kimi-k3`) APPROVE; Codex GPT 5.6 sol ABSENT and disclosed
+(usage lock to 2026-08-18), so the synthesis-round substitution pattern applies
+and a substitute implementer, not a reviewer, executed the fixes. Verdict
+conflict resolved by rule 3: the queue was non-empty, so REVISE governed. Three
+single-reporter findings were REFUTED by adversarial check and logged with
+their refutations rather than silently dropped: F2 (coverage comparators; the
+sentence makes an absolute claim with a correct caveat, and the omitted numbers
+would favour the debiased arm), F5 ("removes most of it"; true under every
+candidate statistic, both framings already supplied), and F6 (latent-band
+terminology; the convention is disclosed in section, README, and JSON). Two
+items were routed to the assembly ledger on the synthesis branch instead of
+being fixed here: F9, the synthesis 8.6 sentence "All four reviewer rounds are
+recorded for every case", which Case E falsifies once it becomes section 7, and
+the known staleness in the 8.5 footnote wording. F8, the missing
+`build_tex.py` registry entries for section 07 (branch pin, FIGURES and
+FIGURE_PATHS, tier map extension), was fixed driver-side in untracked tooling
+and is therefore not part of this diff.
+
+Twelve queued items were implemented: FIX-1 through FIX-11 in
+`experiments/toy_debias_demo.py`, `docs/paper-sie-jmp/07-debias-bridge.md`, and
+the regenerated `runs/toy_debias_demo/` artifacts, plus this addendum. The
+sampling was NOT touched: same seeds, same budget, same estimators, and every
+number the committed entry reported is bit-identical after the rerun.
+
+INIT-STRATEGY PROVENANCE, CORRECTED (FIX-1, review F1). The claim above that
+"the toy hyperparameter posterior is multi-basin (D12)" misattributes D12. The
+D12 bimodality finding is scoped to the `informative` prior configuration
+(D12 Finding 1: two modes, valley ≈ −43 between them, mass split ~3:1), not to
+the `toy_elicited` configuration this demonstration uses.
+`runs/prior_sensitivity/stage_a_toy_elicited.json` certifies the opposite
+geometry for the configuration actually run: `coherent_geometry` true,
+`valleys` empty, `bimodal` false, and a single mode with
+`verified_local_max` true holding `pooled_is_mass` 1.0, recovered from all 27
+wide starts of the mode hunt (every start converges to log joint −18.913602).
+That mode's converged point agrees with this run's MAP in every hyperparameter:
+the largest absolute discrepancy is 1.69e-8 (SE lengthscale), so the corrected
+artifacts state agreement "to within 2e-8" rather than the review's "~1e-9",
+which the driver's own recomputation does not support. The correction is
+carried in all four places the misattribution appeared: section 07 §7.1, the
+`config.init_strategy` string in the script, the run README via
+`write_readme`, and here. The shared-init disclosure itself is UNCHANGED and
+still stands, on the narrower and correct ground that a common start leaves
+R-hat silent about regions no chain visited. The stage_a artifact is cited
+through the disclosed local-material pattern used by synthesis sections 02 and
+08, since it is not committed in this repository.
+
+NEW DERIVED NUMBERS, all regenerable from the script and recorded in
+`results.json` so no prose number is orphaned:
+- `recovery.bias_band_mean_width` 1.4584026383414934, the linear component's
+  own mixture band (FIX-3, F4). Section 07 now reads "the composite band has
+  mean width 1.032 and the linear component's 1.458", which the previous
+  "either component alone" phrasing asserted without evidence;
+- grid-mean total variances 0.2368453522059466 (SE), 0.17521904311580203
+  (linear), 0.06668550257966654 (composite), and the cross-covariance
+  −0.17268944637104106 with correlation −0.8477010316953286 read off them
+  (FIX-2, F3). Means add across the decomposition and the law of total variance
+  is linear, so the composite total variance equals the two component total
+  variances plus twice their total cross-covariance; inverting that identity
+  introduces no new estimator. These replace the old N-asymptotic sentence
+  ("additional observations sharpen the composite while leaving the attribution
+  comparatively uncertain, and honest inference retains an uncertainty floor
+  that sample size does not remove"), which asserted behaviour in N from a
+  single N=20 run. Section 07 now states only what was measured, and says
+  explicitly that whether the gap persists as N grows is untested here;
+- `decomposition.n_draws_needing_extra_jitter` 0 of 1000 (FIX-7, F12).
+  `compute_cholesky` escalates jitter silently, so each draw is now probed at
+  the base 1e-4 first and the escalations counted; the count came out 0 and is
+  reported as it came out.
+
+CODE HARDENING. FIX-7 also makes an unmatched `apply_hp_value` site raise
+RuntimeError instead of discarding the returned False, which had been a
+silent-wrong-answer path: a site-naming drift would have decomposed a
+prior-initialized model without any error. FIX-8 (F13) adds
+`assert_library_sampler_settings()`, which parses
+`bistar_gp.e1_potential.fit_hmc_e1` and compares the literal `step_size`,
+`target_accept_prob`, `adapt_step_size`, and `sampler_name` it passes to
+`_run_e1_nuts_route` against the constants this script mirrors into
+`results.json`, cross-checks the route's signature defaults, and verifies that
+`bistar_gp.fit.fit_hmc` still routes to `fit_hmc_e1`; any drift now fails the
+run loudly instead of silently falsifying the recorded configuration. FIX-9
+(F14 + Kimi K2) renames `sampler.acceptance_rate_by_chain` to
+`move_fraction_by_chain` and adds `move_fraction_note`, because pyro's
+0.992/0.998 counts post-warmup iterations that moved and is not comparable to
+the targeted mean Metropolis acceptance that `target_accept_prob` 0.8 sets; the
+README diagnostics line states the distinction, and the section prose still
+does not mention acceptance.
+
+FIGURE. FIX-4 (F7) sets `sharey=True` alongside the existing `sharex=True`, so
+the band-width contrast the section's second limit rests on is now visible
+across panels, and annotates panel (a) with mean band width 1.032 and panel (c)
+with 1.836 in the existing annotation style.
+
+PROSE. FIX-5 (F10) opens §7.1 with the evaluation-side cross-link: section 3.4
+grades candidates on this same N=20 seed-42 instance under the same
+data-elicited configuration and places most weight on Sin+Linear at 0.441 under
+pw_kl_vcal at τ=1 on the SIR path, while the demonstration decomposes the
+posterior of that same additive structure on the corrected NUTS path, the two
+estimators reported separately; no other Case A number is re-quoted. FIX-6
+(F11) records that `toy_elicited` sets its lognormal medians from this same
+sample's observable summaries, an empirical-Bayes-style construction, so the
+posterior statements are conditional on that fixed prior rather than
+unqualified full Bayes, and the coverage paragraph now notes that the coverage
+figure inherits the same conditioning. FIX-10 (F15) detaches divergences and
+tree-depth saturation, which are per-trajectory quantities, from the
+per-hyperparameter list. FIX-11 (Kimi K1 + Gemini GE1) removes the role-noun
+constructions from the ancillary text: the README's "thesis ch. 5 is the source
+of the program" becomes "the program originates in thesis ch. 5", and the
+script docstring's "the SE component is the truth candidate, the linear
+component the bias candidate" becomes "serves as ... as"; a sweep of the
+script's remaining strings and comments found one further instance, in the new
+FIX-8 docstring, which was reworded before the run.
+
+DETERMINISM AND ARTIFACT HASHES AFTER THE FIX PASS. Two consecutive reruns of
+`python experiments/toy_debias_demo.py` reproduced all three artifacts byte for
+byte on python 3.13.11 / torch 2.10.0 / numpy 1.26.4 / arviz 0.23.4:
+- `results.json` sha256
+  `65c9ff5f14b9a5f3aca8267745d6b368d95b831e85a610f6844b74e1b33712bb`
+  (was `e73f067276e7bd61026dbcde835d9e1461d5dd604a448cd5176e3b0687eaaa3c`);
+- `debias_figure.png` sha256
+  `c1153549ca55d9d644804790ef9a4627f8d82bedd157ec348ecb519f551a4723`
+  (was `6ebd195f8bf9c224361853ba16b36af1f2e4010ffec912fb6bb44766b5e58907`),
+  271,642 bytes, still far under the 2 MB limit;
+- `README.md` sha256
+  `7096cd6e4d3d02f8971cee294fa3e50a2c7248272320e9cc72cfc45994f889af`.
+
+A field-by-field diff of `results.json` against the committed version shows
+exactly the intended changes and nothing else: nine added keys, the
+`acceptance_rate_by_chain` to `move_fraction_by_chain` rename carrying the same
+0.992/0.998 values, and the rewritten `config.init_strategy` prose. Every
+pre-existing numeric field is bit-identical, including slope 0.197 / sd 0.072 /
+[0.033, 0.323], RMSE 1.430 and 0.403 with reduction 71.9%, coverage 0.866
+(174/201), band widths 1.836 and 1.032, R-hat max 1.0025, bulk ESS 602.4, tail
+ESS 502.6, 0 divergences, tree-depth saturation 0.0, the MAP point, the two
+final step sizes, and the linearity and rank-one structure deviations.
+
+The author-adjudication ledger in `VERDICTS.md` remains open at merge proposal,
+with four items: sign-off on the F1 init-provenance correction and whether
+`runs/prior_sensitivity/stage_a_toy_elicited.json` should be committed as
+evidence rather than cited as local material; sign-off on the F3 floor-sentence
+restriction and whether to commission the optional N-sweep (20/50/200) that
+would test the floor claim outright; the F2 enrichment option, the
+driver-verified composite and bias coverages 0.821 and 1.000, available but not
+required; and ratification of the substitute-implementer and
+driver-verification deviations, or a Codex re-review once the usage lock lifts
+on 2026-08-18. No git mutation was performed by this fix pass.

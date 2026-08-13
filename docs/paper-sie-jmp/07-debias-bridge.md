@@ -12,22 +12,37 @@ mitigation therefore draw on one object.[^1]
 
 ## 7.1 The demonstration
 
+Section 3.4 grades candidate models on this same N=20 seed-42 instance under
+the same data-elicited configuration and places most weight on Sin+Linear,
+0.441 under pw_kl_vcal at τ=1 on the SIR path. The demonstration below
+decomposes the posterior of that same additive structure, sampled here on the
+corrected NUTS path; the two estimators are reported separately.[^2]
+
 The data come from `generate_toy_data()` at its defaults: N=20 points on
 [-10, 10], seed 42, observation noise 0.5, and y = sin(x) + 0.25x + noise. The
 generator itself names the linear term the bias, so the demonstration inherits
 a known true process and a known bias process instead of asserting either.[^2]
 
 The GP uses the SE plus linear additive kernel under the `toy_elicited`
-data-elicited prior, the configuration validated for this N=20 instance.
+data-elicited prior, the configuration validated for this N=20 instance. That
+prior sets its lognormal medians from this same sample's observable summaries,
+an empirical-Bayes-style construction, so the posterior statements below are
+conditional on that fixed prior rather than unqualified full Bayes.
 Hyperparameters come from the corrected NUTS path in two seeded chains,
 20260813 and 20260814, with 500 warmup and 500 retained draws each, target
 acceptance 0.8 and maximum tree depth 8. Both chains initialize at the same MAP
 point, so the rank-normalized R-hat reported here measures mixing within the
-mode the optimizer selected and not agreement between dispersed starts; the toy
-hyperparameter posterior is multi-basin, which makes the distinction worth
-stating explicitly. Across the four hyperparameters the run gives no
-divergences, rank-normalized R-hat at most 1.0025, bulk ESS at least 602.4, and
-tail ESS at least 502.6.[^2]
+mode the optimizer selected and not agreement between dispersed starts. The
+multi-basin geometry recorded for the `informative` configuration does not
+carry over to this one: the wide-start mode hunt for `toy_elicited`
+verified a single local maximum holding the entire pooled
+prior-importance-sampling mass with no separating valley, and its converged
+point agrees with the MAP used here to within 2e-8 in every hyperparameter. The
+shared start remains disclosed because a common initialization still leaves
+R-hat silent about regions no chain visited. The run gives no divergences and
+no tree-depth saturation, and across the four hyperparameters the
+rank-normalized R-hat is at most 1.0025, bulk ESS at least 602.4, and tail ESS
+at least 502.6.[^2]
 
 Every one of the 1,000 retained draws is decomposed by the package
 additive-kernel machinery into an SE component, treated as the truth candidate,
@@ -69,7 +84,9 @@ The debiased band covers sin(x) at 174 of the 201 grid points, 0.866 against a
 nominal 0.95. Neighboring grid points share nearly the same posterior, so the
 figure summarizes pointwise coverage rather than testing calibration over
 independent trials; read that way it records mild undercoverage and not a
-validated interval procedure.[^2]
+validated interval procedure. The coverage figure also inherits the
+conditioning noted above, because the prior was elicited from the same sample
+the band is scored against.[^2]
 
 ## 7.2 What the demonstration does and does not establish
 
@@ -86,20 +103,22 @@ argument.
 
 Second, the data determine the split far less sharply than they determine the
 fit. The debiased band has mean width 1.836 on the grid while the composite
-band has mean width 1.032, so the observations constrain the sum of the two
-components more tightly than they constrain either component alone. That
-difference gives concrete form to the expectation recorded in section 8.5: when
-the grounds for treating one component as bias come from outside the observed
-data, additional observations sharpen the composite while leaving the
-attribution comparatively uncertain, and honest inference retains an
-uncertainty floor that sample size does not remove.[^2]
+band has mean width 1.032 and the linear component's 1.458, so the observations
+constrain the sum more tightly than either component alone. The mean total
+variances behind those bands, 0.2368 for the SE component, 0.1752 for the
+linear component, and 0.0667 for the composite, imply a posterior
+cross-covariance between the two components near −0.173 and a correlation near
+−0.85: at this sample size the data pin the sum far better than the split.
+Whether that gap persists as N grows is the substantive form of the expectation
+recorded in section 8.5, and this demonstration, run at a single sample size,
+does not test it.[^2]
 
 The full development belongs to the companion line. The program originates in
 thesis chapter 5, and the real-data study proceeds under its own
 preregistration; no real-data result is reported or forecast here.[^1]
 
 [^1]: 🟡 thesis — Chandramouli (2020), doctoral dissertation, Indiana University; Chapter 5 instantiates BI* with Gaussian Processes and states the debiasing program. 🟣 framework — Chandramouli and Shiffrin (2016), "Extending Bayesian induction," *Journal of Mathematical Psychology*, 72, 38–42.
-[^2]: 🟠 empirical — `experiments/toy_debias_demo.py`; `runs/toy_debias_demo/results.json` and `README.md` (data seed 42; MAP-init torch seed 42; NUTS chain seeds 20260813 and 20260814).
+[^2]: 🟠 empirical — `experiments/toy_debias_demo.py`; `runs/toy_debias_demo/results.json` and `README.md` (data seed 42; MAP-init torch seed 42; NUTS chain seeds 20260813 and 20260814). Single-mode geometry for this prior configuration: `runs/prior_sensitivity/stage_a_toy_elicited.json` records `coherent_geometry` true, no separating valley, and one verified local maximum holding pooled prior-importance-sampling mass 1.0; local material that remains uncommitted in this repository. The D12 bimodality finding is scoped to the `informative` configuration and does not describe this one. The Case A evaluation of the same N=20 seed-42 instance is reported in section 3.4 of the assembled manuscript; no other Case A number is re-quoted here.
 [^3]: 🟠 empirical — decomposition through `bistar_gp.decompose.decompose_additive_gp`, the package implementation of the thesis Eq. 5 additive-kernel decomposition, with the joint posterior from `decompose_component` on the summed kernel blocks so the inter-component cross-covariance is retained; success counts and the linear-component structure checks in `runs/toy_debias_demo/results.json`.
 
 ---
