@@ -5990,3 +5990,31 @@ driver-verified composite and bias coverages 0.821 and 1.000, available but not
 required; and ratification of the substitute-implementer and
 driver-verification deviations, or a Codex re-review once the usage lock lifts
 on 2026-08-18. No git mutation was performed by this fix pass.
+
+**Closure addendum (2026-08-13):** §4 protocol complete for Case E. Re-review
+round (changed hunks, by raisers): Opus 5 all ten queue findings RESOLVED
+(repo-verified, including executing the FIX-8 guard with three negative
+controls; its own round-1 "~1e-9" MAP-to-mode figure corrected to the
+committed 1.690e-8 measurement); Kimi K3 both RESOLVED (relabel judged more
+accurate than its own proposal); Gemini GE1 RESOLVED, changed-hunk checklist
+clean. Eight hunk-introduced defects: seven Opus (N1 S3 cross-link conflated
+the parametric Sin+Linear candidate with the GP kernel posterior; N2-N7 S4)
+and one Kimi (jitter-probe claim breadth), resolved as four micro-fixes to
+section 07 by the substitute agent (MF-1 covers N1+N2+N3: grades candidates
+AGAINST the induced posterior, "described below", the pooled-aggregation
+qualifier on 0.441; MF-2 "the band conditions on"; MF-3 caption records the
+shared y axis; MF-4 "grid-averaged correlation"), one correction recorded
+here (N7: the fix-pass addendum's field-count sentence undercounted — the
+results.json delta against 8f1326d is ten added keys, nine in recovery and
+decomposition plus sampler.move_fraction_note, together with the
+acceptance_rate_by_chain/move_fraction_by_chain rename pair and the rewritten
+config.init_strategy), and one refutation on source evidence (Kimi's probe
+finding: decompose_additive_gp performs a single shared Cholesky of the
+summed training matrix, bistar_gp/decompose.py:93, and the demo never calls
+sample_from_component, so the probe covers every factorization executed).
+Review record committed at runs/toy_debias_demo/reviews/ (VERDICTS.md +
+round1/check/rereview raw outputs). Protocol outcome: REVISE resolved —
+branch proposed for merge subject to the five-item author ledger in
+VERDICTS.md (F1 and F3 statistical sign-offs; F2 enrichment option; the
+substitute/driver substitutions to ratify; the two assembly-ledger items F9
+and the 8.5 footnote on the synthesis branch). Nothing merges autonomously.

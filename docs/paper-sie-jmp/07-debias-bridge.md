@@ -12,11 +12,13 @@ mitigation therefore draw on one object.[^1]
 
 ## 7.1 The demonstration
 
-Section 3.4 grades candidate models on this same N=20 seed-42 instance under
-the same data-elicited configuration and places most weight on Sin+Linear,
-0.441 under pw_kl_vcal at τ=1 on the SIR path. The demonstration below
-decomposes the posterior of that same additive structure, sampled here on the
-corrected NUTS path; the two estimators are reported separately.[^2]
+Section 3.4 grades candidate models against the posterior this same GP
+configuration induces on the N=20 seed-42 instance described below, and puts
+most weight on the Sin+Linear candidate, 0.441 under pw_kl_vcal at τ=1 with
+pooled aggregation on the SIR path. The demonstration here decomposes that same
+GP posterior, estimated now by NUTS rather than by SIR, into an SE and a linear
+component; the winning candidate's sinusoid-plus-drift shape mirrors that
+additive split without being the object decomposed.[^2]
 
 The data come from `generate_toy_data()` at its defaults: N=20 points on
 [-10, 10], seed 42, observation noise 0.5, and y = sin(x) + 0.25x + noise. The
@@ -63,7 +65,9 @@ the composite posterior predictive against the observed data, which the
 composite describes well. Panel (b) shows the two labeled components with their
 95 percent central intervals against the generating sin(x) and 0.25x curves.
 Panel (c) shows the debiased predictive against the known true process. The
-annotated slope and RMSE readouts are computed from the artifact values.
+three panels share a common y axis, so band widths are directly comparable
+across them. The annotated slope, RMSE, coverage, and band-width readouts are
+computed from the artifact values.
 
 Turning to recovery, the bias-slope posterior has mean 0.197 with standard
 deviation 0.072 and a 95 percent central interval of [0.033, 0.323], which
@@ -86,7 +90,7 @@ figure summarizes pointwise coverage rather than testing calibration over
 independent trials; read that way it records mild undercoverage and not a
 validated interval procedure. The coverage figure also inherits the
 conditioning noted above, because the prior was elicited from the same sample
-the band is scored against.[^2]
+the band conditions on.[^2]
 
 ## 7.2 What the demonstration does and does not establish
 
@@ -107,11 +111,11 @@ band has mean width 1.032 and the linear component's 1.458, so the observations
 constrain the sum more tightly than either component alone. The mean total
 variances behind those bands, 0.2368 for the SE component, 0.1752 for the
 linear component, and 0.0667 for the composite, imply a posterior
-cross-covariance between the two components near −0.173 and a correlation near
-−0.85: at this sample size the data pin the sum far better than the split.
-Whether that gap persists as N grows is the substantive form of the expectation
-recorded in section 8.5, and this demonstration, run at a single sample size,
-does not test it.[^2]
+cross-covariance between the two components near −0.173 and a grid-averaged
+correlation near −0.85: at this sample size the data pin the sum far better
+than the split. Whether that gap persists as N grows is the substantive form of
+the expectation recorded in section 8.5, and this demonstration, run at a
+single sample size, does not test it.[^2]
 
 The full development belongs to the companion line. The program originates in
 thesis chapter 5, and the real-data study proceeds under its own
