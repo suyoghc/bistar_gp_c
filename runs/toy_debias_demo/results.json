@@ -1,0 +1,174 @@
+{
+  "case": "E",
+  "config": {
+    "band_convention": "latent function, no observation noise added",
+    "components": {
+      "bias_candidate": "bias_linear",
+      "truth_candidate": "unbiased_se"
+    },
+    "credible_mass": 0.95,
+    "decomposition_jitter": 0.0001,
+    "grid": {
+      "hi": 10.0,
+      "lo": -10.0,
+      "n": 201,
+      "spacing": "equally spaced, inside the training span"
+    },
+    "init_strategy": "init_to_map: both chains start at the same MAP point, so R-hat is within-mode evidence about mixing around the optimizer's mode, not between-mode agreement from dispersed starts (the toy hyperparameter posterior is multi-basin, D12)",
+    "interval_method": "exact central interval of the equally weighted Gaussian mixture over retained draws, by CDF bisection",
+    "map_iters": 500,
+    "map_lr": 0.05,
+    "map_point": {
+      "linear_variance": 0.018307932327009557,
+      "noise_variance": 0.06186742021222304,
+      "se_lengthscale": 1.4629304147814763,
+      "se_outputscale": 0.7138687168157818
+    },
+    "map_seed": 42,
+    "prior_equivalent_to": "experiments/prior_sensitivity_study.py STUDY_CONFIGS['toy_elicited']",
+    "prior_key": "toy_elicited_n20",
+    "prior_parameters": {
+      "linear_variance_prior": [
+        "lognormal",
+        -3.2188758248682006,
+        1.5
+      ],
+      "noise_prior": [
+        "lognormal",
+        -1.2039728043259361,
+        1.0
+      ],
+      "se_lengthscale_prior": [
+        "lognormal",
+        1.5040773967762742,
+        0.9
+      ],
+      "se_outputscale_prior": [
+        "lognormal",
+        0.4054651081081644,
+        1.0
+      ]
+    }
+  },
+  "data": {
+    "bias_process": "0.25 * x",
+    "bias_slope": 0.25,
+    "generator": "bistar_gp.generate_toy_data() at defaults",
+    "n_points": 20,
+    "noise_std": 0.5,
+    "seed": 42,
+    "true_process": "sin(x)",
+    "x_range": [
+      -10.0,
+      10.0
+    ]
+  },
+  "decomposition": {
+    "linear_component_structure_check": {
+      "max_abs_deviation_from_exact_linearity": 4.4564352208453784e-13,
+      "max_abs_deviation_from_rank_one_variance": 1.89605275924265e-15,
+      "note": "gpytorch LinearKernel gives k(x,x') = v x x', so the component posterior mean must be exactly linear and its covariance exactly Var(b|theta) x x^T; these are the worst observed deviations across retained draws, and they license reading the slope moments off the decomposition output"
+    },
+    "machinery": "bistar_gp.decompose.decompose_additive_gp for components; bistar_gp.decompose.decompose_component on the summed kernel blocks for the joint posterior",
+    "n_attempted": 1000,
+    "n_failed": 0,
+    "n_ok": 1000
+  },
+  "environment": {
+    "arviz": "0.23.4",
+    "numpy": "1.26.4",
+    "python": "3.13.11",
+    "torch": "2.10.0"
+  },
+  "recovery": {
+    "bias_process_grid_rms": 1.4505745987941008,
+    "composite_band_mean_width": 1.0319893656930352,
+    "coverage": 0.8656716417910447,
+    "coverage_caveat": "a pointwise summary over a correlated grid, not a calibration test with independent trials: neighboring grid points share nearly the same posterior, so the effective number of checks is far below 201",
+    "coverage_nominal": 0.95,
+    "coverage_points_covered": 174,
+    "coverage_points_total": 201,
+    "debias_improves_rmse": true,
+    "debiased_band_mean_width": 1.8355730651608624,
+    "generating_slope": 0.25,
+    "rmse_composite": 1.430390061349473,
+    "rmse_composite_by_chain": [
+      1.430902946911567,
+      1.429886916216616
+    ],
+    "rmse_debiased": 0.4025181154080362,
+    "rmse_debiased_by_chain": [
+      0.4034854430683031,
+      0.4015943687218727
+    ],
+    "rmse_reduction": 1.027871945941437,
+    "rmse_reduction_pct": 71.85955591523836,
+    "slope": {
+      "hi": 0.3229918220752096,
+      "lo": 0.03275525741517342,
+      "mean": 0.19749504453874142,
+      "sd": 0.07214240107691616
+    },
+    "slope_interval_contains_generating": true,
+    "slope_minus_generating": -0.05250495546125858,
+    "true_process_grid_rms": 0.6901815271460361
+  },
+  "sampler": {
+    "acceptance_rate_by_chain": [
+      0.992,
+      0.998
+    ],
+    "arviz_version": "0.23.4",
+    "chain_seeds": [
+      20260813,
+      20260814
+    ],
+    "chains": 2,
+    "depth_saturated_draws": 0,
+    "depth_saturation_rate": 0.0,
+    "divergences_by_chain": [
+      0,
+      0
+    ],
+    "divergences_total": 0,
+    "draws_per_chain": 500,
+    "draws_total": 1000,
+    "ess_bulk": {
+      "covar_module.kernels.0.base_kernel.lengthscale_prior": 602.405863421313,
+      "covar_module.kernels.0.outputscale_prior": 649.0183288902416,
+      "covar_module.kernels.1.variance_prior": 849.6635487695786,
+      "likelihood.noise_covar.noise_prior": 776.7104612764434
+    },
+    "ess_bulk_min": 602.405863421313,
+    "ess_tail": {
+      "covar_module.kernels.0.base_kernel.lengthscale_prior": 502.6181016635812,
+      "covar_module.kernels.0.outputscale_prior": 662.5058914752248,
+      "covar_module.kernels.1.variance_prior": 627.841729671124,
+      "likelihood.noise_covar.noise_prior": 578.2567932948699
+    },
+    "ess_tail_min": 502.6181016635812,
+    "final_step_size_by_chain": [
+      0.47063635349887833,
+      0.42284941431499096
+    ],
+    "initial_step_size": 0.1,
+    "max_tree_depth": 8,
+    "r_hat_max": 1.002489522142068,
+    "r_hat_rank_normalized": {
+      "covar_module.kernels.0.base_kernel.lengthscale_prior": 1.0011566039709776,
+      "covar_module.kernels.0.outputscale_prior": 1.0012317832909678,
+      "covar_module.kernels.1.variance_prior": 1.002489522142068,
+      "likelihood.noise_covar.noise_prior": 1.0012107890929356
+    },
+    "sampler": "nuts_e1",
+    "step_size_adapted": true,
+    "target_accept_prob": 0.8,
+    "warmup_per_chain": 500
+  },
+  "scope": {
+    "kernel_labeling": "the linear component is labeled bias and the SE component truth; licensed here because generate_toy_data constructed the data that way, and a modeling choice the analyst must justify elsewhere",
+    "mauna_loa_contact": "none",
+    "synthetic_only": true
+  },
+  "title": "Toy debias demonstration: evaluation and mitigation from one posterior"
+}

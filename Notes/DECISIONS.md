@@ -5716,3 +5716,123 @@ to be amended later merely to insert them. STOP before Ready or merge. NOT autho
 second correction pass, restoring/applying/dropping stash `5280d1e1…`, D59 work, evidence
 or figure changes, poster-repository work, the captions themselves, Della contact, new
 computation, holdout access, BMS*, Ready, or merge.
+
+## D67: Case E toy debias demonstration — evaluation and mitigation from one posterior — 2026-08-13
+
+**Problem:** The thesis (ch. 5) and the accepted proposal set two goals for the
+BI*/BMS*-GP program: model evaluation via data priors, and bias mitigation.
+Manuscript sections 1-6 and 8 deliver the first; section 7
+(`docs/paper-sie-jmp/07-debias-bridge.md`) was still a stub, so the second goal
+appeared in the paper only as a promise. The demonstration had to be small,
+in-paper, and honest, and it had to be built without touching the D58 Mauna Loa
+preregistration boundary, which reserves the real-data development for the
+companion line.
+
+**Decision:** Added `experiments/toy_debias_demo.py` and the run directory
+`runs/toy_debias_demo/` (`results.json`, `README.md`, `debias_figure.png`), and
+replaced the section 7 stub with the full section carrying that one figure.
+
+Data: `bistar_gp.generate_toy_data()` at its defaults (N=20 on [-10, 10], seed
+42, observation noise 0.5, `bias_slope=0.25`, y = sin(x) + 0.25x + noise), so
+the true process and the bias process are both known by construction.
+
+Fit: SE + linear additive kernel under `PRIOR_CONFIGS["toy_elicited_n20"]`, the
+registry entry byte-identical to `experiments/prior_sensitivity_study.py`
+STUDY_CONFIGS `toy_elicited`. Hyperparameters from the CORRECTED sampler path
+`bistar_gp.fit.fit_hmc` (`nuts_e1`); the pre-correction Pyro NUTS setup is not
+used. Two chains, seeds 20260813 and 20260814, 500 warmup + 500 retained draws
+each (1,000 pooled), `target_accept_prob` 0.8, `max_tree_depth` 8, initial step
+size 0.1 with adaptation. INIT DISCLOSURE: both chains start at the SAME MAP
+point (`fit_map`, torch seed 42, 500 iterations, lr 0.05), so the reported
+rank-normalized R-hat is WITHIN-MODE evidence about mixing around the
+optimizer's mode, not between-mode agreement from dispersed starts; the toy
+hyperparameter posterior is multi-basin (D12). The disclosure is carried in
+`results.json` (`config.init_strategy`), in the run README, and in the section
+prose, per the standing requirement from the Case C review.
+
+Decomposition: the package machinery only. `bistar_gp.decompose
+.decompose_additive_gp` for the SE (truth-candidate) and linear
+(bias-candidate) components, and `decompose_component` on the summed kernel
+blocks for the joint posterior, so the inter-component cross-covariance is
+retained rather than dropped by summing component covariances. Debiasing by
+marginalization: analytic within a draw (the returned component posterior
+already forms the marginal of the joint conditional Gaussian) and Monte Carlo
+across draws for the hyperparameters. Bands are latent-function bands with no
+observation noise, matching the convention documented in
+`experiments/honest_band_decomposition.py`; summary sds use the law of total
+variance, and reported intervals are EXACT central intervals of the draw
+mixture obtained by CDF bisection rather than mean ± 2 sd approximations.
+
+Slope read: gpytorch's `LinearKernel` gives k(x, x') = v x x', so the linear
+component's posterior mean is exactly linear and its posterior covariance
+exactly Var(b|θ) x xᵀ. Both properties are verified per draw and the worst
+deviations recorded (4.456e-13 for linearity, 1.896e-15 for rank-one variance),
+which licenses reading the slope moments off the decomposition output instead
+of introducing a separate formula.
+
+**Alternatives considered:** Importing `bistar_gp.debias.decompose_model_hmc`
+was rejected because it discards each draw's conditional covariance
+(`bistar_gp/debias.py:206`), so its bands show across-draw mean spread alone
+and would have understated the debiased uncertainty and wrecked the coverage
+number. Importing `total_variance_decomposition` from
+`experiments/honest_band_decomposition.py` was rejected because it returns
+summary bands only, whereas the recovery numbers need per-draw component
+moments for the mixture quantiles; that helper's total-variance and
+latent-band conventions are followed and cited, not copied, and this script
+makes a single consistent pass over the package decomposition. A mean ± 2 sd
+band was rejected in favour of exact mixture quantiles. Random subsampling of
+draws (the `np.random.choice` convention in the older helpers) was rejected in
+favour of using all 1,000 draws, which removes an RNG dependence from the
+reported numbers. Any Mauna Loa material was excluded by scope.
+
+**Result:** First run kept; no iteration toward better numbers. Diagnostics
+clean: 0 divergences, rank-normalized R-hat at most 1.0025, bulk ESS at least
+602.4, tail ESS at least 502.6, tree-depth saturation rate 0.0, and 1,000 of
+1,000 decompositions successful.
+
+Recovery, with uncertainty layers, all in
+`runs/toy_debias_demo/results.json`:
+- bias-slope posterior mean 0.197, sd 0.072, 95% central interval
+  [0.033, 0.323], which CONTAINS the generating 0.250 (posterior layer);
+- RMSE against sin(x) on a 201-point grid inside the training span: composite
+  posterior mean 1.430, debiased posterior mean 0.403, a reduction of 1.028 or
+  71.9% (between-chain scatter 1.431/1.430 and 0.403/0.402);
+- coverage of sin(x) by the debiased 95% band 0.866 (174 of 201 grid points),
+  i.e. mild UNDERCOVERAGE, reported as it came out;
+- scale references on the same grid: the drift 0.25x has RMS 1.451 and sin(x)
+  has RMS 0.690, so the composite arm's discrepancy essentially reproduces the
+  drift it was fitted to include, and the residual 0.403 is not negligible;
+- mean band width 1.836 debiased versus 1.032 composite, i.e. the data
+  constrain the SUM of the components far more tightly than either component
+  alone. That number is what makes the section 8.5 uncertainty-floor sentence
+  concrete, and section 7 now states the connection.
+
+Determinism: byte-stable. Two consecutive runs reproduced BOTH `results.json`
+and `debias_figure.png` byte for byte (results.json sha256
+`e73f067276e7bd61026dbcde835d9e1461d5dd604a448cd5176e3b0687eaaa3c`, figure
+sha256 `6ebd195f8bf9c224361853ba16b36af1f2e4010ffec912fb6bb44766b5e58907`) on
+python 3.13.11 / torch 2.10.0 / numpy 1.26.4 / arviz 0.23.4. Byte-stability is
+asserted within one environment only; across environments the README pins
+numeric tolerances (recovery 1e-6 absolute, R-hat 1e-3, ESS 1 effective draw).
+Rerun: `python experiments/toy_debias_demo.py` from the repository root, about
+one minute on a laptop CPU, no network and no new dependencies. Figure size
+264 KiB, well under the 2 MB limit.
+
+Scope, stated in the section, the run README, and `results.json`
+(`scope.mauna_loa_contact = "none"`): synthetic toy only; no Mauna Loa script
+or artifact is imported, executed, or cited, so the D58 preregistration
+boundary is untouched, and no real-data number is reported or forecast.
+KERNEL-LABELING CAVEAT: identifying the linear component as bias is a modeling
+CHOICE, licensed here only because the generator produced the drift. The
+decomposition will split an additive posterior whichever way the labels are
+assigned, so in an application the analyst must justify the labeling on
+substantive grounds before a marginalization result means what its name
+suggests.
+
+**Status:** Section 7 fleshed out at `docs/paper-sie-jmp/07-debias-bridge.md`
+with the one figure and evidence-tier footnotes; the derived
+`docs/paper-sie-jmp/tex/sections/07-debias.tex` still holds the old stub text
+and needs regeneration through `docs/paper-sie-jmp/build_tex.py` at assembly
+time. No review round has been run on this case yet (HANDOFF §4 protocol not
+yet applied to Case E). No git mutation was performed by the implementing
+session.
