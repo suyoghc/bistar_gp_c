@@ -1,4 +1,51 @@
-# Fix pass 1: review-round synthesis (revision 2, 2026-09-08, Fable)
+# Fix pass 1: review-round synthesis (revision 3, 2026-09-08, Fable)
+
+Revision 3 adds the two package-only channels (Kimi K3, GLM 5.3), their verification, and fix pass 1c. Revisions 1 and 2 follow unchanged below the revision-3 section.
+
+## Revision 3: package-only channels, verification, pass 1c
+
+### Channels, complete
+
+| Channel | Access | Verdict | Output |
+|---|---|---|---|
+| Codex gpt-6-astra xhigh | full repo | REVISE (R1-R10) | `fix1_codex_review.md` |
+| Fable 5.1 fresh instance | full repo | APPROVE (F1-F7) | `fix1_fable51_review.md` |
+| Kimi K3 (`moonshotai/kimi-k3`, OpenRouter, package-only) | brief + HANDOFF §2-3 + section 02 + notation + work order + report + cumulative diff 71540836..856b911 (294 KB, 80.6k prompt tokens) | APPROVE (K3-1..K3-6) | `fix1_kimi_k3_review.md` |
+| GLM 5.3 (`z-ai/glm-5.3`, OpenRouter, package-only, same package) | same | APPROVE (F1-F8, GLM numbering) | `fix1_glm_5_3_review.md` |
+
+Both package-only channels reviewed the committed head `856b911` (pass 1 + 1b). Their first attempts returned no usable text because both are thinking models and spent the whole completion budget on reasoning (GLM: 19998 of 20000 tokens, one character of answer); the rerun capped reasoning and raised the answer budget (`scratchpad/fix1_review/openrouter_review.py`; raw responses kept beside the outputs).
+
+### Verification of the package-only findings (probes on the committed head, `probe_round3.py`)
+
+| ID | Claim | Status at `856b911` | Adjudicated | Pass 1c |
+|---|---|---|---|---|
+| K3-1 | implicit `run_bms_star(metric_names=None)` roster lacks `pw_kl_vcal` in a process that never imported metrics_v2, with no warning | CONFIRMED (fresh-process probe: False) | S4: pre-existing behaviour (identical before the pass); no experiment script uses the implicit roster (all pass explicit lists) | warning added when the primary metric is absent; roster unchanged; cold-process pin |
+| K3-2 = GLM F2 = R4/F5 | `metric_name` optional | disclosed | S4, author accepted optional 2026-09-08 | none |
+| K3-3 = GLM F4 | weighted path returns all-NaN posteriors silently on a NaN G | REFUTED as stated: the head raises `ValueError` from `hard_win_statistics` | S4 (message names a helper) | entry guard with the caller's name; pin |
+| K3-4 | `diag(cov) != std**2` when a conditional variance is numerically negative | CONFIRMED (0.019879 vs 0.019880 with an injected -1e-6 diagonal) | S4 | clipped diagonal written back into the accumulated covariance; pin |
+| K3-5 | `PredictiveList` slicing drops the bookkeeping | CONFIRMED by design | S4, not adopted: the bookkeeping is the extraction history (Codex recommended exactly this); noted in the report | none |
+| K3-6 | downstream parsing of single-kernel site names unverified | REFUTED: pinned by `test_fix1_sites.py` and by Fable 5.1's sensitivity probe | not a finding | none |
+| GLM F1 | `aggregate_convention` returns a UNIFORM posterior for NaN or +inf under pooled/rowmin | CONFIRMED ([0.5, 0.5]; expected_posterior gives NaN) | S3 (latent; package-produced G is finite) | finite-G guard at entry; finite-input arithmetic untouched; pin |
+| GLM F3 | Mauna call-site deviation | justified | S4 | none |
+| GLM F5 | report sentence "a legacy positional call still works" false after 1b | CONFIRMED | S4 | report correction |
+| GLM F6 | report arithmetic 1253 + 79 | CONFIRMED (pre-existing collected was 1252) | S4 | report correction |
+| GLM F7 | `samples` dual meaning | justified (poster driver read-only) | S4, fix pass 2 | report note |
+| GLM F8 | unknown singleton gets a misleading "not requested" message | CONFIRMED | S4 | names the unknown component; pin |
+
+GLM's NEEDS-REPO-VERIFICATION items (suite counts, oracle hashes, the two callers outside the editable set, `_guarded_neg_log` NaN handling) are all settled by the repo-access channels' runs and by the pinned tests.
+
+### Fix pass 1c (applied 2026-09-08, same branch)
+
+Files: `bistar_gp/{aggregation_v3,bms_star,debias}.py`; `tests/test_fix1_review_round.py` (+3), `tests/test_fix1_roles.py` (+1). Verification: full suite in the fix worktree, plain run: 1346 passed, 5 skipped, 1 failed (the known dependency-lock drift test), 493.11 s (8 min 13 s); collected 1352 = 1348 + 4 new. Log: scratchpad `fixpass1/full_suite_1c_worktree.log`. Case E oracle: byte-identical against the worktree package (three sha256 identical, 60.8 s).
+
+### Verdict, all four channels
+
+Two APPROVE (Fable 5.1, Kimi K3, GLM 5.3 make three) and one REVISE (Codex) whose queue is closed by pass 1b; no S1 at any point; the one S2 (R7) closed in 1b; every S3 closed in 1b or 1c except none outstanding. On (b), all four channels: keep the pass, do not rewrite; pass 1b is the concise form. Remaining for fix pass 2: required `metric_name` with its two callers, removal of the `samples` dual meaning once the poster driver is editable, wiring `check_external_targets` into the case-A script, replacing Case C's cross-branch import with `aggregate_convention`, and a trim of provenance prose in docstrings.
+
+---
+
+# Revision 2 (2026-09-08)
+
 
 Revision 1 (2026-09-07) covered the Codex channel. Revision 2 adds the
 Fable 5.1 channel, records the adjudication of both, and reports fix pass

@@ -157,3 +157,46 @@ Verification: full suite in the fix worktree, plain run (no fixture variable): 1
 worktree package: byte-identical (65c9ff5f / c1153549 / 7096cd6e), 60.3 s.
 Not changed: `metric_name` stays optional pending the author's R4/F5
 disposition; docstring provenance prose was not trimmed.
+
+## Corrections after the package-only channels (added 2026-09-08, Fable)
+
+1. FIX-6 signature statement above ("a legacy positional call still works"):
+   after pass 1b it holds only for calls that omit `log_mlls`; a positional
+   `log_mlls` under the default uniform weighting now raises by design
+   (GLM F5).
+2. Verification item 2 above: the pass-1 arithmetic reads "1331 = 1253
+   pre-existing + 79 new"; the pre-existing collected count is 1252 (1249
+   passed + 1 failed + 2 skipped at the driver baseline), so 1252 + 79 = 1331
+   (GLM F6).
+3. `PredictiveList` slicing and concatenation return a plain list without the
+   extraction bookkeeping (Kimi K3-5). Design choice kept: the bookkeeping is
+   the history of extraction, not a property maintained through later list
+   mutation (the Codex fix-pass review recommended exactly this).
+4. `samples` on draw paths holds the conditional means (marked by
+   `samples_kind`) because the read-only poster driver reads and rebuilds it;
+   removal is a fix pass 2 item once that driver is editable (GLM F7).
+
+## Fix pass 1c (added 2026-09-08, Fable): package-only channel folds
+
+- `aggregation_v3.py` `soft_transfer_weighted`: finite-G validation at entry
+  with its own message. The committed pass-1b head already raised on a NaN
+  matrix (from `hard_win_statistics`), so the "silent all-NaN posterior"
+  claim of Kimi K3-3 and GLM F4 is refuted as stated; the entry check only
+  names the caller (S4).
+- `bms_star.py` `aggregate_convention`: finite-G validation at entry (GLM F1:
+  the Case A script's `tot > 0 else uniform` tail returned a uniform posterior
+  for a NaN matrix; on finite input that tail is dead, so the pinned
+  bit-identity is untouched).
+- `bms_star.py` `run_bms_star`: on the implicit `metric_names=None` path,
+  logs a warning when the primary metric is not in the registered roster
+  (Kimi K3-1); the roster itself is unchanged so existing implicit calls keep
+  their outputs.
+- `debias.py` `_DrawAccumulator.add_draw`: the clipped diagonal is written
+  back into the accumulated covariance so `diag(cov) == std**2` holds when a
+  conditional variance is numerically negative (Kimi K3-4).
+- `debias.py` `DecompositionResult.group`: an unknown singleton name raises
+  "unknown component" instead of asking for an impossible group request
+  (GLM F8).
+- Tests: three added to `tests/test_fix1_review_round.py`, one to
+  `tests/test_fix1_roles.py`.
+- Verification: full suite in the fix worktree, plain run: 1346 passed, 5 skipped, 1 failed (the known dependency-lock drift test), 493.11 s (8 min 13 s); collected 1352 = 1348 + 4 new. Log: scratchpad `fixpass1/full_suite_1c_worktree.log`. Case E oracle byte-identical (60.8 s).

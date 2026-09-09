@@ -49,10 +49,16 @@ was reviewed against the brief `docs/paper-sie-jmp/prompts/code-review-fix1-revi
 |---|---|---|---|
 | Codex gpt-6-astra xhigh | full repo | `fix1_codex_review.md` | REVISE (R1-R10) |
 | Fable 5.1, fresh instance | full repo | `fix1_fable51_review.md` | APPROVE (F1-F7) |
-| Kimi K3 (`moonshotai/kimi-k3`) | package-only | `fix1_kimi_k3_review.md` | pending |
-| GLM 5.3 (`z-ai/glm-5.3`) | package-only | `fix1_glm_5_3_review.md` | pending |
+| Kimi K3 (`moonshotai/kimi-k3`) | package-only (OpenRouter) | `fix1_kimi_k3_review.md` | APPROVE (K3-1..K3-6) |
+| GLM 5.3 (`z-ai/glm-5.3`) | package-only (OpenRouter) | `fix1_glm_5_3_review.md` | APPROVE (F1-F8) |
 
 Implementer's report: `fix1_report.md` (with dated addenda). Adjudication and
 the pass 1b record: `fix1_synthesis.md`. Diffs and snapshots: `fix1_bundle/`
 (`fix1_tracked.diff` + `fix1_new_files.txt` = the reviewed pass-1 state;
 `fix1b_delta.diff` = what pass 1b changed; `fix1b_cumulative_tracked.diff`).
+
+Fix pass 1b (review-round folds) and 1c (package-only channel folds) are
+recorded in `fix1_synthesis.md` revisions 2 and 3; the package-only channels
+reviewed the committed head `856b911` from the package
+`scratchpad/fix1_review/pkg/package_*.md` (not committed; reconstructible from
+the listed inputs).
