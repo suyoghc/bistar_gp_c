@@ -93,6 +93,27 @@ def test_appendix_warning_fires_only_on_the_implicit_path(caplog):
     assert _appendix_warnings(caplog.records) == []
 
 
+def test_implicit_roster_announces_a_missing_primary_metric():
+    """Kimi K3-1: in a process that never imported metrics_v2 the implicit
+    roster lacks pw_kl_vcal; the roster is unchanged, the omission is logged."""
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = (
+        "import logging, numpy as np\n"
+        "logging.basicConfig(level=logging.WARNING)\n"
+        "from bistar_gp.bms_star import GPPosteriorSample, run_bms_star, METRICS\n"
+        "from bistar_gp.candidates import CandidateResult\n"
+        "gp = [GPPosteriorSample(mean=np.zeros(3), cov=np.eye(3), hyperparameters={})]\n"
+        "c = [CandidateResult(name='a', mean=np.ones(3), cov=np.eye(3), noise_var=1.0, parameters={}),"
+        " CandidateResult(name='b', mean=np.zeros(3), cov=np.eye(3), noise_var=1.0, parameters={})]\n"
+        "out = run_bms_star(gp, c, taus=np.array([1.0]))\n"
+        "print('ROSTER', 'pw_kl_vcal' in out, len(out))\n"
+    )
+    res = subprocess.run([sys.executable, "-c", code], cwd=repo, capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr
+    assert "ROSTER False 10" in res.stdout
+    assert "primary metric pw_kl_vcal is not in the implicit roster" in res.stderr
+
+
 def test_withdrawn_registry_contents():
     assert "runs/fit_method_metric_comparison/samples_hmc.npz" in WITHDRAWN_CACHES
     assert "runs/toy_tau_metric_comparison/" in WITHDRAWN_CACHES

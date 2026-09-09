@@ -691,6 +691,11 @@ def aggregate_convention(G_matrix: np.ndarray, tau: float, variant: str) -> np.n
           candidates, then average (van Bork et al. Eq. 4).
     """
     G = np.asarray(G_matrix, dtype=float)
+    if not np.all(np.isfinite(G)):
+        # the Case A script's `tot > 0 else uniform` tail would otherwise
+        # return a uniform posterior for a NaN matrix (GLM F1); on finite
+        # input that tail is dead, so the arithmetic below is unchanged
+        raise ValueError("aggregate_convention requires a finite G matrix")
     if variant == "pooled":
         G_eff = G
     elif variant == "rowmin":
@@ -768,6 +773,15 @@ def run_bms_star(gp_samples: List[GPPosteriorSample],
                 "run_bms_star: scoring appendix-only metric(s) %s because "
                 "metric_names was not given; W1 makes %s the primary metric",
                 appendix, PRIMARY_METRIC)
+        if PRIMARY_METRIC not in metric_names:
+            # The implicit roster is whatever is registered at call time; the
+            # primary metric registers on first use of metrics_v2 (Kimi K3-1).
+            # The roster is left as it is so existing implicit calls keep
+            # their outputs; the omission is announced instead.
+            logger.warning(
+                "run_bms_star: the primary metric %s is not in the implicit "
+                "roster (metrics_v2 not imported yet); pass metric_names "
+                "explicitly to score it", PRIMARY_METRIC)
 
     _assert_candidate_universes_consistent(candidate_results)
 

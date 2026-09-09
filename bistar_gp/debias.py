@@ -119,7 +119,10 @@ class DecompositionResult:
                 conditional_means=np.zeros((n_draws, n)),
                 conditional_vars=np.zeros((n_draws, n)),
                 within_var_mean=zeros, between_var=zeros, n_draws=n_draws)
-        if len(key) == 1 and key[0] in self.components:
+        if len(key) == 1:
+            if key[0] not in self.components:
+                raise KeyError(f"unknown component {key[0]!r}; components are "
+                               f"{list(self.components)}")
             return self.components[key[0]]
         if key == self.group_key(self.components.keys()) and self.full is not None:
             return self.full
@@ -231,7 +234,9 @@ class _DrawAccumulator:
             m = np.array(mean_t.numpy() if hasattr(mean_t, "numpy") else mean_t, dtype=float)
             c = np.asarray(cov_t.numpy() if hasattr(cov_t, "numpy") else cov_t, dtype=float)
             c = 0.5 * (c + c.T)
-            record[target] = (m, np.clip(np.diag(c), 0.0, None), c)
+            v = np.clip(np.diag(c), 0.0, None)
+            np.fill_diagonal(c, v)      # keep diag(cov) == std**2 when a diagonal is numerically negative (K3-4)
+            record[target] = (m, v, c)
         for target, (m, v, c) in record.items():
             self.means[target].append(m)
             self.vars[target].append(v)

@@ -411,6 +411,10 @@ def soft_transfer_weighted(G_matrix: np.ndarray, tau: float,
     High marginal-likelihood samples contribute more.
     """
     G = np.asarray(G_matrix, dtype=float)
+    if not np.all(np.isfinite(G)):
+        # same rule as soft_transfer (review K3-3 / GLM F4): a non-finite
+        # divergence is never a score; NaN used to propagate silently here
+        raise ValueError("soft_transfer_weighted: G_matrix contains non-finite entries")
     n_psi, n_theta = G.shape
     lw = np.asarray(log_weights, dtype=float).copy()
     lw[~np.isfinite(lw)] = -np.inf          # a non-finite draw weight is absent support

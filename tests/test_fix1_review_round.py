@@ -165,6 +165,49 @@ def test_f4_soft_transfer_rejects_non_finite_G():
         soft_transfer(np.array([[0.0, np.inf]]), 1.0, ["a", "b"])
 
 
+def test_round3_weighted_and_convention_paths_reject_non_finite_G():
+    """Kimi K3-3 / GLM F4: the weighted path returned all-NaN posteriors
+    silently; GLM F1: aggregate_convention returned a UNIFORM posterior."""
+    from bistar_gp.bms_star import aggregate_convention
+    nan_G = np.array([[0.0, 1.0], [np.nan, 0.5]])
+    with pytest.raises(ValueError, match="soft_transfer_weighted: G_matrix contains non-finite"):
+        soft_transfer_weighted(nan_G, 1.0, ["a", "b"], np.zeros(2))
+    for G in (nan_G, np.full((2, 2), np.inf)):
+        for variant in ("pooled", "rowmin", "expected_posterior"):
+            with pytest.raises(ValueError, match="finite G matrix"):
+                aggregate_convention(G, 1.0, variant)
+
+
+def test_round3_negative_conditional_diagonal_keeps_cov_and_std_consistent(toy, monkeypatch):
+    """Kimi K3-4: a numerically negative conditional variance was clipped in
+    std but not in the accumulated covariance."""
+    model, lik, x, y, x_test = toy
+    real = debias.decompose_component
+
+    def neg_diag(*args, **kwargs):
+        m, c = real(*args, **kwargs)
+        c = c.clone()
+        c[0, 0] = -1e-6
+        return m, c
+
+    monkeypatch.setattr(debias, "decompose_component", neg_diag)
+    res = decompose_model_hmc(model, lik, x, y, x_test, _samples([1.0, 2.0], [1.0, 0.5], [0.05, 0.1], [0.1, 0.2]),
+                              kernel_builder=build_toy_kernels, n_posterior_samples=2,
+                              rng=np.random.default_rng(0))
+    for comp in list(res.components.values()) + [res.full]:
+        assert np.allclose(np.diag(comp.cov), comp.std ** 2, atol=1e-15)
+        assert np.all(comp.conditional_vars >= 0.0)
+
+
+def test_round3_unknown_singleton_names_the_component(toy):
+    """GLM F8: a typo'd singleton used to be told to request a group."""
+    model, lik, x, y, x_test = toy
+    from bistar_gp.debias import decompose_model
+    res = decompose_model(model, lik, x, y, x_test, n_samples=2)
+    with pytest.raises(KeyError, match="unknown component 'typo'"):
+        res.group(["typo"])
+
+
 def test_r5_class_names_need_one_label_per_column():
     G = np.array([[0.0, 1.0], [1.0, 0.0]])
     with pytest.raises(ValueError):

@@ -5806,3 +5806,19 @@ Suite in this worktree: 1342 passed, 5 skipped (two fixture-gated pins needing
 `metric_name` stays optional by author disposition (2026-09-08); required in fix pass 2 with
 `metrics_v2.py:398` and `mcse_strategy.py:177`. Delta against the reviewed state:
 `runs/code_review_2026_09/fix1_bundle/fix1b_delta.diff`.
+
+**Update 2 (2026-09-08, pass 1c):** the two package-only channels reviewed the committed
+head `856b911` through OpenRouter (Kimi K3 `moonshotai/kimi-k3` APPROVE K3-1..K3-6; GLM 5.3
+`z-ai/glm-5.3` APPROVE F1-F8; record and verification in
+`runs/code_review_2026_09/fix1_synthesis.md` revision 3). Folds: finite-G validation at
+entry of `soft_transfer_weighted` (the head already raised from `hard_win_statistics`; the
+"silent NaN" claim of K3-3/GLM-F4 is refuted as stated) and of `aggregate_convention` (GLM F1:
+the Case A script's `tot > 0 else uniform` tail returned a uniform posterior for a NaN
+matrix; finite-input arithmetic untouched); a warning on the implicit `run_bms_star` path
+when the primary metric is not in the registered roster (K3-1; the roster is unchanged; no
+experiment script uses the implicit roster); the clipped conditional variance written back
+into the accumulated covariance so `diag(cov) == std**2` under a numerically negative
+diagonal (K3-4); an unknown singleton in `DecompositionResult.group` names the component
+(GLM F8). Not adopted: `PredictiveList` slice bookkeeping (K3-5; the record is the extraction
+history). Tests: three in `tests/test_fix1_review_round.py`, one in `tests/test_fix1_roles.py`.
+Suite 1346 passed, 5 skipped, 1 known failure; Case E oracle byte-identical.
