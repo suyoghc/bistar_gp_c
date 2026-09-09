@@ -42,6 +42,23 @@ Files: `bistar_gp/{aggregation_v3,bms_star,debias}.py`; `tests/test_fix1_review_
 
 Two APPROVE (Fable 5.1, Kimi K3, GLM 5.3 make three) and one REVISE (Codex) whose queue is closed by pass 1b; no S1 at any point; the one S2 (R7) closed in 1b; every S3 closed in 1b or 1c except none outstanding. On (b), all four channels: keep the pass, do not rewrite; pass 1b is the concise form. Remaining for fix pass 2: required `metric_name` with its two callers, removal of the `samples` dual meaning once the poster driver is editable, wiring `check_external_targets` into the case-A script, replacing Case C's cross-branch import with `aggregate_convention`, and a trim of provenance prose in docstrings.
 
+### Fix pass 2 note on the required `metric_name` (2026-09-08)
+
+The two package callers that omit the metric are not equal. `metrics_v2.py:398`
+has the name in scope and can pass it. `mcse_strategy.py:177` aggregates a
+pooled G matrix inside `mcse_strategy_estimate(G, tau, names, ...)`, which
+receives no metric identity at all; requiring the keyword there means adding
+a `metric_name` parameter to an M2c function (`docs/m2c_freeze/
+gtoy_profile_freeze_v1.17.json` records its contract and
+`tests/test_m2c_mcse_strategy.py` pins it) or stamping a placeholder, which is
+what the work order forbade. The author's options for fix pass 2: (i) keep
+`metric_name` optional as a documented rule ("a pure aggregation over a G
+matrix carries the metric identity only when the caller has it") and pass it
+at the one caller that has it; (ii) thread `metric_name` through
+`mcse_strategy_estimate` as an optional keyword recorded on its report. Both
+leave the M2c arithmetic untouched. Pushed as PR #42 with this note; no
+pass-2 code was written.
+
 ---
 
 # Revision 2 (2026-09-08)
