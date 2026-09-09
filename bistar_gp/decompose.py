@@ -8,6 +8,7 @@ decompose posterior predictions into individual component GPs.
 Pure PyTorch — no GPyTorch dependency. This is the mathematical core.
 """
 
+import numpy as np
 import torch
 from typing import List, Tuple, Optional
 
@@ -119,3 +120,41 @@ def sample_from_component(
 
     z = torch.randn(n_samples, n, dtype=mean_i.dtype, device=mean_i.device)
     return mean_i.unsqueeze(0) + z @ L.T
+
+
+def mixture_central_interval(mean_draws, var_draws, mass=0.95, n_iter=100):
+    """Exact central interval of an equally weighted Gaussian mixture.
+
+    ``mean_draws`` and ``var_draws`` have shape (n_draws, n_points); the
+    return is (lo, hi), each of shape (n_points,). Quantiles are obtained by
+    bisecting the mixture CDF, so the interval is the mixture's own central
+    ``mass`` interval rather than a Gaussian approximation to it (ported from
+    experiments/toy_debias_demo.py in the 2026-09 review fix pass; the
+    reference implementation there is unchanged).
+    """
+    from scipy.special import ndtr
+
+    mean_draws = np.asarray(mean_draws, dtype=float)
+    var_draws = np.asarray(var_draws, dtype=float)
+    if mean_draws.ndim == 1:
+        mean_draws = mean_draws[None, :]
+        var_draws = var_draws[None, :]
+    if mean_draws.shape != var_draws.shape:
+        raise ValueError("mean_draws and var_draws must have the same shape")
+    if not (0.0 < mass < 1.0):
+        raise ValueError("mass must lie strictly between 0 and 1")
+    sd = np.sqrt(np.clip(var_draws, 1e-24, None))
+    tail = (1.0 - mass) / 2.0
+
+    def quantile(p):
+        lo = (mean_draws - 12.0 * sd).min(axis=0)
+        hi = (mean_draws + 12.0 * sd).max(axis=0)
+        for _ in range(n_iter):
+            mid = 0.5 * (lo + hi)
+            cdf = ndtr((mid[None, :] - mean_draws) / sd).mean(axis=0)
+            below = cdf < p
+            lo = np.where(below, mid, lo)
+            hi = np.where(below, hi, mid)
+        return 0.5 * (lo + hi)
+
+    return quantile(tail), quantile(1.0 - tail)

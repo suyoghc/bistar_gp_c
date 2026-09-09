@@ -74,6 +74,15 @@ def select_hmc_sites(sample_keys):
     """
     keys = list(sample_keys)
     kernel_keys = [k for k in keys if k.startswith("covar_module.kernels.")]
+    if not kernel_keys:
+        # Single-kernel models register their one kernel directly as
+        # covar_module (no AdditiveKernel wrapper), so its sites carry no
+        # ".kernels.{i}." segment: "covar_module.outputscale_prior" and
+        # "covar_module.base_kernel.lengthscale_prior". Before the 2026-09
+        # review fix (FIX-1) these names were dropped here and rejected by
+        # apply_hp_value, so every predictive of a single-kernel model was
+        # built at the fresh model's initialization kernel values.
+        kernel_keys = [k for k in keys if k.startswith("covar_module.")]
     if not kernel_keys:  # archives predating the covar_module naming
         kernel_keys = [k for k in keys if k.startswith("kernel_components.")]
     if "noise_covar.noise_prior" in keys:
@@ -96,8 +105,19 @@ def apply_hp_value(model, likelihood, pyro_name, value):
         likelihood.noise = value
         return True
     parts = pyro_name.split(".")
+    if len(parts) < 2:
+        return False
     if parts[0] == "covar_module" and parts[1] == "kernels":
         comp_idx = int(parts[2])
+    elif parts[0] == "covar_module":
+        # Single-kernel site name (FIX-1): the kernel IS covar_module, so the
+        # name maps to component 0 exactly when the model has one component
+        # registered directly as covar_module; any other model returns False.
+        components = getattr(model, "kernel_components", None)
+        if not components or len(components) != 1 \
+                or model.covar_module is not components[0]:
+            return False
+        comp_idx = 0
     elif parts[0] == "kernel_components":
         comp_idx = int(parts[1])
     else:

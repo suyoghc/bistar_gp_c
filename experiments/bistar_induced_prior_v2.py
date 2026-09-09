@@ -169,7 +169,7 @@ def main():
         for model_name, ps in param_spaces.items():
             ip = compute_induced_prior(
                 ps, gp_samples, x_eval,
-                log_mlls=log_mlls,
+                weighting="uniform",   # fit_hmc caches are posterior draws (FIX-6)
                 metric_name=args.metric,
                 tau=args.tau,
                 n_param_samples=args.n_param_samples,

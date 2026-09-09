@@ -80,36 +80,51 @@ INTERPRETATIONS = {
 }
 
 
-def compute_debiased(result, truth_components, bias_components):
+# Every truth and bias set of the three interpretations, requested as joint
+# groups at decomposition time (2026-09 review FIX-2d). Empty, singleton and
+# all-component sets are derived by DecompositionResult.group; the others
+# need their summed kernel blocks conditioned per draw.
+INTERPRETATION_GROUPS = (
+    [interp["truth"] for interp in INTERPRETATIONS.values()]
+    + [interp["bias"] for interp in INTERPRETATIONS.values()]
+)
+
+
+def compute_debiased(result, truth_components, bias_components, mass=0.95):
     """
-    Combine components labeled as truth → debiased signal.
-    Combine components labeled as bias → removed bias.
+    Combine components labeled as truth: the debiased signal.
+    Combine components labeled as bias: the removed bias.
+
+    Each set is summarized by its JOINT posterior (DecompositionResult.group),
+    conditioned on the full training covariance, with the law-of-total-
+    variance sd over hyperparameter draws and the exact mixture central
+    interval. The previous construction added component variances as if the
+    components were independent, which drops every cross-covariance term and
+    the between-draw term (2026-09 review FIX-2d). Groups must have been
+    requested at decomposition time: pass ``groups=INTERPRETATION_GROUPS``
+    to decompose_model / decompose_model_hmc, otherwise this raises.
     """
-    n_test = len(result.x_test)
+    try:
+        truth = result.group(truth_components)
+        bias = result.group(bias_components)
+    except KeyError as exc:
+        raise KeyError(
+            f"compute_debiased needs the joint group posteriors; decompose with "
+            f"groups=INTERPRETATION_GROUPS ({exc})") from exc
 
-    # Truth
-    truth_mean = np.zeros(n_test)
-    truth_var = np.zeros(n_test)
-    for name in truth_components:
-        if name in result.components:
-            comp = result.components[name]
-            truth_mean += comp.mean
-            truth_var += comp.std ** 2  # independent components
-
-    # Bias
-    bias_mean = np.zeros(n_test)
-    bias_var = np.zeros(n_test)
-    for name in bias_components:
-        if name in result.components:
-            comp = result.components[name]
-            bias_mean += comp.mean
-            bias_var += comp.std ** 2
-
+    truth_lo, truth_hi = truth.central_interval(mass)
+    bias_lo, bias_hi = bias.central_interval(mass)
     return {
-        "truth_mean": truth_mean,
-        "truth_std": np.sqrt(truth_var),
-        "bias_mean": bias_mean,
-        "bias_std": np.sqrt(bias_var),
+        "truth_mean": truth.mean,
+        "truth_std": truth.std,
+        "truth_lo": truth_lo,
+        "truth_hi": truth_hi,
+        "bias_mean": bias.mean,
+        "bias_std": bias.std,
+        "bias_lo": bias_lo,
+        "bias_hi": bias_hi,
+        "interval_mass": mass,
+        "n_draws": truth.n_draws,
     }
 
 
@@ -375,7 +390,7 @@ def main():
         print_hyperparameters(model, likelihood)
 
         result = decompose_model(model, likelihood, x_train, y_train,
-                                 x_pred, n_samples=25)
+                                 x_pred, n_samples=25, groups=INTERPRETATION_GROUPS)
         method_label = "MAP"
 
     else:
@@ -410,7 +425,7 @@ def main():
         result = decompose_model_hmc(
             model3, likelihood3, x_train, y_train, x_pred,
             mcmc_samples, kernel_builder=build_mauna_loa_kernels,
-            n_posterior_samples=100,
+            n_posterior_samples=100, groups=INTERPRETATION_GROUPS,
         )
         method_label = "HMC"
 

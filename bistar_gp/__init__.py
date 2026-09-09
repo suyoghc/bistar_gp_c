@@ -7,7 +7,7 @@ Implements the framework from Chandramouli & Shiffrin for:
 - Full Bayesian inference over hyperparameters
 """
 
-from .decompose import decompose_additive_gp, sample_from_component
+from .decompose import decompose_additive_gp, sample_from_component, mixture_central_interval
 from .model import (
     AdditiveGPModel, build_model, build_toy_kernels, build_mauna_loa_kernels,
     build_likelihood, assert_mauna_period_frozen, MAUNA_FROZEN_PERIOD,
@@ -19,6 +19,7 @@ from .sampler_diagnostics import SamplerDiagnostics
 from .candidates import build_toy_candidates, LinearModel, SinusoidalModel, SinLinearModel, QuadraticModel
 from .bms_star import (
     extract_gp_predictives, compute_G_matrix, run_bms_star, soft_transfer,
+    aggregate_convention, boltzmann_weight_ess, hard_win_statistics, PredictiveList,
     kl_forward, kl_backward, kl_symmetric, hellinger_distance,
     pw_kl_forward, pw_kl_backward, pw_kl_symmetric, pw_hellinger, pw_mse, pw_nll,
     METRICS,
@@ -39,7 +40,7 @@ from .m2c_manifest import (
 )
 
 __all__ = [
-    "decompose_additive_gp", "sample_from_component",
+    "decompose_additive_gp", "sample_from_component", "mixture_central_interval",
     "AdditiveGPModel", "build_model", "build_toy_kernels", "build_mauna_loa_kernels", "build_likelihood",
     "assert_mauna_period_frozen", "MAUNA_FROZEN_PERIOD",
     "fit_map", "fit_mcmc_simple", "print_hyperparameters",
@@ -48,6 +49,7 @@ __all__ = [
     "SamplerDiagnostics",
     "build_toy_candidates", "LinearModel", "SinusoidalModel", "SinLinearModel", "QuadraticModel",
     "extract_gp_predictives", "compute_G_matrix", "run_bms_star", "soft_transfer",
+    "aggregate_convention", "boltzmann_weight_ess", "hard_win_statistics", "PredictiveList",
     "kl_forward", "kl_backward", "kl_symmetric", "hellinger_distance",
     "pw_kl_forward", "pw_kl_backward", "pw_kl_symmetric", "pw_hellinger", "pw_mse", "pw_nll",
     "METRICS",

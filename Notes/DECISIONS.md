@@ -5716,3 +5716,74 @@ to be amended later merely to insert them. STOP before Ready or merge. NOT autho
 second correction pass, restoring/applying/dropping stash `5280d1e1…`, D59 work, evidence
 or figure changes, poster-repository work, the captions themselves, Della contact, new
 computation, holdout access, BMS*, Ready, or merge.
+
+## D68: Code review 2026-09 fix pass 1 — nine implementation fixes with pinning tests, four-channel review, pass 1b folds — 2026-09-08
+
+**Problem:** The 2026-09 implementation-correctness review (four channels: Fable, Codex
+gpt-6-astra xhigh, Kimi K3, GLM 5.3; governing document
+`docs/paper-sie-jmp/HANDOFF-code-review.md`; record `runs/code_review_2026_09/`) collated
+nine defect classes in the package against manuscript section 02, adjudicated in
+`runs/code_review_2026_09/ledger_draft.md` revision 3 and dispatched as
+`docs/paper-sie-jmp/prompts/code-review-fix1.txt`. The S1 item: `decompose_model_hmc` and
+`decompose_model_mcmc` reported `std` as the across-draw spread of the conditional means
+alone (dropping every draw's conditional variance), so every band they produced was
+understated (D58 Mauna cards by an order of magnitude), and the Mauna debias script added
+component variances as if independent (dropping cross-covariances). S2/S3 items: single-
+kernel pyro site names silently dropped by `select_hmc_sites`/`apply_hp_value`; draws dropped
+without accounting in `extract_gp_predictives`; `soft_transfer_weighted` stabilizing draw
+weights and Boltzmann factors separately (underflow to a uniform posterior);
+`compute_induced_prior` applying likelihood weights to posterior draws (density
+proportional to p(eta) p(y|eta)^2); metrics_v2 Hellinger variants using /4 sigma^2 instead of
+/8 sigma^2; the 1e6 / -1e10 failure sentinels in `laplace_evidence.py` that a metric could
+turn into a winning score; no draw-concentration diagnostic behind a pooled score; the W1
+metric roles and the M2bR withdrawn caches unrepresented in code; the van Bork targets never
+asserted; Case C importing the Case A script across branches for the aggregation conventions.
+
+**Decision:** Fix pass 1 implemented in the sibling worktree
+`/Users/sc8918/Documents/GitHub/bistar_gp_c-fix` (branch `fix/code-review-2026-09` from
+`71540836`) by Fable at the author's choice ("I code all nine"), under the work order's
+editable set and with the author-authorized package-change exception. FIX-1 site names and
+draw integrity (`model.py`, `bms_star.py` `PredictiveList`, `prior_sensitivity_study._sir_bms`
+raise). FIX-2 law-of-total-variance moments, joint group posteriors conditioned with the
+Cholesky factor of the ENTIRE training covariance (`DecompositionResult.group`), exact mixture
+central intervals ported from `experiments/toy_debias_demo.py` into
+`bistar_gp/decompose.mixture_central_interval`, `compute_debiased` rewritten on group outputs;
+the seven-field `DecompositionResult` positional contract kept. FIX-3 `boltzmann_weight_ess`,
+`hard_win_statistics` (exact-tie split credit), four optional `BMSStarResult` fields,
+`soft_transfer(metric_name=)`. FIX-4 Hellinger /8 sigma^2; universe firewall before any metric
+call in every candidate-aware entry point. FIX-5 `strict=True` raise / `strict=False` NaN in
+place of the sentinels, `OptimizerRecord` provenance, restart selection in `candidates.py`,
+strictly-worse penalty for failed draws in `induced_prior.py`. FIX-6 joint log-sum-exp
+weighting, `compute_induced_prior(weighting="uniform" | "likelihood_tilted")` with the three
+legacy callers set to uniform for `fit_hmc` draws, finite-input checks in
+`average_gp_posterior`. FIX-7 `PRIMARY_METRIC`, `APPENDIX_METRICS`, `WITHDRAWN_CACHES`,
+`load_hmc_samples(allow_withdrawn=False)`, appendix-metric warning on the implicit
+`run_bms_star` path. FIX-8 `bistar_gp/external_targets.py` (van Bork Targets A and B closed
+forms, `check_external_targets`). FIX-9 `aggregate_convention(G, tau, variant)` bit-identical
+to the Case A script's arithmetic; `prior_sensitivity_study._boltzmann_posterior` delegates.
+Nine test files `tests/test_fix1_*.py` (79 tests). Refuted items stayed out: no E6 failure
+gate, no finiteness explanation of the `aggregation_v3.py:77` warnings, no change to the
+pooled arithmetic or the `normalize_per_draw=False` default (D60).
+
+**Alternatives considered:** dispatching Codex Astra as implementer (rejected by the author
+for this pass); prepending the primary metric to `ExperimentConfig.metrics` (rejected:
+`experiments/bms_star_toy.py` slices `metrics[:4]`; appended instead, with on-demand
+registration of metrics_v2 so the config-named primary metric resolves); making
+`soft_transfer(metric_name=)` required as the work order said (deferred: two package callers
+outside the editable set omit it, `metrics_v2.py:398`, `mcse_strategy.py:177`; author accepted
+the optional keyword 2026-09-08, required in fix pass 2 with those callers).
+
+**Result:** Case E regression oracle (`experiments/toy_debias_demo.py` on
+`paper/case-e-debias`, run against this package) byte-identical to the committed
+`runs/toy_debias_demo/` artifacts (sha256 65c9ff5f..., c1153549..., 7096cd6e...). Full suite
+at the reviewed pass-1 state: 1327 passed, 3 skipped, 1 failed (the known lock-drift test
+`test_committed_dependency_lock_reproduces_at_head`, pypdf). Reviewed by Codex gpt-6-astra
+xhigh (REVISE, R1-R10) and a fresh Fable 5.1 instance (APPROVE, F1-F7); adjudication in
+`runs/code_review_2026_09/fix1_synthesis.md`; no S1, one S2 (a strict evaluation failure
+inside the optimizer's own evaluations was caught as an optimizer fault). Both channels
+answered the rewrite question ("delete and implement a more concise version?") with keep and
+simplify in place. Pass 1b (next commit) folds the accepted items.
+
+**Status:** pass 1 committed as reviewed; pass 1b follows in the same branch; fix pass 2
+(case-A script wiring of `check_external_targets`, Case C convention import, required
+`metric_name` with its two callers) OPEN; Kimi K3 and GLM 5.3 outputs on the fix pass pending.
