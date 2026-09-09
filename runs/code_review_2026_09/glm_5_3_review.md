@@ -1,0 +1,92 @@
+# Implementation review — GLM 5.3 (package-only channel), 2026-09-05
+
+*Driver note: the model's own first line self-identified as "Fable", copying the
+template placeholder rather than naming itself. That line has been removed; this
+review was produced by `z-ai/glm-5.3` via OpenRouter, prompt 83,588 tokens,
+completion 8,857 tokens, finish_reason `stop`. No other text was altered.*
+
+VERDICT: FINDINGS
+
+Tests run: none. This is a package-only channel; all evidence is textual, cited as `path:line` against the listings provided. The driver's baseline (1249 passed / 1 failed / 2 skipped) is taken as given and not re-derived.
+
+## Findings
+
+### F1 — S2 — bistar_gp/debias.py:206 (and :131, :144, :225)
+Defect: `decompose_model_hmc` (and `decompose_model_mcmc`) discard each draw's conditional covariance — `for (mean_i, _), comp_name in zip(...)` at debias.py:206 and :131 drops `cov_i` — and then report `cov=np.diag(std**2)` (debias.py:225, :144) where `std = means.std(0)` (debias.py:222, :141) is the across-draw spread of means alone. By the law of total variance the honest band is `mean_d[within-draw var] + var_d[mean]`; the routine reports only the second term, so every band it produces omits within-draw (conditional) posterior variance and understates uncertainty. The handoff lists live callers including `experiments/poster_d58_mauna.py:459` (D58-poster-facing) and `experiments/mauna_loa.py:74`.
+Failure scenario: run `decompose_model_hmc` on any fitted toy/Mauna posterior and plot `components[c].mean ± 2*components[c].std`; the band is narrower than the true posterior mixture band by exactly the omitted `mean_d[diag(cov_i)]` term. Any D58-poster band produced through this path understates uncertainty by that amount.
+Evidence: debias.py:131, 206 (covariance dropped); debias.py:144, 225 (`cov=np.diag(std**2)`); debias.py:141-144, 221-225 (`std` is spread of means only). The fix pattern already exists in `experiments/honest_band_decomposition.py` and is done correctly in `experiments/toy_debias_demo.py:419` (`comp_var` retained per draw, `total_variance_sd` at :461-463).
+Fix: retain per-draw `cov_i` diagonals in `all_means`-parallel storage; report `std = sqrt(mean_d(var_i) + var_d(mean_i))` and `cov` from the mixture moments, mirroring `toy_debias_demo.total_variance_sd`.
+[NEEDS-REPO-VERIFICATION: whether any number or band in the committed D58 poster artifacts (`poster_d58_mauna.py` output) flows through `decompose_model_hmc` rather than the honest-band workaround; compare the poster's band widths against a law-of-total-variance recomputation to size the understatement. If a poster band does flow through it, escalate to S1.]
+
+### F2 — S3 — bistar_gp/bms_star.py:409 (with :368)
+Defect: the A4 universe firewall `_assert_candidate_universes_consistent` runs only inside `run_bms_star` (bms_star.py:529). `compute_G_matrix` (bms_star.py:368) and `soft_transfer` (bms_star.py:409) are public and perform cross-candidate normalization (`instance_posteriors = instance_scores / total`, bms_star.py:460) without any universe check, so the mixed-universe merge the firewall exists to forbid (bms_star.py:481-493) is reachable through the primitives.
+Failure scenario: a caller builds `G = compute_G_matrix(gp_samples, mixed_candidates)` where `mixed_candidates` mixes Mauna 4-ladder and harmonized 3-set results (or tagged and untagged), then calls `soft_transfer(G, tau, names)`; the returned `instance_posteriors` are silently normalized across universes, exactly the A4 violation, with no error.
+Evidence: guard defined at bms_star.py:480-506, called only at :529; `compute_G_matrix` and `soft_transfer` contain no universe logic.
+Fix: move the check (or a shared helper) into `compute_G_matrix` so any path that builds a G matrix over candidates is guarded; `soft_transfer` receives only a matrix, so the G-matrix boundary is the enforceable one.
+[NEEDS-REPO-VERIFICATION: grep `experiments/` for direct calls to `compute_G_matrix`/`soft_transfer` with candidate lists to determine whether the path is exercised; `aggregation_v3.run_robust_aggregation` (aggregation_v3.py:276) and `run_weighted_bms_star` (:455) also call `compute_G_matrix` unguarded.]
+
+### F3 — S3 — bistar_gp/laplace_evidence.py:267-269 (with :126-127, :136-137, :253)
+Defect: three interacting silent-substitution paths in the evidence path. (a) `compute_G_at_params` returns `1e6` on a bare `Exception` from `predict_fn` (laplace_evidence.py:126-127) and on `LinAlgError/ValueError` from the metric (:136-137) — a coding bug in a candidate's `predict_fn` (e.g. a `NameError`) is scored as an extremely poor fit rather than raised. (b) `_laplace_log_integral` falls back to the starting point when `minimize` raises (laplace_evidence.py:268-269, `converged=False`) and still returns a log-integral expanded around `x0`. (c) No consumer in the provided modules reads `.converged`: `model_posterior` (laplace_evidence.py:640-687), `ablation_ladder_posteriors` (:972-1027), and `model_posterior_tau_sweep` (:862-918) all consume log-kernels without inspecting `converged` or `n_clipped` gates. Under `exp(-Ḡ/τ)` a `1e6` sentinel is indistinguishable from zero weight, and an unconverged integral yields a plausible log-evidence from the start point.
+Failure scenario: a candidate whose `predict_fn` raises `TypeError` for one parameter region; `laplace_log_Z_Mx` silently scores that region at 1e6, the optimizer may park φ* adjacent to it, and `model_posterior` reports a normalized posterior with no flag. Or: `minimize` raises on a degenerate box; `_laplace_log_Z_Mx` returns the τ-rescaled integral around the box midpoint with `converged=False`, which nothing downstream checks; a manuscript Z_M depends on a silently substituted value.
+Evidence: laplace_evidence.py:126-127, 136-137, 253, 268-269; `converged` set at :267/:269 and propagated to `ZMxResult`/`EvidenceResult` (:172, :187) but never read by any caller shown.
+Fix: narrow the `except Exception` to expected numerical failures and re-raise anything else; have `model_posterior`/`ablation_ladder_posteriors` raise or annotate when any `converged is False` or `n_clipped > 0` enters a reported kernel.
+[NEEDS-REPO-VERIFICATION: instrument the committed regeneration scripts to count how often the `1e6` sentinel and the `x0` fallback fire in `runs/` artifacts; a count of zero downgrades this to hygiene.]
+
+### F4 — S3 — bistar_gp/induced_prior.py:235
+Defect: `compute_induced_prior` replaces non-finite per-GP-draw values with `10 * np.max(g_vals[finite_mask])`. `bms_star.py:394-404` documents explicitly why this pattern is wrong for metrics that can go negative: `pw_nll_gp` (metrics_v2.py:134-149) contains `0.5*log(2π var_p)`, which is negative whenever `var_p < 1/(2π)`, so `10*max_finite` can be the *smallest* value in the column and a failed computation wins the weighting. `compute_induced_prior` accepts `metric_name` as a parameter (induced_prior.py:175), so the negative-metric case is reachable.
+Failure scenario: call `compute_induced_prior(..., metric_name="pw_nll_gp")` on a GP sample set with small posterior variances (all G negative, say max = -2); any draw whose metric evaluation raised gets `g_vals[i] = -20`, i.e. the *best* score, and receives the largest induced-prior weight.
+Evidence: induced_prior.py:229-237; metrics_v2.py:149 (negativity of pw_nll_gp); bms_star.py:394-404 (the corrected pattern and the rationale).
+Fix: reuse the always-worse penalty construction from `compute_G_matrix` (`max_finite + 10*(|max_finite|+1)`, bms_star.py:401), or route through `compute_G_matrix`.
+
+### F5 — S3 — bistar_gp/aggregation_v3.py:76-77
+Defect: `average_gp_posterior` validates only the caller-supplied `weights` (aggregation_v3.py:70-73) and never the sample `means`/`covs`. A `GPPosteriorSample` carrying a non-finite mean (plausible from a degenerate prior-stage draw, since `extract_gp_predictives` catches only `RuntimeError`, bms_star.py:341-342, and NaN can propagate without one) makes `mu_bar = w @ means` non-finite; `cov_bar` then also degenerates, and downstream `pw_kl_vcal` at metrics_v2.py:55 yields NaN that `compute_G_at_params` does *not* catch (its except clause covers only `LinAlgError, ValueError`, laplace_evidence.py:136). This is the source of the driver-observed divide-by-zero/overflow/invalid warnings at aggregation_v3.py:77 during `test_prior_stage_flows_to_finite_is_log_Z`.
+Failure scenario: any paper-facing caller passes one draw with a NaN mean among N posterior draws; `average_gp_posterior` returns a NaN ψ̄ with no error; `laplace_log_Z_Mx` optimizes a NaN objective (L-BFGS-B behavior undefined) and can return a plausible-looking `log_Z` built on a NaN Hessian floor-clip path.
+Evidence: aggregation_v3.py:70-77 (weights-only validation); bms_star.py:341-342 (RuntimeError-only catch on extraction); laplace_evidence.py:134-137 (no NaN guard). Driver fact: the warnings fired from exactly one prior-stage stress test, which suggests confinement — but nothing in the code enforces confinement.
+Fix: assert `np.all(np.isfinite(means))` and finite cov diagonals in `average_gp_posterior`; raise with the offending draw index.
+[NEEDS-REPO-VERIFICATION: confirm the test's stress inputs are the only source of non-finite means (inspect `tests/test_zmx_estimators.py::test_prior_stage_flows_to_finite_is_log_Z`), and that no committed `runs/` artifact was produced from an avg_gp that warned.]
+
+### F6 — S3 — bistar_gp/debias.py:103-118
+Defect: `decompose_model_mcmc` maps MCMC sample keys to model parameters purely by list position — `for i, (_, p) in enumerate(param_list): if i < len(mcmc_keys): p.data.fill_(mcmc_samples[mcmc_keys[i]][idx])` — and silently skips extra parameters when the counts disagree. Any ordering mismatch between `mcmc_samples` keys and `named_parameters()` order assigns wrong hyperparameter values with no error, decomposing the wrong posterior per draw.
+Failure scenario: pass an `mcmc_samples` dict whose key order differs from the model's `named_parameters()` order (e.g. built from a differently ordered site list); every draw is decomposed at permuted hyperparameters; the returned means/bands are plausible and wrong, with no exception.
+Evidence: debias.py:103-118. Note the handoff lists live callers only for the HMC variant; I found no live caller of `decompose_model_mcmc` in the provided material.
+Fix: key by name (as `select_hmc_sites`/`apply_hp_value` do everywhere else) or assert an exact name-set match before the loop.
+
+### F7 — S4 — bistar_gp/bms_star.py:418 vs :465
+Defect: `soft_transfer`'s docstring promises "For class-level, average within classes (not sum, to avoid size bias)" (bms_star.py:418), but the implementation sets `class_posteriors = instance_posteriors.copy()` (bms_star.py:465) with the comment "(1:1 mapping for now)". A caller relying on the docstring to get class-level (size-bias-corrected) scores gets instance-level scores silently.
+Failure scenario: call `soft_transfer` with `class_names` grouping multiple instances per class and read `class_posteriors`; the returned values are instance posteriors, not class averages.
+Fix: implement the within-class average or correct the docstring and drop the `class_names` parameter's implication.
+
+## Named targets T1-T11
+
+- **T1 — PARTIAL.** The plug-in surrogate is confirmed structurally (laplace_evidence.py:116-137 evaluates G once against `avg_gp`; aggregation_v3.py:44-90 forms the moment-matched ψ̄) and the manuscript §2.2 now discloses it as a surrogate, so claim fidelity is satisfied at the prose level. No bound or characterization of the surrogate error appears anywhere in the provided source; the notation-amendment question stays open. The warning source is F5 (non-finite *means*, not weights).
+- **T2 — CONFIRMED** (F1). Per-draw conditional covariance is discarded and bands understate uncertainty; whether a D58-poster number is affected needs repo verification.
+- **T3 — REFUTED** (no defect). The global scalar shift at bms_star.py:453 cancels exactly: `instance_scores_j = e^{-c}·mean_i exp(l_ij)`, and the normalization at :460 divides it out; posteriors are unchanged. The comment's per-row warning is also correct: a per-row constant `e^{r_i}` applied before the over-draw mean reweights draws, which is normalize_per_draw-like behavior. `normalize_per_draw=False` semantics are preserved. Verified algebraically from :447-462.
+- **T4 — PARTIAL.** Confirmed absent: nothing in `soft_transfer`/`run_bms_star` computes an ESS or Pareto-k on the Boltzmann weights that drive scores (bms_star.py:445-455; the only per-draw output is a printed win-count, :541-544). `induced_prior` has ESS for its own importance weights (induced_prior.py:260). Whether concentration occurs in a committed artifact cannot be assessed from this package.
+- **T5 — CANNOT-ASSESS** (as a sensitivity claim). `n_eval: int = 60` at config.py:172 is a bare default with no documented rationale in the provided source; no sensitivity experiment appears in the package. Grid choice is real but its effect on reported conclusions is undetermined here — an author question, not a finding.
+- **T6 — PARTIAL.** Enforcement is convention: the Laplace path defaults `metric_name="pw_kl_vcal"` (laplace_evidence.py:297, :621, :641), but `run_bms_star` defaults to *all* registered metrics with equal standing (bms_star.py:524-525), including `kl_forward`, and nothing marks any metric appendix-only. A caller can silently surface `kl_forward` as a primary result. Not elevated to a finding because the manuscript's W1 roles are reporting discipline, and the defaults are consistent with it.
+- **T7 — CANNOT-ASSESS beyond the package.** No module in the provided listings reads or regenerates `runs/fit_method_metric_comparison/samples_hmc.npz` or `runs/toy_tau_metric_comparison/`; `toy_debias_demo.py` touches neither. Whether any *other* experiments script (not provided) does so requires repo verification.
+- **T8 — CONFIRMED** (F2): the primitives bypass the firewall; the guard itself correctly rejects mixed tagged/untagged and multi-universe rosters (bms_star.py:495-506), and all-untagged is allowed by design.
+- **T9 — REFUTED** (no defect found). The AST guard checks both the literal keywords passed to `_run_e1_nuts_route` and the route's signature defaults and the `fit_hmc` routing (toy_debias_demo.py:177-218); the `apply_hp_value` raise on unmatched sites is correct and necessary (:371-377); the jitter probe is observation-only and counted (:386-394); the mixture interval is an exact CDF bisection with a sound ±12σ bracket (:466-487); the law-of-total-variance inversion is algebraically correct (`cross = ½(V_comp − V_truth − V_bias)`, :843) given means add exactly across the decomposition (they do: component means sum to the joint mean in `decompose_additive_gp`). The slope read (`b_hat` from endpoint difference, variance from rank-one check) is licensed by the verified linearity/rank-one structure checks (:421-431).
+- **T10 — CANNOT-ASSESS.** The test files are not in this package; I cannot name which claims are unprotected without reading them. F1 and F3 both describe behaviors that a claim-level test should pin (law-of-total-variance band honesty; sentinel-firing counts) — whether such tests exist is the repo-verification question.
+- **T11 — CONFIRMED** (F3). Sentinel paths exist as described; firing frequency in committed runs and downstream `converged` inspection (absent in provided modules) need repo verification.
+
+## What I verified clean
+
+- **Global-shift stabilization (T3):** the scalar shift cancels in the cross-candidate normalization (bms_star.py:447-462); the same pattern in `soft_transfer_weighted` is also global and safe (aggregation_v3.py:404-413).
+- **`compute_G_matrix` failure penalty** (bms_star.py:394-404): always strictly greater than any finite G, including for negative-valued metrics; the earlier `10*max` bug class is fixed here (but see F4 for its surviving copy).
+- **Occam / reference-measure consistency:** Laplace subtracts `log V` when `occam=True` (laplace_evidence.py:338, :549, :581, :604); MC adds `log V` when `occam=False` (=:413) because the box-uniform mean estimates the volume-normalized integral — conventions are consistent across all three estimators, as the module header (laplace_evidence.py:144-157) claims.
+- **Analytic τ rescale:** `log_int_tau = log_int + G* − G*/τ + (d/2)log τ` (laplace_evidence.py:336) and the sweep identity at :905-906 are algebraically correct and mutually consistent; argmin and Hessian are τ-invariant as documented.
+- **`_weight_ess`** handles the all-−inf case as ESS 0 (laplace_evidence.py:377-384).
+- **`average_gp_posterior` mixture moment formulas** (aggregation_v3.py:52-58 vs :76-84): mean and between-draw-spread covariance match the stated Gaussian-mixture moments.
+- **`decompose_model` (MAP variant) full covariance** (debias.py:70-84): correctly computes the posterior of the summed kernel rather than summing component covariances.
+- **`toy_debias_demo.py`'s `bias-slope` algebra and interval machinery** — see T9.
+
+## Open questions for the author
+
+1. Which committed numbers (paper sections or D58 poster) flow through `decompose_model_hmc` rather than the honest-band workaround (F1)? This decides S2 vs S1.
+2. Is the Ḡ plug-in surrogate's gap against the per-draw average characterized anywhere (e.g. a KB note or an uncommitted experiment)? The manuscript discloses the surrogate but offers no bound; if none exists, consider adding one or stating that none is claimed.
+3. How often do the `1e6` / `x0`-fallback sentinel paths fire in the committed runs (F3)? A zero count closes the finding; a nonzero count names which artifacts to re-examine.
+4. Do any `experiments/` scripts call `compute_G_matrix`/`soft_transfer` directly with universe-tagged candidates (F2)?
+5. Is `n_eval=60` (config.py:172) sensitivity to grid size/placement checked anywhere, and is the choice documented as a choice (T5)?
+6. Confirm the non-finite means behind the aggregation_v3.py:77 warnings are confined to the deliberate prior-stage stress test (F5), and consider a finite-means assertion regardless — the code currently enforces nothing.
+7. Does any test pin the law-of-total-variance band honesty of the decomposition routines, or the `converged`/`n_clipped` gates (T10)? Without the test files I cannot tell; if not, both are claim-level gaps.

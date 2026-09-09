@@ -1,0 +1,83 @@
+# Implementation review — Kimi K3 (package-only channel), 2026-09-05
+
+*Driver note: the model's own first line self-identified as "Claude (Codex channel)",
+copying the template placeholder rather than naming itself. That line has been removed;
+this review was produced by `moonshotai/kimi-k3` via OpenRouter, prompt 79,810 tokens,
+completion 7,666 tokens, finish_reason `stop`. No other text was altered.*
+
+VERDICT: FINDINGS
+
+Package-only channel: no code was run. All evidence is from the line-numbered listings in this package. Test baseline taken as given (1249 passed, 1 failed, 2 skipped; the failure is the settled pypdf environment drift).
+
+## Findings
+
+### F1 — S2 — bistar_gp/debias.py:131,144,206,225
+Defect: Both MCMC decomposition routines discard each draw's conditional covariance (`for (mean_i, _), comp_name in ...`) and then fabricate the component covariance as `cov=np.diag(std**2)` where `std` is purely the across-draw spread of conditional means. The within-draw conditional variance — often the dominant term — is dropped entirely, and the off-diagonal structure is replaced by a diagonal. `full_std` (`:149`, `:230`) is likewise the across-draw spread of summed means only. Any ±2σ band built from these objects understates the actual posterior band by exactly the mean within-draw variance, with no warning.
+Failure scenario: call `decompose_model_hmc(model, lik, x, y, x_test, samples, kernel_builder)` on any posterior where within-draw conditional variance is non-negligible (generic for GP component posteriors away from training points); the returned `ComponentResult.std`/`cov` and `DecompositionResult.full_std` are too narrow by that term, and the dataclass gives the consumer no way to detect the omission. Per the handoff, live callers include `experiments/poster_d58_mauna.py:459`, i.e. a D58-poster-facing path, which is why the driver flagged this as potentially S1.
+Evidence: debias.py:131 (covariance discarded in `decompose_model_mcmc`), :144 (`cov=np.diag(std**2)`), :206 and :225 (same in `decompose_model_hmc`), :148-149 and :229-230 (`full_std` from across-draw spread only). Contrast with the MAP variant `decompose_model`, which computes the full covariance correctly including cross-component terms (:70-84), proving the correct construction was known.
+Fix: accumulate per-draw `(mean_i, cov_i)` and form `cov = mean_d(cov_d) + cov_d(mean_d)` (law of total covariance) per component, and analogously for the full predictive; or route all consumers through the `honest_band_decomposition.py` pattern and delete the dishonest fields.
+[NEEDS-REPO-VERIFICATION: whether any committed `runs/` artifact or D58 poster figure consumed `decompose_model_mcmc`/`decompose_model_hmc` band outputs, and the size of the omitted within-draw variance in those runs — this upgrades F1 to S1 or confines it to S2.]
+
+### F2 — S2 — bistar_gp/laplace_evidence.py:673 (with :126-127, :253-254, :268-269)
+Defect: `model_posterior` (the canonical assembly behind Construction-II posteriors) discards the convergence flag: `log_N, _, _, _ = _laplace_log_N(...)` at :673. The second return value is `conv`. Inside, `_laplace_log_integral` falls back to the starting point `x0` with `converged=False` when `minimize` raises (:268-269), and the objective itself silently becomes a constant sentinel when `predict_fn` raises (`compute_G_at_params` returns 1e6 at :126-127; `_log_likelihood` returns -1e10 at :253-254). A constant objective also makes L-BFGS-B report `success=True` at `x0`, so even the `converged` flag would not catch that case — but `model_posterior` does not look at the flag it *is* given. The result is a plausible, normalized model posterior computed at an arbitrary or failed parameter point.
+Failure scenario: a `param_space.predict_fn` that raises on part of the box (or a `minimize` failure on a stiff landscape) → the Laplace integral is evaluated at `x0`/sentinel objective → `log_kernel[name]` is garbage → `softmax(logk)` at :681 returns posteriors that silently reflect the failure as if it were a very poor (or, via the constant-objective success path, an arbitrary) model. No exception, no warning, no flag on `ModelPosteriorResult`.
+Evidence: :126-127 (bare `except Exception: return 1e6`), :136-137 (`return 1e6`), :253-254 (`return -1e10`), :268-269 (`x_star, converged = x0, False`), :673-676 (`_` discards conv), :680-681 (softmax regardless). Note `laplace_log_evidence_induced` (:632-637) *does* propagate `converged`, so the discard in `model_posterior` is a genuine gap, not a uniform policy.
+Fix: propagate `conv` (and `n_clipped`) from `_laplace_log_N` into `components[name]` and either raise or record `converged=False` on `ModelPosteriorResult` when any model fails; make the 1e6/-1e10 sentinels raise-or-NaN under a `strict` flag used by paper-facing scripts.
+
+### F3 — S3 — bistar_gp/bms_star.py:368,409 (guard only at :529)
+Defect: The A4 universe firewall `_assert_candidate_universes_consistent` runs only inside `run_bms_star` (:529). The two public primitives that actually build the normalization — `compute_G_matrix` (:368) and `soft_transfer` (:409) — accept any candidate list, including mixed-universe or partially tagged rosters, and will happily produce normalized cross-universe posteriors. The guard also passes an all-untagged roster by design (:497-498), so a caller that simply forgets to tag gets no protection.
+Failure scenario: `G = compute_G_matrix(psi, mixed_candidates, "pw_kl_vcal"); soft_transfer(G, 1.0, names)` with one Mauna 4-ladder candidate tagged `universe="4ladder"` and one harmonized-3 candidate tagged `"h3"` (or both untagged) returns normalized posteriors merging the two universes — exactly what A4 forbids — with no error.
+Evidence: :480-506 (guard exists and fires only on mixed tagged/untagged), :509-529 (guard invoked only in `run_bms_star`), :368 and :409 (public, unguarded).
+Fix: move the assertion into `compute_G_matrix` (it takes `candidate_results` directly), or have `soft_transfer` require a token produced by a guarded path.
+[NEEDS-REPO-VERIFICATION: grep `experiments/` for direct `compute_G_matrix(`/`soft_transfer(` calls with Mauna candidates to determine whether any committed artifact used the unguarded path.]
+
+### F4 — S3 — bistar_gp/debias.py:103-118
+Defect: `decompose_model_mcmc` matches MCMC sample columns to model parameters positionally: `param_list` is built from `named_parameters()` filtered to scalars (:103-105), then `p.data.fill_(mcmc_samples[mcmc_keys[i]][idx])` with only `if i < len(mcmc_keys)` as a guard (:116-118). If dict ordering of `mcmc_samples` differs from parameter registration order, or counts differ, hyperparameters are written onto the wrong parameters with no error. It also writes raw values via `fill_` into what may be constrained (transformed) gpytorch parameters, depending on what the sampler recorded — the sibling routine `decompose_model_hmc` uses the name-based `apply_hp_value` (:184-189) precisely to avoid this.
+Failure scenario: an `mcmc_samples` dict whose key order is not the `named_parameters` order (e.g., assembled by a different script, or with sites filtered differently) → lengthscale value written into the noise slot etc. → every decomposed draw is at wrong hyperparameters, silently.
+Evidence: :103-118 (positional pairing), contrast :173-189 (name-based `select_hmc_sites`/`apply_hp_value` in the HMC variant).
+Fix: rewrite `decompose_model_mcmc` to use `select_hmc_sites` + `apply_hp_value` like `decompose_model_hmc`, and fail on unmatched sites.
+[NEEDS-REPO-VERIFICATION: check `bistar_gp/model.py` `apply_hp_value`/`select_hmc_sites` semantics (raw vs constrained) and whether any live caller uses `decompose_model_mcmc`.]
+
+### F5 — S3 — bistar_gp/bms_star.py:341-342 (also 302-303)
+Defect: `extract_gp_predictives` silently drops MCMC draws whose model rebuild or Cholesky raises `RuntimeError` (`except RuntimeError: continue`), reporting only a print of the success count (:344). The returned list is a *surviving subset* of the posterior draws, so the induced p₀(ψ) is conditioned on numerical success with no record propagated to the caller. Similarly, `apply_hp_value` failures are swallowed at :300-303 (`continue` inside the site loop), which can leave a draw partially initialized — a posterior predictive evaluated at a mix of the draw's values and prior-initialized defaults, with no record.
+Failure scenario: a hyperparameter draw whose kernel matrix is near-singular at the given jitter → dropped; a site name that fails `apply_hp_value` (drifted naming) → that draw's predictive is computed with the *prior-initialized* value for that site and kept. Both distort the ψ ensemble feeding every downstream G matrix without any downstream-visible signal.
+Evidence: :300-303 (`except (IndexError, AttributeError, RuntimeError): continue` per-site), :341-342 (`except RuntimeError: continue` per-draw), :344 (print-only accounting). Contrast `toy_debias_demo.py:371-377`, which raises on exactly this unmatched-site condition, showing the package behavior was judged unsafe there.
+Fix: count and return `n_dropped`/`n_partial` on the result (or attach to the samples), and raise on unmatched sites as the Case E script does.
+
+### F6 — S4 — bistar_gp/bms_star.py:467
+Defect: `soft_transfer` stamps `metric_name="unknown"` and relies on the caller to overwrite it (:556 does, in `run_bms_star`). Any direct caller gets a result object that misdescribes its own provenance.
+Failure scenario: `soft_transfer(G, tau, names)` called directly; the returned `BMSStarResult.metric_name` is `"unknown"` and, if serialized or plotted, mislabels which divergence produced the posteriors.
+Evidence: :467 (`metric_name = "unknown"  # will be set by caller`).
+Fix: make `metric_name` a required argument of `soft_transfer`.
+
+## Named targets T1-T11
+- T1 — PARTIAL (surrogate confirmed, now honestly disclosed): `laplace_evidence.py:135` evaluates the metric once against the averaged pattern, and the manuscript §2.2 explicitly names this the plug-in surrogate and warns it is not consistent for the per-draw average, so claim fidelity as amended holds. The RuntimeWarnings at `aggregation_v3.py:77` trace to non-finite *means* (the validator at :70-73 checks only weights), and `extract_gp_predictives` would not catch non-finite `pred_mean` (F5). Whether any committed number carries this is NEEDS-REPO-VERIFICATION (inspect `runs/*/results.json` inputs; the warning fired only under the deliberate prior-stage stress test).
+- T2 — CONFIRMED (F1): per-draw conditional covariance discarded at debias.py:131/:206; fabricated diagonal at :144/:225; D58-poster-facing caller listed in the handoff. Potentially S1 pending artifact check.
+- T3 — REFUTED: the stabilization at bms_star.py:453 subtracts a single global scalar (`log_weights.max()`), which factors out of `weights.mean(axis=0)` and cancels exactly in the normalization at :459-460; the comment's argument against a per-row max is correct. Same for `soft_transfer_weighted` (:408-409).
+- T4 — PARTIAL: no ESS/Pareto-k diagnostic exists on the Boltzmann draw weights in `soft_transfer`/`compute_G_matrix` (none visible in the listings); ESS exists only for the Z_Mx IS estimator (`_weight_ess`, :377-384, with a warning at :551-556). Whether concentration occurs in committed artifacts is NEEDS-REPO-VERIFICATION.
+- T5 — PARTIAL: `n_eval=60` (config.py:172) is a bare default; every pointwise metric averages over whatever grid it is handed (`np.mean` over locations, e.g. bms_star.py:148, metrics_v2.py:55). No sensitivity analysis or rationale appears in the listed source.
+- T6 — CONFIRMED as convention-only (F6-adjacent, no separate finding): nothing restricts `kl_forward` to appendix use; `run_bms_star` defaults to *all* registered metrics (:524-525), and `config.py:182-186` includes `kl_forward` in the default sweep. A caller can silently promote the appendix metric to a primary result.
+- T7 — CANNOT-ASSESS from this package: the withdrawn `runs/fit_method_metric_comparison/samples_hmc.npz` and `runs/toy_tau_metric_comparison/` are not listed; whether any listed module reads them cannot be determined (none of the listed files reference them).
+- T8 — CONFIRMED (F3): `compute_G_matrix` and `soft_transfer` are public and unguarded; the guard itself also passes all-untagged rosters.
+- T9 — REFUTED (clean): the AST guard (`toy_debias_demo.py:147-218`) checks both the literal kwargs and the signature defaults and raises on absence or mismatch; the unmatched-site raise (:371-377) closes the F5-class hole for this script; the jitter probe (:388-394) counts escalations without altering computation; the mixture interval is a genuine bisection of the mixture CDF (:466-487); the total-variance inversion at :837-844 is algebraically exact given means add; rank-one/linearity checks are computed and reported (:426-429). The same-MAP shared start is disclosed as within-mode R-hat (:231-241, :635-648).
+- T10 — CANNOT-ASSESS fully: tests are not in the package. From the driver facts, the suite does exercise the Ḡ prior-stage path (the warning-emitting test), but nothing I can see would catch F1 (dishonest bands), F2 (discarded convergence), or F3 (unguarded primitives) if they regressed, since all three produce plausible numbers.
+- T11 — CONFIRMED (F2): sentinels exist exactly as described (:126-127, :136-137, :253-254), optimizer fallback exists (:268-269, and :486-487 records no flag in `_multistart_G_optima`), and `model_posterior` discards `converged` (:673). Firing frequency in committed runs is NEEDS-REPO-VERIFICATION (grep run logs for the `n_clipped`/convergence fields).
+
+## What I verified clean
+- `soft_transfer` pooled aggregation (bms_star.py:439-462): row-min subtraction is correctly gated behind `normalize_per_draw`; global shift cancels; zero-total fallback is uniform, not silently biased (though it is a silent fallback — print-only).
+- `compute_G_matrix` penalty (:399-404): `max_finite + 10*(|max_finite|+1)` is strictly greater than any finite entry including for negative-valued metrics (pw_nll) — the documented negative-metric trap is handled.
+- τ-rescaling identity in `laplace_log_Z_Mx` (:336) and `model_posterior_tau_sweep` (:905-906): Laplace prefactor contributes (d/2)·log τ exactly once (the τ^{d/2} from |H_{Ḡ/τ}|^{-1/2} = τ^{d/2}|H_Ḡ|^{-1/2}); the code's `0.5*d*np.log(tau)` matches the correct expansion, and evaluating the Hessian on Ḡ rather than Ḡ/τ keeps clipping τ-independent as documented.
+- occam bookkeeping consistency across the three estimators: Laplace subtracts log V when occam (:338); MC adds log V when not occam because the box mean already carries 1/V (:413); IS subtracts log V when occam (:548-549). The three conventions agree.
+- `_laplace_log_integral` boundary handling (:279-287): the inset is capped at half the box width, so narrow boxes cannot invert the clip.
+- `_DefensiveProposal` (:420-463): untruncated Gaussians plus an in-box indicator; `log_q` and `sample` share component parameters, so q is exact and normalized by construction; ESS computed in log space with all-`-inf` → 0 (:377-384).
+- `average_gp_posterior` (:44-90): mixture mean/covariance formula is correct, and the weight validator rejects non-finite/negative/zero-sum weights before use (:70-74).
+- `toy_debias_demo.py` in full (see T9): guards, slope functional read, mixture intervals, disclosure of shared-start R-hat and pointwise-coverage caveat all match the manuscript's claims about this script.
+- The settled test failure (pypdf lock drift) is consistent with the driver diagnosis; not re-raised.
+
+## Open questions for the author
+1. Which committed `runs/` artifacts, if any, consumed band outputs of `decompose_model_mcmc`/`decompose_model_hmc` (F1), and should those figures be regenerated with the total-covariance correction?
+2. Should `model_posterior` hard-fail or flag when any model's `_laplace_log_N` fails to converge (F2), and should the 1e6/-1e10 sentinels become errors on paper-facing paths?
+3. Is any `experiments/` script calling `compute_G_matrix`/`soft_transfer` directly with tagged or Mauna candidates (F3)?
+4. The manuscript's "expected-posterior aggregation" (Eq. 4 correspondence) is not implemented in any listed module — where does it live, and is it the path used for the van Bork comparison numbers?
+5. What does `apply_hp_value` do about raw vs constrained parameterization (needed to finalize F4's severity)?
+6. Is `n_eval=60` (T5) a considered choice with a sensitivity check anywhere, and should a draw-weight ESS be reported alongside every soft-transfer table (T4)?

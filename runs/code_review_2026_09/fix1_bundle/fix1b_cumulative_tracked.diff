@@ -1,0 +1,2564 @@
+diff --git a/bistar_gp/__init__.py b/bistar_gp/__init__.py
+index 4fed41e..8422deb 100644
+--- a/bistar_gp/__init__.py
++++ b/bistar_gp/__init__.py
+@@ -7,7 +7,7 @@ Implements the framework from Chandramouli & Shiffrin for:
+ - Full Bayesian inference over hyperparameters
+ """
+ 
+-from .decompose import decompose_additive_gp, sample_from_component
++from .decompose import decompose_additive_gp, sample_from_component, mixture_central_interval
+ from .model import (
+     AdditiveGPModel, build_model, build_toy_kernels, build_mauna_loa_kernels,
+     build_likelihood, assert_mauna_period_frozen, MAUNA_FROZEN_PERIOD,
+@@ -19,6 +19,7 @@ from .sampler_diagnostics import SamplerDiagnostics
+ from .candidates import build_toy_candidates, LinearModel, SinusoidalModel, SinLinearModel, QuadraticModel
+ from .bms_star import (
+     extract_gp_predictives, compute_G_matrix, run_bms_star, soft_transfer,
++    aggregate_convention, boltzmann_weight_ess, hard_win_statistics, PredictiveList,
+     kl_forward, kl_backward, kl_symmetric, hellinger_distance,
+     pw_kl_forward, pw_kl_backward, pw_kl_symmetric, pw_hellinger, pw_mse, pw_nll,
+     METRICS,
+@@ -39,7 +40,7 @@ from .m2c_manifest import (
+ )
+ 
+ __all__ = [
+-    "decompose_additive_gp", "sample_from_component",
++    "decompose_additive_gp", "sample_from_component", "mixture_central_interval",
+     "AdditiveGPModel", "build_model", "build_toy_kernels", "build_mauna_loa_kernels", "build_likelihood",
+     "assert_mauna_period_frozen", "MAUNA_FROZEN_PERIOD",
+     "fit_map", "fit_mcmc_simple", "print_hyperparameters",
+@@ -48,6 +49,7 @@ __all__ = [
+     "SamplerDiagnostics",
+     "build_toy_candidates", "LinearModel", "SinusoidalModel", "SinLinearModel", "QuadraticModel",
+     "extract_gp_predictives", "compute_G_matrix", "run_bms_star", "soft_transfer",
++    "aggregate_convention", "boltzmann_weight_ess", "hard_win_statistics", "PredictiveList",
+     "kl_forward", "kl_backward", "kl_symmetric", "hellinger_distance",
+     "pw_kl_forward", "pw_kl_backward", "pw_kl_symmetric", "pw_hellinger", "pw_mse", "pw_nll",
+     "METRICS",
+diff --git a/bistar_gp/aggregation_v3.py b/bistar_gp/aggregation_v3.py
+index fa952f3..1a678c9 100644
+--- a/bistar_gp/aggregation_v3.py
++++ b/bistar_gp/aggregation_v3.py
+@@ -24,16 +24,22 @@ Three fixes, each attacking a different part of the problem:
+     outlier samples (very long/short lengthscales) get downweighted.
+ """
+ 
++import logging
++
+ import numpy as np
+ import torch
++from scipy.special import logsumexp
+ from typing import List, Dict, Optional, Tuple
+ from dataclasses import dataclass
+ 
+ from bistar_gp.bms_star import (
+     GPPosteriorSample, METRICS, compute_G_matrix, BMSStarResult,
+-    _extract_marginals,
++    _extract_marginals, _assert_candidate_universes_consistent,
++    aggregate_convention, hard_win_statistics, log_weight_ess,
+ )
+ 
++logger = logging.getLogger(__name__)
++
+ torch.set_default_dtype(torch.float64)
+ 
+ 
+@@ -74,6 +80,14 @@ def average_gp_posterior(gp_samples: List[GPPosteriorSample],
+         w = w / w.sum()
+ 
+     means = np.array([s.mean for s in gp_samples])   # (N, n_eval)
++    if not np.all(np.isfinite(means)):
++        bad = [i for i, m in enumerate(means) if not np.all(np.isfinite(m))]
++        raise ValueError(
++            f"average_gp_posterior: non-finite mean in draw(s) {bad[:10]}")
++    for i, s in enumerate(gp_samples):
++        if not np.all(np.isfinite(np.diag(s.cov))):
++            raise ValueError(
++                f"average_gp_posterior: non-finite covariance diagonal in draw {i}")
+     mu_bar = w @ means                                 # (n_eval,)
+ 
+     # Weighted average covariance + inter-sample mean spread
+@@ -111,6 +125,10 @@ def score_averaged_gp(gp_samples: List[GPPosteriorSample],
+         metric_names = ["pw_kl_vcal", "pw_hellinger_vcal", "pw_nll_gp",
+                         "pw_mse", "pw_hellinger_mean"]
+ 
++    # This strategy scores the averaged pattern directly and never builds a
++    # G matrix, so the A4 firewall must run here explicitly (FIX-4).
++    _assert_candidate_universes_consistent(candidate_results)
++
+     psi_bar = average_gp_posterior(gp_samples)
+     instance_names = [cr.name for cr in candidate_results]
+     results = {}
+@@ -329,21 +347,26 @@ def compute_log_marginal_likelihoods(
+     log_mlls = np.zeros(len(gp_samples))
+ 
+     for idx, sample in enumerate(gp_samples):
+-        try:
+-            kernels, names = kernel_builder()
+-            fresh_lik = likelihood_builder()
+-            fresh_model, fresh_lik = build_model(x_t, y_t, kernels, names, fresh_lik)
+-
+-            # Set hyperparameters
+-            for pyro_name, val in sample.hyperparameters.items():
+-                try:
+-                    apply_hp_value(fresh_model, fresh_lik, pyro_name, val)
+-                except (IndexError, AttributeError, RuntimeError):
+-                    continue
+-
+-            fresh_model.eval()
+-            fresh_lik.eval()
++        kernels, names = kernel_builder()
++        fresh_lik = likelihood_builder()
++        fresh_model, fresh_lik = build_model(x_t, y_t, kernels, names, fresh_lik)
++
++        # Set hyperparameters OUTSIDE the numerical handler below. A site the
++        # model does not recognize is a silent-wrong-answer path (the
++        # likelihood would be scored at the fresh model's initialization
++        # value), so it raises and the error must escape (FIX-1; review R1
++        # found the pass-1 raise sitting inside the handler that converts
++        # numerical failures into -inf).
++        for pyro_name, val in sample.hyperparameters.items():
++            if not apply_hp_value(fresh_model, fresh_lik, pyro_name, val):
++                raise ValueError(
++                    f"compute_log_marginal_likelihoods: apply_hp_value did "
++                    f"not recognize site {pyro_name!r} for draw {idx}")
++
++        fresh_model.eval()
++        fresh_lik.eval()
+ 
++        try:
+             with torch.no_grad():
+                 noise_var = fresh_lik.noise.item()
+                 K_XX = fresh_model.covar_module(x_t, x_t).evaluate().detach()
+@@ -387,36 +410,34 @@ def soft_transfer_weighted(G_matrix: np.ndarray, tau: float,
+ 
+     High marginal-likelihood samples contribute more.
+     """
+-    n_psi, n_theta = G_matrix.shape
+-
+-    # Normalize log weights to prevent overflow
+-    valid = np.isfinite(log_weights)
+-    if not valid.any():
+-        # Fallback to uniform
+-        w = np.ones(n_psi)
+-    else:
+-        lw = log_weights.copy()
+-        lw[~valid] = -np.inf
+-        lw -= lw[valid].max()
+-        w = np.exp(lw)
+-
+-    # Weighted Boltzmann scores.
+-    # Numerical stability: subtract a single GLOBAL scalar, which cancels in the
+-    # cross-candidate normalization below. A per-candidate (axis=0) max does NOT
+-    # cancel — it multiplies each candidate's score by exp(min_i G_ij / tau),
+-    # distorting the posterior (same bug fixed in bms_star.soft_transfer).
+-    log_boltz = -G_matrix / tau
+-    log_boltz -= log_boltz.max()
+-    boltz = np.exp(log_boltz)
+-
+-    # Weighted average
+-    instance_scores = (w[:, None] * boltz).sum(axis=0) / w.sum()
+-
+-    total = instance_scores.sum()
+-    if total > 0:
+-        instance_posteriors = instance_scores / total
+-    else:
+-        instance_posteriors = np.ones(n_theta) / n_theta
++    G = np.asarray(G_matrix, dtype=float)
++    n_psi, n_theta = G.shape
++    lw = np.asarray(log_weights, dtype=float).copy()
++    lw[~np.isfinite(lw)] = -np.inf          # a non-finite draw weight is absent support
++    if not np.any(np.isfinite(lw)):
++        raise ValueError(
++            "soft_transfer_weighted: no draw carries a finite log weight; "
++            "refusing to substitute a uniform posterior")
++
++    # Joint log-space aggregation (2026-09 review FIX-6). The previous code
++    # stabilized the draw weights and the Boltzmann factors SEPARATELY and
++    # multiplied them, so when their maxima fell on different rows every
++    # product could underflow and the function silently returned a uniform
++    # posterior. Forming log w_i - G_ij/tau first and summing with
++    # log-sum-exp makes the result exact up to floating point.
++    log_terms = lw[:, None] - G / tau                            # (n_psi, n_theta)
++    # One GLOBAL shift before the two log-sum-exps (pass 1b, review R6): the
++    # cross-candidate normalization is then a difference of moderate numbers
++    # instead of two large nearly equal ones. The shift cancels exactly.
++    shift = np.max(log_terms)
++    ls = logsumexp(log_terms - shift, axis=0)                    # log-scores up to the shift
++    log_post = ls - logsumexp(ls)
++    instance_posteriors = np.exp(log_post)
++    log_scores = ls + shift - logsumexp(lw)                      # log[ sum_i w_i e^{-G_ij/tau} / sum_i w_i ]
++    # Scores on the pre-fix scale: sum_i w_i exp(-(G_ij - G_min)/tau) / sum_i w_i
++    instance_scores = np.exp(log_scores + G.min() / tau)
++    weight_ess = log_weight_ess(log_terms, axis=0)
++    credit, attainment, tie_fraction = hard_win_statistics(G)
+ 
+     return BMSStarResult(
+         metric_name="weighted",
+@@ -426,7 +447,11 @@ def soft_transfer_weighted(G_matrix: np.ndarray, tau: float,
+         instance_posteriors=instance_posteriors,
+         class_names=list(instance_names),
+         class_posteriors=instance_posteriors.copy(),
+-        G_matrix=G_matrix,
++        G_matrix=G,
++        weight_ess=weight_ess,
++        hard_win_credit=credit,
++        attainment=attainment,
++        tie_fraction=tie_fraction,
+     )
+ 
+ 
+diff --git a/bistar_gp/bms_star.py b/bistar_gp/bms_star.py
+index 734d6f5..9157ab0 100644
+--- a/bistar_gp/bms_star.py
++++ b/bistar_gp/bms_star.py
+@@ -9,12 +9,15 @@ Extends Bayesian induction (Chandramouli & Shiffrin, 2016) by:
+ Supports: KL(ψ||θ), KL(θ||ψ), Symmetric KL, Hellinger distance
+ """
+ 
++import logging
++
+ import numpy as np
+ import torch
+ from typing import List, Dict, Tuple, Optional
+ from dataclasses import dataclass
+ 
+ torch.set_default_dtype(torch.float64)
++logger = logging.getLogger(__name__)
+ 
+ 
+ # ═══════════════════════════════════════════════════════════════════
+@@ -188,7 +191,22 @@ def pw_nll(mu_psi, cov_psi, mu_theta, cov_theta):
+ 
+ 
+ # Registry of available metrics
+-METRICS = {
++class _MetricRegistry(dict):
++    """METRICS[name] imports the v2 metrics on the first miss (FIX-7), so the
++    primary metric pw_kl_vcal, defined in metrics_v2, resolves for a caller
++    that never imported that module (ExperimentConfig.metrics names it).
++    Registered names resolve exactly as in a plain dict; .keys() on the
++    implicit run_bms_star path lists v2 names only after their first import,
++    as before."""
++
++    def __missing__(self, name):
++        from . import metrics_v2  # noqa: F401  registers into this dict
++        if name in self:
++            return dict.__getitem__(self, name)
++        raise KeyError(f"unknown metric {name!r}; registered: {sorted(self)}")
++
++
++METRICS = _MetricRegistry({
+     # Joint (full n-dimensional Gaussian)
+     "kl_forward": kl_forward,       # KL(ψ || θ)
+     "kl_backward": kl_backward,     # KL(θ || ψ)
+@@ -201,7 +219,7 @@ METRICS = {
+     "pw_hellinger": pw_hellinger,
+     "pw_mse": pw_mse,               # mean-only baseline
+     "pw_nll": pw_nll,               # mean + variance calibration
+-}
++})
+ 
+ 
+ # ═══════════════════════════════════════════════════════════════════
+@@ -216,11 +234,32 @@ class GPPosteriorSample:
+     hyperparameters: Dict[str, float]
+ 
+ 
++class PredictiveList(list):
++    """List of GPPosteriorSample with draw-integrity bookkeeping (FIX-1).
++
++    Behaves exactly like the plain list it replaces (len, iteration, indexing,
++    truthiness) and additionally records which draw indices were attempted,
++    which were retained, and why any were dropped, so a caller can see when
++    the returned ensemble is a numerically selected subset of the draws.
++    """
++
++    def __init__(self, items=(), attempted_indices=None, retained_indices=None,
++                 dropped=None):
++        super().__init__(items)
++        self.attempted_indices = list(attempted_indices or [])
++        self.retained_indices = list(retained_indices or [])
++        self.dropped = list(dropped or [])   # (draw index, reason) pairs
++
++    @property
++    def n_dropped(self):
++        return len(self.dropped)
++
++
+ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
+                            mcmc_samples, kernel_builder,
+                            likelihood_builder=None,
+                            n_posterior_samples=200, jitter=1e-4,
+-                           condition_on_data=True, rng=None):
++                           condition_on_data=True, rng=None, strict=True):
+     """
+     Extract full GP predictive distributions for each hyperparameter sample.
+ 
+@@ -250,9 +289,17 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
+         condition_on_data: posterior (True) vs prior (False) predictive
+         rng: optional numpy.random.Generator for the draw subsampling;
+              None preserves the legacy global-np.random behavior
++        strict: True (default) raises on any silent-wrong-answer path: a
++             sample site apply_hp_value does not recognize, an exception
++             while applying a site, a sample dict with no recognized kernel
++             site, or a draw whose predictive fails numerically. False keeps
++             the pre-2026-09 behavior (warn, skip the site or drop the draw)
++             for exploratory use; the dropped draws are then recorded on the
++             returned PredictiveList.
+ 
+     Returns:
+-        List[GPPosteriorSample]
++        PredictiveList (a list of GPPosteriorSample carrying
++        attempted_indices, retained_indices, dropped, n_dropped)
+     """
+     from .model import build_model, select_hmc_sites, apply_hp_value
+     from .decompose import compute_cholesky
+@@ -284,23 +331,49 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
+         indices = np.random.choice(total_mcmc, n_take, replace=False)
+ 
+     relevant_keys = select_hmc_sites(mcmc_samples.keys())
++    kernel_keys = [k for k in relevant_keys
++                   if not k.endswith("noise_covar.noise_prior")]
++    if not kernel_keys:
++        msg = ("extract_gp_predictives: no kernel hyperparameter site was "
++               f"recognized among {sorted(mcmc_samples.keys())}; every "
++               "predictive would be built at the fresh model's initialization "
++               "kernel values (only the noise would vary)")
++        if strict:
++            raise ValueError(msg)
++        logger.warning(msg)
+ 
+     results = []
++    retained = []
++    dropped = []
+ 
+     for idx in indices:
+         kernels, names = kernel_builder()
+         fresh_likelihood = likelihood_builder()
+         fresh_model, fresh_likelihood = build_model(x_train, y_train, kernels, names, fresh_likelihood)
+ 
+-        # Set parameters from this MCMC sample
++        # Set parameters from this MCMC sample. Only values that were
++        # actually applied are recorded as the draw's hyperparameters.
+         hp_dict = {}
+         for pyro_name in relevant_keys:
+             val = float(mcmc_samples[pyro_name][idx])
+-            hp_dict[pyro_name] = val
+             try:
+-                apply_hp_value(fresh_model, fresh_likelihood, pyro_name, val)
+-            except (IndexError, AttributeError, RuntimeError):
++                applied = apply_hp_value(fresh_model, fresh_likelihood, pyro_name, val)
++            except (IndexError, AttributeError, RuntimeError) as exc:
++                msg = (f"extract_gp_predictives: applying site {pyro_name!r} "
++                       f"for draw {int(idx)} raised {type(exc).__name__}: {exc}")
++                if strict:
++                    raise ValueError(msg) from exc
++                logger.warning(msg)
++                continue
++            if not applied:
++                msg = (f"extract_gp_predictives: apply_hp_value did not recognize "
++                       f"site {pyro_name!r} (draw {int(idx)}); the fresh model "
++                       "keeps its initialization value for that hyperparameter")
++                if strict:
++                    raise ValueError(msg)
++                logger.warning(msg)
+                 continue
++            hp_dict[pyro_name] = val
+ 
+         fresh_model.eval()
+         fresh_likelihood.eval()
+@@ -338,11 +411,23 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
+                     cov=pred_cov,
+                     hyperparameters=hp_dict,
+                 ))
+-            except RuntimeError:
++                retained.append(int(idx))
++            except RuntimeError as exc:
++                if strict:
++                    raise RuntimeError(
++                        f"extract_gp_predictives: the predictive for draw "
++                        f"{int(idx)} failed ({exc}); pass strict=False to drop "
++                        "failing draws and record them instead") from exc
++                dropped.append((int(idx), str(exc)))
+                 continue
+ 
+     print(f"  Extracted {len(results)}/{len(indices)} GP predictives")
+-    return results
++    if dropped:
++        logger.warning("extract_gp_predictives dropped %d of %d draws: %s",
++                       len(dropped), len(indices),
++                       [d for d, _ in dropped][:10])
++    return PredictiveList(results, attempted_indices=[int(i) for i in indices],
++                          retained_indices=retained, dropped=dropped)
+ 
+ 
+ # ═══════════════════════════════════════════════════════════════════
+@@ -363,6 +448,84 @@ class BMSStarResult:
+     class_posteriors: np.ndarray        # (n_classes,) — normalized
+     # Raw G matrix for diagnostics
+     G_matrix: np.ndarray               # (n_psi, n_theta)
++    # Draw-level diagnostics (2026-09 review FIX-3). weight_ess is the
++    # per-candidate effective number of draws behind the pooled score,
++    # (sum_i w_ij)^2 / sum_i w_ij^2 with w_ij = exp(-G_ij/tau) on the weights
++    # actually aggregated: a concentration summary, not an MCMC ESS and not an
++    # error bar. hard_win_credit splits each draw's unit of credit equally
++    # among its exact co-minimizers (sums to one across candidates);
++    # attainment is the fraction of draws on which a candidate attains the
++    # row minimum (ties counted for every co-minimizer); tie_fraction is the
++    # fraction of draws whose minimum is tied.
++    weight_ess: Optional[np.ndarray] = None
++    hard_win_credit: Optional[np.ndarray] = None
++    attainment: Optional[np.ndarray] = None
++    tie_fraction: Optional[float] = None
++
++
++def log_weight_ess(log_w, axis: int = 0):
++    """Effective sample size (sum w)^2 / sum w^2 from LOG weights.
++
++    The one ESS routine of the package (fix pass 1b): the per-column maximum
++    is subtracted before exponentiation, so a large common offset cancels
++    exactly instead of surviving as a difference of two large log-sum-exps
++    (review R6), and no weight can overflow. Entries of -inf contribute
++    nothing. A column whose weights are all -inf has ESS 0 (absent support);
++    a column containing NaN has ESS NaN (an invalid evaluation), which is
++    deliberately distinct from absent support (review R8). A 1-D input
++    returns a float.
++    """
++    lw = np.asarray(log_w, dtype=float)
++    one_d = lw.ndim == 1
++    if one_d:
++        lw = lw[:, None]
++        axis = 0
++    nan_col = np.isnan(lw).any(axis=axis)
++    m = np.max(np.where(np.isnan(lw), -np.inf, lw), axis=axis, keepdims=True)
++    supported = np.isfinite(m)
++    w = np.exp(lw - np.where(supported, m, 0.0))
++    with np.errstate(invalid="ignore", divide="ignore"):
++        ess = w.sum(axis=axis) ** 2 / (w ** 2).sum(axis=axis)
++    ess = np.where(np.squeeze(supported, axis=axis), ess, 0.0)
++    ess = np.where(nan_col, np.nan, ess)
++    return float(ess[0]) if one_d else ess
++
++
++def boltzmann_weight_ess(G_matrix: np.ndarray, tau: float) -> np.ndarray:
++    """Per-candidate effective number of draws behind a pooled Boltzmann score.
++
++    ESS_j = (sum_i w_ij)^2 / sum_i w_ij^2 with w_ij = exp(-G_ij / tau), computed
++    from log weights (log_weight_ess) so that a candidate whose raw weights
++    underflow still gets a finite value. Invariant under a per-candidate
++    column shift of G, which is the multiplicative factor the cross-candidate
++    normalization removes.
++    """
++    lw = -np.asarray(G_matrix, dtype=float) / float(tau)
++    if not np.all(np.isfinite(lw)):
++        raise ValueError("boltzmann_weight_ess requires finite G values")
++    return log_weight_ess(lw, axis=0)
++
++
++def hard_win_statistics(G_matrix: np.ndarray):
++    """Tau-free draw-win statistics with an explicit, order-free tie rule.
++
++    Exact ties on the validated finite scores: for draw i let T_i be the set
++    of candidates attaining the row minimum. Returns
++      hard_win_credit_j = mean_i [ 1(j in T_i) / |T_i| ]   (sums to one),
++      attainment_j      = mean_i [ 1(j in T_i) ],
++      tie_fraction      = mean_i [ |T_i| > 1 ].
++    A first-argmin rule would silently award every tie to the first candidate.
++    """
++    G = np.asarray(G_matrix, dtype=float)
++    if G.ndim != 2 or not np.all(np.isfinite(G)):
++        raise ValueError("hard_win_statistics requires a finite 2-D G matrix")
++    row_min = G.min(axis=1, keepdims=True)
++    tied = (G == row_min)
++    sizes = tied.sum(axis=1, keepdims=True)
++    credit = (tied / sizes).mean(axis=0)
++    attainment = tied.mean(axis=0)
++    tie_fraction = float(np.mean(sizes[:, 0] > 1))
++    return credit, attainment, tie_fraction
+ 
+ 
+ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
+@@ -379,7 +542,13 @@ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
+     Returns:
+         G matrix of shape (n_psi, n_theta)
+     """
+-    metric_fn = METRICS[metric_name]
++    # A4 universe firewall at the boundary that still holds candidate
++    # metadata (2026-09 review FIX-4): every path that builds a G matrix
++    # through the package passes here, including the aggregation_v3 entry
++    # points that never call run_bms_star.
++    _assert_candidate_universes_consistent(candidate_results)
++
++    metric_fn = METRICS[metric_name]          # registers metrics_v2 on a miss
+     n_psi = len(gp_samples)
+     n_theta = len(candidate_results)
+     G = np.zeros((n_psi, n_theta))
+@@ -409,32 +578,54 @@ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
+ def soft_transfer(G_matrix: np.ndarray, tau: float,
+                   instance_names: List[str],
+                   class_names: Optional[List[str]] = None,
+-                  normalize_per_draw: bool = False) -> BMSStarResult:
++                  normalize_per_draw: bool = False,
++                  metric_name: Optional[str] = None) -> BMSStarResult:
+     """
+     Soft BMS* scoring.
+ 
+     score(θ_j) = (1/N) Σ_i exp(-G(ψ_i, θ_j) / τ)
+ 
+-    For class-level, average within classes (not sum, to avoid size bias).
++    Class level: only the one-instance-per-class mapping is supported, in
++    which class posteriors equal instance posteriors. Any ``class_names``
++    that groups instances raises rather than silently returning instance
++    posteriors under a class label (2026-09 review FIX-3).
+ 
+     Args:
+         G_matrix: (n_psi, n_theta) divergence matrix
+         tau: temperature parameter
+         instance_names: names for each θ
+-        class_names: if None, each instance is its own class
++        class_names: None or a 1:1 relabelling of the instances
+         normalize_per_draw: if True, subtract per-row minimum before
+             Boltzmann weighting. This removes systematic offset so that
+             only *relative* divergence within each GP draw matters.
+             Prevents microscopic absolute bias from being amplified
+             into false certainty across many draws.
++        metric_name: the divergence that produced G_matrix. None is recorded
++            as "unspecified" rather than an invented identity.
+ 
+     Returns:
+-        BMSStarResult with normalized posteriors
++        BMSStarResult with normalized posteriors and draw-level diagnostics
+     """
+     n_psi, n_theta = G_matrix.shape
++    if not np.all(np.isfinite(G_matrix)):
++        # A NaN or infinite divergence is never a score. compute_G_matrix
++        # returns finite penalties, so only a hand-built matrix reaches this;
++        # the pre-fix code returned a uniform posterior for it (review F4).
++        raise ValueError("soft_transfer: G_matrix contains non-finite entries")
+ 
++    if len(instance_names) != n_theta:
++        raise ValueError(
++            f"soft_transfer: {len(instance_names)} instance_names for "
++            f"{n_theta} candidate columns")
+     if class_names is None:
+         class_names = instance_names
++    elif len(class_names) != n_theta or len(set(class_names)) != n_theta:
++        # one label per column and no repeats (review R5: a length check
++        # alone, or a uniqueness check alone, each admits a malformed list)
++        raise ValueError(
++            "soft_transfer: class-level averaging over grouped instances is "
++            "not implemented; pass class_names=None (or a 1:1 relabelling) "
++            "and aggregate classes explicitly")
+ 
+     # Optionally normalize: subtract best-model score per draw
+     G_effective = G_matrix.copy()
+@@ -461,12 +652,16 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
+     else:
+         instance_posteriors = np.ones(n_theta) / n_theta
+ 
+-    # Class posteriors = instance posteriors (1:1 mapping for now)
++    # Class posteriors = instance posteriors (1:1 mapping, enforced above)
+     class_posteriors = instance_posteriors.copy()
+ 
+-    metric_name = "unknown"  # will be set by caller
++    # Draw-level diagnostics on the weights actually aggregated (G_effective)
++    # and the tau-free win statistics on the raw matrix.
++    weight_ess = boltzmann_weight_ess(G_effective, tau)
++    credit, attainment, tie_fraction = hard_win_statistics(G_matrix)
++
+     return BMSStarResult(
+-        metric_name=metric_name,
++        metric_name=metric_name if metric_name is not None else "unspecified",
+         tau=tau,
+         instance_names=list(instance_names),
+         instance_scores=instance_scores,
+@@ -474,9 +669,47 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
+         class_names=list(class_names),
+         class_posteriors=class_posteriors,
+         G_matrix=G_matrix,
++        weight_ess=weight_ess,
++        hard_win_credit=credit,
++        attainment=attainment,
++        tie_fraction=tie_fraction,
+     )
+ 
+ 
++def aggregate_convention(G_matrix: np.ndarray, tau: float, variant: str) -> np.ndarray:
++    """The three aggregation conventions of section 2.3 over one G matrix
++    (n_draws, n_candidates) at temperature tau (2026-09 review FIX-9; moved
++    into the package from the Case A script so that Cases A and C share one
++    implementation instead of a cross-branch import).
++
++      "pooled": the shipped default; mean over draws of exp(-G/tau) with one
++          global stabilizing shift, normalized once (identical arithmetic to
++          soft_transfer with normalize_per_draw=False).
++      "rowmin": subtract each draw's minimum first, then as "pooled"
++          (identical to soft_transfer with normalize_per_draw=True).
++      "expected_posterior": normalize each draw into a posterior over
++          candidates, then average (van Bork et al. Eq. 4).
++    """
++    G = np.asarray(G_matrix, dtype=float)
++    if variant == "pooled":
++        G_eff = G
++    elif variant == "rowmin":
++        G_eff = G - G.min(axis=1, keepdims=True)
++    elif variant == "expected_posterior":
++        lw = -(G - G.min(axis=1, keepdims=True)) / tau
++        w = np.exp(lw)
++        w = w / w.sum(axis=1, keepdims=True)
++        s = w.mean(axis=0)
++        return s / s.sum()
++    else:
++        raise ValueError(f"unknown aggregation variant {variant!r}")
++    lw = -G_eff / tau
++    w = np.exp(lw - lw.max())
++    s = w.mean(axis=0)
++    tot = s.sum()
++    return s / tot if tot > 0 else np.ones(G.shape[1]) / G.shape[1]
++
++
+ def _assert_candidate_universes_consistent(candidate_results):
+     """Firewall the A4 separate-normalization rule at the shared BMS* boundary.
+ 
+@@ -501,9 +734,10 @@ def _assert_candidate_universes_consistent(candidate_results):
+             f"{getattr(cr, 'name', '?')}[{getattr(cr, 'universe', None)}]"
+             for cr in candidate_results)
+         raise ValueError(
+-            "run_bms_star received candidates spanning multiple universes or "
+-            f"a mix of tagged and untagged results ({labels}); decision A4 "
+-            "forbids merging Mauna candidate universes into one normalization")
++            "compute_G_matrix/run_bms_star received candidates spanning "
++            "multiple universes or a mix of tagged and untagged results "
++            f"({labels}); decision A4 forbids merging Mauna candidate "
++            "universes into one normalization")
+ 
+ 
+ def run_bms_star(gp_samples: List[GPPosteriorSample],
+@@ -521,10 +755,19 @@ def run_bms_star(gp_samples: List[GPPosteriorSample],
+     Returns:
+         results[metric_name][tau] = BMSStarResult
+     """
++    implicit_metrics = metric_names is None
+     if metric_names is None:
+         metric_names = list(METRICS.keys())
+     if taus is None:
+         taus = np.logspace(-1, 2, 20)
++    if implicit_metrics:
++        from .config import APPENDIX_METRICS, PRIMARY_METRIC
++        appendix = [m for m in metric_names if m in APPENDIX_METRICS]
++        if appendix:
++            logger.warning(
++                "run_bms_star: scoring appendix-only metric(s) %s because "
++                "metric_names was not given; W1 makes %s the primary metric",
++                appendix, PRIMARY_METRIC)
+ 
+     _assert_candidate_universes_consistent(candidate_results)
+ 
+@@ -552,8 +795,8 @@ def run_bms_star(gp_samples: List[GPPosteriorSample],
+         results[metric_name] = {}
+         for tau in taus:
+             bms_result = soft_transfer(G, tau, instance_names,
+-                                       normalize_per_draw=normalize_per_draw)
+-            bms_result.metric_name = metric_name
++                                       normalize_per_draw=normalize_per_draw,
++                                       metric_name=metric_name)
+             results[metric_name][tau] = bms_result
+ 
+     return results
+diff --git a/bistar_gp/candidates.py b/bistar_gp/candidates.py
+index 901da2c..f89b650 100644
+--- a/bistar_gp/candidates.py
++++ b/bistar_gp/candidates.py
+@@ -8,11 +8,15 @@ Each model has:
+     params()        → dict of fitted parameters
+ """
+ 
++import logging
++
+ import numpy as np
+ from scipy.optimize import minimize
+ from dataclasses import dataclass
+ from typing import Tuple, Dict, Optional
+ 
++logger = logging.getLogger(__name__)
++
+ 
+ @dataclass
+ class CandidateResult:
+@@ -41,19 +45,23 @@ class CandidateModel:
+     def predict(self, x_eval: np.ndarray) -> CandidateResult:
+         raise NotImplementedError
+ 
+-    def _fit_mle(self, x, y, f_predict, p0, bounds=None):
++    def _fit_mle(self, x, y, f_predict, p0, bounds=None, return_status=False):
+         """
+         Generic MLE fitting. f_predict(x, params) -> mean vector.
+         Assumes Gaussian noise: y ~ N(f(x; params), sigma^2 I).
+         Last element of params is log(sigma).
+ 
+-        Returns (params, nll). Multi-start callers must compare restarts by
+-        this nll — the FULL negative log likelihood including the
+-        0.5*n*log(2*pi*sigma^2) term. The residual term alone is useless for
+-        that comparison: at any converged MLE sigma^2 = mean(residuals^2), so
+-        0.5*sum(r^2)/sigma^2 = n/2 for EVERY restart, and selection degrades
+-        to optimizer-noise tie-breaking (which picked a degenerate
+-        near-linear "sinusoid" on the thesis toy data).
++        Returns (params, nll), or (params, nll, status) when
++        return_status=True, where status is scipy's report
++        {success, status, message, nit} (2026-09 review FIX-5: a
++        non-successful L-BFGS-B result used to be accepted silently).
++        Multi-start callers must compare restarts by this nll — the FULL
++        negative log likelihood including the 0.5*n*log(2*pi*sigma^2) term.
++        The residual term alone is useless for that comparison: at any
++        converged MLE sigma^2 = mean(residuals^2), so 0.5*sum(r^2)/sigma^2 =
++        n/2 for EVERY restart, and selection degrades to optimizer-noise
++        tie-breaking (which picked a degenerate near-linear "sinusoid" on the
++        thesis toy data).
+         """
+         def neg_log_lik(params):
+             log_sigma = params[-1]
+@@ -64,7 +72,26 @@ class CandidateModel:
+             return 0.5 * n * np.log(2 * np.pi * sigma2) + 0.5 * np.sum(residuals**2) / sigma2
+ 
+         result = minimize(neg_log_lik, p0, bounds=bounds, method="L-BFGS-B")
+-        return result.x, result.fun
++        if not return_status:
++            return result.x, result.fun
++        status = {"success": bool(result.success), "status": int(result.status),
++                  "message": str(result.message), "nit": int(result.nit)}
++        return result.x, result.fun, status
++
++    @staticmethod
++    def _select_restart(candidates, model_name):
++        """Pick the best restart, preferring successful optimizer reports;
++        fall back to the best overall with a warning when none succeeded.
++        candidates: list of (params, nll, status)."""
++        if not candidates:
++            return None
++        ok = [c for c in candidates if c[2]["success"]]
++        pool = ok if ok else candidates
++        if not ok:
++            logger.warning("%s: no restart reported convergence (%s); using the "
++                           "best non-converged result", model_name,
++                           candidates[0][2]["message"])
++        return min(pool, key=lambda c: c[1])
+ 
+     def _make_result(self, x_eval, mean, noise_var, params_dict):
+         """Build CandidateResult with isotropic noise covariance."""
+@@ -95,7 +122,9 @@ class LinearModel(CandidateModel):
+             return params[0] * x + params[1]
+ 
+         p0 = [0.0, 0.0, np.log(0.5)]
+-        result, _ = self._fit_mle(x, y, f, p0)
++        result, _, status = self._fit_mle(x, y, f, p0, return_status=True)
++        if not status["success"]:
++            logger.warning("Linear fit did not converge: %s", status["message"])
+         self.a, self.b = result[0], result[1]
+         self.sigma = np.exp(result[2])
+ 
+@@ -122,19 +151,18 @@ class SinusoidalModel(CandidateModel):
+         def f(x, params):
+             return params[0] * np.sin(params[1] * x + params[2])
+ 
+-        # Try multiple initializations (omega is tricky)
+-        best_nll = np.inf
+-        best_params = None
++        # Try multiple initializations (omega is tricky); prefer restarts
++        # whose optimizer reported success (FIX-5).
++        restarts = []
+         for omega_init in [0.5, 1.0, 1.5, 2.0]:
+             for A_init in [0.5, 1.0, 2.0]:
+                 p0 = [A_init, omega_init, 0.0, np.log(0.5)]
+                 try:
+-                    result, nll = self._fit_mle(x, y, f, p0)
+-                    if nll < best_nll:
+-                        best_nll = nll
+-                        best_params = result
++                    restarts.append(self._fit_mle(x, y, f, p0, return_status=True))
+                 except Exception:
+                     continue
++        best = self._select_restart(restarts, self.name)
++        best_params = best[0] if best is not None else None
+ 
+         if best_params is not None:
+             self.A, self.omega, self.phi = best_params[0], best_params[1], best_params[2]
+@@ -169,17 +197,15 @@ class SinLinearModel(CandidateModel):
+         def f(x, params):
+             return params[0] * np.sin(params[1] * x + params[2]) + params[3] * x + params[4]
+ 
+-        best_nll = np.inf
+-        best_params = None
++        restarts = []
+         for omega_init in [0.5, 1.0, 1.5, 2.0]:
+             p0 = [1.0, omega_init, 0.0, 0.25, 0.0, np.log(0.3)]
+             try:
+-                result, nll = self._fit_mle(x, y, f, p0)
+-                if nll < best_nll:
+-                    best_nll = nll
+-                    best_params = result
++                restarts.append(self._fit_mle(x, y, f, p0, return_status=True))
+             except Exception:
+                 continue
++        best = self._select_restart(restarts, self.name)
++        best_params = best[0] if best is not None else None
+ 
+         if best_params is not None:
+             self.A = best_params[0]
+@@ -218,7 +244,9 @@ class QuadraticModel(CandidateModel):
+             return params[0] * x**2 + params[1] * x + params[2]
+ 
+         p0 = [0.0, 0.0, 0.0, np.log(0.5)]
+-        result, _ = self._fit_mle(x, y, f, p0)
++        result, _, status = self._fit_mle(x, y, f, p0, return_status=True)
++        if not status["success"]:
++            logger.warning("Quadratic fit did not converge: %s", status["message"])
+         self.a, self.b, self.c = result[0], result[1], result[2]
+         self.sigma = np.exp(result[3])
+ 
+diff --git a/bistar_gp/config.py b/bistar_gp/config.py
+index cd53b25..162a560 100644
+--- a/bistar_gp/config.py
++++ b/bistar_gp/config.py
+@@ -17,6 +17,34 @@ from typing import Dict, List, Optional, Tuple
+ CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
+ RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
+ 
++# ── Metric roles (W1) and withdrawn caches (M2bR banner) ───────────
++# 2026-09 review FIX-7. The manuscript's primary metric and the appendix-only
++# stress metric; generic APIs keep their defaults, manuscript-facing code
++# and run_bms_star's implicit path refer to these names.
++PRIMARY_METRIC = "pw_kl_vcal"
++APPENDIX_METRICS = ("kl_forward",)
++
++# Caches the M2bR banner withdrew: `informative`-config HMC draws produced by
++# the pre-D6/D22 sampler. load_hmc_samples refuses them unless the caller
++# passes allow_withdrawn=True (and then warns). Entries ending in "/" are
++# directory prefixes; the rest are file paths relative to the repository.
++WITHDRAWN_CACHES = (
++    "runs/fit_method_metric_comparison/samples_hmc.npz",
++    "runs/toy_tau_metric_comparison/",
++)
++
++
++def is_withdrawn_cache(path) -> bool:
++    """True when `path` names, or lies under, a withdrawn cache entry."""
++    norm = os.path.normpath(os.path.abspath(str(path))).replace(os.sep, "/")
++    for entry in WITHDRAWN_CACHES:
++        if entry.endswith("/"):
++            if "/" + entry.rstrip("/") + "/" in norm + "/":
++                return True
++        elif norm.endswith("/" + entry) or norm == entry:
++            return True
++    return False
++
+ 
+ # ── Prior Configurations ──────────────────────────────────────────
+ 
+@@ -179,10 +207,13 @@ class ExperimentConfig:
+     # BMS*
+     tau_range: Tuple[float, float] = (-1, 2)  # log10 scale
+     n_taus: int = 30
++    # The primary metric is APPENDED (FIX-7) so positional uses of the legacy
++    # list (experiments/bms_star_toy.py slices metrics[:4]) keep their meaning.
+     metrics: List[str] = field(default_factory=lambda: [
+         "kl_forward", "kl_backward", "kl_symmetric", "hellinger",
+         "pw_kl_forward", "pw_kl_backward", "pw_kl_symmetric", "pw_hellinger",
+         "pw_mse", "pw_nll",
++        PRIMARY_METRIC,
+     ])
+ 
+     # Prior sensitivity
+@@ -219,9 +250,23 @@ def save_hmc_samples(samples: Dict, path: str):
+     print(f"  Cached HMC samples → {path}")
+ 
+ 
+-def load_hmc_samples(path: str) -> Dict:
+-    """Load HMC samples from .npz file."""
++def load_hmc_samples(path: str, allow_withdrawn: bool = False) -> Dict:
++    """Load HMC samples from .npz file.
++
++    Refuses the caches the M2bR banner withdrew (WITHDRAWN_CACHES) unless
++    allow_withdrawn=True is passed explicitly, in which case it warns; a
++    figure or number built from them must be labelled as withdrawn material.
++    """
++    import warnings
+     import numpy as np
++    if is_withdrawn_cache(path):
++        msg = (f"{path} is a WITHDRAWN cache (M2bR banner: informative-config "
++               "HMC draws from the pre-D6/D22 sampler must never be cited); "
++               "pass allow_withdrawn=True only for explicitly labelled archival "
++               "reproduction")
++        if not allow_withdrawn:
++            raise RuntimeError(msg)
++        warnings.warn(msg, UserWarning, stacklevel=2)
+     data = np.load(path)
+     samples = {k: data[k] for k in data.files}
+     print(f"  Loaded cached HMC samples ← {path}")
+diff --git a/bistar_gp/debias.py b/bistar_gp/debias.py
+index 4fa6a6b..4c2b710 100644
+--- a/bistar_gp/debias.py
++++ b/bistar_gp/debias.py
+@@ -1,29 +1,85 @@
+ """
+-Debiasing pipeline: fit additive GP → decompose → extract unbiased components.
++Debiasing pipeline: fit additive GP, decompose, extract labeled components.
+ Works for any number of additive components.
++
++2026-09 review fix pass (FIX-1 and FIX-2). The hyperparameter-draw routines
++`decompose_model_hmc` and `decompose_model_mcmc` used to discard each draw's
++conditional covariance and report `std` as the across-draw spread of the
++conditional means alone, which understated every band they produced (the
++D58 Mauna cards by an order of magnitude). They now retain each draw's
++conditional variance and report law-of-total-variance moments,
++
++    Var[f(x) | y] = E_d[ Var(f(x) | y, eta_d) ] + Var_d[ E(f(x) | y, eta_d) ],
++
++for every component, for the full posterior of the summed kernel, and for
++any requested GROUP of components. Group moments come from conditioning the
++summed group blocks with the Cholesky factor of the entire training
++covariance plus noise, never from summing component variances, so a group
++containing every component reproduces the full posterior exactly.
+ """
+ 
++import functools
++import logging
++import operator
++
+ import torch
+ import numpy as np
+-from typing import Dict, List, Optional
+-from dataclasses import dataclass
++from typing import Dict, List, Optional, Sequence, Tuple
++from dataclasses import dataclass, field
+ 
+ from .decompose import (
+-    decompose_additive_gp, decompose_component, compute_cholesky, sample_from_component,
++    decompose_additive_gp, decompose_component, compute_cholesky,
++    sample_from_component, mixture_central_interval,
+ )
+ 
++logger = logging.getLogger(__name__)
++
+ 
+ @dataclass
+ class ComponentResult:
++    """Posterior summary of one additive component (or of a component group).
++
++    ``mean``, ``std`` and ``cov`` are TOTAL posterior moments over the
++    retained hyperparameter draws (law of total variance). ``samples`` keeps
++    its historical position and meaning for the MAP path (function draws);
++    on the draw-based paths it holds the per-draw conditional means, and
++    ``samples_kind`` says which. ``conditional_means`` and
++    ``conditional_vars`` (n_draws, n_test) are what interval construction
++    needs; ``within_var_mean`` and ``between_var`` are the two terms whose
++    sum is ``std ** 2``.
++    """
+     name: str
+     mean: np.ndarray       # (n_test,)
+-    std: np.ndarray        # (n_test,)
+-    cov: np.ndarray        # (n_test, n_test)
+-    samples: np.ndarray    # (n_samples, n_test)
++    std: np.ndarray        # (n_test,)  total posterior sd
++    cov: np.ndarray        # (n_test, n_test)  total posterior covariance
++    samples: np.ndarray    # (n_samples, n_test); see samples_kind
++    samples_kind: str = "function_draws"        # or "conditional_means"
++    conditional_means: Optional[np.ndarray] = None   # (n_draws, n_test)
++    conditional_vars: Optional[np.ndarray] = None    # (n_draws, n_test)
++    within_var_mean: Optional[np.ndarray] = None     # E_d[var_d]
++    between_var: Optional[np.ndarray] = None         # Var_d[mean_d]
++    n_draws: int = 0
++
++    def central_interval(self, mass: float = 0.95):
++        """Pointwise central interval of the retained draw mixture."""
++        if self.conditional_means is None or self.conditional_vars is None:
++            raise ValueError(
++                f"component {self.name!r} carries no per-draw conditional "
++                "moments; intervals need a decomposition produced by this "
++                "package version")
++        return mixture_central_interval(self.conditional_means,
++                                        self.conditional_vars, mass=mass)
+ 
+ 
+ @dataclass
+ class DecompositionResult:
++    """Decomposition of one additive GP posterior.
++
++    The seven fields below are a positional rebuild contract pinned by
++    tests/test_poster_d58_driver.py; additional per-draw information is
++    attached as non-field attributes in __post_init__ (``full``, ``groups``,
++    ``n_draws_attempted``, ``n_draws_retained``) so that contract holds.
++    """
+     x_test: np.ndarray
+     x_train: np.ndarray
+     y_train: np.ndarray
+@@ -32,11 +88,201 @@ class DecompositionResult:
+     full_std: np.ndarray
+     noise_var: float
+ 
++    def __post_init__(self):
++        # Non-field attributes (not part of dataclasses.fields()).
++        self.full: Optional[ComponentResult] = None
++        self.groups: Dict[Tuple[str, ...], ComponentResult] = {}
++        self.n_draws_attempted: int = 0
++        self.n_draws_retained: int = 0
++
++    @staticmethod
++    def group_key(names: Sequence[str]) -> Tuple[str, ...]:
++        return tuple(sorted(set(names)))     # a repeated name is one member (review F3)
++
++    def group(self, names: Sequence[str]) -> ComponentResult:
++        """Joint posterior summary of the sum of the named components.
++
++        Groups must be requested at decomposition time (``groups=`` on
++        `decompose_model_hmc` / `decompose_model_mcmc`) because their
++        conditional moments are computed per hyperparameter draw from the
++        summed kernel blocks. A group of every component is the full
++        posterior; a singleton is the component; an empty group is zero.
++        """
++        key = self.group_key(names)
++        if len(key) == 0:
++            n = len(self.x_test)
++            zeros = np.zeros(n)
++            n_draws = max(self.n_draws_retained, 1)
++            return ComponentResult(
++                name="", mean=zeros, std=zeros, cov=np.zeros((n, n)),
++                samples=np.zeros((n_draws, n)), samples_kind="conditional_means",
++                conditional_means=np.zeros((n_draws, n)),
++                conditional_vars=np.zeros((n_draws, n)),
++                within_var_mean=zeros, between_var=zeros, n_draws=n_draws)
++        if len(key) == 1 and key[0] in self.components:
++            return self.components[key[0]]
++        if key == self.group_key(self.components.keys()) and self.full is not None:
++            return self.full
++        if key in self.groups:
++            return self.groups[key]
++        raise KeyError(
++            f"group {list(key)} was not requested at decomposition time; pass "
++            f"groups=[{list(key)}] to decompose_model_hmc/decompose_model_mcmc "
++            "(joint group moments cannot be derived from component summaries)")
++
++
++# ── shared draw accumulation ────────────────────────────────────────
++
++def _blocks_sum(km, names, key):
++    """Sum of the named components' kernel blocks. A single name returns its
++    block itself (no leading ``0 +`` step), so a lone component follows
++    exactly the arithmetic of the per-component path."""
++    return functools.reduce(operator.add, [km[n][key] for n in names])
++
++
++def _summarize(name, M, V, cov, samples, samples_kind) -> ComponentResult:
++    """The one place a ComponentResult is packaged (fix pass 1b).
++
++    M, V: (n_draws, n_test) conditional means and variances. cov: the total
++    posterior covariance the caller assembled (one draw's conditional
++    covariance, or mean_d C_d + Cov_d m_d over draws). std is the
++    law-of-total-variance sd sqrt(E_d[var_d] + Var_d[mean_d]).
++    """
++    M = np.asarray(M, dtype=float)
++    V = np.asarray(V, dtype=float)
++    within = V.mean(axis=0)
++    between = M.var(axis=0)
++    std = np.sqrt(np.clip(within + between, 0.0, None))
++    return ComponentResult(
++        name=name, mean=M.mean(axis=0), std=std, cov=cov,
++        samples=samples, samples_kind=samples_kind,
++        conditional_means=M, conditional_vars=V,
++        within_var_mean=within, between_var=between, n_draws=M.shape[0])
++
++
++def _single_draw_summary(name, mean, cov, samples=None) -> ComponentResult:
++    """Summary of one conditional Gaussian (the MAP path), variance floored
++    at 1e-10 as before; ``samples`` are function draws when given."""
++    mean = np.asarray(mean, dtype=float)
++    var = np.clip(np.diag(cov), 1e-10, None)
++    if samples is None:
++        return _summarize(name, mean[None, :], var[None, :], cov, mean[None, :],
++                          "conditional_means")
++    return _summarize(name, mean[None, :], var[None, :], cov, samples, "function_draws")
++
++
++def _validated_groups(names, groups) -> Dict[Tuple[str, ...], List[str]]:
++    """{sorted-name tuple: members} for the requested groups that need their
++    own conditioning (more than one component, fewer than all). Empty,
++    singleton and all-component requests are derived by
++    DecompositionResult.group; repeated names collapse to one member; unknown
++    members raise."""
++    out = {}
++    for g in (groups or []):
++        g = list(g)
++        key = DecompositionResult.group_key(g)
++        unknown = [n for n in key if n not in names]
++        if unknown:
++            raise KeyError(f"group {g} names unknown components {unknown}")
++        if 1 < len(key) < len(names):
++            out[key] = list(key)
++    return out
++
++
++class _DrawAccumulator:
++    """Accumulate per-draw conditional moments for components, the full
++    posterior and requested groups, then form total posterior moments.
++
++    Targets are keyed by typed tuples ``("component", name)``, ``("group",
++    sorted names)`` and ``("full",)``, so a component name can never collide
++    with a group label or the full posterior (fix pass 1b, review R3)."""
++
++    def __init__(self, names: List[str], n_test: int,
++                 groups: Optional[Sequence[Sequence[str]]]):
++        self.names = list(names)
++        self.n_test = n_test
++        self.group_keys = _validated_groups(self.names, groups)
++        self.targets = ([("full",)] + [("component", n) for n in self.names]
++                        + [("group", k) for k in self.group_keys])
++        self.means = {t: [] for t in self.targets}
++        self.vars = {t: [] for t in self.targets}
++        self.cov_sum = {t: np.zeros((n_test, n_test)) for t in self.targets}
++        self.n = 0
++
++    def _members(self, target):
++        if target[0] == "full":
++            return self.names
++        if target[0] == "component":
++            return [target[1]]
++        return self.group_keys[target[1]]
++
++    def add_draw(self, km, noise_var, y_train, jitter):
++        """One hyperparameter draw: a single Cholesky of the summed training
++        covariance serves every target. Every target is conditioned into a
++        local record first and committed together at the end, so a failure
++        part-way leaves no partially recorded draw (fix pass 1b, review R2)."""
++        L = compute_cholesky(_blocks_sum(km, self.names, "XX"), noise_var, jitter)
++        record = {}
++        for target in self.targets:
++            members = self._members(target)
++            mean_t, cov_t = decompose_component(
++                _blocks_sum(km, members, "XstarX"), _blocks_sum(km, members, "XstarXstar"),
++                _blocks_sum(km, members, "XXstar"), L, y_train)
++            m = np.array(mean_t.numpy() if hasattr(mean_t, "numpy") else mean_t, dtype=float)
++            c = np.asarray(cov_t.numpy() if hasattr(cov_t, "numpy") else cov_t, dtype=float)
++            c = 0.5 * (c + c.T)
++            record[target] = (m, np.clip(np.diag(c), 0.0, None), c)
++        for target, (m, v, c) in record.items():
++            self.means[target].append(m)
++            self.vars[target].append(v)
++            self.cov_sum[target] += c
++        self.n += 1
++
++    def _finalize_target(self, target, name) -> ComponentResult:
++        M = np.stack(self.means[target])                 # (n_draws, n_test)
++        V = np.stack(self.vars[target])
++        within_cov = self.cov_sum[target] / self.n
++        if M.shape[0] > 1:
++            between_cov = np.atleast_2d(np.cov(M, rowvar=False, bias=True))
++        else:
++            between_cov = np.zeros((self.n_test, self.n_test))
++        return _summarize(name, M, V, within_cov + between_cov, M, "conditional_means")
++
++    def finalize(self):
++        if self.n == 0:
++            raise RuntimeError("no hyperparameter draw was decomposed")
++        components = {n: self._finalize_target(("component", n), n) for n in self.names}
++        full = self._finalize_target(("full",), "__full__")
++        groups = {key: self._finalize_target(("group", key), "+".join(key))
++                  for key in self.group_keys}
++        return components, full, groups
++
++
++def _assemble(x_test, x_train, y_train, components, full, groups, noise_var,
++              n_attempted, n_retained) -> DecompositionResult:
++    result = DecompositionResult(
++        x_test=x_test.numpy(), x_train=x_train.numpy(), y_train=y_train.numpy(),
++        components=components, full_mean=full.mean, full_std=full.std,
++        noise_var=noise_var)
++    result.full = full
++    result.groups = groups
++    result.n_draws_attempted = n_attempted
++    result.n_draws_retained = n_retained
++    return result
+ 
+-def decompose_model(model, likelihood, x_train, y_train, x_test, n_samples=25, jitter=1e-4):
++
++# ── MAP decomposition ───────────────────────────────────────────────
++
++def decompose_model(model, likelihood, x_train, y_train, x_test, n_samples=25, jitter=1e-4,
++                    groups=None):
+     """
+     Decompose a fitted additive GP into its components.
+-    Single set of hyperparameters (MAP). For full Bayesian, use decompose_model_mcmc.
++    Single set of hyperparameters (MAP). For full Bayesian, use decompose_model_hmc.
++
++    groups: optional list of component-name lists. Each requested group's
++    posterior is the posterior of the summed group kernel conditioned with
++    the Cholesky factor of the ENTIRE training covariance (never a
++    group-only factorization); retrieve it with ``result.group(names)``.
+     """
+     model.eval()
+     likelihood.eval()
+@@ -60,11 +306,8 @@ def decompose_model(model, likelihood, x_train, y_train, x_test, n_samples=25, j
+ 
+     for (mean_i, cov_i), name in zip(results, names):
+         samples_i = sample_from_component(mean_i, cov_i, n_samples)
+-        std_i = torch.sqrt(torch.clamp(torch.diag(cov_i), min=1e-10))
+-        components[name] = ComponentResult(
+-            name=name, mean=mean_i.numpy(), std=std_i.numpy(),
+-            cov=cov_i.numpy(), samples=samples_i.numpy(),
+-        )
++        components[name] = _single_draw_summary(name, mean_i.numpy(), cov_i.numpy(),
++                                                samples=samples_i.numpy())
+         full_mean += mean_i
+ 
+     # Full posterior covariance of f = sum_i f_i is NOT the sum of the
+@@ -80,157 +323,193 @@ def decompose_model(model, likelihood, x_train, y_train, x_test, n_samples=25, j
+         _, full_cov_t = decompose_component(
+             K_sum_XstarX, K_sum_XstarXstar, K_sum_XXstar, L_sum, y_train,
+         )
+-    full_cov = full_cov_t.numpy()
+-    full_std = np.sqrt(np.clip(np.diag(full_cov), 1e-10, None))
++    full = _single_draw_summary("__full__", full_mean.numpy(), full_cov_t.numpy())
+ 
+-    return DecompositionResult(
++    # Requested groups (FIX-2b/2d): the summed group blocks conditioned with
++    # the same full-kernel factor L_sum; a single hyperparameter setting, so
++    # the between-draw term is zero.
++    group_results = {}
++    for key, members in _validated_groups(names, groups).items():
++        with torch.no_grad():
++            mean_g_t, cov_g_t = decompose_component(
++                _blocks_sum(km, members, "XstarX"), _blocks_sum(km, members, "XstarXstar"),
++                _blocks_sum(km, members, "XXstar"), L_sum, y_train)
++        cov_g = cov_g_t.numpy()
++        group_results[key] = _single_draw_summary("+".join(key), mean_g_t.numpy(),
++                                                  0.5 * (cov_g + cov_g.T))
++
++    result = DecompositionResult(
+         x_test=x_test.numpy(), x_train=x_train.numpy(), y_train=y_train.numpy(),
+-        components=components, full_mean=full_mean.numpy(), full_std=full_std, noise_var=noise_var,
++        components=components, full_mean=full_mean.numpy(), full_std=full.std, noise_var=noise_var,
+     )
++    result.full = full
++    result.groups = group_results
++    result.n_draws_attempted = result.n_draws_retained = 1
++    return result
++
++
++# ── draw-based decompositions ───────────────────────────────────────
++
++def _raw_parameter_map(model, likelihood):
++    """{name: parameter} over model + likelihood scalar parameters, deduplicated
++    by object identity with the first name kept (the fit_mcmc_simple naming)."""
++    seen = set()
++    out = {}
++    for n, p in list(model.named_parameters()) + list(likelihood.named_parameters()):
++        if p.requires_grad and p.numel() == 1 and id(p) not in seen:
++            seen.add(id(p))
++            out[n] = p
++    return out
+ 
+ 
+ def decompose_model_mcmc(model, likelihood, x_train, y_train, x_test,
+-                         mcmc_samples, n_posterior_samples=100, jitter=1e-4):
++                         mcmc_samples, n_posterior_samples=100, jitter=1e-4,
++                         groups=None, rng=None):
+     """
+-    Full Bayesian decomposition: iterate over MCMC hyperparameter samples.
+-    Produces wider uncertainty bands (thesis Fig 7a vs Fig 6).
++    Full Bayesian decomposition over RAW-parameter draws (fit_mcmc_simple
++    output: dict keyed by named_parameters names, raw unconstrained values).
++
++    Draws are matched to parameters BY NAME (the previous positional pairing
++    silently mis-assigned any differently ordered dict); every parameter must
++    have a key and every key must name a parameter, or the call raises.
++    Bands are law-of-total-variance moments (see the module docstring).
+     """
+     model.eval()
+     likelihood.eval()
+     x_train, y_train, x_test = x_train.double(), y_train.double(), x_test.double()
+     n_test = x_test.shape[0]
+ 
+-    param_list = [(n, p) for n, p in
+-                  list(model.named_parameters()) + list(likelihood.named_parameters())
+-                  if p.requires_grad and p.numel() == 1]
+-    param_names_ordered = [n for n, _ in param_list]
+-
+-    mcmc_keys = list(mcmc_samples.keys())
+-    total_mcmc = len(mcmc_samples[mcmc_keys[0]])
+-    indices = np.random.choice(total_mcmc, min(n_posterior_samples, total_mcmc), replace=False)
+-
+-    all_means = {n: [] for n in model.component_names}
+-
++    param_map = _raw_parameter_map(model, likelihood)
++    keys = list(mcmc_samples.keys())
++    unknown = [k for k in keys if k not in param_map]
++    missing = [n for n in param_map if n not in mcmc_samples]
++    if unknown or missing:
++        raise KeyError(
++            "decompose_model_mcmc: sample keys and model parameters do not "
++            f"match by name (unknown keys {unknown}, parameters without a key "
++            f"{missing}); positional pairing is no longer performed")
++
++    total_mcmc = len(mcmc_samples[keys[0]])
++    n_take = min(n_posterior_samples, total_mcmc)
++    if rng is not None:
++        indices = rng.choice(total_mcmc, n_take, replace=False)
++    else:
++        indices = np.random.choice(total_mcmc, n_take, replace=False)
++
++    names = list(model.component_names)
++    acc = _DrawAccumulator(names, n_test, groups)
++    noise_var = float(likelihood.noise.item())
+     for idx in indices:
+-        # Set hyperparameters to this MCMC sample
+-        for i, (_, p) in enumerate(param_list):
+-            if i < len(mcmc_keys):
+-                p.data.fill_(mcmc_samples[mcmc_keys[i]][idx])
+-
++        for name, p in param_map.items():
++            p.data.fill_(float(mcmc_samples[name][idx]))
+         noise_var = likelihood.noise.item()
+         km = model.get_component_kernel_matrices(x_train, x_test)
+-        names = model.component_names
+-
+         with torch.no_grad():
+-            try:
+-                results = decompose_additive_gp(
+-                    [km[n]["XX"] for n in names], [km[n]["XstarX"] for n in names],
+-                    [km[n]["XstarXstar"] for n in names], [km[n]["XXstar"] for n in names],
+-                    noise_var, y_train, jitter,
+-                )
+-                for (mean_i, _), comp_name in zip(results, names):
+-                    all_means[comp_name].append(mean_i.numpy())
+-            except RuntimeError:
+-                continue
++            acc.add_draw(km, noise_var, y_train, jitter)
+ 
+-    components = {}
+-    full_mean = np.zeros(n_test)
+-    for comp_name in model.component_names:
+-        means = np.stack(all_means[comp_name])
+-        avg = means.mean(0)
+-        std = means.std(0)
+-        components[comp_name] = ComponentResult(
+-            name=comp_name, mean=avg, std=std,
+-            cov=np.diag(std**2), samples=means,  # samples = means across MCMC
+-        )
+-        full_mean += avg
++    components, full, group_results = acc.finalize()
++    return _assemble(x_test, x_train, y_train, components, full, group_results,
++                     noise_var, len(indices), acc.n)
+ 
+-    all_full = sum(np.stack(all_means[n]) for n in model.component_names)
+-    full_std = all_full.std(0)
+-
+-    return DecompositionResult(
+-        x_test=x_test.numpy(), x_train=x_train.numpy(), y_train=y_train.numpy(),
+-        components=components, full_mean=full_mean, full_std=full_std, noise_var=likelihood.noise.item(),
+-    )
+ 
+ def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
+-                        mcmc_samples, kernel_builder, n_posterior_samples=200, jitter=1e-4):
++                        mcmc_samples, kernel_builder, n_posterior_samples=200,
++                        jitter=1e-4, groups=None, strict=True, rng=None):
+     """
+-    Decomposition using Pyro HMC samples.
+-    kernel_builder: callable that returns (kernel_components, names) — 
+-                    e.g. build_toy_kernels or build_mauna_loa_kernels
++    Decomposition over Pyro/E1 hyperparameter draws (fit_hmc dict schema:
++    constrained values keyed by pyro sample-site name).
++
++    kernel_builder: callable that returns (kernel_components, names), e.g.
++                    build_toy_kernels or build_mauna_loa_kernels.
++    groups: optional list of component-name lists; each requested group's
++            joint posterior (sum of the components) is computed per draw and
++            available through DecompositionResult.group(names).
++    strict: True (default) raises on an unrecognized or failing sample site
++            and on a draw whose decomposition fails; False keeps the previous
++            skip-and-continue behavior and records the dropped draws.
+     """
+     from .model import build_model, build_likelihood, select_hmc_sites, apply_hp_value
+-    from .decompose import decompose_additive_gp
+ 
+     x_train, y_train, x_test = x_train.double(), y_train.double(), x_test.double()
+     n_test = x_test.shape[0]
+ 
+     first_key = list(mcmc_samples.keys())[0]
+     total_mcmc = len(mcmc_samples[first_key])
+-    indices = np.random.choice(total_mcmc, min(n_posterior_samples, total_mcmc), replace=False)
++    n_take = min(n_posterior_samples, total_mcmc)
++    if rng is not None:
++        indices = rng.choice(total_mcmc, n_take, replace=False)
++    else:
++        indices = np.random.choice(total_mcmc, n_take, replace=False)
+ 
+     relevant_keys = select_hmc_sites(mcmc_samples.keys())
+-
+-    all_means = {n: [] for n in model.component_names}
+-    n_success = 0
++    kernel_keys = [k for k in relevant_keys if not k.endswith("noise_covar.noise_prior")]
++    if not kernel_keys:
++        msg = ("decompose_model_hmc: no kernel hyperparameter site recognized "
++               f"among {sorted(mcmc_samples.keys())}")
++        if strict:
++            raise ValueError(msg)
++        logger.warning(msg)
++
++    names = list(model.component_names)
++    acc = _DrawAccumulator(names, n_test, groups)
++    dropped = []
++    last_noise = float(likelihood.noise.item())
+ 
+     for idx in indices:
+-        kernels, names = kernel_builder()
++        kernels, fresh_names = kernel_builder()
++        if list(fresh_names) != names:
++            raise ValueError(
++                f"kernel_builder names {list(fresh_names)} differ from the "
++                f"model's component names {names}")
+         fresh_likelihood = build_likelihood()
+-        fresh_model, fresh_likelihood = build_model(x_train, y_train, kernels, names, fresh_likelihood)
++        fresh_model, fresh_likelihood = build_model(x_train, y_train, kernels, fresh_names, fresh_likelihood)
+ 
+-        # Set parameters from this MCMC sample
+         for pyro_name in relevant_keys:
+             val = float(mcmc_samples[pyro_name][idx])
+             try:
+-                apply_hp_value(fresh_model, fresh_likelihood, pyro_name, val)
+-            except (IndexError, AttributeError, RuntimeError):
++                applied = apply_hp_value(fresh_model, fresh_likelihood, pyro_name, val)
++            except (IndexError, AttributeError, RuntimeError) as exc:
++                msg = (f"decompose_model_hmc: applying site {pyro_name!r} for "
++                       f"draw {int(idx)} raised {type(exc).__name__}: {exc}")
++                if strict:
++                    raise ValueError(msg) from exc
++                logger.warning(msg)
+                 continue
++            if not applied:
++                msg = (f"decompose_model_hmc: apply_hp_value did not recognize "
++                       f"site {pyro_name!r} (draw {int(idx)})")
++                if strict:
++                    raise ValueError(msg)
++                logger.warning(msg)
+ 
+         fresh_model.eval()
+         fresh_likelihood.eval()
+-
+         noise_var = fresh_likelihood.noise.item()
+         km = fresh_model.get_component_kernel_matrices(x_train, x_test)
+ 
+         with torch.no_grad():
+             try:
+-                results = decompose_additive_gp(
+-                    [km[n]["XX"] for n in names],
+-                    [km[n]["XstarX"] for n in names],
+-                    [km[n]["XstarXstar"] for n in names],
+-                    [km[n]["XXstar"] for n in names],
+-                    noise_var, y_train, jitter,
+-                )
+-                for (mean_i, _), comp_name in zip(results, names):
+-                    all_means[comp_name].append(mean_i.numpy())
+-                n_success += 1
+-            except RuntimeError:
++                acc.add_draw(km, noise_var, y_train, jitter)
++                last_noise = noise_var
++            except RuntimeError as exc:
++                if strict:
++                    raise RuntimeError(
++                        f"decompose_model_hmc: decomposition failed for draw "
++                        f"{int(idx)} ({exc}); pass strict=False to drop failing "
++                        "draws and record them") from exc
++                dropped.append((int(idx), str(exc)))
+                 continue
+ 
+-    if n_success == 0:
++    if acc.n == 0:
+         raise RuntimeError("All MCMC samples failed decomposition")
+ 
+-    print(f"  Decomposed {n_success}/{len(indices)} MCMC samples successfully")
++    print(f"  Decomposed {acc.n}/{len(indices)} MCMC samples successfully")
++    if dropped:
++        logger.warning("decompose_model_hmc dropped %d of %d draws: %s",
++                       len(dropped), len(indices), [d for d, _ in dropped][:10])
+ 
+-    components = {}
+-    full_mean = np.zeros(n_test)
+-    for comp_name in model.component_names:
+-        means = np.stack(all_means[comp_name])
+-        avg = means.mean(0)
+-        std = means.std(0)
+-        components[comp_name] = ComponentResult(
+-            name=comp_name, mean=avg, std=std,
+-            cov=np.diag(std**2), samples=means,
+-        )
+-        full_mean += avg
+-
+-    all_full = sum(np.stack(all_means[n]) for n in model.component_names)
+-    full_std = all_full.std(0)
+-
+-    return DecompositionResult(
+-        x_test=x_test.numpy(), x_train=x_train.numpy(), y_train=y_train.numpy(),
+-        components=components, full_mean=full_mean, full_std=full_std,
+-        noise_var=fresh_likelihood.noise.item(),
+-    )
+\ No newline at end of file
++    components, full, group_results = acc.finalize()
++    result = _assemble(x_test, x_train, y_train, components, full, group_results,
++                       last_noise, len(indices), acc.n)
++    result.dropped = dropped
++    return result
+diff --git a/bistar_gp/decompose.py b/bistar_gp/decompose.py
+index 944dc35..11852a9 100644
+--- a/bistar_gp/decompose.py
++++ b/bistar_gp/decompose.py
+@@ -8,6 +8,7 @@ decompose posterior predictions into individual component GPs.
+ Pure PyTorch — no GPyTorch dependency. This is the mathematical core.
+ """
+ 
++import numpy as np
+ import torch
+ from typing import List, Tuple, Optional
+ 
+@@ -119,3 +120,41 @@ def sample_from_component(
+ 
+     z = torch.randn(n_samples, n, dtype=mean_i.dtype, device=mean_i.device)
+     return mean_i.unsqueeze(0) + z @ L.T
++
++
++def mixture_central_interval(mean_draws, var_draws, mass=0.95, n_iter=100):
++    """Exact central interval of an equally weighted Gaussian mixture.
++
++    ``mean_draws`` and ``var_draws`` have shape (n_draws, n_points); the
++    return is (lo, hi), each of shape (n_points,). Quantiles are obtained by
++    bisecting the mixture CDF, so the interval is the mixture's own central
++    ``mass`` interval rather than a Gaussian approximation to it (ported from
++    experiments/toy_debias_demo.py in the 2026-09 review fix pass; the
++    reference implementation there is unchanged).
++    """
++    from scipy.special import ndtr
++
++    mean_draws = np.asarray(mean_draws, dtype=float)
++    var_draws = np.asarray(var_draws, dtype=float)
++    if mean_draws.ndim == 1:
++        mean_draws = mean_draws[None, :]
++        var_draws = var_draws[None, :]
++    if mean_draws.shape != var_draws.shape:
++        raise ValueError("mean_draws and var_draws must have the same shape")
++    if not (0.0 < mass < 1.0):
++        raise ValueError("mass must lie strictly between 0 and 1")
++    sd = np.sqrt(np.clip(var_draws, 1e-24, None))
++    tail = (1.0 - mass) / 2.0
++
++    def quantile(p):
++        lo = (mean_draws - 12.0 * sd).min(axis=0)
++        hi = (mean_draws + 12.0 * sd).max(axis=0)
++        for _ in range(n_iter):
++            mid = 0.5 * (lo + hi)
++            cdf = ndtr((mid[None, :] - mean_draws) / sd).mean(axis=0)
++            below = cdf < p
++            lo = np.where(below, mid, lo)
++            hi = np.where(below, hi, mid)
++        return 0.5 * (lo + hi)
++
++    return quantile(tail), quantile(1.0 - tail)
+diff --git a/bistar_gp/induced_prior.py b/bistar_gp/induced_prior.py
+index c2fd3e5..6836467 100644
+--- a/bistar_gp/induced_prior.py
++++ b/bistar_gp/induced_prior.py
+@@ -30,10 +30,14 @@ Expected qualitative behavior:
+   - Misspecified GP prior → biased ψ → shifted induced prior, may mislead
+ """
+ 
++import logging
++
+ import numpy as np
+ from typing import List, Dict, Optional, Tuple, Callable
+ from dataclasses import dataclass
+ 
++logger = logging.getLogger(__name__)
++
+ from bistar_gp.bms_star import GPPosteriorSample, METRICS
+ from bistar_gp.candidates import CandidateResult
+ 
+@@ -171,11 +175,12 @@ def compute_induced_prior(
+     param_space: ModelParameterSpace,
+     gp_samples: List[GPPosteriorSample],
+     x_eval: np.ndarray,
+-    log_mlls: np.ndarray,
++    log_mlls: Optional[np.ndarray] = None,
+     metric_name: str = "pw_kl_vcal",
+     tau: float = 1.0,
+     n_param_samples: int = 10000,
+     seed: int = 42,
++    weighting: str = "uniform",
+ ) -> InducedPriorResult:
+     """
+     Compute the GP-induced prior over model parameters.
+@@ -186,17 +191,44 @@ def compute_induced_prior(
+          Ḡ(φ) = Σ_i w_i G(ψ_i, θ(φ)) / Σ_i w_i
+       3. Induced prior weight: exp(-Ḡ(φ) / τ)
+ 
+-    Uses MLL-weighting (Strategy 3) since we showed it works best.
++    weighting (2026-09 review FIX-6):
++      "uniform" (default): w_i = 1/N. This is the correct average for
++          POSTERIOR draws (fit_hmc output); the draws already carry the
++          likelihood, and multiplying by p(y|η_i) again would average under a
++          density proportional to p(η) p(y|η)^2.
++      "likelihood_tilted": w_i ∝ exp(log_mlls[i]); the self-normalized
++          importance weights that turn PRIOR draws into a posterior average.
++          Requires log_mlls. Never use with posterior draws.
++    The pre-fix code made the likelihood weighting mandatory and its legacy
++    callers fed it posterior draws.
+     """
+     metric_fn = METRICS[metric_name]
+-
+-    # Prepare MLL weights
+-    valid = np.isfinite(log_mlls)
+-    lw = log_mlls.copy()
+-    lw[~valid] = -np.inf
+-    lw -= lw[valid].max()
+-    mll_weights = np.exp(lw)
+-    mll_weights /= mll_weights.sum()
++    n_draws = len(gp_samples)
++
++    if weighting == "uniform":
++        if log_mlls is not None:
++            # A legacy positional call would otherwise run a different
++            # estimator with only a log line to say so (review F2).
++            raise ValueError(
++                "compute_induced_prior: log_mlls supplied under weighting='uniform'; "
++                "pass weighting='likelihood_tilted' for PRIOR draws or drop log_mlls "
++                "for posterior draws")
++        mll_weights = np.full(n_draws, 1.0 / n_draws)
++    elif weighting == "likelihood_tilted":
++        if log_mlls is None:
++            raise ValueError("weighting='likelihood_tilted' requires log_mlls")
++        log_mlls = np.asarray(log_mlls, dtype=float)
++        valid = np.isfinite(log_mlls)
++        if not valid.any():
++            raise ValueError("compute_induced_prior: no finite log marginal likelihood")
++        lw = log_mlls.copy()
++        lw[~valid] = -np.inf
++        lw -= lw[valid].max()
++        mll_weights = np.exp(lw)
++        mll_weights /= mll_weights.sum()
++    else:
++        raise ValueError(f"unknown weighting {weighting!r}; use 'uniform' or "
++                         "'likelihood_tilted'")
+ 
+     # Sample parameters from reference prior
+     param_samples = param_space.sample_reference_prior(n_param_samples, seed=seed)
+@@ -229,10 +261,14 @@ def compute_induced_prior(
+             except (np.linalg.LinAlgError, ValueError):
+                 g_vals[i] = np.inf
+ 
+-        # Replace inf with large value
++        # Replace a failed draw with a value strictly WORSE than every finite
++        # one. The old `10 * max(finite)` is the smallest value (the best
++        # score) whenever the metric is negative-valued (pw_nll_gp), the bug
++        # class compute_G_matrix already documents (2026-09 review FIX-5).
+         finite_mask = np.isfinite(g_vals)
+         if finite_mask.any():
+-            g_vals[~finite_mask] = 10 * np.max(g_vals[finite_mask])
++            max_finite = np.max(g_vals[finite_mask])
++            g_vals[~finite_mask] = max_finite + 10.0 * (abs(max_finite) + 1.0)
+         else:
+             g_vals[:] = 1e6
+ 
+diff --git a/bistar_gp/laplace_evidence.py b/bistar_gp/laplace_evidence.py
+index bc84df9..de67fcf 100644
+--- a/bistar_gp/laplace_evidence.py
++++ b/bistar_gp/laplace_evidence.py
+@@ -46,7 +46,7 @@ from scipy.special import softmax, logsumexp
+ from scipy.linalg import solve_triangular
+ from dataclasses import dataclass, field
+ 
+-from bistar_gp.bms_star import GPPosteriorSample, METRICS
++from bistar_gp.bms_star import GPPosteriorSample, METRICS, log_weight_ess
+ from bistar_gp.induced_prior import ModelParameterSpace
+ import bistar_gp.metrics_v2  # noqa: F401 — registers pw_* metrics (incl. the default pw_kl_vcal) into METRICS
+ 
+@@ -119,12 +119,25 @@ def compute_G_at_params(
+     x_eval: np.ndarray,
+     avg_gp: GPPosteriorSample,
+     metric_fn,
++    strict: bool = True,
+ ) -> float:
+-    """Compute G between candidate prediction at φ and averaged GP."""
++    """Compute G between candidate prediction at φ and averaged GP.
++
++    Evaluation failures (a raising predict_fn or metric) are NOT converted
++    into a finite energy: before the 2026-09 review fix they returned 1e6,
++    which exp(-G/tau) turned into "an extremely poor fit" and which an
++    all-failed integral could even win with. Under strict=True (default) the
++    failure raises with the parameter point; under strict=False it returns
++    NaN, which propagates honestly through every integral and ESS.
++    """
+     try:
+         mu_theta = param_space.predict_fn(x_eval, param_dict)
+-    except Exception:
+-        return 1e6
++    except Exception as exc:
++        if strict:
++            raise EvaluationFailure(
++                f"compute_G_at_params: predict_fn of {param_space.model_name!r} "
++                f"raised {type(exc).__name__} at {param_dict}: {exc}") from exc
++        return np.nan
+ 
+     sigma = _noise_sigma(param_space, param_dict)
+     sigma2 = max(sigma ** 2, 1e-8)
+@@ -133,8 +146,12 @@ def compute_G_at_params(
+ 
+     try:
+         return metric_fn(avg_gp.mean, avg_gp.cov, mu_theta, cov_theta)
+-    except (np.linalg.LinAlgError, ValueError):
+-        return 1e6
++    except (np.linalg.LinAlgError, ValueError, RuntimeError, FloatingPointError) as exc:
++        if strict:
++            raise EvaluationFailure(
++                f"compute_G_at_params: metric raised {type(exc).__name__} for "
++                f"{param_space.model_name!r} at {param_dict}: {exc}") from exc
++        return np.nan
+ 
+ 
+ # ═══════════════════════════════════════════════════════════════════
+@@ -171,6 +188,36 @@ class ZMxResult:
+     tau: float
+     converged: bool
+     n_clipped: int = 0           # Hessian eigenvalues clipped: >0 means |H| was regularized
++    optimizer: Optional[Dict[str, object]] = None   # best start's OptimizerRecord (FIX-5)
++    n_starts_failed: int = 0     # starts whose minimize raised or reported failure
++
++
++class EvaluationFailure(RuntimeError):
++    """A candidate predictor or divergence metric failed under strict
++    evaluation (fix pass 1b). Subclass of RuntimeError for compatibility with
++    callers that catch the pass-1 exception; the optimizer fallback handlers
++    re-raise it so it can never turn into a start-point expansion."""
++
++
++@dataclass
++class OptimizerRecord:
++    """What scipy's minimize actually reported for one start (2026-09 FIX-5).
++
++    Before this record existed, an optimizer that raised fell back to the
++    start point with converged=False, and a non-successful result was
++    accepted silently; nothing carried either fact to the caller.
++    """
++    success: bool
++    status: Optional[int] = None
++    message: str = ""
++    nit: Optional[int] = None
++    nfev: Optional[int] = None
++    exception: Optional[str] = None
++
++    def as_dict(self) -> Dict[str, object]:
++        return {"success": bool(self.success), "status": self.status,
++                "message": str(self.message), "nit": self.nit, "nfev": self.nfev,
++                "exception": self.exception}
+ 
+ 
+ @dataclass
+@@ -186,11 +233,19 @@ class EvidenceResult:
+     n_params: int = 0
+     converged: bool = True
+     n_clipped: int = 0           # Hessian eigenvalues clipped: >0 means |H| was regularized
++    optimizer: Optional[Dict[str, object]] = None   # FIX-5
++    n_starts_failed: int = 0
+ 
+ 
+ @dataclass
+ class ModelPosteriorResult:
+-    """Normalized model posterior under a chosen assembly (§2 of the plan)."""
++    """Normalized model posterior under a chosen assembly (§2 of the plan).
++
++    A non-finite kernel for ANY model (a non-strict evaluation failure) makes
++    every posterior NaN: the softmax is a joint normalization, so no candidate
++    can win a comparison one of them failed (review F7); `all_converged` is
++    False in that case.
++    """
+     construction: str                      # 'baseline' | 'I' | 'II'
+     occam: bool
+     tau: float
+@@ -202,6 +257,10 @@ class ModelPosteriorResult:
+     # can verify compatibility instead of silently mixing metrics (codex
+     # finding: without this the mismatch was unenforceable).
+     metric_name: str = ""
++    # FIX-5: False when any model's Laplace optimization did not converge;
++    # per-model detail in components[name]["converged"], ["n_clipped"],
++    # ["n_starts_failed"].
++    all_converged: bool = True
+ 
+ 
+ def _log_reference_volume(param_space) -> float:
+@@ -247,11 +306,18 @@ def _x0_and_bounds(param_space, mle_params):
+     return x0, bounds
+ 
+ 
+-def _log_likelihood(param_space, x_train, y_train, param_dict) -> float:
++def _log_likelihood(param_space, x_train, y_train, param_dict,
++                    strict: bool = True) -> float:
+     try:
+         mu = param_space.predict_fn(x_train, param_dict)
+-    except Exception:
+-        return -1e10
++    except Exception as exc:
++        # The -1e10 sentinel of the pre-2026-09 code made a raising predictor
++        # look like an astronomically poor fit; raise, or NaN when not strict.
++        if strict:
++            raise EvaluationFailure(
++                f"_log_likelihood: predict_fn of {param_space.model_name!r} "
++                f"raised {type(exc).__name__} at {param_dict}: {exc}") from exc
++        return np.nan
+     sigma = _noise_sigma(param_space, param_dict)
+     sigma2 = max(sigma ** 2, 1e-8)
+     n = len(y_train)
+@@ -259,15 +325,45 @@ def _log_likelihood(param_space, x_train, y_train, param_dict) -> float:
+     return -0.5 * n * np.log(2 * np.pi * sigma2) - 0.5 * np.sum(resid ** 2) / sigma2
+ 
+ 
++def _optimizer_record(res) -> "OptimizerRecord":
++    return OptimizerRecord(
++        success=bool(getattr(res, "success", False)),
++        status=(int(res.status) if getattr(res, "status", None) is not None else None),
++        message=str(getattr(res, "message", "")),
++        nit=(int(res.nit) if getattr(res, "nit", None) is not None else None),
++        nfev=(int(res.nfev) if getattr(res, "nfev", None) is not None else None),
++    )
++
++
+ def _laplace_log_integral(neg_log_f, x0, bounds, d, eps=1e-4):
+-    """Generic Laplace: returns (log_integral, x_star, f_star, logdet, converged, n_clipped)."""
++    """Generic Laplace: returns (log_integral, x_star, f_star, logdet, converged,
++    n_clipped, optimizer_record). The record (FIX-5) carries scipy's own
++    success flag and message, or the exception text when minimize raised and
++    the start point was used instead."""
+     try:
+         res = minimize(neg_log_f, x0, bounds=bounds, method="L-BFGS-B",
+                        options={"maxiter": 500, "ftol": 1e-10})
+         x_star, converged = res.x, bool(res.success)
+-    except Exception:
++        record = _optimizer_record(res)
++    except EvaluationFailure:
++        # A strict evaluation failure inside the optimizer's own function
++        # evaluations is not an optimizer fault: it must reach the caller
++        # (fix pass 1b, review R7), never a start-point expansion.
++        raise
++    except Exception as exc:
+         x_star, converged = np.asarray(x0, dtype=float), False
++        record = OptimizerRecord(success=False, message="minimize raised",
++                                 exception=f"{type(exc).__name__}: {exc}")
++        logger.warning("Laplace optimizer raised (%s); expanding around the start point",
++                       record.exception)
+     f_star = float(neg_log_f(x_star))
++    if not np.isfinite(f_star):
++        # Non-strict evaluation failure (NaN objective): no Hessian can be
++        # formed; propagate NaN honestly instead of clipping a NaN matrix.
++        logger.warning("Laplace objective is non-finite at x*=%s; returning NaN", x_star)
++        record.success = False
++        record.message = record.message or "non-finite objective at x*"
++        return np.nan, x_star, f_star, np.nan, False, 0, record
+     # Bounds-aware Hessian point: L-BFGS-B may pin x* on the box boundary,
+     # where a centered stencil evaluates the objective OUTSIDE the box (an
+     # undefined regime the guards turn into cliffs, which the eigenvalue
+@@ -285,18 +381,25 @@ def _laplace_log_integral(neg_log_f, x0, bounds, d, eps=1e-4):
+     inset = np.minimum(2 * eps, 0.5 * (hi - lo))
+     x_h = np.clip(x_star, lo + inset, hi - inset)
+     H = numerical_hessian(neg_log_f, x_h, eps=eps)
++    if not np.all(np.isfinite(H)):
++        # Non-strict failure on the Hessian stencil (review R8): no expansion
++        # exists; keep the optimizer's own record, mark the integral invalid.
++        logger.warning("Laplace Hessian is non-finite at x*=%s; returning NaN", x_star)
++        record.success = False
++        record.message = f"non-finite Hessian at x*; optimizer: {record.message}"
++        return np.nan, x_star, f_star, np.nan, False, 0, record
+     logdet, n_clipped = _laplace_logdet(H)
+     if n_clipped:
+         logger.warning(
+             "Laplace Hessian regularized: %d of %d eigenvalues clipped at x*=%s; "
+             "the log-integral carries a floor/cap-dependent term", n_clipped, d, x_star)
+     log_integral = -f_star + 0.5 * d * np.log(2 * np.pi) - 0.5 * logdet
+-    return log_integral, x_star, f_star, logdet, converged, n_clipped
++    return log_integral, x_star, f_star, logdet, converged, n_clipped, record
+ 
+ 
+ def laplace_log_Z_Mx(param_space, x_eval, avg_gp, *, metric_name="pw_kl_vcal",
+                      tau=1.0, occam=False, mle_params=None,
+-                     starts=None) -> ZMxResult:
++                     starts=None, strict=True) -> ZMxResult:
+     """Data-free GP-informed model prior Z_Mx = ∫ exp(−Ḡ/τ) [p_ref] dφ (§1.2).
+ 
+     Expands at φ_G* = argmin Ḡ with the Hessian of Ḡ. NO data likelihood. With
+@@ -320,18 +423,16 @@ def laplace_log_Z_Mx(param_space, x_eval, avg_gp, *, metric_name="pw_kl_vcal",
+ 
+     neg_log_f = _guarded_neg_log(
+         param_space, unpack,
+-        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn))
++        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn,
++                                       strict=strict))
+ 
+     start_list = list(starts) if starts else []
+     if mle_params is not None or not start_list:
+         start_list.append(mle_params)
+-    best = None
+-    for start in start_list:
+-        x0, bounds = _x0_and_bounds(param_space, start)
+-        run = _laplace_log_integral(neg_log_f, x0, bounds, d)
+-        if best is None or run[2] < best[2]:   # min f_star == min Ḡ*
+-            best = run
+-    log_int, x_star, G_star, logdet, conv, n_clip = best
++    runs = [_laplace_log_integral(neg_log_f, *_x0_and_bounds(param_space, start), d)
++            for start in start_list]
++    best, n_failed = _select_start(runs)          # min f_star == min Ḡ* over finite runs
++    log_int, x_star, G_star, logdet, conv, n_clip, record = best
+     # log_int is the τ=1 integral −Ḡ* + (d/2)log(2π) − ½log|H_Ḡ|; rescale to τ.
+     log_int_tau = log_int + G_star - G_star / tau + 0.5 * d * np.log(tau)
+     log_V = _log_reference_volume(param_space)
+@@ -339,7 +440,8 @@ def laplace_log_Z_Mx(param_space, x_eval, avg_gp, *, metric_name="pw_kl_vcal",
+     return ZMxResult(model_name=param_space.model_name, log_Z=log_Z,
+                      G_at_min=G_star, phi_min=unpack(x_star), occam=occam,
+                      log_volume=log_V, logdet_H=logdet, n_params=d, tau=tau,
+-                     converged=conv, n_clipped=n_clip)
++                     converged=conv, n_clipped=n_clip,
++                     optimizer=record.as_dict(), n_starts_failed=n_failed)
+ 
+ 
+ @dataclass
+@@ -352,6 +454,8 @@ class ZMxSweepResult:
+     estimator: str             # 'mc' | 'is'
+     occam: bool
+     n_samples: int
++    n_starts_failed: int = 0   # FIX-5: proposal-optimizer starts that failed (is only)
++    optimizer_records: Optional[List[Dict[str, object]]] = None
+ 
+ 
+ def _pack(param_space, pd):
+@@ -365,27 +469,41 @@ def _box(param_space):
+     return lo, hi
+ 
+ 
+-def _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X):
++def _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X, strict=True):
+     """Ḡ evaluated row-wise on an (n, d) parameter matrix."""
+     unpack = _unpacker(param_space)
+     neg_log_f = _guarded_neg_log(
+         param_space, unpack,
+-        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn))
++        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn,
++                                       strict=strict))
+     return np.array([neg_log_f(row) for row in X])
+ 
+ 
+ def _weight_ess(log_w):
+-    """ESS = (Σw)² / Σw² computed in log space; -inf entries contribute 0.
+-    All--inf weights (every sample out of box / invalid) is ESS 0, not NaN —
+-    the starvation warning must fire in exactly that case (codex P3)."""
+-    total = logsumexp(log_w)
+-    if not np.isfinite(total):
+-        return 0.0
+-    return float(np.exp(2.0 * total - logsumexp(2.0 * log_w)))
++    """ESS = (Σw)² / Σw² from log weights via the package's one ESS routine
++    (bms_star.log_weight_ess). All -inf weights (every sample out of box)
++    give 0, so the starvation warning fires (codex P3); a NaN weight (a
++    non-strict evaluation failure) gives NaN, distinct from absent support
++    (fix pass 1b, review R8)."""
++    return float(log_weight_ess(np.asarray(log_w, dtype=float)))
++
++
++def _select_start(runs):
++    """Pick the multi-start winner among runs with a FINITE objective; when
++    every run is non-finite return the first so the NaN propagates. The
++    result does not depend on the order of the starts (fix pass 1b, review
++    R8: `nan < x` is False, so a NaN first start used to absorb the minimum
++    while a NaN later start was ignored). Failed starts are those whose
++    optimizer record reports failure, which includes every non-finite run."""
++    n_failed = sum(1 for r in runs if not r[6].success)
++    finite = [r for r in runs if np.isfinite(r[2])]
++    if not finite:
++        return runs[0], n_failed
++    return min(finite, key=lambda r: r[2]), n_failed
+ 
+ 
+ def mc_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_mc=200_000, seed=0,
+-                metric_name="pw_kl_vcal", occam=False) -> ZMxSweepResult:
++                metric_name="pw_kl_vcal", occam=False, strict=True) -> ZMxSweepResult:
+     """Uniform-box Monte Carlo Z_Mx across a τ ladder: Ḡ is computed ONCE and
+     reweighted per τ (the legacy precompute_G_samples pattern, generalized).
+ 
+@@ -402,7 +520,7 @@ def mc_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_mc=200_000, seed=0,
+     lo, hi = _box(param_space)
+     rng = np.random.default_rng(seed)
+     X = rng.uniform(lo, hi, size=(n_mc, len(lo)))
+-    G = _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X)
++    G = _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X, strict=strict)
+ 
+     taus = np.asarray(list(taus), dtype=float)
+     log_V = _log_reference_volume(param_space)
+@@ -464,16 +582,20 @@ class _DefensiveProposal:
+ 
+ 
+ def _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts,
+-                         eps=1e-4):
+-    """[(x*, Ḡ*, eigval_clipped, eigvec)] per start — the IS proposal's
+-    Gaussian anchors, with the Hessian eigendecomposition kept EXPLICIT so
+-    the caller inverts in eigen space (codex P2: reconstructing the clipped
+-    matrix and calling np.linalg.inv can raise on the ~1e20-condition
+-    flat+cliff combination the clipping exists to survive)."""
++                         eps=1e-4, strict=True):
++    """[(x*, Ḡ*, eigval_clipped, eigvec, optimizer_record)] per start — the IS
++    proposal's Gaussian anchors, with the Hessian eigendecomposition kept
++    EXPLICIT so the caller inverts in eigen space (codex P2: reconstructing
++    the clipped matrix and calling np.linalg.inv can raise on the
++    ~1e20-condition flat+cliff combination the clipping exists to survive).
++    The fifth element (FIX-5) records scipy's success flag and message, or
++    the exception when minimize raised; earlier code silently used the start
++    point in that case and never inspected res.success."""
+     unpack = _unpacker(param_space)
+     neg_log_f = _guarded_neg_log(
+         param_space, unpack,
+-        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn))
++        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn,
++                                       strict=strict))
+     lo, hi = _box(param_space)
+     bounds = list(zip(lo, hi))
+     out = []
+@@ -483,21 +605,40 @@ def _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts,
+             res = minimize(neg_log_f, x0, bounds=bounds, method="L-BFGS-B",
+                            options={"maxiter": 500, "ftol": 1e-10})
+             x_star = res.x
+-        except Exception:
++            record = _optimizer_record(res)
++        except EvaluationFailure:
++            raise                     # strict evaluation failure: never a fallback (review R7)
++        except Exception as exc:
+             x_star = np.asarray(x0, dtype=float)
++            record = OptimizerRecord(success=False, message="minimize raised",
++                                     exception=f"{type(exc).__name__}: {exc}")
++        if not record.success:
++            logger.warning("_multistart_G_optima(%s): start %s did not converge: %s",
++                           param_space.model_name, start, record.exception or record.message)
+         inset = np.minimum(2 * eps, 0.5 * (hi - lo))
++        f_star = float(neg_log_f(x_star))
++        if not np.isfinite(f_star):
++            record.success = False
++            record.message = f"non-finite objective at x*; optimizer: {record.message}"
+         H = numerical_hessian(neg_log_f, np.clip(x_star, lo + inset, hi - inset),
+                               eps=eps)
+         H = 0.5 * (H + H.T)
+-        eigval, eigvec = np.linalg.eigh(H)
+-        out.append((x_star, float(neg_log_f(x_star)),
+-                    np.clip(eigval, 1e-8, 1e12), eigvec))
++        if np.all(np.isfinite(H)):
++            eigval, eigvec = np.linalg.eigh(H)
++        else:
++            # NaN objective (non-strict failure): anchor the proposal on an
++            # identity Hessian; the integral itself will carry the NaN.
++            record.success = False
++            record.message = record.message or "non-finite Hessian at x*"
++            eigval, eigvec = np.ones(len(x_star)), np.eye(len(x_star))
++        out.append((x_star, f_star, np.clip(eigval, 1e-8, 1e12), eigvec, record))
+     return out
+ 
+ 
+ def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
+                 starts=None, metric_name="pw_kl_vcal", occam=False,
+-                tau_ladder=(0.03, 0.3, 3.0), ess_warn=100.0) -> ZMxSweepResult:
++                tau_ladder=(0.03, 0.3, 3.0), ess_warn=100.0,
++                strict=True) -> ZMxSweepResult:
+     """ORDINARY defensive-mixture importance sampling for Z_Mx across a τ
+     ladder — the REFERENCE estimator for figure Z_Mx values (plan §1.2).
+ 
+@@ -517,7 +658,10 @@ def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
+     """
+     metric_fn = METRICS[metric_name]
+     lo, hi = _box(param_space)
+-    optima = _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts)
++    optima = _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts,
++                                  strict=strict)
++    records = [rec.as_dict() for *_, rec in optima]
++    n_failed = sum(1 for *_, rec in optima if not rec.success)
+     # Component covariances tau_k * H^-1, inverted in EIGEN space (never
+     # reconstruct-then-inv, codex P2) with per-direction variances capped at
+     # the box scale: a floored-flat Hessian direction would otherwise give a
+@@ -526,7 +670,7 @@ def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
+     # the cap keeps it efficient.
+     var_cap = float(np.max(0.5 * (hi - lo)) ** 2)
+     centers, covs = [], []
+-    for x_star, _, eigval, eigvec in optima:
++    for x_star, _, eigval, eigvec, _rec in optima:
+         for tk in tau_ladder:
+             var = np.minimum(tk / eigval, var_cap)
+             centers.append(x_star)
+@@ -537,7 +681,8 @@ def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
+     X = prop.sample(rng, n_is)
+     log_q, in_box = prop.log_q(X)
+     G = np.full(n_is, np.inf)
+-    G[in_box] = _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X[in_box])
++    G[in_box] = _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X[in_box],
++                             strict=strict)
+ 
+     taus = np.asarray(list(taus), dtype=float)
+     log_V = _log_reference_volume(param_space)
+@@ -556,11 +701,13 @@ def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
+             float(ess.min()), worst)
+     return ZMxSweepResult(model_name=param_space.model_name, taus=taus,
+                           log_Z=log_Z, ess=ess, estimator="is", occam=occam,
+-                          n_samples=n_is)
++                          n_samples=n_is, n_starts_failed=n_failed,
++                          optimizer_records=records)
+ 
+ 
+ def laplace_log_evidence_ordinary(param_space, x_train, y_train, *,
+-                                  mle_params=None, occam=True) -> EvidenceResult:
++                                  mle_params=None, occam=True,
++                                  strict=True) -> EvidenceResult:
+     """Ordinary marginal likelihood p_ord(D|M) = ∫ p(y|φ) [p_ref] dφ (no GP).
+ 
+     The GP-free primitive for the baseline and Construction I. With occam=True
+@@ -575,36 +722,37 @@ def laplace_log_evidence_ordinary(param_space, x_train, y_train, *,
+ 
+     neg_log_f = _guarded_neg_log(
+         param_space, unpack,
+-        lambda pd: -_log_likelihood(param_space, x_train, y_train, pd))
++        lambda pd: -_log_likelihood(param_space, x_train, y_train, pd, strict=strict))
+ 
+-    log_int, x_star, f_star, logdet, conv, n_clip = _laplace_log_integral(neg_log_f, x0, bounds, d)
++    log_int, x_star, f_star, logdet, conv, n_clip, record = _laplace_log_integral(neg_log_f, x0, bounds, d)
+     log_ev = log_int - (_log_reference_volume(param_space) if occam else 0.0)
+     return EvidenceResult(model_name=param_space.model_name, log_evidence=log_ev,
+                           kind="ordinary", log_lik_at_map=-f_star,
+                           phi_star=unpack(x_star), n_params=d, converged=conv,
+-                          n_clipped=n_clip)
++                          n_clipped=n_clip, optimizer=record.as_dict(),
++                          n_starts_failed=int(not record.success))
+ 
+ 
+ def _laplace_log_N(param_space, x_train, y_train, x_eval, avg_gp, metric_fn,
+-                   tau, mle_params, occam):
++                   tau, mle_params, occam, strict=True):
+     """log N(M) = log ∫ p(y|φ) exp(−Ḡ/τ) [p_ref] dφ via the joint MAP."""
+     d = param_space.n_params
+     unpack = _unpacker(param_space)
+     x0, bounds = _x0_and_bounds(param_space, mle_params)
+ 
+     def _neg_log_joint(pd):
+-        ll = _log_likelihood(param_space, x_train, y_train, pd)
+-        G = compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn)
++        ll = _log_likelihood(param_space, x_train, y_train, pd, strict=strict)
++        G = compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn, strict=strict)
+         return -(ll - G / tau)
+ 
+     neg_log_joint = _guarded_neg_log(param_space, unpack, _neg_log_joint)
+ 
+-    log_int, x_star, f_star, logdet, conv, n_clip = _laplace_log_integral(neg_log_joint, x0, bounds, d)
++    log_int, x_star, f_star, logdet, conv, n_clip, record = _laplace_log_integral(neg_log_joint, x0, bounds, d)
+     log_V = _log_reference_volume(param_space)
+     log_N = log_int - (log_V if occam else 0.0)
+     pd_star = unpack(x_star)
+-    ll_star = _log_likelihood(param_space, x_train, y_train, pd_star)
+-    G_star = compute_G_at_params(pd_star, param_space, x_eval, avg_gp, metric_fn)
++    ll_star = _log_likelihood(param_space, x_train, y_train, pd_star, strict=strict)
++    G_star = compute_G_at_params(pd_star, param_space, x_eval, avg_gp, metric_fn, strict=strict)
+     # Additive decomposition of log_N at the joint MAP: fit + gp_penalty + occam == log_N.
+     detail = {
+         "log_N": log_N,
+@@ -613,33 +761,40 @@ def _laplace_log_N(param_space, x_train, y_train, x_eval, avg_gp, metric_fn,
+         "gp_penalty": -G_star / tau,
+         "occam": 0.5 * d * np.log(2 * np.pi) - 0.5 * logdet - (log_V if occam else 0.0),
+         "n_clipped": n_clip,
++        "converged": conv,
++        "n_starts_failed": int(not record.success),
++        "optimizer": record.as_dict(),
+     }
+     return log_N, pd_star, conv, detail
+ 
+ 
+ def laplace_log_evidence_induced(param_space, x_train, y_train, x_eval, avg_gp, *,
+                                  metric_name="pw_kl_vcal", tau=1.0,
+-                                 mle_params=None) -> EvidenceResult:
++                                 mle_params=None, strict=True) -> EvidenceResult:
+     """Within-model evidence under the GP-induced prior: p(y|M,ψ) = N(M)/Z_prior(M) (§1.3).
+ 
+     Occam-independent: both N and Z_prior carry −log V_ref, which cancels.
+     """
+     metric_fn = METRICS[metric_name]
+     log_N, phi_star, conv, detail = _laplace_log_N(param_space, x_train, y_train, x_eval, avg_gp,
+-                                                   metric_fn, tau, mle_params, occam=True)
++                                                   metric_fn, tau, mle_params, occam=True,
++                                                   strict=strict)
+     zprior = laplace_log_Z_Mx(param_space, x_eval, avg_gp, metric_name=metric_name,
+-                              tau=tau, occam=True, mle_params=mle_params)
++                              tau=tau, occam=True, mle_params=mle_params, strict=strict)
+     return EvidenceResult(model_name=param_space.model_name,
+                           log_evidence=log_N - zprior.log_Z, kind="induced",
+                           log_N=log_N, log_Z_prior=zprior.log_Z,
+                           log_lik_at_map=detail["log_lik_at_map"],
+-                          phi_star=phi_star, n_params=param_space.n_params, converged=conv,
+-                          n_clipped=detail["n_clipped"] + zprior.n_clipped)
++                          phi_star=phi_star, n_params=param_space.n_params,
++                          converged=(conv and zprior.converged),
++                          n_clipped=detail["n_clipped"] + zprior.n_clipped,
++                          optimizer=detail["optimizer"],
++                          n_starts_failed=detail["n_starts_failed"] + zprior.n_starts_failed)
+ 
+ 
+ def model_posterior(param_spaces, x_train, y_train, x_eval, avg_gp, mle_params, *,
+                     construction="II", metric_name="pw_kl_vcal", tau=1.0,
+-                    occam=False) -> ModelPosteriorResult:
++                    occam=False, strict=True) -> ModelPosteriorResult:
+     """Normalized model posterior under the chosen assembly (§2). II is canonical.
+ 
+       baseline: p(M|D) ∝ p_ord(D|M)                    (no GP)
+@@ -653,29 +808,41 @@ def model_posterior(param_spaces, x_train, y_train, x_eval, avg_gp, mle_params,
+     metric_fn = METRICS[metric_name]
+     names = list(param_spaces.keys())
+     log_kernel, components = {}, {}
++    all_converged = True
+ 
+     for name in names:
+         ps = param_spaces[name]
+         mp = mle_params.get(name) if mle_params else None
+         if construction == "baseline":
+             ev = laplace_log_evidence_ordinary(ps, x_train, y_train, mle_params=mp,
+-                                               occam=occam)
++                                               occam=occam, strict=strict)
+             log_kernel[name] = ev.log_evidence
+-            components[name] = {"log_ord_evidence": ev.log_evidence}
++            components[name] = {"log_ord_evidence": ev.log_evidence,
++                                "converged": ev.converged, "n_clipped": ev.n_clipped,
++                                "n_starts_failed": ev.n_starts_failed}
+         elif construction == "I":
+             zmx = laplace_log_Z_Mx(ps, x_eval, avg_gp, metric_name=metric_name,
+-                                   tau=tau, occam=occam, mle_params=mp)
++                                   tau=tau, occam=occam, mle_params=mp, strict=strict)
+             ev = laplace_log_evidence_ordinary(ps, x_train, y_train, mle_params=mp,
+-                                               occam=occam)
++                                               occam=occam, strict=strict)
+             log_kernel[name] = zmx.log_Z + ev.log_evidence
+-            components[name] = {"log_Z_Mx": zmx.log_Z, "log_ord_evidence": ev.log_evidence}
++            components[name] = {"log_Z_Mx": zmx.log_Z, "log_ord_evidence": ev.log_evidence,
++                                "converged": bool(zmx.converged and ev.converged),
++                                "n_clipped": zmx.n_clipped + ev.n_clipped,
++                                "n_starts_failed": zmx.n_starts_failed + ev.n_starts_failed}
+         elif construction == "II":
+-            log_N, _, _, detail = _laplace_log_N(ps, x_train, y_train, x_eval, avg_gp,
+-                                                 metric_fn, tau, mp, occam=occam)
++            log_N, _, conv, detail = _laplace_log_N(ps, x_train, y_train, x_eval, avg_gp,
++                                                    metric_fn, tau, mp, occam=occam,
++                                                    strict=strict)
+             log_kernel[name] = log_N
+             components[name] = detail
+         else:
+             raise ValueError(f"unknown construction {construction!r}")
++        if not components[name]["converged"]:
++            all_converged = False
++            logger.warning("model_posterior(%s): Laplace optimization for %r did not "
++                           "converge; the reported posterior carries a start-point "
++                           "expansion", construction, name)
+ 
+     logk = np.array([log_kernel[n] for n in names])
+     post = softmax(logk)
+@@ -684,6 +851,7 @@ def model_posterior(param_spaces, x_train, y_train, x_eval, avg_gp, mle_params,
+         posteriors={n: float(p) for n, p in zip(names, post)},
+         log_kernel={n: float(log_kernel[n]) for n in names},
+         components=components, metric_name=metric_name,
++        all_converged=all_converged,
+     )
+ 
+ 
+@@ -871,6 +1039,7 @@ def model_posterior_tau_sweep(
+     construction: str = "II",
+     metric_name: str = "pw_kl_vcal",
+     occam: bool = False,
++    strict: bool = True,
+ ) -> Tuple[List[str], np.ndarray]:
+     """Model posteriors across τ values, exploiting per-construction structure
+     instead of re-running the full Laplace machinery at every τ:
+@@ -892,16 +1061,19 @@ def model_posterior_tau_sweep(
+     if construction == "baseline":
+         mpr = model_posterior(param_spaces, x_train, y_train, x_eval, avg_gp,
+                               mle_params, construction="baseline",
+-                              metric_name=metric_name, tau=1.0, occam=occam)
++                              metric_name=metric_name, tau=1.0, occam=occam,
++                              strict=strict)
+         logk[:] = [mpr.log_kernel[n] for n in names]
+     elif construction == "I":
+         for j, name in enumerate(names):
+             ps = param_spaces[name]
+             mp = mle_params.get(name) if mle_params else None
+             ev = laplace_log_evidence_ordinary(ps, x_train, y_train,
+-                                               mle_params=mp, occam=occam)
++                                               mle_params=mp, occam=occam,
++                                               strict=strict)
+             z1 = laplace_log_Z_Mx(ps, x_eval, avg_gp, metric_name=metric_name,
+-                                  tau=1.0, occam=occam, mle_params=mp)
++                                  tau=1.0, occam=occam, mle_params=mp,
++                                  strict=strict)
+             log_Z_tau = (z1.log_Z + z1.G_at_min * (1.0 - 1.0 / taus)
+                          + 0.5 * ps.n_params * np.log(taus))
+             logk[:, j] = log_Z_tau + ev.log_evidence
+@@ -910,7 +1082,7 @@ def model_posterior_tau_sweep(
+             mpr = model_posterior(param_spaces, x_train, y_train, x_eval,
+                                   avg_gp, mle_params, construction="II",
+                                   metric_name=metric_name, tau=float(tau),
+-                                  occam=occam)
++                                  occam=occam, strict=strict)
+             logk[t_idx] = [mpr.log_kernel[n] for n in names]
+     else:
+         raise ValueError(f"unknown construction {construction!r}")
+diff --git a/bistar_gp/metrics_v2.py b/bistar_gp/metrics_v2.py
+index 7ce290d..fe3727f 100644
+--- a/bistar_gp/metrics_v2.py
++++ b/bistar_gp/metrics_v2.py
+@@ -59,15 +59,18 @@ def pw_hellinger_vcal(mu_psi, cov_psi, mu_theta, cov_theta):
+     """
+     Variance-calibrated pointwise Hellinger.
+ 
+-    With σ²_θ = σ²_ψ at each point:
+-      D_B = (μ_ψ - μ_θ)² / (4σ²_ψ)
++    With σ²_θ = σ²_ψ at each point the Bhattacharyya distance of two
++    equal-variance Gaussians is
++      D_B = (μ_ψ - μ_θ)² / (8σ²_ψ)
+       H²  = 1 - exp(-D_B)
++    (the pre-2026-09 code and docstring used 4σ², twice the exponent; the
++    base pw_hellinger and the joint hellinger_distance were always correct).
+ 
+     Bounded in [0, 1], GP-uncertainty-weighted, saturates for large errors.
+     """
+     mu_p, var_p = _extract_marginals(mu_psi, cov_psi)
+     mu_q, _     = _extract_marginals(mu_theta, cov_theta)
+-    db = (mu_p - mu_q)**2 / (4.0 * var_p)
++    db = (mu_p - mu_q)**2 / (8.0 * var_p)
+     return np.mean(1.0 - np.exp(-db))
+ 
+ 
+@@ -97,15 +100,16 @@ def pw_hellinger_mean(mu_psi, cov_psi, mu_theta, cov_theta):
+     Mean-only pointwise Hellinger.
+ 
+     Set σ²_ψ = σ²_θ = 1 at every point:
+-      D_B = (μ_ψ - μ_θ)² / 4
+-      H²  = 1 - exp(-(μ_ψ - μ_θ)² / 4)
++      D_B = (μ_ψ - μ_θ)² / 8
++      H²  = 1 - exp(-(μ_ψ - μ_θ)² / 8)
++    (the pre-2026-09 code and docstring used 4, twice the exponent).
+ 
+     Bounded [0, 1], symmetric. Large mean errors saturate at 1,
+     so outlier GP samples can't dominate. No variance information used.
+     """
+     mu_p = mu_psi if isinstance(mu_psi, np.ndarray) else np.array(mu_psi)
+     mu_q = mu_theta if isinstance(mu_theta, np.ndarray) else np.array(mu_theta)
+-    db = (mu_p - mu_q)**2 / 4.0
++    db = (mu_p - mu_q)**2 / 8.0
+     return np.mean(1.0 - np.exp(-db))
+ 
+ 
+diff --git a/bistar_gp/model.py b/bistar_gp/model.py
+index e6a04f7..96da38d 100644
+--- a/bistar_gp/model.py
++++ b/bistar_gp/model.py
+@@ -74,6 +74,15 @@ def select_hmc_sites(sample_keys):
+     """
+     keys = list(sample_keys)
+     kernel_keys = [k for k in keys if k.startswith("covar_module.kernels.")]
++    if not kernel_keys:
++        # Single-kernel models register their one kernel directly as
++        # covar_module (no AdditiveKernel wrapper), so its sites carry no
++        # ".kernels.{i}." segment: "covar_module.outputscale_prior" and
++        # "covar_module.base_kernel.lengthscale_prior". Before the 2026-09
++        # review fix (FIX-1) these names were dropped here and rejected by
++        # apply_hp_value, so every predictive of a single-kernel model was
++        # built at the fresh model's initialization kernel values.
++        kernel_keys = [k for k in keys if k.startswith("covar_module.")]
+     if not kernel_keys:  # archives predating the covar_module naming
+         kernel_keys = [k for k in keys if k.startswith("kernel_components.")]
+     if "noise_covar.noise_prior" in keys:
+@@ -96,8 +105,19 @@ def apply_hp_value(model, likelihood, pyro_name, value):
+         likelihood.noise = value
+         return True
+     parts = pyro_name.split(".")
++    if len(parts) < 2:
++        return False
+     if parts[0] == "covar_module" and parts[1] == "kernels":
+         comp_idx = int(parts[2])
++    elif parts[0] == "covar_module":
++        # Single-kernel site name (FIX-1): the kernel IS covar_module, so the
++        # name maps to component 0 exactly when the model has one component
++        # registered directly as covar_module; any other model returns False.
++        components = getattr(model, "kernel_components", None)
++        if not components or len(components) != 1 \
++                or model.covar_module is not components[0]:
++            return False
++        comp_idx = 0
+     elif parts[0] == "kernel_components":
+         comp_idx = int(parts[1])
+     else:
+diff --git a/experiments/bistar_debias_mauna_loa.py b/experiments/bistar_debias_mauna_loa.py
+index 64abb54..80cbef2 100644
+--- a/experiments/bistar_debias_mauna_loa.py
++++ b/experiments/bistar_debias_mauna_loa.py
+@@ -80,36 +80,51 @@ INTERPRETATIONS = {
+ }
+ 
+ 
+-def compute_debiased(result, truth_components, bias_components):
++# Every truth and bias set of the three interpretations, requested as joint
++# groups at decomposition time (2026-09 review FIX-2d). Empty, singleton and
++# all-component sets are derived by DecompositionResult.group; the others
++# need their summed kernel blocks conditioned per draw.
++INTERPRETATION_GROUPS = (
++    [interp["truth"] for interp in INTERPRETATIONS.values()]
++    + [interp["bias"] for interp in INTERPRETATIONS.values()]
++)
++
++
++def compute_debiased(result, truth_components, bias_components, mass=0.95):
+     """
+-    Combine components labeled as truth → debiased signal.
+-    Combine components labeled as bias → removed bias.
++    Combine components labeled as truth: the debiased signal.
++    Combine components labeled as bias: the removed bias.
++
++    Each set is summarized by its JOINT posterior (DecompositionResult.group),
++    conditioned on the full training covariance, with the law-of-total-
++    variance sd over hyperparameter draws and the exact mixture central
++    interval. The previous construction added component variances as if the
++    components were independent, which drops every cross-covariance term and
++    the between-draw term (2026-09 review FIX-2d). Groups must have been
++    requested at decomposition time: pass ``groups=INTERPRETATION_GROUPS``
++    to decompose_model / decompose_model_hmc, otherwise this raises.
+     """
+-    n_test = len(result.x_test)
+-
+-    # Truth
+-    truth_mean = np.zeros(n_test)
+-    truth_var = np.zeros(n_test)
+-    for name in truth_components:
+-        if name in result.components:
+-            comp = result.components[name]
+-            truth_mean += comp.mean
+-            truth_var += comp.std ** 2  # independent components
+-
+-    # Bias
+-    bias_mean = np.zeros(n_test)
+-    bias_var = np.zeros(n_test)
+-    for name in bias_components:
+-        if name in result.components:
+-            comp = result.components[name]
+-            bias_mean += comp.mean
+-            bias_var += comp.std ** 2
+-
++    try:
++        truth = result.group(truth_components)
++        bias = result.group(bias_components)
++    except KeyError as exc:
++        raise KeyError(
++            f"compute_debiased needs the joint group posteriors; decompose with "
++            f"groups=INTERPRETATION_GROUPS ({exc})") from exc
++
++    truth_lo, truth_hi = truth.central_interval(mass)
++    bias_lo, bias_hi = bias.central_interval(mass)
+     return {
+-        "truth_mean": truth_mean,
+-        "truth_std": np.sqrt(truth_var),
+-        "bias_mean": bias_mean,
+-        "bias_std": np.sqrt(bias_var),
++        "truth_mean": truth.mean,
++        "truth_std": truth.std,
++        "truth_lo": truth_lo,
++        "truth_hi": truth_hi,
++        "bias_mean": bias.mean,
++        "bias_std": bias.std,
++        "bias_lo": bias_lo,
++        "bias_hi": bias_hi,
++        "interval_mass": mass,
++        "n_draws": truth.n_draws,
+     }
+ 
+ 
+@@ -375,7 +390,7 @@ def main():
+         print_hyperparameters(model, likelihood)
+ 
+         result = decompose_model(model, likelihood, x_train, y_train,
+-                                 x_pred, n_samples=25)
++                                 x_pred, n_samples=25, groups=INTERPRETATION_GROUPS)
+         method_label = "MAP"
+ 
+     else:
+@@ -410,7 +425,7 @@ def main():
+         result = decompose_model_hmc(
+             model3, likelihood3, x_train, y_train, x_pred,
+             mcmc_samples, kernel_builder=build_mauna_loa_kernels,
+-            n_posterior_samples=100,
++            n_posterior_samples=100, groups=INTERPRETATION_GROUPS,
+         )
+         method_label = "HMC"
+ 
+diff --git a/experiments/bistar_induced_prior.py b/experiments/bistar_induced_prior.py
+index 90bd86c..c2803c0 100644
+--- a/experiments/bistar_induced_prior.py
++++ b/experiments/bistar_induced_prior.py
+@@ -163,7 +163,7 @@ def main():
+             print(f"\n  Computing induced prior for {model_name}...")
+             ip = compute_induced_prior(
+                 ps, gp_samples, x_eval,
+-                log_mlls=log_mlls,
++                weighting="uniform",   # fit_hmc caches are posterior draws (FIX-6)
+                 metric_name=args.metric,
+                 tau=args.tau,
+                 n_param_samples=args.n_param_samples,
+@@ -278,7 +278,7 @@ def main():
+             print(f"\n  τ = {tau_val}:")
+             ip = compute_induced_prior(
+                 sl_space, gp_samples, x_eval,
+-                log_mlls=log_mlls,
++                weighting="uniform",   # fit_hmc caches are posterior draws (FIX-6)
+                 metric_name=args.metric,
+                 tau=tau_val,
+                 n_param_samples=args.n_param_samples,
+diff --git a/experiments/bistar_induced_prior_v2.py b/experiments/bistar_induced_prior_v2.py
+index fb5fdf0..13a14f7 100644
+--- a/experiments/bistar_induced_prior_v2.py
++++ b/experiments/bistar_induced_prior_v2.py
+@@ -169,7 +169,7 @@ def main():
+         for model_name, ps in param_spaces.items():
+             ip = compute_induced_prior(
+                 ps, gp_samples, x_eval,
+-                log_mlls=log_mlls,
++                weighting="uniform",   # fit_hmc caches are posterior draws (FIX-6)
+                 metric_name=args.metric,
+                 tau=args.tau,
+                 n_param_samples=args.n_param_samples,
+diff --git a/experiments/prior_sensitivity_study.py b/experiments/prior_sensitivity_study.py
+index 6db155e..db5cf6f 100644
+--- a/experiments/prior_sensitivity_study.py
++++ b/experiments/prior_sensitivity_study.py
+@@ -653,12 +653,11 @@ def stage_b_one(name, pc, x, y, x_eval, candidate_results, methods,
+ 
+ def _boltzmann_posterior(G, tau):
+     """Exact replication of bms_star.soft_transfer's aggregation
+-    (normalize_per_draw=False, global-shift stabilization)."""
+-    lw = -G / tau
+-    w = np.exp(lw - lw.max())
+-    s = w.mean(axis=0)
+-    tot = s.sum()
+-    return s / tot if tot > 0 else np.ones(G.shape[1]) / G.shape[1]
++    (normalize_per_draw=False, global-shift stabilization). Delegates to the
++    package's aggregate_convention("pooled"), which carries the same
++    arithmetic in the same order (2026-09 review FIX-9)."""
++    from bistar_gp.bms_star import aggregate_convention
++    return aggregate_convention(G, tau, "pooled")
+ 
+ 
+ def _sir_bms(pc, x, y, x_eval, candidate_results, ths, lml, n_pred,
+@@ -684,6 +683,11 @@ def _sir_bms(pc, x, y, x_eval, candidate_results, ths, lml, n_pred,
+     )
+     if not gp_samples:
+         raise RuntimeError("no valid GP predictives from SIR draws")
++    if len(gp_samples) != n_pred:
++        raise RuntimeError(
++            f"_sir_bms: {len(gp_samples)} GP predictives retained of {n_pred} "
++            "SIR draws; the paper path must not score a numerically selected "
++            "subset of the draws (2026-09 review FIX-1)")
+     results = run_bms_star(gp_samples, candidate_results, fmc.METRICS,
+                            np.array(fmc.TAUS))
+     per_metric, G_by_metric = {}, {}

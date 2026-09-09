@@ -1,0 +1,16 @@
+ bistar_gp/__init__.py                  |   6 +-
+ bistar_gp/aggregation_v3.py            |  91 ++++---
+ bistar_gp/bms_star.py                  | 251 +++++++++++++++--
+ bistar_gp/candidates.py                |  76 ++++--
+ bistar_gp/config.py                    |  49 +++-
+ bistar_gp/debias.py                    | 482 +++++++++++++++++++++++++--------
+ bistar_gp/decompose.py                 |  39 +++
+ bistar_gp/induced_prior.py             |  56 +++-
+ bistar_gp/laplace_evidence.py          | 259 +++++++++++++-----
+ bistar_gp/metrics_v2.py                |  16 +-
+ bistar_gp/model.py                     |  20 ++
+ experiments/bistar_debias_mauna_loa.py |  73 +++--
+ experiments/bistar_induced_prior.py    |   4 +-
+ experiments/bistar_induced_prior_v2.py |   2 +-
+ experiments/prior_sensitivity_study.py |  16 +-
+ 15 files changed, 1126 insertions(+), 314 deletions(-)
