@@ -5787,3 +5787,22 @@ simplify in place. Pass 1b (next commit) folds the accepted items.
 **Status:** pass 1 committed as reviewed; pass 1b follows in the same branch; fix pass 2
 (case-A script wiring of `check_external_targets`, Case C convention import, required
 `metric_name` with its two callers) OPEN; Kimi K3 and GLM 5.3 outputs on the fix pass pending.
+
+**Update 1 (2026-09-08, pass 1b):** review-round folds applied in this branch after the
+Codex and Fable 5.1 reviews (adjudication `runs/code_review_2026_09/fix1_synthesis.md`
+revision 2): atomic per-draw accumulation with typed keys and one `_summarize` factory
+shared by the MAP and draw paths (`debias.py`; `group_key` deduplicates); `EvaluationFailure`
+raised by the evaluators and re-raised by both optimizer handlers, order-independent
+`_select_start` over finite objectives, non-finite Hessian stencils flagged
+(`laplace_evidence.py`); one `log_weight_ess` routine (NaN for NaN, 0 for absent support),
+finite-G validation and class-label cardinality at `soft_transfer` entry,
+`_MetricRegistry.__missing__` replacing `_resolve_metric` (`bms_star.py`); sample sites
+applied outside the numerical handler and one global shift in `soft_transfer_weighted` with
+`instance_scores` on the pre-fix scale (`aggregation_v3.py`); `log_mlls` under uniform
+weighting raises (`induced_prior.py`); finite validation before every reduction in
+`external_targets.py`. `tests/test_fix1_review_round.py` (17 tests) and three test edits.
+Suite in this worktree: 1342 passed, 5 skipped (two fixture-gated pins needing
+`FIX1_FIXTURE_DIR`, three environmental), 1 known failure; Case E oracle byte-identical.
+`metric_name` stays optional by author disposition (2026-09-08); required in fix pass 2 with
+`metrics_v2.py:398` and `mcse_strategy.py:177`. Delta against the reviewed state:
+`runs/code_review_2026_09/fix1_bundle/fix1b_delta.diff`.

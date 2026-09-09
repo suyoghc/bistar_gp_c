@@ -67,15 +67,18 @@ def test_raising_predictor_yields_nan_not_a_win_under_non_strict(mse_metric):
     z = laplace_log_Z_Mx(ps, X_EVAL, GP, metric_name=mse_metric, strict=False)
     assert np.isnan(z.log_Z) and not z.converged
     mc = mc_log_Z_Mx(ps, X_EVAL, GP, [1.0], n_mc=50, metric_name=mse_metric, strict=False)
-    assert np.isnan(mc.log_Z[0]) and mc.ess[0] == 0.0
+    assert np.isnan(mc.log_Z[0]) and np.isnan(mc.ess[0])        # NaN ESS: invalid evaluation, not absent support (pass 1b)
     iss = is_log_Z_Mx(ps, X_EVAL, GP, [1.0], n_is=50, metric_name=mse_metric,
                       starts=[{"a": 0.5, "b": -0.3}], strict=False)
-    assert np.isnan(iss.log_Z[0]) and iss.ess[0] == 0.0 and iss.n_starts_failed >= 1
+    assert np.isnan(iss.log_Z[0]) and np.isnan(iss.ess[0]) and iss.n_starts_failed >= 1
     good = _space(lambda x, p: p["a"] * x + p["b"], "Good")
     mpr = model_posterior({"Good": good, "Bad": ps}, X_EVAL, GP.mean, X_EVAL, GP, None,
                           construction="I", metric_name=mse_metric, tau=0.5,
                           occam=False, strict=False)
     assert np.isnan(mpr.posteriors["Bad"])          # not a finite win
+    # the softmax is a joint normalization: a failed model voids the whole
+    # comparison, so the healthy model is NaN too (review F7)
+    assert np.isnan(mpr.posteriors["Good"])
     assert mpr.all_converged is False
     assert mpr.components["Bad"]["converged"] is False
 
@@ -101,8 +104,8 @@ def test_negative_metric_cannot_reward_a_failed_draw():
         bad = GPPosteriorSample(mean=np.array([999.0, 0.0, 0.0]), cov=np.eye(3), hyperparameters={})
         ps = ModelParameterSpace(model_name="C", param_specs=[ParameterSpec("c", (0.0, 1.0), None)],
                                  predict_fn=lambda x, p: p["c"] + 0.0 * x, noise_param="sigma")
-        ip = compute_induced_prior(ps, [ok, bad], np.zeros(3), np.zeros(2), metric_name=name,
-                                   n_param_samples=4, seed=0)
+        ip = compute_induced_prior(ps, [ok, bad], np.zeros(3), metric_name=name,
+                                   n_param_samples=4, seed=0)     # uniform weighting (pass 1b)
         for s_idx in range(4):
             c = ip.param_samples[s_idx, 0]
             g_ok = metric(ok.mean, ok.cov, np.full(3, c), np.eye(3) * 0.09)

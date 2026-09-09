@@ -207,8 +207,12 @@ def compute_induced_prior(
 
     if weighting == "uniform":
         if log_mlls is not None:
-            logger.warning("compute_induced_prior: log_mlls are ignored under "
-                           "weighting='uniform' (correct for posterior draws)")
+            # A legacy positional call would otherwise run a different
+            # estimator with only a log line to say so (review F2).
+            raise ValueError(
+                "compute_induced_prior: log_mlls supplied under weighting='uniform'; "
+                "pass weighting='likelihood_tilted' for PRIOR draws or drop log_mlls "
+                "for posterior draws")
         mll_weights = np.full(n_draws, 1.0 / n_draws)
     elif weighting == "likelihood_tilted":
         if log_mlls is None:

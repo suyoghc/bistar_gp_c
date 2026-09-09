@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from bistar_gp.bms_star import (
     GPPosteriorSample, METRICS, compute_G_matrix, BMSStarResult,
     _extract_marginals, _assert_candidate_universes_consistent,
-    aggregate_convention, hard_win_statistics,
+    aggregate_convention, hard_win_statistics, log_weight_ess,
 )
 
 logger = logging.getLogger(__name__)
@@ -347,23 +347,26 @@ def compute_log_marginal_likelihoods(
     log_mlls = np.zeros(len(gp_samples))
 
     for idx, sample in enumerate(gp_samples):
+        kernels, names = kernel_builder()
+        fresh_lik = likelihood_builder()
+        fresh_model, fresh_lik = build_model(x_t, y_t, kernels, names, fresh_lik)
+
+        # Set hyperparameters OUTSIDE the numerical handler below. A site the
+        # model does not recognize is a silent-wrong-answer path (the
+        # likelihood would be scored at the fresh model's initialization
+        # value), so it raises and the error must escape (FIX-1; review R1
+        # found the pass-1 raise sitting inside the handler that converts
+        # numerical failures into -inf).
+        for pyro_name, val in sample.hyperparameters.items():
+            if not apply_hp_value(fresh_model, fresh_lik, pyro_name, val):
+                raise ValueError(
+                    f"compute_log_marginal_likelihoods: apply_hp_value did "
+                    f"not recognize site {pyro_name!r} for draw {idx}")
+
+        fresh_model.eval()
+        fresh_lik.eval()
+
         try:
-            kernels, names = kernel_builder()
-            fresh_lik = likelihood_builder()
-            fresh_model, fresh_lik = build_model(x_t, y_t, kernels, names, fresh_lik)
-
-            # Set hyperparameters. A site the model does not recognize is a
-            # silent-wrong-answer path (the likelihood would be scored at the
-            # fresh model's initialization value), so it raises (FIX-1).
-            for pyro_name, val in sample.hyperparameters.items():
-                if not apply_hp_value(fresh_model, fresh_lik, pyro_name, val):
-                    raise ValueError(
-                        f"compute_log_marginal_likelihoods: apply_hp_value did "
-                        f"not recognize site {pyro_name!r} for draw {idx}")
-
-            fresh_model.eval()
-            fresh_lik.eval()
-
             with torch.no_grad():
                 noise_var = fresh_lik.noise.item()
                 K_XX = fresh_model.covar_module(x_t, x_t).evaluate().detach()
@@ -423,12 +426,17 @@ def soft_transfer_weighted(G_matrix: np.ndarray, tau: float,
     # posterior. Forming log w_i - G_ij/tau first and summing with
     # log-sum-exp makes the result exact up to floating point.
     log_terms = lw[:, None] - G / tau                            # (n_psi, n_theta)
-    log_scores = logsumexp(log_terms, axis=0) - logsumexp(lw)    # log[ sum_i w_i e^{-G_ij/tau} / sum_i w_i ]
-    log_post = log_scores - logsumexp(log_scores)
+    # One GLOBAL shift before the two log-sum-exps (pass 1b, review R6): the
+    # cross-candidate normalization is then a difference of moderate numbers
+    # instead of two large nearly equal ones. The shift cancels exactly.
+    shift = np.max(log_terms)
+    ls = logsumexp(log_terms - shift, axis=0)                    # log-scores up to the shift
+    log_post = ls - logsumexp(ls)
     instance_posteriors = np.exp(log_post)
-    instance_scores = np.exp(log_scores - np.max(log_scores))    # relative scores (global shift)
-    weight_ess = np.exp(2.0 * logsumexp(log_terms, axis=0)
-                        - logsumexp(2.0 * log_terms, axis=0))
+    log_scores = ls + shift - logsumexp(lw)                      # log[ sum_i w_i e^{-G_ij/tau} / sum_i w_i ]
+    # Scores on the pre-fix scale: sum_i w_i exp(-(G_ij - G_min)/tau) / sum_i w_i
+    instance_scores = np.exp(log_scores + G.min() / tau)
+    weight_ess = log_weight_ess(log_terms, axis=0)
     credit, attainment, tie_fraction = hard_win_statistics(G)
 
     return BMSStarResult(

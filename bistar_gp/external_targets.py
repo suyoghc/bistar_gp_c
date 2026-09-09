@@ -51,22 +51,35 @@ def vanbork_target_b() -> Dict[str, float]:
     return {names[0]: w, names[1]: 1.0 - w}
 
 
-def _min_tau_row(rows):
+def _min_tau_row(rows, names, key):
+    """The smallest-tau row with every named posterior validated finite.
+
+    Validation comes first (fix pass 1b, review R9): Python's max() keeps a
+    finite first argument over a NaN and abs(nan - 1) > tol is False, so an
+    unvalidated NaN column would pass both the mass check and the tolerance.
+    """
     finite = [r for r in rows if np.isfinite(float(r["tau"]))]
     if not finite:
-        raise ValueError("no row carries a finite tau")
-    return min(finite, key=lambda r: float(r["tau"]))
+        raise AssertionError(f"external target {key}: no row carries a finite tau")
+    row = min(finite, key=lambda r: float(r["tau"]))
+    for n in names:
+        value = float(row[n])
+        if not np.isfinite(value):
+            raise AssertionError(
+                f"external target {key}: non-finite posterior {value!r} for {n!r} "
+                f"at tau={row['tau']}")
+    return row
 
 
 def external_target_errors(results: dict) -> Dict[str, float]:
     """Recompute max |ours - target| at the smallest-tau row of a results.json
     payload (the per-draw route rows for Target A, the Z_M route rows for
-    Target B)."""
+    Target B). Raises AssertionError on a non-finite posterior."""
     a = results["target_a"]
-    a_row = _min_tau_row(a["rows"])
+    a_row = _min_tau_row(a["rows"], a["names"], "A")
     err_a = max(abs(float(a_row[n]) - VANBORK_TARGET_A[n]) for n in a["names"])
     b = results["target_b"]
-    b_row = _min_tau_row(b["rows"])
+    b_row = _min_tau_row(b["rows"], b["names"], "B")
     target_b = vanbork_target_b()
     err_b = max(abs(float(b_row[n]) - target_b[n]) for n in b["names"])
     return {"A": float(err_a), "B": float(err_b)}
@@ -89,7 +102,7 @@ def check_external_targets(results_json_path, tol_a: float = 1e-6, tol_b: float 
             raise AssertionError(
                 f"external target {key}: model names {block['names']} do not match "
                 f"the published targets {list(target)}")
-        row = _min_tau_row(block["rows"])
+        row = _min_tau_row(block["rows"], block["names"], key)
         mass = sum(float(row[n]) for n in block["names"])
         if abs(mass - 1.0) > 1e-9:
             raise AssertionError(
@@ -97,6 +110,9 @@ def check_external_targets(results_json_path, tol_a: float = 1e-6, tol_b: float 
     errors = external_target_errors(results)
     stored = results.get("abs_error_at_min_tau", {})
     for key, tol in (("A", tol_a), ("B", tol_b)):
+        if key in stored and not np.isfinite(float(stored[key])):
+            raise AssertionError(
+                f"external target {key}: stored abs_error_at_min_tau is {stored[key]!r}")
         if not np.isfinite(errors[key]) or errors[key] > tol:
             raise AssertionError(
                 f"external target {key}: |ours - target| = {errors[key]:.3e} exceeds "

@@ -18,7 +18,9 @@ covariance plus noise, never from summing component variances, so a group
 containing every component reproduces the full posterior exactly.
 """
 
+import functools
 import logging
+import operator
 
 import torch
 import numpy as np
@@ -95,7 +97,7 @@ class DecompositionResult:
 
     @staticmethod
     def group_key(names: Sequence[str]) -> Tuple[str, ...]:
-        return tuple(sorted(names))
+        return tuple(sorted(set(names)))     # a repeated name is one member (review F3)
 
     def group(self, names: Sequence[str]) -> ComponentResult:
         """Joint posterior summary of the sum of the named components.
@@ -132,58 +134,108 @@ class DecompositionResult:
 # ── shared draw accumulation ────────────────────────────────────────
 
 def _blocks_sum(km, names, key):
-    return sum(km[n][key] for n in names)
+    """Sum of the named components' kernel blocks. A single name returns its
+    block itself (no leading ``0 +`` step), so a lone component follows
+    exactly the arithmetic of the per-component path."""
+    return functools.reduce(operator.add, [km[n][key] for n in names])
+
+
+def _summarize(name, M, V, cov, samples, samples_kind) -> ComponentResult:
+    """The one place a ComponentResult is packaged (fix pass 1b).
+
+    M, V: (n_draws, n_test) conditional means and variances. cov: the total
+    posterior covariance the caller assembled (one draw's conditional
+    covariance, or mean_d C_d + Cov_d m_d over draws). std is the
+    law-of-total-variance sd sqrt(E_d[var_d] + Var_d[mean_d]).
+    """
+    M = np.asarray(M, dtype=float)
+    V = np.asarray(V, dtype=float)
+    within = V.mean(axis=0)
+    between = M.var(axis=0)
+    std = np.sqrt(np.clip(within + between, 0.0, None))
+    return ComponentResult(
+        name=name, mean=M.mean(axis=0), std=std, cov=cov,
+        samples=samples, samples_kind=samples_kind,
+        conditional_means=M, conditional_vars=V,
+        within_var_mean=within, between_var=between, n_draws=M.shape[0])
+
+
+def _single_draw_summary(name, mean, cov, samples=None) -> ComponentResult:
+    """Summary of one conditional Gaussian (the MAP path), variance floored
+    at 1e-10 as before; ``samples`` are function draws when given."""
+    mean = np.asarray(mean, dtype=float)
+    var = np.clip(np.diag(cov), 1e-10, None)
+    if samples is None:
+        return _summarize(name, mean[None, :], var[None, :], cov, mean[None, :],
+                          "conditional_means")
+    return _summarize(name, mean[None, :], var[None, :], cov, samples, "function_draws")
+
+
+def _validated_groups(names, groups) -> Dict[Tuple[str, ...], List[str]]:
+    """{sorted-name tuple: members} for the requested groups that need their
+    own conditioning (more than one component, fewer than all). Empty,
+    singleton and all-component requests are derived by
+    DecompositionResult.group; repeated names collapse to one member; unknown
+    members raise."""
+    out = {}
+    for g in (groups or []):
+        g = list(g)
+        key = DecompositionResult.group_key(g)
+        unknown = [n for n in key if n not in names]
+        if unknown:
+            raise KeyError(f"group {g} names unknown components {unknown}")
+        if 1 < len(key) < len(names):
+            out[key] = list(key)
+    return out
 
 
 class _DrawAccumulator:
     """Accumulate per-draw conditional moments for components, the full
-    posterior and requested groups, then form total posterior moments."""
+    posterior and requested groups, then form total posterior moments.
+
+    Targets are keyed by typed tuples ``("component", name)``, ``("group",
+    sorted names)`` and ``("full",)``, so a component name can never collide
+    with a group label or the full posterior (fix pass 1b, review R3)."""
 
     def __init__(self, names: List[str], n_test: int,
                  groups: Optional[Sequence[Sequence[str]]]):
         self.names = list(names)
         self.n_test = n_test
-        self.group_keys: Dict[Tuple[str, ...], List[str]] = {}
-        for g in (groups or []):
-            key = DecompositionResult.group_key(g)
-            unknown = [n for n in key if n not in self.names]
-            if unknown:
-                raise KeyError(f"group {list(g)} names unknown components {unknown}")
-            if 0 < len(key) < len(self.names) and len(key) > 1:
-                self.group_keys[key] = list(key)
-        targets = ["__full__"] + self.names + [",".join(k) for k in self.group_keys]
-        self.means = {t: [] for t in targets}
-        self.vars = {t: [] for t in targets}
-        self.cov_sum = {t: np.zeros((n_test, n_test)) for t in targets}
+        self.group_keys = _validated_groups(self.names, groups)
+        self.targets = ([("full",)] + [("component", n) for n in self.names]
+                        + [("group", k) for k in self.group_keys])
+        self.means = {t: [] for t in self.targets}
+        self.vars = {t: [] for t in self.targets}
+        self.cov_sum = {t: np.zeros((n_test, n_test)) for t in self.targets}
         self.n = 0
 
-    def _record(self, target, mean_t, cov_t):
-        m = mean_t.numpy() if hasattr(mean_t, "numpy") else np.asarray(mean_t)
-        c = cov_t.numpy() if hasattr(cov_t, "numpy") else np.asarray(cov_t)
-        c = 0.5 * (c + c.T)
-        self.means[target].append(np.array(m, dtype=float))
-        self.vars[target].append(np.clip(np.diag(c), 0.0, None))
-        self.cov_sum[target] += c
+    def _members(self, target):
+        if target[0] == "full":
+            return self.names
+        if target[0] == "component":
+            return [target[1]]
+        return self.group_keys[target[1]]
 
     def add_draw(self, km, noise_var, y_train, jitter):
         """One hyperparameter draw: a single Cholesky of the summed training
-        covariance serves every component, the full posterior and the groups."""
+        covariance serves every target. Every target is conditioned into a
+        local record first and committed together at the end, so a failure
+        part-way leaves no partially recorded draw (fix pass 1b, review R2)."""
         L = compute_cholesky(_blocks_sum(km, self.names, "XX"), noise_var, jitter)
-        for n in self.names:
-            mean_i, cov_i = decompose_component(
-                km[n]["XstarX"], km[n]["XstarXstar"], km[n]["XXstar"], L, y_train)
-            self._record(n, mean_i, cov_i)
-        mean_f, cov_f = decompose_component(
-            _blocks_sum(km, self.names, "XstarX"),
-            _blocks_sum(km, self.names, "XstarXstar"),
-            _blocks_sum(km, self.names, "XXstar"), L, y_train)
-        self._record("__full__", mean_f, cov_f)
-        for key, members in self.group_keys.items():
-            mean_g, cov_g = decompose_component(
-                _blocks_sum(km, members, "XstarX"),
-                _blocks_sum(km, members, "XstarXstar"),
+        record = {}
+        for target in self.targets:
+            members = self._members(target)
+            mean_t, cov_t = decompose_component(
+                _blocks_sum(km, members, "XstarX"), _blocks_sum(km, members, "XstarXstar"),
                 _blocks_sum(km, members, "XXstar"), L, y_train)
-            self._record(",".join(key), mean_g, cov_g)
+            m = np.array(mean_t.numpy() if hasattr(mean_t, "numpy") else mean_t, dtype=float)
+            c = np.asarray(cov_t.numpy() if hasattr(cov_t, "numpy") else cov_t, dtype=float)
+            c = 0.5 * (c + c.T)
+            record[target] = (m, np.clip(np.diag(c), 0.0, None), c)
+        for target, (m, v, c) in record.items():
+            self.means[target].append(m)
+            self.vars[target].append(v)
+            self.cov_sum[target] += c
         self.n += 1
 
     def _finalize_target(self, target, name) -> ComponentResult:
@@ -191,26 +243,17 @@ class _DrawAccumulator:
         V = np.stack(self.vars[target])
         within_cov = self.cov_sum[target] / self.n
         if M.shape[0] > 1:
-            between_cov = np.cov(M, rowvar=False, bias=True)
-            between_cov = np.atleast_2d(between_cov)
+            between_cov = np.atleast_2d(np.cov(M, rowvar=False, bias=True))
         else:
             between_cov = np.zeros((self.n_test, self.n_test))
-        cov = within_cov + between_cov
-        within = V.mean(axis=0)
-        between = M.var(axis=0)
-        std = np.sqrt(np.clip(within + between, 0.0, None))
-        return ComponentResult(
-            name=name, mean=M.mean(axis=0), std=std, cov=cov,
-            samples=M, samples_kind="conditional_means",
-            conditional_means=M, conditional_vars=V,
-            within_var_mean=within, between_var=between, n_draws=self.n)
+        return _summarize(name, M, V, within_cov + between_cov, M, "conditional_means")
 
     def finalize(self):
         if self.n == 0:
             raise RuntimeError("no hyperparameter draw was decomposed")
-        components = {n: self._finalize_target(n, n) for n in self.names}
-        full = self._finalize_target("__full__", "__full__")
-        groups = {key: self._finalize_target(",".join(key), "+".join(key))
+        components = {n: self._finalize_target(("component", n), n) for n in self.names}
+        full = self._finalize_target(("full",), "__full__")
+        groups = {key: self._finalize_target(("group", key), "+".join(key))
                   for key in self.group_keys}
         return components, full, groups
 
@@ -263,17 +306,8 @@ def decompose_model(model, likelihood, x_train, y_train, x_test, n_samples=25, j
 
     for (mean_i, cov_i), name in zip(results, names):
         samples_i = sample_from_component(mean_i, cov_i, n_samples)
-        var_i = torch.clamp(torch.diag(cov_i), min=1e-10)
-        std_i = torch.sqrt(var_i)
-        components[name] = ComponentResult(
-            name=name, mean=mean_i.numpy(), std=std_i.numpy(),
-            cov=cov_i.numpy(), samples=samples_i.numpy(),
-            samples_kind="function_draws",
-            conditional_means=mean_i.numpy()[None, :],
-            conditional_vars=var_i.numpy()[None, :],
-            within_var_mean=var_i.numpy(), between_var=np.zeros(len(mean_i)),
-            n_draws=1,
-        )
+        components[name] = _single_draw_summary(name, mean_i.numpy(), cov_i.numpy(),
+                                                samples=samples_i.numpy())
         full_mean += mean_i
 
     # Full posterior covariance of f = sum_i f_i is NOT the sum of the
@@ -289,43 +323,26 @@ def decompose_model(model, likelihood, x_train, y_train, x_test, n_samples=25, j
         _, full_cov_t = decompose_component(
             K_sum_XstarX, K_sum_XstarXstar, K_sum_XXstar, L_sum, y_train,
         )
-    full_cov = full_cov_t.numpy()
-    full_var = np.clip(np.diag(full_cov), 1e-10, None)
-    full_std = np.sqrt(full_var)
+    full = _single_draw_summary("__full__", full_mean.numpy(), full_cov_t.numpy())
 
     # Requested groups (FIX-2b/2d): the summed group blocks conditioned with
     # the same full-kernel factor L_sum; a single hyperparameter setting, so
     # the between-draw term is zero.
     group_results = {}
-    for g in (groups or []):
-        key = DecompositionResult.group_key(g)
-        unknown = [n for n in key if n not in names]
-        if unknown:
-            raise KeyError(f"group {list(g)} names unknown components {unknown}")
-        if not (1 < len(key) < len(names)):
-            continue        # empty, singleton and all-component groups are derived
+    for key, members in _validated_groups(names, groups).items():
         with torch.no_grad():
             mean_g_t, cov_g_t = decompose_component(
-                _blocks_sum(km, key, "XstarX"), _blocks_sum(km, key, "XstarXstar"),
-                _blocks_sum(km, key, "XXstar"), L_sum, y_train)
-        mean_g, cov_g = mean_g_t.numpy(), cov_g_t.numpy()
-        cov_g = 0.5 * (cov_g + cov_g.T)
-        var_g = np.clip(np.diag(cov_g), 1e-10, None)
-        group_results[key] = ComponentResult(
-            name="+".join(key), mean=mean_g, std=np.sqrt(var_g), cov=cov_g,
-            samples=mean_g[None, :], samples_kind="conditional_means",
-            conditional_means=mean_g[None, :], conditional_vars=var_g[None, :],
-            within_var_mean=var_g, between_var=np.zeros(len(var_g)), n_draws=1)
+                _blocks_sum(km, members, "XstarX"), _blocks_sum(km, members, "XstarXstar"),
+                _blocks_sum(km, members, "XXstar"), L_sum, y_train)
+        cov_g = cov_g_t.numpy()
+        group_results[key] = _single_draw_summary("+".join(key), mean_g_t.numpy(),
+                                                  0.5 * (cov_g + cov_g.T))
 
     result = DecompositionResult(
         x_test=x_test.numpy(), x_train=x_train.numpy(), y_train=y_train.numpy(),
-        components=components, full_mean=full_mean.numpy(), full_std=full_std, noise_var=noise_var,
+        components=components, full_mean=full_mean.numpy(), full_std=full.std, noise_var=noise_var,
     )
-    result.full = ComponentResult(
-        name="__full__", mean=full_mean.numpy(), std=full_std, cov=full_cov,
-        samples=full_mean.numpy()[None, :], samples_kind="conditional_means",
-        conditional_means=full_mean.numpy()[None, :], conditional_vars=full_var[None, :],
-        within_var_mean=full_var, between_var=np.zeros(len(full_var)), n_draws=1)
+    result.full = full
     result.groups = group_results
     result.n_draws_attempted = result.n_draws_retained = 1
     return result

@@ -191,7 +191,22 @@ def pw_nll(mu_psi, cov_psi, mu_theta, cov_theta):
 
 
 # Registry of available metrics
-METRICS = {
+class _MetricRegistry(dict):
+    """METRICS[name] imports the v2 metrics on the first miss (FIX-7), so the
+    primary metric pw_kl_vcal, defined in metrics_v2, resolves for a caller
+    that never imported that module (ExperimentConfig.metrics names it).
+    Registered names resolve exactly as in a plain dict; .keys() on the
+    implicit run_bms_star path lists v2 names only after their first import,
+    as before."""
+
+    def __missing__(self, name):
+        from . import metrics_v2  # noqa: F401  registers into this dict
+        if name in self:
+            return dict.__getitem__(self, name)
+        raise KeyError(f"unknown metric {name!r}; registered: {sorted(self)}")
+
+
+METRICS = _MetricRegistry({
     # Joint (full n-dimensional Gaussian)
     "kl_forward": kl_forward,       # KL(ψ || θ)
     "kl_backward": kl_backward,     # KL(θ || ψ)
@@ -204,7 +219,7 @@ METRICS = {
     "pw_hellinger": pw_hellinger,
     "pw_mse": pw_mse,               # mean-only baseline
     "pw_nll": pw_nll,               # mean + variance calibration
-}
+})
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -448,20 +463,47 @@ class BMSStarResult:
     tie_fraction: Optional[float] = None
 
 
+def log_weight_ess(log_w, axis: int = 0):
+    """Effective sample size (sum w)^2 / sum w^2 from LOG weights.
+
+    The one ESS routine of the package (fix pass 1b): the per-column maximum
+    is subtracted before exponentiation, so a large common offset cancels
+    exactly instead of surviving as a difference of two large log-sum-exps
+    (review R6), and no weight can overflow. Entries of -inf contribute
+    nothing. A column whose weights are all -inf has ESS 0 (absent support);
+    a column containing NaN has ESS NaN (an invalid evaluation), which is
+    deliberately distinct from absent support (review R8). A 1-D input
+    returns a float.
+    """
+    lw = np.asarray(log_w, dtype=float)
+    one_d = lw.ndim == 1
+    if one_d:
+        lw = lw[:, None]
+        axis = 0
+    nan_col = np.isnan(lw).any(axis=axis)
+    m = np.max(np.where(np.isnan(lw), -np.inf, lw), axis=axis, keepdims=True)
+    supported = np.isfinite(m)
+    w = np.exp(lw - np.where(supported, m, 0.0))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        ess = w.sum(axis=axis) ** 2 / (w ** 2).sum(axis=axis)
+    ess = np.where(np.squeeze(supported, axis=axis), ess, 0.0)
+    ess = np.where(nan_col, np.nan, ess)
+    return float(ess[0]) if one_d else ess
+
+
 def boltzmann_weight_ess(G_matrix: np.ndarray, tau: float) -> np.ndarray:
     """Per-candidate effective number of draws behind a pooled Boltzmann score.
 
     ESS_j = (sum_i w_ij)^2 / sum_i w_ij^2 with w_ij = exp(-G_ij / tau), computed
-    in log space so that a candidate whose raw weights underflow still gets a
-    finite value. Invariant under a per-candidate column shift of G, which is
-    the multiplicative factor the cross-candidate normalization removes.
+    from log weights (log_weight_ess) so that a candidate whose raw weights
+    underflow still gets a finite value. Invariant under a per-candidate
+    column shift of G, which is the multiplicative factor the cross-candidate
+    normalization removes.
     """
-    from scipy.special import logsumexp
-
     lw = -np.asarray(G_matrix, dtype=float) / float(tau)
     if not np.all(np.isfinite(lw)):
         raise ValueError("boltzmann_weight_ess requires finite G values")
-    return np.exp(2.0 * logsumexp(lw, axis=0) - logsumexp(2.0 * lw, axis=0))
+    return log_weight_ess(lw, axis=0)
 
 
 def hard_win_statistics(G_matrix: np.ndarray):
@@ -486,25 +528,6 @@ def hard_win_statistics(G_matrix: np.ndarray):
     return credit, attainment, tie_fraction
 
 
-def _resolve_metric(metric_name: str):
-    """METRICS lookup that registers the v2 metrics on demand.
-
-    The primary metric pw_kl_vcal is defined in metrics_v2, which registers
-    itself into METRICS when imported; ExperimentConfig.metrics now names it
-    (FIX-7), so a caller that never imported metrics_v2 must still resolve it.
-    Behaviour for already-registered names is unchanged.
-    """
-    if metric_name not in METRICS:
-        try:
-            from . import metrics_v2  # noqa: F401  registers the v2 metrics
-        except ImportError:
-            pass
-    try:
-        return METRICS[metric_name]
-    except KeyError:
-        raise KeyError(f"unknown metric {metric_name!r}; registered: {sorted(METRICS)}") from None
-
-
 def compute_G_matrix(gp_samples: List[GPPosteriorSample],
                      candidate_results: list,
                      metric_name: str = "kl_forward") -> np.ndarray:
@@ -525,7 +548,7 @@ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
     # points that never call run_bms_star.
     _assert_candidate_universes_consistent(candidate_results)
 
-    metric_fn = _resolve_metric(metric_name)
+    metric_fn = METRICS[metric_name]          # registers metrics_v2 on a miss
     n_psi = len(gp_samples)
     n_theta = len(candidate_results)
     G = np.zeros((n_psi, n_theta))
@@ -584,10 +607,21 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
         BMSStarResult with normalized posteriors and draw-level diagnostics
     """
     n_psi, n_theta = G_matrix.shape
+    if not np.all(np.isfinite(G_matrix)):
+        # A NaN or infinite divergence is never a score. compute_G_matrix
+        # returns finite penalties, so only a hand-built matrix reaches this;
+        # the pre-fix code returned a uniform posterior for it (review F4).
+        raise ValueError("soft_transfer: G_matrix contains non-finite entries")
 
+    if len(instance_names) != n_theta:
+        raise ValueError(
+            f"soft_transfer: {len(instance_names)} instance_names for "
+            f"{n_theta} candidate columns")
     if class_names is None:
         class_names = instance_names
-    elif len(set(class_names)) != len(instance_names):
+    elif len(class_names) != n_theta or len(set(class_names)) != n_theta:
+        # one label per column and no repeats (review R5: a length check
+        # alone, or a uniqueness check alone, each admits a malformed list)
         raise ValueError(
             "soft_transfer: class-level averaging over grouped instances is "
             "not implemented; pass class_names=None (or a 1:1 relabelling) "

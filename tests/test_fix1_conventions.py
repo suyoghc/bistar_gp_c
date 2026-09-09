@@ -143,10 +143,7 @@ def test_matches_the_case_a_script_fixture():
     spec = importlib.util.spec_from_file_location("e7_fixture", E7_FIXTURE)
     mod = importlib.util.module_from_spec(spec)
     sys.modules.setdefault("prior_sensitivity_study", pss)
-    try:
-        spec.loader.exec_module(mod)
-    except Exception as exc:  # the fixture's own imports are not under test
-        pytest.skip(f"fixture not importable here: {exc!r}")
+    spec.loader.exec_module(mod)   # a supplied fixture that fails to import is a failure, not a skip
     G = _G(12)
     for tau in (0.1, 1.0, 3.0):
         for variant in VARIANTS:

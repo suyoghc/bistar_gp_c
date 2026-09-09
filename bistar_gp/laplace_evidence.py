@@ -46,7 +46,7 @@ from scipy.special import softmax, logsumexp
 from scipy.linalg import solve_triangular
 from dataclasses import dataclass, field
 
-from bistar_gp.bms_star import GPPosteriorSample, METRICS
+from bistar_gp.bms_star import GPPosteriorSample, METRICS, log_weight_ess
 from bistar_gp.induced_prior import ModelParameterSpace
 import bistar_gp.metrics_v2  # noqa: F401 — registers pw_* metrics (incl. the default pw_kl_vcal) into METRICS
 
@@ -134,7 +134,7 @@ def compute_G_at_params(
         mu_theta = param_space.predict_fn(x_eval, param_dict)
     except Exception as exc:
         if strict:
-            raise RuntimeError(
+            raise EvaluationFailure(
                 f"compute_G_at_params: predict_fn of {param_space.model_name!r} "
                 f"raised {type(exc).__name__} at {param_dict}: {exc}") from exc
         return np.nan
@@ -146,9 +146,9 @@ def compute_G_at_params(
 
     try:
         return metric_fn(avg_gp.mean, avg_gp.cov, mu_theta, cov_theta)
-    except (np.linalg.LinAlgError, ValueError) as exc:
+    except (np.linalg.LinAlgError, ValueError, RuntimeError, FloatingPointError) as exc:
         if strict:
-            raise RuntimeError(
+            raise EvaluationFailure(
                 f"compute_G_at_params: metric raised {type(exc).__name__} for "
                 f"{param_space.model_name!r} at {param_dict}: {exc}") from exc
         return np.nan
@@ -192,6 +192,13 @@ class ZMxResult:
     n_starts_failed: int = 0     # starts whose minimize raised or reported failure
 
 
+class EvaluationFailure(RuntimeError):
+    """A candidate predictor or divergence metric failed under strict
+    evaluation (fix pass 1b). Subclass of RuntimeError for compatibility with
+    callers that catch the pass-1 exception; the optimizer fallback handlers
+    re-raise it so it can never turn into a start-point expansion."""
+
+
 @dataclass
 class OptimizerRecord:
     """What scipy's minimize actually reported for one start (2026-09 FIX-5).
@@ -232,7 +239,13 @@ class EvidenceResult:
 
 @dataclass
 class ModelPosteriorResult:
-    """Normalized model posterior under a chosen assembly (§2 of the plan)."""
+    """Normalized model posterior under a chosen assembly (§2 of the plan).
+
+    A non-finite kernel for ANY model (a non-strict evaluation failure) makes
+    every posterior NaN: the softmax is a joint normalization, so no candidate
+    can win a comparison one of them failed (review F7); `all_converged` is
+    False in that case.
+    """
     construction: str                      # 'baseline' | 'I' | 'II'
     occam: bool
     tau: float
@@ -301,7 +314,7 @@ def _log_likelihood(param_space, x_train, y_train, param_dict,
         # The -1e10 sentinel of the pre-2026-09 code made a raising predictor
         # look like an astronomically poor fit; raise, or NaN when not strict.
         if strict:
-            raise RuntimeError(
+            raise EvaluationFailure(
                 f"_log_likelihood: predict_fn of {param_space.model_name!r} "
                 f"raised {type(exc).__name__} at {param_dict}: {exc}") from exc
         return np.nan
@@ -332,6 +345,11 @@ def _laplace_log_integral(neg_log_f, x0, bounds, d, eps=1e-4):
                        options={"maxiter": 500, "ftol": 1e-10})
         x_star, converged = res.x, bool(res.success)
         record = _optimizer_record(res)
+    except EvaluationFailure:
+        # A strict evaluation failure inside the optimizer's own function
+        # evaluations is not an optimizer fault: it must reach the caller
+        # (fix pass 1b, review R7), never a start-point expansion.
+        raise
     except Exception as exc:
         x_star, converged = np.asarray(x0, dtype=float), False
         record = OptimizerRecord(success=False, message="minimize raised",
@@ -363,6 +381,13 @@ def _laplace_log_integral(neg_log_f, x0, bounds, d, eps=1e-4):
     inset = np.minimum(2 * eps, 0.5 * (hi - lo))
     x_h = np.clip(x_star, lo + inset, hi - inset)
     H = numerical_hessian(neg_log_f, x_h, eps=eps)
+    if not np.all(np.isfinite(H)):
+        # Non-strict failure on the Hessian stencil (review R8): no expansion
+        # exists; keep the optimizer's own record, mark the integral invalid.
+        logger.warning("Laplace Hessian is non-finite at x*=%s; returning NaN", x_star)
+        record.success = False
+        record.message = f"non-finite Hessian at x*; optimizer: {record.message}"
+        return np.nan, x_star, f_star, np.nan, False, 0, record
     logdet, n_clipped = _laplace_logdet(H)
     if n_clipped:
         logger.warning(
@@ -404,15 +429,9 @@ def laplace_log_Z_Mx(param_space, x_eval, avg_gp, *, metric_name="pw_kl_vcal",
     start_list = list(starts) if starts else []
     if mle_params is not None or not start_list:
         start_list.append(mle_params)
-    best = None
-    n_failed = 0
-    for start in start_list:
-        x0, bounds = _x0_and_bounds(param_space, start)
-        run = _laplace_log_integral(neg_log_f, x0, bounds, d)
-        if not run[6].success:
-            n_failed += 1
-        if best is None or run[2] < best[2]:   # min f_star == min Ḡ*
-            best = run
+    runs = [_laplace_log_integral(neg_log_f, *_x0_and_bounds(param_space, start), d)
+            for start in start_list]
+    best, n_failed = _select_start(runs)          # min f_star == min Ḡ* over finite runs
     log_int, x_star, G_star, logdet, conv, n_clip, record = best
     # log_int is the τ=1 integral −Ḡ* + (d/2)log(2π) − ½log|H_Ḡ|; rescale to τ.
     log_int_tau = log_int + G_star - G_star / tau + 0.5 * d * np.log(tau)
@@ -461,13 +480,26 @@ def _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X, strict=True):
 
 
 def _weight_ess(log_w):
-    """ESS = (Σw)² / Σw² computed in log space; -inf entries contribute 0.
-    All--inf weights (every sample out of box / invalid) is ESS 0, not NaN —
-    the starvation warning must fire in exactly that case (codex P3)."""
-    total = logsumexp(log_w)
-    if not np.isfinite(total):
-        return 0.0
-    return float(np.exp(2.0 * total - logsumexp(2.0 * log_w)))
+    """ESS = (Σw)² / Σw² from log weights via the package's one ESS routine
+    (bms_star.log_weight_ess). All -inf weights (every sample out of box)
+    give 0, so the starvation warning fires (codex P3); a NaN weight (a
+    non-strict evaluation failure) gives NaN, distinct from absent support
+    (fix pass 1b, review R8)."""
+    return float(log_weight_ess(np.asarray(log_w, dtype=float)))
+
+
+def _select_start(runs):
+    """Pick the multi-start winner among runs with a FINITE objective; when
+    every run is non-finite return the first so the NaN propagates. The
+    result does not depend on the order of the starts (fix pass 1b, review
+    R8: `nan < x` is False, so a NaN first start used to absorb the minimum
+    while a NaN later start was ignored). Failed starts are those whose
+    optimizer record reports failure, which includes every non-finite run."""
+    n_failed = sum(1 for r in runs if not r[6].success)
+    finite = [r for r in runs if np.isfinite(r[2])]
+    if not finite:
+        return runs[0], n_failed
+    return min(finite, key=lambda r: r[2]), n_failed
 
 
 def mc_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_mc=200_000, seed=0,
@@ -574,6 +606,8 @@ def _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts,
                            options={"maxiter": 500, "ftol": 1e-10})
             x_star = res.x
             record = _optimizer_record(res)
+        except EvaluationFailure:
+            raise                     # strict evaluation failure: never a fallback (review R7)
         except Exception as exc:
             x_star = np.asarray(x0, dtype=float)
             record = OptimizerRecord(success=False, message="minimize raised",
@@ -583,6 +617,9 @@ def _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts,
                            param_space.model_name, start, record.exception or record.message)
         inset = np.minimum(2 * eps, 0.5 * (hi - lo))
         f_star = float(neg_log_f(x_star))
+        if not np.isfinite(f_star):
+            record.success = False
+            record.message = f"non-finite objective at x*; optimizer: {record.message}"
         H = numerical_hessian(neg_log_f, np.clip(x_star, lo + inset, hi - inset),
                               eps=eps)
         H = 0.5 * (H + H.T)

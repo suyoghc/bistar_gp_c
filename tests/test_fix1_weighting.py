@@ -123,14 +123,17 @@ def test_two_state_posterior_likelihood_tilt_double_counts():
     assert np.isclose(2.0 / 82, 0.0244, atol=5e-5)
 
 
-def test_uniform_default_ignores_log_mlls_with_a_warning(caplog):
+def test_log_mlls_under_uniform_weighting_is_a_conflict():
+    """A legacy positional call must not silently run a different estimator
+    (fix pass 1b, review F2)."""
     draws = _two_state_draws()
-    with caplog.at_level(logging.WARNING, logger="bistar_gp.induced_prior"):
-        res = compute_induced_prior(_point_space(0.0), draws, np.array([0.0]),
-                                    log_mlls=np.log(np.array([1.0] + [9.0] * 9)),
-                                    metric_name="kl_forward", n_param_samples=2, seed=0)
+    log_mlls = np.log(np.array([1.0] + [9.0] * 9))
+    with pytest.raises(ValueError, match="log_mlls supplied under weighting='uniform'"):
+        compute_induced_prior(_point_space(0.0), draws, np.array([0.0]), log_mlls,
+                              metric_name="kl_forward", n_param_samples=2, seed=0)
+    res = compute_induced_prior(_point_space(0.0), draws, np.array([0.0]),
+                                metric_name="kl_forward", n_param_samples=2, seed=0)
     assert np.allclose(res.G_per_sample, 1.8)
-    assert any("ignored" in rec.getMessage() for rec in caplog.records)
 
 
 def test_tilt_requires_log_mlls_and_unknown_weighting_raises():
