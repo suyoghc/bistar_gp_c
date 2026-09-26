@@ -5788,6 +5788,10 @@ simplify in place. Pass 1b (next commit) folds the accepted items.
 (case-A script wiring of `check_external_targets`, Case C convention import, required
 `metric_name` with its two callers) OPEN; Kimi K3 and GLM 5.3 outputs on the fix pass pending.
 
+**Update 3 (2026-09-26, status correction):** passes 1, 1b and 1c are committed (`682e2d9`,
+`856b911`, `9b59d89`) and PR #42 is open; the Kimi K3 and GLM 5.3 fix-pass outputs landed
+2026-09-08 (Update 2). Fix pass 2 remains OPEN and is now scoped by D69.
+
 **Update 1 (2026-09-08, pass 1b):** review-round folds applied in this branch after the
 Codex and Fable 5.1 reviews (adjudication `runs/code_review_2026_09/fix1_synthesis.md`
 revision 2): atomic per-draw accumulation with typed keys and one `_summarize` factory
@@ -5822,3 +5826,56 @@ diagonal (K3-4); an unknown singleton in `DecompositionResult.group` names the c
 (GLM F8). Not adopted: `PredictiveList` slice bookkeeping (K3-5; the record is the extraction
 history). Tests: three in `tests/test_fix1_review_round.py`, one in `tests/test_fix1_roles.py`.
 Suite 1346 passed, 5 skipped, 1 known failure; Case E oracle byte-identical.
+
+
+## D69: 2026-09-26 five-channel review of the current code and project; outcome and adopted plan — 2026-09-26
+
+**Problem:** After fix passes 1, 1b and 1c (D68, PR #42 at `ddf8c9d`) the author asked for
+independent reviews of the current code and the project state by five channels: Codex
+gpt-6-astra xhigh, a fresh Fable 5.1 instance (this session, which also implemented the fix
+passes; disclosed), an Opus 5.5 subagent, Kimi K3 and GLM 5.3 (package-only, via OpenRouter,
+two packages each). Governing brief `runs/project_review_2026_09/brief_project-review-2026-09-26.txt`
+(Part A code against manuscript section 02 and HANDOFF-code-review section 2; Part B project:
+manuscript-code consistency, branch topology, record, tests, reproducibility, readiness).
+
+**Decision (record and plan, author-authorized commit of the record 2026-09-26):** the
+record is committed under `runs/project_review_2026_09/` (five channel reviews, the plan
+checks, `SYNTHESIS.md` revision 1.3, project map, the package-only input bundle). Verdicts:
+code REVISE (four of five; adjudicated REVISE), project NOT READY (five of five). Every
+channel independently verified the fix-pass mathematics; three channels regenerated Cases A-E
+against the fixed package (A, C, D, E identical; B to round-off in ESS fields). Adjudicated
+findings of record: **S1** A-20 (Opus, reproduced by Fable): the Case D comparison archive
+`experiments/practice_EvansEtAL/results_hmc/` (committed `7026ad6`, 2026-02-16) came from the
+pre-D6 sampler that targeted the prior; regenerated with the corrected package (seed 0) the
+section 06 winner tables change materially (pw_hellinger 22/28, 32/18, 27/23 become 5/45,
+4/46, 5/45; same-winner 39/49/48 become 46/48/49), BIC and the MAP-conditional regret
+reconstruction unchanged. **S2** A-2 (induced-prior all-failed point can win; three
+reporters), A-3 (strict extraction accepts an incomplete site dictionary; Codex), A-21
+(Remark 1's per-draw ordering guarantee fails on the committed E7 `kl_forward` pooled row,
+because the headline path scores fixed observed-data instances; Codex and Opus). Latent
+S3/S4 items A-1, A-4 to A-19, A-22 to A-26 form the fix pass 2 queue (SYNTHESIS section 3).
+Project blockers: B-0 Case D (above), B-1 the five open ledger decisions of
+`runs/code_review_2026_09/ledger_draft.md` Items 1-5 (Item 4 widened to the two G-bar
+estimands and the candidate-fitting protocol), B-2 integration of seven branches (every pair
+conflicts on this file only), B-3 provenance (untracked manuscript apparatus; the
+`toy_elicited` prior-IS pools regenerate bit-identically for all three seeds, so a recipe plus
+hashes suffices). Plan checks: Codex Astra PLAN OK WITH AMENDMENTS (`codex_astra_plan_check.md`,
+verified in SYNTHESIS section 9); Opus 5.5 ADOPT WITH CHANGES (`opus_plan_check.md`, verified in
+section 10). The adopted plan is SYNTHESIS section 10: author decision sheet first (Items 1-5,
+D66/D67 items, `metric_name` option, `pypdf` policy); PR #38 to Draft with the D64/D6 addenda on
+`paper/case-d-mopen` (ruling also on `results_diag/` and `results_hierarchical/`); notation
+baseline committed before amendment; environment decision before any gating suite; merge #42
+(true merge), D60-D68 union on an integration branch with per-block hash reconciliation; fix
+pass 2 split 2a/2b/2c; Case D canonical run on two seeds from a commit containing #42 and 2a;
+integrate A, C, B, D, E, synthesis with true merges; final replays and suite in a clone;
+two-week cut line; 10-12 focused person-days plus review turnaround.
+
+**Alternatives considered:** deleting and re-implementing the fix passes (rejected by all
+channels: keep and simplify in place); a Notes-first union commit on `main` (rejected: it does
+not remove the conflicts and would break #42's fast-forward); re-locking the environment
+(rejected in favour of the ledger's recorded `pypdf` removal, as an author decision).
+
+**Result:** record committed; no code changed in this commit.
+
+**Status:** OPEN until the author's decision sheet is cast; PR #42 unchanged; the main
+worktree's untracked working copy of the record remains the live copy until then.
