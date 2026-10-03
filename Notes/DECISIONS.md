@@ -5877,8 +5877,13 @@ not remove the conflicts and would break #42's fast-forward); re-locking the env
 
 **Result:** record committed; no code changed in this commit.
 
-**Status:** OPEN until the author's decision sheet is cast; PR #42 unchanged; the main
-worktree's untracked working copy of the record remains the live copy until then.
+**Status:** OPEN until the author's decision sheet is cast; the main worktree's untracked
+working copy of the record remains the live copy until then. Update 2026-10-03: by direct
+author instruction, PR #42 was merged into `main` ahead of sheet line B9 (whose A1-A3 gate is
+still uncast), as the true merge `8c6e6b2` (parents `7154083` and `69deeda`; tree identical to
+`69deeda`; branch `fix/code-review-2026-09` kept). The six paper PRs #36-#41, clean against
+`main` before the merge, now conflict with it on `Notes/DECISIONS.md` only, to be resolved by
+the section 10 union with per-block hash checks.
 
 
 ## D70: Fix pass 2a, decision-free package contracts from the 2026-09-26 review (SYNTHESIS A-1 to A-4, A-6, A-10, A-11 with A-24, A-13 code half, A-23 package half, hardened Case D producer; optional A-5, A-7, A-15, A-18) — 2026-10-03
@@ -5988,9 +5993,10 @@ seed 0) reproduces exactly on a seeded rerun and is unchanged by the folds apart
 
 **Status:** Committed as `eee2ea5` on `fix/pass-2a` (parent `69deeda`) by author instruction,
 2026-10-03, with `bistar_gp/errors.py` included; pushed the same day and opened as PR #43
-(https://github.com/suyoghc/bistar_gp_c/pull/43), stacked on PR #42 with base
-`fix/code-review-2026-09`, the PR number recorded by a Notes-only follow-up commit. Merge order:
-PR #42 first, then retarget PR #43 to `main` before merging it. Open for the author
+(https://github.com/suyoghc/bistar_gp_c/pull/43), first stacked on PR #42 with base
+`fix/code-review-2026-09`. After PR #42 was merged (true merge `8c6e6b2`, D69), PR #43 was
+retargeted to `main` the same day, where it merges cleanly; PR #43 itself is not merged.
+Notes-only follow-up commits record the PR number, the merge and the retarget. Open for the author
 (report, "Not done"): the inherited penalty overflow near the float maximum; the
 `score_averaged_gp` NaN path; direct `np.load` reads in `prior_sensitivity_study` outside its
 serialization block; the alias table into `model.py` (R16); D58 cards 7-8 that do not re-render
