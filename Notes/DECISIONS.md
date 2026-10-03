@@ -5991,12 +5991,16 @@ mutant fails the R8 correlation check. The Case D producer's two-subject smoke r
 seed 0) reproduces exactly on a seeded rerun and is unchanged by the folds apart from the new
 `candidate_failures` field.
 
-**Status:** Committed as `eee2ea5` on `fix/pass-2a` (parent `69deeda`) by author instruction,
-2026-10-03, with `bistar_gp/errors.py` included; pushed the same day and opened as PR #43
-(https://github.com/suyoghc/bistar_gp_c/pull/43), first stacked on PR #42 with base
-`fix/code-review-2026-09`. After PR #42 was merged (true merge `8c6e6b2`, D69), PR #43 was
-retargeted to `main` the same day, where it merges cleanly; PR #43 itself is not merged.
-Notes-only follow-up commits record the PR number, the merge and the retarget. Open for the author
+**Status:** CLOSED: merged into `main` on 2026-10-03. Committed as `eee2ea5` on `fix/pass-2a`
+(parent `69deeda`) by author instruction, with `bistar_gp/errors.py` included; pushed the same
+day and opened as PR #43 (https://github.com/suyoghc/bistar_gp_c/pull/43), first stacked on
+PR #42 with base `fix/code-review-2026-09`. After PR #42 was merged (true merge `8c6e6b2`,
+D69), PR #43 was retargeted to `main` and merged as the true merge `622c566` (parents
+`8c6e6b2` and `fc27b0a`; tree identical to `fc27b0a`; branch `fix/pass-2a` kept), so `main`
+contains fix pass 1 and 2a, as the canonical Case D run requires. The six paper PRs #36-#41
+still conflict with `main` on `Notes/DECISIONS.md` only; 2a added no conflicting file.
+Notes-only commits record the PR number, the merges and the retarget, the last through a
+closeout PR branched from `622c566`. Open for the author
 (report, "Not done"): the inherited penalty overflow near the float maximum; the
 `score_averaged_gp` NaN path; direct `np.load` reads in `prior_sensitivity_study` outside its
 serialization block; the alias table into `model.py` (R16); D58 cards 7-8 that do not re-render
