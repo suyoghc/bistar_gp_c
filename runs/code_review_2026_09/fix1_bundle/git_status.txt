@@ -1,0 +1,25 @@
+ M bistar_gp/__init__.py
+ M bistar_gp/aggregation_v3.py
+ M bistar_gp/bms_star.py
+ M bistar_gp/candidates.py
+ M bistar_gp/config.py
+ M bistar_gp/debias.py
+ M bistar_gp/decompose.py
+ M bistar_gp/induced_prior.py
+ M bistar_gp/laplace_evidence.py
+ M bistar_gp/metrics_v2.py
+ M bistar_gp/model.py
+ M experiments/bistar_debias_mauna_loa.py
+ M experiments/bistar_induced_prior.py
+ M experiments/bistar_induced_prior_v2.py
+ M experiments/prior_sensitivity_study.py
+?? bistar_gp/external_targets.py
+?? tests/test_fix1_conventions.py
+?? tests/test_fix1_decomposition.py
+?? tests/test_fix1_diagnostics.py
+?? tests/test_fix1_external_targets.py
+?? tests/test_fix1_metrics_firewall.py
+?? tests/test_fix1_roles.py
+?? tests/test_fix1_sentinels.py
+?? tests/test_fix1_sites.py
+?? tests/test_fix1_weighting.py

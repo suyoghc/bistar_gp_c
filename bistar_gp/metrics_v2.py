@@ -59,15 +59,18 @@ def pw_hellinger_vcal(mu_psi, cov_psi, mu_theta, cov_theta):
     """
     Variance-calibrated pointwise Hellinger.
 
-    With σ²_θ = σ²_ψ at each point:
-      D_B = (μ_ψ - μ_θ)² / (4σ²_ψ)
+    With σ²_θ = σ²_ψ at each point the Bhattacharyya distance of two
+    equal-variance Gaussians is
+      D_B = (μ_ψ - μ_θ)² / (8σ²_ψ)
       H²  = 1 - exp(-D_B)
+    (the pre-2026-09 code and docstring used 4σ², twice the exponent; the
+    base pw_hellinger and the joint hellinger_distance were always correct).
 
     Bounded in [0, 1], GP-uncertainty-weighted, saturates for large errors.
     """
     mu_p, var_p = _extract_marginals(mu_psi, cov_psi)
     mu_q, _     = _extract_marginals(mu_theta, cov_theta)
-    db = (mu_p - mu_q)**2 / (4.0 * var_p)
+    db = (mu_p - mu_q)**2 / (8.0 * var_p)
     return np.mean(1.0 - np.exp(-db))
 
 
@@ -97,15 +100,16 @@ def pw_hellinger_mean(mu_psi, cov_psi, mu_theta, cov_theta):
     Mean-only pointwise Hellinger.
 
     Set σ²_ψ = σ²_θ = 1 at every point:
-      D_B = (μ_ψ - μ_θ)² / 4
-      H²  = 1 - exp(-(μ_ψ - μ_θ)² / 4)
+      D_B = (μ_ψ - μ_θ)² / 8
+      H²  = 1 - exp(-(μ_ψ - μ_θ)² / 8)
+    (the pre-2026-09 code and docstring used 4, twice the exponent).
 
     Bounded [0, 1], symmetric. Large mean errors saturate at 1,
     so outlier GP samples can't dominate. No variance information used.
     """
     mu_p = mu_psi if isinstance(mu_psi, np.ndarray) else np.array(mu_psi)
     mu_q = mu_theta if isinstance(mu_theta, np.ndarray) else np.array(mu_theta)
-    db = (mu_p - mu_q)**2 / 4.0
+    db = (mu_p - mu_q)**2 / 8.0
     return np.mean(1.0 - np.exp(-db))
 
 

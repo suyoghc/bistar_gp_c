@@ -17,6 +17,34 @@ from typing import Dict, List, Optional, Tuple
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 
+# ── Metric roles (W1) and withdrawn caches (M2bR banner) ───────────
+# 2026-09 review FIX-7. The manuscript's primary metric and the appendix-only
+# stress metric; generic APIs keep their defaults, manuscript-facing code
+# and run_bms_star's implicit path refer to these names.
+PRIMARY_METRIC = "pw_kl_vcal"
+APPENDIX_METRICS = ("kl_forward",)
+
+# Caches the M2bR banner withdrew: `informative`-config HMC draws produced by
+# the pre-D6/D22 sampler. load_hmc_samples refuses them unless the caller
+# passes allow_withdrawn=True (and then warns). Entries ending in "/" are
+# directory prefixes; the rest are file paths relative to the repository.
+WITHDRAWN_CACHES = (
+    "runs/fit_method_metric_comparison/samples_hmc.npz",
+    "runs/toy_tau_metric_comparison/",
+)
+
+
+def is_withdrawn_cache(path) -> bool:
+    """True when `path` names, or lies under, a withdrawn cache entry."""
+    norm = os.path.normpath(os.path.abspath(str(path))).replace(os.sep, "/")
+    for entry in WITHDRAWN_CACHES:
+        if entry.endswith("/"):
+            if "/" + entry.rstrip("/") + "/" in norm + "/":
+                return True
+        elif norm.endswith("/" + entry) or norm == entry:
+            return True
+    return False
+
 
 # ── Prior Configurations ──────────────────────────────────────────
 
@@ -179,10 +207,13 @@ class ExperimentConfig:
     # BMS*
     tau_range: Tuple[float, float] = (-1, 2)  # log10 scale
     n_taus: int = 30
+    # The primary metric is APPENDED (FIX-7) so positional uses of the legacy
+    # list (experiments/bms_star_toy.py slices metrics[:4]) keep their meaning.
     metrics: List[str] = field(default_factory=lambda: [
         "kl_forward", "kl_backward", "kl_symmetric", "hellinger",
         "pw_kl_forward", "pw_kl_backward", "pw_kl_symmetric", "pw_hellinger",
         "pw_mse", "pw_nll",
+        PRIMARY_METRIC,
     ])
 
     # Prior sensitivity
@@ -219,9 +250,23 @@ def save_hmc_samples(samples: Dict, path: str):
     print(f"  Cached HMC samples → {path}")
 
 
-def load_hmc_samples(path: str) -> Dict:
-    """Load HMC samples from .npz file."""
+def load_hmc_samples(path: str, allow_withdrawn: bool = False) -> Dict:
+    """Load HMC samples from .npz file.
+
+    Refuses the caches the M2bR banner withdrew (WITHDRAWN_CACHES) unless
+    allow_withdrawn=True is passed explicitly, in which case it warns; a
+    figure or number built from them must be labelled as withdrawn material.
+    """
+    import warnings
     import numpy as np
+    if is_withdrawn_cache(path):
+        msg = (f"{path} is a WITHDRAWN cache (M2bR banner: informative-config "
+               "HMC draws from the pre-D6/D22 sampler must never be cited); "
+               "pass allow_withdrawn=True only for explicitly labelled archival "
+               "reproduction")
+        if not allow_withdrawn:
+            raise RuntimeError(msg)
+        warnings.warn(msg, UserWarning, stacklevel=2)
     data = np.load(path)
     samples = {k: data[k] for k in data.files}
     print(f"  Loaded cached HMC samples ← {path}")

@@ -30,9 +30,13 @@ Expected qualitative behavior:
   - Misspecified GP prior → biased ψ → shifted induced prior, may mislead
 """
 
+import logging
+
 import numpy as np
 from typing import List, Dict, Optional, Tuple, Callable
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 from bistar_gp.bms_star import GPPosteriorSample, METRICS
 from bistar_gp.candidates import CandidateResult
@@ -171,11 +175,12 @@ def compute_induced_prior(
     param_space: ModelParameterSpace,
     gp_samples: List[GPPosteriorSample],
     x_eval: np.ndarray,
-    log_mlls: np.ndarray,
+    log_mlls: Optional[np.ndarray] = None,
     metric_name: str = "pw_kl_vcal",
     tau: float = 1.0,
     n_param_samples: int = 10000,
     seed: int = 42,
+    weighting: str = "uniform",
 ) -> InducedPriorResult:
     """
     Compute the GP-induced prior over model parameters.
@@ -186,17 +191,44 @@ def compute_induced_prior(
          Ḡ(φ) = Σ_i w_i G(ψ_i, θ(φ)) / Σ_i w_i
       3. Induced prior weight: exp(-Ḡ(φ) / τ)
 
-    Uses MLL-weighting (Strategy 3) since we showed it works best.
+    weighting (2026-09 review FIX-6):
+      "uniform" (default): w_i = 1/N. This is the correct average for
+          POSTERIOR draws (fit_hmc output); the draws already carry the
+          likelihood, and multiplying by p(y|η_i) again would average under a
+          density proportional to p(η) p(y|η)^2.
+      "likelihood_tilted": w_i ∝ exp(log_mlls[i]); the self-normalized
+          importance weights that turn PRIOR draws into a posterior average.
+          Requires log_mlls. Never use with posterior draws.
+    The pre-fix code made the likelihood weighting mandatory and its legacy
+    callers fed it posterior draws.
     """
     metric_fn = METRICS[metric_name]
+    n_draws = len(gp_samples)
 
-    # Prepare MLL weights
-    valid = np.isfinite(log_mlls)
-    lw = log_mlls.copy()
-    lw[~valid] = -np.inf
-    lw -= lw[valid].max()
-    mll_weights = np.exp(lw)
-    mll_weights /= mll_weights.sum()
+    if weighting == "uniform":
+        if log_mlls is not None:
+            # A legacy positional call would otherwise run a different
+            # estimator with only a log line to say so (review F2).
+            raise ValueError(
+                "compute_induced_prior: log_mlls supplied under weighting='uniform'; "
+                "pass weighting='likelihood_tilted' for PRIOR draws or drop log_mlls "
+                "for posterior draws")
+        mll_weights = np.full(n_draws, 1.0 / n_draws)
+    elif weighting == "likelihood_tilted":
+        if log_mlls is None:
+            raise ValueError("weighting='likelihood_tilted' requires log_mlls")
+        log_mlls = np.asarray(log_mlls, dtype=float)
+        valid = np.isfinite(log_mlls)
+        if not valid.any():
+            raise ValueError("compute_induced_prior: no finite log marginal likelihood")
+        lw = log_mlls.copy()
+        lw[~valid] = -np.inf
+        lw -= lw[valid].max()
+        mll_weights = np.exp(lw)
+        mll_weights /= mll_weights.sum()
+    else:
+        raise ValueError(f"unknown weighting {weighting!r}; use 'uniform' or "
+                         "'likelihood_tilted'")
 
     # Sample parameters from reference prior
     param_samples = param_space.sample_reference_prior(n_param_samples, seed=seed)
@@ -229,10 +261,14 @@ def compute_induced_prior(
             except (np.linalg.LinAlgError, ValueError):
                 g_vals[i] = np.inf
 
-        # Replace inf with large value
+        # Replace a failed draw with a value strictly WORSE than every finite
+        # one. The old `10 * max(finite)` is the smallest value (the best
+        # score) whenever the metric is negative-valued (pw_nll_gp), the bug
+        # class compute_G_matrix already documents (2026-09 review FIX-5).
         finite_mask = np.isfinite(g_vals)
         if finite_mask.any():
-            g_vals[~finite_mask] = 10 * np.max(g_vals[finite_mask])
+            max_finite = np.max(g_vals[finite_mask])
+            g_vals[~finite_mask] = max_finite + 10.0 * (abs(max_finite) + 1.0)
         else:
             g_vals[:] = 1e6
 

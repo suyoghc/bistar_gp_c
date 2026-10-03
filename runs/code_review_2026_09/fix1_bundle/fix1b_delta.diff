@@ -1,0 +1,1177 @@
+--- a/bistar_gp/aggregation_v3.py
++++ b/bistar_gp/aggregation_v3.py
+@@ -35,7 +35,7 @@
+ from bistar_gp.bms_star import (
+     GPPosteriorSample, METRICS, compute_G_matrix, BMSStarResult,
+     _extract_marginals, _assert_candidate_universes_consistent,
+-    aggregate_convention, hard_win_statistics,
++    aggregate_convention, hard_win_statistics, log_weight_ess,
+ )
+ 
+ logger = logging.getLogger(__name__)
+@@ -347,23 +347,26 @@
+     log_mlls = np.zeros(len(gp_samples))
+ 
+     for idx, sample in enumerate(gp_samples):
+-        try:
+-            kernels, names = kernel_builder()
+-            fresh_lik = likelihood_builder()
+-            fresh_model, fresh_lik = build_model(x_t, y_t, kernels, names, fresh_lik)
++        kernels, names = kernel_builder()
++        fresh_lik = likelihood_builder()
++        fresh_model, fresh_lik = build_model(x_t, y_t, kernels, names, fresh_lik)
+ 
+-            # Set hyperparameters. A site the model does not recognize is a
+-            # silent-wrong-answer path (the likelihood would be scored at the
+-            # fresh model's initialization value), so it raises (FIX-1).
+-            for pyro_name, val in sample.hyperparameters.items():
+-                if not apply_hp_value(fresh_model, fresh_lik, pyro_name, val):
+-                    raise ValueError(
+-                        f"compute_log_marginal_likelihoods: apply_hp_value did "
+-                        f"not recognize site {pyro_name!r} for draw {idx}")
+-
+-            fresh_model.eval()
+-            fresh_lik.eval()
++        # Set hyperparameters OUTSIDE the numerical handler below. A site the
++        # model does not recognize is a silent-wrong-answer path (the
++        # likelihood would be scored at the fresh model's initialization
++        # value), so it raises and the error must escape (FIX-1; review R1
++        # found the pass-1 raise sitting inside the handler that converts
++        # numerical failures into -inf).
++        for pyro_name, val in sample.hyperparameters.items():
++            if not apply_hp_value(fresh_model, fresh_lik, pyro_name, val):
++                raise ValueError(
++                    f"compute_log_marginal_likelihoods: apply_hp_value did "
++                    f"not recognize site {pyro_name!r} for draw {idx}")
+ 
++        fresh_model.eval()
++        fresh_lik.eval()
++
++        try:
+             with torch.no_grad():
+                 noise_var = fresh_lik.noise.item()
+                 K_XX = fresh_model.covar_module(x_t, x_t).evaluate().detach()
+@@ -423,12 +426,17 @@
+     # posterior. Forming log w_i - G_ij/tau first and summing with
+     # log-sum-exp makes the result exact up to floating point.
+     log_terms = lw[:, None] - G / tau                            # (n_psi, n_theta)
+-    log_scores = logsumexp(log_terms, axis=0) - logsumexp(lw)    # log[ sum_i w_i e^{-G_ij/tau} / sum_i w_i ]
+-    log_post = log_scores - logsumexp(log_scores)
++    # One GLOBAL shift before the two log-sum-exps (pass 1b, review R6): the
++    # cross-candidate normalization is then a difference of moderate numbers
++    # instead of two large nearly equal ones. The shift cancels exactly.
++    shift = np.max(log_terms)
++    ls = logsumexp(log_terms - shift, axis=0)                    # log-scores up to the shift
++    log_post = ls - logsumexp(ls)
+     instance_posteriors = np.exp(log_post)
+-    instance_scores = np.exp(log_scores - np.max(log_scores))    # relative scores (global shift)
+-    weight_ess = np.exp(2.0 * logsumexp(log_terms, axis=0)
+-                        - logsumexp(2.0 * log_terms, axis=0))
++    log_scores = ls + shift - logsumexp(lw)                      # log[ sum_i w_i e^{-G_ij/tau} / sum_i w_i ]
++    # Scores on the pre-fix scale: sum_i w_i exp(-(G_ij - G_min)/tau) / sum_i w_i
++    instance_scores = np.exp(log_scores + G.min() / tau)
++    weight_ess = log_weight_ess(log_terms, axis=0)
+     credit, attainment, tie_fraction = hard_win_statistics(G)
+ 
+     return BMSStarResult(
+--- a/bistar_gp/bms_star.py
++++ b/bistar_gp/bms_star.py
+@@ -191,7 +191,22 @@
+ 
+ 
+ # Registry of available metrics
+-METRICS = {
++class _MetricRegistry(dict):
++    """METRICS[name] imports the v2 metrics on the first miss (FIX-7), so the
++    primary metric pw_kl_vcal, defined in metrics_v2, resolves for a caller
++    that never imported that module (ExperimentConfig.metrics names it).
++    Registered names resolve exactly as in a plain dict; .keys() on the
++    implicit run_bms_star path lists v2 names only after their first import,
++    as before."""
++
++    def __missing__(self, name):
++        from . import metrics_v2  # noqa: F401  registers into this dict
++        if name in self:
++            return dict.__getitem__(self, name)
++        raise KeyError(f"unknown metric {name!r}; registered: {sorted(self)}")
++
++
++METRICS = _MetricRegistry({
+     # Joint (full n-dimensional Gaussian)
+     "kl_forward": kl_forward,       # KL(ψ || θ)
+     "kl_backward": kl_backward,     # KL(θ || ψ)
+@@ -204,7 +219,7 @@
+     "pw_hellinger": pw_hellinger,
+     "pw_mse": pw_mse,               # mean-only baseline
+     "pw_nll": pw_nll,               # mean + variance calibration
+-}
++})
+ 
+ 
+ # ═══════════════════════════════════════════════════════════════════
+@@ -446,22 +461,49 @@
+     hard_win_credit: Optional[np.ndarray] = None
+     attainment: Optional[np.ndarray] = None
+     tie_fraction: Optional[float] = None
++
++
++def log_weight_ess(log_w, axis: int = 0):
++    """Effective sample size (sum w)^2 / sum w^2 from LOG weights.
++
++    The one ESS routine of the package (fix pass 1b): the per-column maximum
++    is subtracted before exponentiation, so a large common offset cancels
++    exactly instead of surviving as a difference of two large log-sum-exps
++    (review R6), and no weight can overflow. Entries of -inf contribute
++    nothing. A column whose weights are all -inf has ESS 0 (absent support);
++    a column containing NaN has ESS NaN (an invalid evaluation), which is
++    deliberately distinct from absent support (review R8). A 1-D input
++    returns a float.
++    """
++    lw = np.asarray(log_w, dtype=float)
++    one_d = lw.ndim == 1
++    if one_d:
++        lw = lw[:, None]
++        axis = 0
++    nan_col = np.isnan(lw).any(axis=axis)
++    m = np.max(np.where(np.isnan(lw), -np.inf, lw), axis=axis, keepdims=True)
++    supported = np.isfinite(m)
++    w = np.exp(lw - np.where(supported, m, 0.0))
++    with np.errstate(invalid="ignore", divide="ignore"):
++        ess = w.sum(axis=axis) ** 2 / (w ** 2).sum(axis=axis)
++    ess = np.where(np.squeeze(supported, axis=axis), ess, 0.0)
++    ess = np.where(nan_col, np.nan, ess)
++    return float(ess[0]) if one_d else ess
+ 
+ 
+ def boltzmann_weight_ess(G_matrix: np.ndarray, tau: float) -> np.ndarray:
+     """Per-candidate effective number of draws behind a pooled Boltzmann score.
+ 
+     ESS_j = (sum_i w_ij)^2 / sum_i w_ij^2 with w_ij = exp(-G_ij / tau), computed
+-    in log space so that a candidate whose raw weights underflow still gets a
+-    finite value. Invariant under a per-candidate column shift of G, which is
+-    the multiplicative factor the cross-candidate normalization removes.
++    from log weights (log_weight_ess) so that a candidate whose raw weights
++    underflow still gets a finite value. Invariant under a per-candidate
++    column shift of G, which is the multiplicative factor the cross-candidate
++    normalization removes.
+     """
+-    from scipy.special import logsumexp
+-
+     lw = -np.asarray(G_matrix, dtype=float) / float(tau)
+     if not np.all(np.isfinite(lw)):
+         raise ValueError("boltzmann_weight_ess requires finite G values")
+-    return np.exp(2.0 * logsumexp(lw, axis=0) - logsumexp(2.0 * lw, axis=0))
++    return log_weight_ess(lw, axis=0)
+ 
+ 
+ def hard_win_statistics(G_matrix: np.ndarray):
+@@ -486,25 +528,6 @@
+     return credit, attainment, tie_fraction
+ 
+ 
+-def _resolve_metric(metric_name: str):
+-    """METRICS lookup that registers the v2 metrics on demand.
+-
+-    The primary metric pw_kl_vcal is defined in metrics_v2, which registers
+-    itself into METRICS when imported; ExperimentConfig.metrics now names it
+-    (FIX-7), so a caller that never imported metrics_v2 must still resolve it.
+-    Behaviour for already-registered names is unchanged.
+-    """
+-    if metric_name not in METRICS:
+-        try:
+-            from . import metrics_v2  # noqa: F401  registers the v2 metrics
+-        except ImportError:
+-            pass
+-    try:
+-        return METRICS[metric_name]
+-    except KeyError:
+-        raise KeyError(f"unknown metric {metric_name!r}; registered: {sorted(METRICS)}") from None
+-
+-
+ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
+                      candidate_results: list,
+                      metric_name: str = "kl_forward") -> np.ndarray:
+@@ -525,7 +548,7 @@
+     # points that never call run_bms_star.
+     _assert_candidate_universes_consistent(candidate_results)
+ 
+-    metric_fn = _resolve_metric(metric_name)
++    metric_fn = METRICS[metric_name]          # registers metrics_v2 on a miss
+     n_psi = len(gp_samples)
+     n_theta = len(candidate_results)
+     G = np.zeros((n_psi, n_theta))
+@@ -584,10 +607,21 @@
+         BMSStarResult with normalized posteriors and draw-level diagnostics
+     """
+     n_psi, n_theta = G_matrix.shape
++    if not np.all(np.isfinite(G_matrix)):
++        # A NaN or infinite divergence is never a score. compute_G_matrix
++        # returns finite penalties, so only a hand-built matrix reaches this;
++        # the pre-fix code returned a uniform posterior for it (review F4).
++        raise ValueError("soft_transfer: G_matrix contains non-finite entries")
+ 
++    if len(instance_names) != n_theta:
++        raise ValueError(
++            f"soft_transfer: {len(instance_names)} instance_names for "
++            f"{n_theta} candidate columns")
+     if class_names is None:
+         class_names = instance_names
+-    elif len(set(class_names)) != len(instance_names):
++    elif len(class_names) != n_theta or len(set(class_names)) != n_theta:
++        # one label per column and no repeats (review R5: a length check
++        # alone, or a uniqueness check alone, each admits a malformed list)
+         raise ValueError(
+             "soft_transfer: class-level averaging over grouped instances is "
+             "not implemented; pass class_names=None (or a 1:1 relabelling) "
+--- a/bistar_gp/debias.py
++++ b/bistar_gp/debias.py
+@@ -18,7 +18,9 @@
+ containing every component reproduces the full posterior exactly.
+ """
+ 
++import functools
+ import logging
++import operator
+ 
+ import torch
+ import numpy as np
+@@ -95,7 +97,7 @@
+ 
+     @staticmethod
+     def group_key(names: Sequence[str]) -> Tuple[str, ...]:
+-        return tuple(sorted(names))
++        return tuple(sorted(set(names)))     # a repeated name is one member (review F3)
+ 
+     def group(self, names: Sequence[str]) -> ComponentResult:
+         """Joint posterior summary of the sum of the named components.
+@@ -132,58 +134,108 @@
+ # ── shared draw accumulation ────────────────────────────────────────
+ 
+ def _blocks_sum(km, names, key):
+-    return sum(km[n][key] for n in names)
++    """Sum of the named components' kernel blocks. A single name returns its
++    block itself (no leading ``0 +`` step), so a lone component follows
++    exactly the arithmetic of the per-component path."""
++    return functools.reduce(operator.add, [km[n][key] for n in names])
+ 
+ 
++def _summarize(name, M, V, cov, samples, samples_kind) -> ComponentResult:
++    """The one place a ComponentResult is packaged (fix pass 1b).
++
++    M, V: (n_draws, n_test) conditional means and variances. cov: the total
++    posterior covariance the caller assembled (one draw's conditional
++    covariance, or mean_d C_d + Cov_d m_d over draws). std is the
++    law-of-total-variance sd sqrt(E_d[var_d] + Var_d[mean_d]).
++    """
++    M = np.asarray(M, dtype=float)
++    V = np.asarray(V, dtype=float)
++    within = V.mean(axis=0)
++    between = M.var(axis=0)
++    std = np.sqrt(np.clip(within + between, 0.0, None))
++    return ComponentResult(
++        name=name, mean=M.mean(axis=0), std=std, cov=cov,
++        samples=samples, samples_kind=samples_kind,
++        conditional_means=M, conditional_vars=V,
++        within_var_mean=within, between_var=between, n_draws=M.shape[0])
++
++
++def _single_draw_summary(name, mean, cov, samples=None) -> ComponentResult:
++    """Summary of one conditional Gaussian (the MAP path), variance floored
++    at 1e-10 as before; ``samples`` are function draws when given."""
++    mean = np.asarray(mean, dtype=float)
++    var = np.clip(np.diag(cov), 1e-10, None)
++    if samples is None:
++        return _summarize(name, mean[None, :], var[None, :], cov, mean[None, :],
++                          "conditional_means")
++    return _summarize(name, mean[None, :], var[None, :], cov, samples, "function_draws")
++
++
++def _validated_groups(names, groups) -> Dict[Tuple[str, ...], List[str]]:
++    """{sorted-name tuple: members} for the requested groups that need their
++    own conditioning (more than one component, fewer than all). Empty,
++    singleton and all-component requests are derived by
++    DecompositionResult.group; repeated names collapse to one member; unknown
++    members raise."""
++    out = {}
++    for g in (groups or []):
++        g = list(g)
++        key = DecompositionResult.group_key(g)
++        unknown = [n for n in key if n not in names]
++        if unknown:
++            raise KeyError(f"group {g} names unknown components {unknown}")
++        if 1 < len(key) < len(names):
++            out[key] = list(key)
++    return out
++
++
+ class _DrawAccumulator:
+     """Accumulate per-draw conditional moments for components, the full
+-    posterior and requested groups, then form total posterior moments."""
++    posterior and requested groups, then form total posterior moments.
+ 
++    Targets are keyed by typed tuples ``("component", name)``, ``("group",
++    sorted names)`` and ``("full",)``, so a component name can never collide
++    with a group label or the full posterior (fix pass 1b, review R3)."""
++
+     def __init__(self, names: List[str], n_test: int,
+                  groups: Optional[Sequence[Sequence[str]]]):
+         self.names = list(names)
+         self.n_test = n_test
+-        self.group_keys: Dict[Tuple[str, ...], List[str]] = {}
+-        for g in (groups or []):
+-            key = DecompositionResult.group_key(g)
+-            unknown = [n for n in key if n not in self.names]
+-            if unknown:
+-                raise KeyError(f"group {list(g)} names unknown components {unknown}")
+-            if 0 < len(key) < len(self.names) and len(key) > 1:
+-                self.group_keys[key] = list(key)
+-        targets = ["__full__"] + self.names + [",".join(k) for k in self.group_keys]
+-        self.means = {t: [] for t in targets}
+-        self.vars = {t: [] for t in targets}
+-        self.cov_sum = {t: np.zeros((n_test, n_test)) for t in targets}
++        self.group_keys = _validated_groups(self.names, groups)
++        self.targets = ([("full",)] + [("component", n) for n in self.names]
++                        + [("group", k) for k in self.group_keys])
++        self.means = {t: [] for t in self.targets}
++        self.vars = {t: [] for t in self.targets}
++        self.cov_sum = {t: np.zeros((n_test, n_test)) for t in self.targets}
+         self.n = 0
+ 
+-    def _record(self, target, mean_t, cov_t):
+-        m = mean_t.numpy() if hasattr(mean_t, "numpy") else np.asarray(mean_t)
+-        c = cov_t.numpy() if hasattr(cov_t, "numpy") else np.asarray(cov_t)
+-        c = 0.5 * (c + c.T)
+-        self.means[target].append(np.array(m, dtype=float))
+-        self.vars[target].append(np.clip(np.diag(c), 0.0, None))
+-        self.cov_sum[target] += c
++    def _members(self, target):
++        if target[0] == "full":
++            return self.names
++        if target[0] == "component":
++            return [target[1]]
++        return self.group_keys[target[1]]
+ 
+     def add_draw(self, km, noise_var, y_train, jitter):
+         """One hyperparameter draw: a single Cholesky of the summed training
+-        covariance serves every component, the full posterior and the groups."""
++        covariance serves every target. Every target is conditioned into a
++        local record first and committed together at the end, so a failure
++        part-way leaves no partially recorded draw (fix pass 1b, review R2)."""
+         L = compute_cholesky(_blocks_sum(km, self.names, "XX"), noise_var, jitter)
+-        for n in self.names:
+-            mean_i, cov_i = decompose_component(
+-                km[n]["XstarX"], km[n]["XstarXstar"], km[n]["XXstar"], L, y_train)
+-            self._record(n, mean_i, cov_i)
+-        mean_f, cov_f = decompose_component(
+-            _blocks_sum(km, self.names, "XstarX"),
+-            _blocks_sum(km, self.names, "XstarXstar"),
+-            _blocks_sum(km, self.names, "XXstar"), L, y_train)
+-        self._record("__full__", mean_f, cov_f)
+-        for key, members in self.group_keys.items():
+-            mean_g, cov_g = decompose_component(
+-                _blocks_sum(km, members, "XstarX"),
+-                _blocks_sum(km, members, "XstarXstar"),
++        record = {}
++        for target in self.targets:
++            members = self._members(target)
++            mean_t, cov_t = decompose_component(
++                _blocks_sum(km, members, "XstarX"), _blocks_sum(km, members, "XstarXstar"),
+                 _blocks_sum(km, members, "XXstar"), L, y_train)
+-            self._record(",".join(key), mean_g, cov_g)
++            m = np.array(mean_t.numpy() if hasattr(mean_t, "numpy") else mean_t, dtype=float)
++            c = np.asarray(cov_t.numpy() if hasattr(cov_t, "numpy") else cov_t, dtype=float)
++            c = 0.5 * (c + c.T)
++            record[target] = (m, np.clip(np.diag(c), 0.0, None), c)
++        for target, (m, v, c) in record.items():
++            self.means[target].append(m)
++            self.vars[target].append(v)
++            self.cov_sum[target] += c
+         self.n += 1
+ 
+     def _finalize_target(self, target, name) -> ComponentResult:
+@@ -191,26 +243,17 @@
+         V = np.stack(self.vars[target])
+         within_cov = self.cov_sum[target] / self.n
+         if M.shape[0] > 1:
+-            between_cov = np.cov(M, rowvar=False, bias=True)
+-            between_cov = np.atleast_2d(between_cov)
++            between_cov = np.atleast_2d(np.cov(M, rowvar=False, bias=True))
+         else:
+             between_cov = np.zeros((self.n_test, self.n_test))
+-        cov = within_cov + between_cov
+-        within = V.mean(axis=0)
+-        between = M.var(axis=0)
+-        std = np.sqrt(np.clip(within + between, 0.0, None))
+-        return ComponentResult(
+-            name=name, mean=M.mean(axis=0), std=std, cov=cov,
+-            samples=M, samples_kind="conditional_means",
+-            conditional_means=M, conditional_vars=V,
+-            within_var_mean=within, between_var=between, n_draws=self.n)
++        return _summarize(name, M, V, within_cov + between_cov, M, "conditional_means")
+ 
+     def finalize(self):
+         if self.n == 0:
+             raise RuntimeError("no hyperparameter draw was decomposed")
+-        components = {n: self._finalize_target(n, n) for n in self.names}
+-        full = self._finalize_target("__full__", "__full__")
+-        groups = {key: self._finalize_target(",".join(key), "+".join(key))
++        components = {n: self._finalize_target(("component", n), n) for n in self.names}
++        full = self._finalize_target(("full",), "__full__")
++        groups = {key: self._finalize_target(("group", key), "+".join(key))
+                   for key in self.group_keys}
+         return components, full, groups
+ 
+@@ -263,17 +306,8 @@
+ 
+     for (mean_i, cov_i), name in zip(results, names):
+         samples_i = sample_from_component(mean_i, cov_i, n_samples)
+-        var_i = torch.clamp(torch.diag(cov_i), min=1e-10)
+-        std_i = torch.sqrt(var_i)
+-        components[name] = ComponentResult(
+-            name=name, mean=mean_i.numpy(), std=std_i.numpy(),
+-            cov=cov_i.numpy(), samples=samples_i.numpy(),
+-            samples_kind="function_draws",
+-            conditional_means=mean_i.numpy()[None, :],
+-            conditional_vars=var_i.numpy()[None, :],
+-            within_var_mean=var_i.numpy(), between_var=np.zeros(len(mean_i)),
+-            n_draws=1,
+-        )
++        components[name] = _single_draw_summary(name, mean_i.numpy(), cov_i.numpy(),
++                                                samples=samples_i.numpy())
+         full_mean += mean_i
+ 
+     # Full posterior covariance of f = sum_i f_i is NOT the sum of the
+@@ -289,43 +323,26 @@
+         _, full_cov_t = decompose_component(
+             K_sum_XstarX, K_sum_XstarXstar, K_sum_XXstar, L_sum, y_train,
+         )
+-    full_cov = full_cov_t.numpy()
+-    full_var = np.clip(np.diag(full_cov), 1e-10, None)
+-    full_std = np.sqrt(full_var)
++    full = _single_draw_summary("__full__", full_mean.numpy(), full_cov_t.numpy())
+ 
+     # Requested groups (FIX-2b/2d): the summed group blocks conditioned with
+     # the same full-kernel factor L_sum; a single hyperparameter setting, so
+     # the between-draw term is zero.
+     group_results = {}
+-    for g in (groups or []):
+-        key = DecompositionResult.group_key(g)
+-        unknown = [n for n in key if n not in names]
+-        if unknown:
+-            raise KeyError(f"group {list(g)} names unknown components {unknown}")
+-        if not (1 < len(key) < len(names)):
+-            continue        # empty, singleton and all-component groups are derived
++    for key, members in _validated_groups(names, groups).items():
+         with torch.no_grad():
+             mean_g_t, cov_g_t = decompose_component(
+-                _blocks_sum(km, key, "XstarX"), _blocks_sum(km, key, "XstarXstar"),
+-                _blocks_sum(km, key, "XXstar"), L_sum, y_train)
+-        mean_g, cov_g = mean_g_t.numpy(), cov_g_t.numpy()
+-        cov_g = 0.5 * (cov_g + cov_g.T)
+-        var_g = np.clip(np.diag(cov_g), 1e-10, None)
+-        group_results[key] = ComponentResult(
+-            name="+".join(key), mean=mean_g, std=np.sqrt(var_g), cov=cov_g,
+-            samples=mean_g[None, :], samples_kind="conditional_means",
+-            conditional_means=mean_g[None, :], conditional_vars=var_g[None, :],
+-            within_var_mean=var_g, between_var=np.zeros(len(var_g)), n_draws=1)
++                _blocks_sum(km, members, "XstarX"), _blocks_sum(km, members, "XstarXstar"),
++                _blocks_sum(km, members, "XXstar"), L_sum, y_train)
++        cov_g = cov_g_t.numpy()
++        group_results[key] = _single_draw_summary("+".join(key), mean_g_t.numpy(),
++                                                  0.5 * (cov_g + cov_g.T))
+ 
+     result = DecompositionResult(
+         x_test=x_test.numpy(), x_train=x_train.numpy(), y_train=y_train.numpy(),
+-        components=components, full_mean=full_mean.numpy(), full_std=full_std, noise_var=noise_var,
++        components=components, full_mean=full_mean.numpy(), full_std=full.std, noise_var=noise_var,
+     )
+-    result.full = ComponentResult(
+-        name="__full__", mean=full_mean.numpy(), std=full_std, cov=full_cov,
+-        samples=full_mean.numpy()[None, :], samples_kind="conditional_means",
+-        conditional_means=full_mean.numpy()[None, :], conditional_vars=full_var[None, :],
+-        within_var_mean=full_var, between_var=np.zeros(len(full_var)), n_draws=1)
++    result.full = full
+     result.groups = group_results
+     result.n_draws_attempted = result.n_draws_retained = 1
+     return result
+--- a/bistar_gp/external_targets.py
++++ b/bistar_gp/external_targets.py
+@@ -51,22 +51,35 @@
+     return {names[0]: w, names[1]: 1.0 - w}
+ 
+ 
+-def _min_tau_row(rows):
++def _min_tau_row(rows, names, key):
++    """The smallest-tau row with every named posterior validated finite.
++
++    Validation comes first (fix pass 1b, review R9): Python's max() keeps a
++    finite first argument over a NaN and abs(nan - 1) > tol is False, so an
++    unvalidated NaN column would pass both the mass check and the tolerance.
++    """
+     finite = [r for r in rows if np.isfinite(float(r["tau"]))]
+     if not finite:
+-        raise ValueError("no row carries a finite tau")
+-    return min(finite, key=lambda r: float(r["tau"]))
++        raise AssertionError(f"external target {key}: no row carries a finite tau")
++    row = min(finite, key=lambda r: float(r["tau"]))
++    for n in names:
++        value = float(row[n])
++        if not np.isfinite(value):
++            raise AssertionError(
++                f"external target {key}: non-finite posterior {value!r} for {n!r} "
++                f"at tau={row['tau']}")
++    return row
+ 
+ 
+ def external_target_errors(results: dict) -> Dict[str, float]:
+     """Recompute max |ours - target| at the smallest-tau row of a results.json
+     payload (the per-draw route rows for Target A, the Z_M route rows for
+-    Target B)."""
++    Target B). Raises AssertionError on a non-finite posterior."""
+     a = results["target_a"]
+-    a_row = _min_tau_row(a["rows"])
++    a_row = _min_tau_row(a["rows"], a["names"], "A")
+     err_a = max(abs(float(a_row[n]) - VANBORK_TARGET_A[n]) for n in a["names"])
+     b = results["target_b"]
+-    b_row = _min_tau_row(b["rows"])
++    b_row = _min_tau_row(b["rows"], b["names"], "B")
+     target_b = vanbork_target_b()
+     err_b = max(abs(float(b_row[n]) - target_b[n]) for n in b["names"])
+     return {"A": float(err_a), "B": float(err_b)}
+@@ -89,7 +102,7 @@
+             raise AssertionError(
+                 f"external target {key}: model names {block['names']} do not match "
+                 f"the published targets {list(target)}")
+-        row = _min_tau_row(block["rows"])
++        row = _min_tau_row(block["rows"], block["names"], key)
+         mass = sum(float(row[n]) for n in block["names"])
+         if abs(mass - 1.0) > 1e-9:
+             raise AssertionError(
+@@ -97,6 +110,9 @@
+     errors = external_target_errors(results)
+     stored = results.get("abs_error_at_min_tau", {})
+     for key, tol in (("A", tol_a), ("B", tol_b)):
++        if key in stored and not np.isfinite(float(stored[key])):
++            raise AssertionError(
++                f"external target {key}: stored abs_error_at_min_tau is {stored[key]!r}")
+         if not np.isfinite(errors[key]) or errors[key] > tol:
+             raise AssertionError(
+                 f"external target {key}: |ours - target| = {errors[key]:.3e} exceeds "
+--- a/bistar_gp/induced_prior.py
++++ b/bistar_gp/induced_prior.py
+@@ -207,8 +207,12 @@
+ 
+     if weighting == "uniform":
+         if log_mlls is not None:
+-            logger.warning("compute_induced_prior: log_mlls are ignored under "
+-                           "weighting='uniform' (correct for posterior draws)")
++            # A legacy positional call would otherwise run a different
++            # estimator with only a log line to say so (review F2).
++            raise ValueError(
++                "compute_induced_prior: log_mlls supplied under weighting='uniform'; "
++                "pass weighting='likelihood_tilted' for PRIOR draws or drop log_mlls "
++                "for posterior draws")
+         mll_weights = np.full(n_draws, 1.0 / n_draws)
+     elif weighting == "likelihood_tilted":
+         if log_mlls is None:
+--- a/bistar_gp/laplace_evidence.py
++++ b/bistar_gp/laplace_evidence.py
+@@ -46,7 +46,7 @@
+ from scipy.linalg import solve_triangular
+ from dataclasses import dataclass, field
+ 
+-from bistar_gp.bms_star import GPPosteriorSample, METRICS
++from bistar_gp.bms_star import GPPosteriorSample, METRICS, log_weight_ess
+ from bistar_gp.induced_prior import ModelParameterSpace
+ import bistar_gp.metrics_v2  # noqa: F401 — registers pw_* metrics (incl. the default pw_kl_vcal) into METRICS
+ 
+@@ -134,7 +134,7 @@
+         mu_theta = param_space.predict_fn(x_eval, param_dict)
+     except Exception as exc:
+         if strict:
+-            raise RuntimeError(
++            raise EvaluationFailure(
+                 f"compute_G_at_params: predict_fn of {param_space.model_name!r} "
+                 f"raised {type(exc).__name__} at {param_dict}: {exc}") from exc
+         return np.nan
+@@ -146,9 +146,9 @@
+ 
+     try:
+         return metric_fn(avg_gp.mean, avg_gp.cov, mu_theta, cov_theta)
+-    except (np.linalg.LinAlgError, ValueError) as exc:
++    except (np.linalg.LinAlgError, ValueError, RuntimeError, FloatingPointError) as exc:
+         if strict:
+-            raise RuntimeError(
++            raise EvaluationFailure(
+                 f"compute_G_at_params: metric raised {type(exc).__name__} for "
+                 f"{param_space.model_name!r} at {param_dict}: {exc}") from exc
+         return np.nan
+@@ -192,6 +192,13 @@
+     n_starts_failed: int = 0     # starts whose minimize raised or reported failure
+ 
+ 
++class EvaluationFailure(RuntimeError):
++    """A candidate predictor or divergence metric failed under strict
++    evaluation (fix pass 1b). Subclass of RuntimeError for compatibility with
++    callers that catch the pass-1 exception; the optimizer fallback handlers
++    re-raise it so it can never turn into a start-point expansion."""
++
++
+ @dataclass
+ class OptimizerRecord:
+     """What scipy's minimize actually reported for one start (2026-09 FIX-5).
+@@ -232,7 +239,13 @@
+ 
+ @dataclass
+ class ModelPosteriorResult:
+-    """Normalized model posterior under a chosen assembly (§2 of the plan)."""
++    """Normalized model posterior under a chosen assembly (§2 of the plan).
++
++    A non-finite kernel for ANY model (a non-strict evaluation failure) makes
++    every posterior NaN: the softmax is a joint normalization, so no candidate
++    can win a comparison one of them failed (review F7); `all_converged` is
++    False in that case.
++    """
+     construction: str                      # 'baseline' | 'I' | 'II'
+     occam: bool
+     tau: float
+@@ -301,7 +314,7 @@
+         # The -1e10 sentinel of the pre-2026-09 code made a raising predictor
+         # look like an astronomically poor fit; raise, or NaN when not strict.
+         if strict:
+-            raise RuntimeError(
++            raise EvaluationFailure(
+                 f"_log_likelihood: predict_fn of {param_space.model_name!r} "
+                 f"raised {type(exc).__name__} at {param_dict}: {exc}") from exc
+         return np.nan
+@@ -332,6 +345,11 @@
+                        options={"maxiter": 500, "ftol": 1e-10})
+         x_star, converged = res.x, bool(res.success)
+         record = _optimizer_record(res)
++    except EvaluationFailure:
++        # A strict evaluation failure inside the optimizer's own function
++        # evaluations is not an optimizer fault: it must reach the caller
++        # (fix pass 1b, review R7), never a start-point expansion.
++        raise
+     except Exception as exc:
+         x_star, converged = np.asarray(x0, dtype=float), False
+         record = OptimizerRecord(success=False, message="minimize raised",
+@@ -363,6 +381,13 @@
+     inset = np.minimum(2 * eps, 0.5 * (hi - lo))
+     x_h = np.clip(x_star, lo + inset, hi - inset)
+     H = numerical_hessian(neg_log_f, x_h, eps=eps)
++    if not np.all(np.isfinite(H)):
++        # Non-strict failure on the Hessian stencil (review R8): no expansion
++        # exists; keep the optimizer's own record, mark the integral invalid.
++        logger.warning("Laplace Hessian is non-finite at x*=%s; returning NaN", x_star)
++        record.success = False
++        record.message = f"non-finite Hessian at x*; optimizer: {record.message}"
++        return np.nan, x_star, f_star, np.nan, False, 0, record
+     logdet, n_clipped = _laplace_logdet(H)
+     if n_clipped:
+         logger.warning(
+@@ -404,15 +429,9 @@
+     start_list = list(starts) if starts else []
+     if mle_params is not None or not start_list:
+         start_list.append(mle_params)
+-    best = None
+-    n_failed = 0
+-    for start in start_list:
+-        x0, bounds = _x0_and_bounds(param_space, start)
+-        run = _laplace_log_integral(neg_log_f, x0, bounds, d)
+-        if not run[6].success:
+-            n_failed += 1
+-        if best is None or run[2] < best[2]:   # min f_star == min Ḡ*
+-            best = run
++    runs = [_laplace_log_integral(neg_log_f, *_x0_and_bounds(param_space, start), d)
++            for start in start_list]
++    best, n_failed = _select_start(runs)          # min f_star == min Ḡ* over finite runs
+     log_int, x_star, G_star, logdet, conv, n_clip, record = best
+     # log_int is the τ=1 integral −Ḡ* + (d/2)log(2π) − ½log|H_Ḡ|; rescale to τ.
+     log_int_tau = log_int + G_star - G_star / tau + 0.5 * d * np.log(tau)
+@@ -461,15 +480,28 @@
+ 
+ 
+ def _weight_ess(log_w):
+-    """ESS = (Σw)² / Σw² computed in log space; -inf entries contribute 0.
+-    All--inf weights (every sample out of box / invalid) is ESS 0, not NaN —
+-    the starvation warning must fire in exactly that case (codex P3)."""
+-    total = logsumexp(log_w)
+-    if not np.isfinite(total):
+-        return 0.0
+-    return float(np.exp(2.0 * total - logsumexp(2.0 * log_w)))
++    """ESS = (Σw)² / Σw² from log weights via the package's one ESS routine
++    (bms_star.log_weight_ess). All -inf weights (every sample out of box)
++    give 0, so the starvation warning fires (codex P3); a NaN weight (a
++    non-strict evaluation failure) gives NaN, distinct from absent support
++    (fix pass 1b, review R8)."""
++    return float(log_weight_ess(np.asarray(log_w, dtype=float)))
+ 
+ 
++def _select_start(runs):
++    """Pick the multi-start winner among runs with a FINITE objective; when
++    every run is non-finite return the first so the NaN propagates. The
++    result does not depend on the order of the starts (fix pass 1b, review
++    R8: `nan < x` is False, so a NaN first start used to absorb the minimum
++    while a NaN later start was ignored). Failed starts are those whose
++    optimizer record reports failure, which includes every non-finite run."""
++    n_failed = sum(1 for r in runs if not r[6].success)
++    finite = [r for r in runs if np.isfinite(r[2])]
++    if not finite:
++        return runs[0], n_failed
++    return min(finite, key=lambda r: r[2]), n_failed
++
++
+ def mc_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_mc=200_000, seed=0,
+                 metric_name="pw_kl_vcal", occam=False, strict=True) -> ZMxSweepResult:
+     """Uniform-box Monte Carlo Z_Mx across a τ ladder: Ḡ is computed ONCE and
+@@ -574,6 +606,8 @@
+                            options={"maxiter": 500, "ftol": 1e-10})
+             x_star = res.x
+             record = _optimizer_record(res)
++        except EvaluationFailure:
++            raise                     # strict evaluation failure: never a fallback (review R7)
+         except Exception as exc:
+             x_star = np.asarray(x0, dtype=float)
+             record = OptimizerRecord(success=False, message="minimize raised",
+@@ -583,6 +617,9 @@
+                            param_space.model_name, start, record.exception or record.message)
+         inset = np.minimum(2 * eps, 0.5 * (hi - lo))
+         f_star = float(neg_log_f(x_star))
++        if not np.isfinite(f_star):
++            record.success = False
++            record.message = f"non-finite objective at x*; optimizer: {record.message}"
+         H = numerical_hessian(neg_log_f, np.clip(x_star, lo + inset, hi - inset),
+                               eps=eps)
+         H = 0.5 * (H + H.T)
+--- a/tests/test_fix1_conventions.py
++++ b/tests/test_fix1_conventions.py
+@@ -143,10 +143,7 @@
+     spec = importlib.util.spec_from_file_location("e7_fixture", E7_FIXTURE)
+     mod = importlib.util.module_from_spec(spec)
+     sys.modules.setdefault("prior_sensitivity_study", pss)
+-    try:
+-        spec.loader.exec_module(mod)
+-    except Exception as exc:  # the fixture's own imports are not under test
+-        pytest.skip(f"fixture not importable here: {exc!r}")
++    spec.loader.exec_module(mod)   # a supplied fixture that fails to import is a failure, not a skip
+     G = _G(12)
+     for tau in (0.1, 1.0, 3.0):
+         for variant in VARIANTS:
+--- a/tests/test_fix1_sentinels.py
++++ b/tests/test_fix1_sentinels.py
+@@ -67,15 +67,18 @@
+     z = laplace_log_Z_Mx(ps, X_EVAL, GP, metric_name=mse_metric, strict=False)
+     assert np.isnan(z.log_Z) and not z.converged
+     mc = mc_log_Z_Mx(ps, X_EVAL, GP, [1.0], n_mc=50, metric_name=mse_metric, strict=False)
+-    assert np.isnan(mc.log_Z[0]) and mc.ess[0] == 0.0
++    assert np.isnan(mc.log_Z[0]) and np.isnan(mc.ess[0])        # NaN ESS: invalid evaluation, not absent support (pass 1b)
+     iss = is_log_Z_Mx(ps, X_EVAL, GP, [1.0], n_is=50, metric_name=mse_metric,
+                       starts=[{"a": 0.5, "b": -0.3}], strict=False)
+-    assert np.isnan(iss.log_Z[0]) and iss.ess[0] == 0.0 and iss.n_starts_failed >= 1
++    assert np.isnan(iss.log_Z[0]) and np.isnan(iss.ess[0]) and iss.n_starts_failed >= 1
+     good = _space(lambda x, p: p["a"] * x + p["b"], "Good")
+     mpr = model_posterior({"Good": good, "Bad": ps}, X_EVAL, GP.mean, X_EVAL, GP, None,
+                           construction="I", metric_name=mse_metric, tau=0.5,
+                           occam=False, strict=False)
+     assert np.isnan(mpr.posteriors["Bad"])          # not a finite win
++    # the softmax is a joint normalization: a failed model voids the whole
++    # comparison, so the healthy model is NaN too (review F7)
++    assert np.isnan(mpr.posteriors["Good"])
+     assert mpr.all_converged is False
+     assert mpr.components["Bad"]["converged"] is False
+ 
+@@ -101,8 +104,8 @@
+         bad = GPPosteriorSample(mean=np.array([999.0, 0.0, 0.0]), cov=np.eye(3), hyperparameters={})
+         ps = ModelParameterSpace(model_name="C", param_specs=[ParameterSpec("c", (0.0, 1.0), None)],
+                                  predict_fn=lambda x, p: p["c"] + 0.0 * x, noise_param="sigma")
+-        ip = compute_induced_prior(ps, [ok, bad], np.zeros(3), np.zeros(2), metric_name=name,
+-                                   n_param_samples=4, seed=0)
++        ip = compute_induced_prior(ps, [ok, bad], np.zeros(3), metric_name=name,
++                                   n_param_samples=4, seed=0)     # uniform weighting (pass 1b)
+         for s_idx in range(4):
+             c = ip.param_samples[s_idx, 0]
+             g_ok = metric(ok.mean, ok.cov, np.full(3, c), np.eye(3) * 0.09)
+--- a/tests/test_fix1_weighting.py
++++ b/tests/test_fix1_weighting.py
+@@ -123,14 +123,17 @@
+     assert np.isclose(2.0 / 82, 0.0244, atol=5e-5)
+ 
+ 
+-def test_uniform_default_ignores_log_mlls_with_a_warning(caplog):
++def test_log_mlls_under_uniform_weighting_is_a_conflict():
++    """A legacy positional call must not silently run a different estimator
++    (fix pass 1b, review F2)."""
+     draws = _two_state_draws()
+-    with caplog.at_level(logging.WARNING, logger="bistar_gp.induced_prior"):
+-        res = compute_induced_prior(_point_space(0.0), draws, np.array([0.0]),
+-                                    log_mlls=np.log(np.array([1.0] + [9.0] * 9)),
+-                                    metric_name="kl_forward", n_param_samples=2, seed=0)
++    log_mlls = np.log(np.array([1.0] + [9.0] * 9))
++    with pytest.raises(ValueError, match="log_mlls supplied under weighting='uniform'"):
++        compute_induced_prior(_point_space(0.0), draws, np.array([0.0]), log_mlls,
++                              metric_name="kl_forward", n_param_samples=2, seed=0)
++    res = compute_induced_prior(_point_space(0.0), draws, np.array([0.0]),
++                                metric_name="kl_forward", n_param_samples=2, seed=0)
+     assert np.allclose(res.G_per_sample, 1.8)
+-    assert any("ignored" in rec.getMessage() for rec in caplog.records)
+ 
+ 
+ def test_tilt_requires_log_mlls_and_unknown_weighting_raises():
+=================== NEW FILE: tests/test_fix1_review_round.py ===================
+     1	"""
+     2	Fix pass 1b (2026-09 review round on fix pass 1): pins for the accepted
+     3	findings R1-R10 of the Codex review and the Fable self-check SC-1.
+     4	
+     5	R1  an unknown sample site escapes compute_log_marginal_likelihoods;
+     6	R2  a draw that fails part-way is dropped whole (no partial rows);
+     7	R3  a component named like a group label cannot collide with the group;
+     8	R5  class labels need one entry per column and no repeats;
+     9	R6  large common offsets cancel exactly in the weighted posterior and ESS;
+    10	R7  a strict evaluation failure inside the optimizer raises, never a
+    11	    start-point expansion;
+    12	R8  start order is irrelevant under NaN objectives, a non-finite Hessian
+    13	    is flagged, and NaN ESS differs from absent support;
+    14	R9  the external-target checker rejects NaN columns and stored fields;
+    15	R10 the total covariance MATRIX (not only its diagonal) matches a direct
+    16	    per-draw conditioning plus the between-draw covariance of the means;
+    17	and the universe firewall rejects a roster before any metric call.
+    18	"""
+    19	
+    20	import copy
+    21	import json
+    22	
+    23	import numpy as np
+    24	import pytest
+    25	
+    26	torch = pytest.importorskip("torch")
+    27	gpytorch = pytest.importorskip("gpytorch")
+    28	
+    29	from gpytorch.kernels import LinearKernel, RBFKernel, ScaleKernel
+    30	
+    31	import bistar_gp.metrics_v2  # noqa: F401
+    32	from bistar_gp import debias
+    33	from bistar_gp.aggregation_v3 import compute_log_marginal_likelihoods, soft_transfer_weighted
+    34	from bistar_gp.bms_star import (
+    35	    METRICS, GPPosteriorSample, boltzmann_weight_ess, compute_G_matrix, log_weight_ess,
+    36	    soft_transfer,
+    37	)
+    38	from bistar_gp.candidates import CandidateResult
+    39	from bistar_gp.debias import _raw_parameter_map, decompose_model_hmc, decompose_model_mcmc
+    40	from bistar_gp.decompose import compute_cholesky, decompose_additive_gp, decompose_component
+    41	from bistar_gp.external_targets import check_external_targets, external_target_errors
+    42	from bistar_gp.induced_prior import ModelParameterSpace, ParameterSpec
+    43	from bistar_gp.laplace_evidence import (
+    44	    EvaluationFailure, _weight_ess, is_log_Z_Mx, laplace_log_Z_Mx,
+    45	    laplace_log_evidence_ordinary,
+    46	)
+    47	from bistar_gp.model import build_model, build_toy_kernels
+    48	
+    49	torch.set_default_dtype(torch.float64)
+    50	
+    51	SITES = {
+    52	    "ls": "covar_module.kernels.0.base_kernel.lengthscale_prior",
+    53	    "os": "covar_module.kernels.0.outputscale_prior",
+    54	    "lv": "covar_module.kernels.1.variance_prior",
+    55	    "noise": "likelihood.noise_covar.noise_prior",
+    56	}
+    57	
+    58	
+    59	def _samples(ls, os_, lv, noise):
+    60	    return {SITES["ls"]: np.asarray(ls, float), SITES["os"]: np.asarray(os_, float),
+    61	            SITES["lv"]: np.asarray(lv, float), SITES["noise"]: np.asarray(noise, float)}
+    62	
+    63	
+    64	@pytest.fixture
+    65	def toy():
+    66	    x = torch.linspace(-6, 6, 14)
+    67	    y = torch.sin(x) + 0.25 * x
+    68	    kers, names = build_toy_kernels()
+    69	    model, lik = build_model(x, y, kers, names)
+    70	    return model, lik, x, y, torch.linspace(-7, 7, 11)
+    71	
+    72	
+    73	def _direct_draw(x, y, x_test, ls, os_, lv, noise, jitter=1e-4):
+    74	    kers, names = build_toy_kernels()
+    75	    model, lik = build_model(x, y, kers, names)
+    76	    model.kernel_components[0].base_kernel.lengthscale = ls
+    77	    model.kernel_components[0].outputscale = os_
+    78	    model.kernel_components[1].variance = lv
+    79	    lik.noise = noise
+    80	    model.eval(); lik.eval()
+    81	    km = model.get_component_kernel_matrices(x, x_test)
+    82	    with torch.no_grad():
+    83	        per = decompose_additive_gp([km[n]["XX"] for n in names], [km[n]["XstarX"] for n in names],
+    84	                                    [km[n]["XstarXstar"] for n in names], [km[n]["XXstar"] for n in names],
+    85	                                    noise, y, jitter)
+    86	        L = compute_cholesky(sum(km[n]["XX"] for n in names), noise, jitter)
+    87	        fm, fc = decompose_component(sum(km[n]["XstarX"] for n in names),
+    88	                                     sum(km[n]["XstarXstar"] for n in names),
+    89	                                     sum(km[n]["XXstar"] for n in names), L, y)
+    90	    return {n: (m.numpy(), c.numpy()) for (m, c), n in zip(per, names)}, (fm.numpy(), fc.numpy())
+    91	
+    92	
+    93	# ── R1 ──────────────────────────────────────────────────────────────
+    94	
+    95	def test_r1_unknown_site_escapes_the_mll_routine():
+    96	    x = torch.linspace(-3, 3, 12)
+    97	    y = torch.sin(x)
+    98	    good = {SITES["ls"]: 1.0, SITES["os"]: 1.0, SITES["lv"]: 0.1, SITES["noise"]: 0.1}
+    99	    bad = dict(good, **{"covar_module.kernels.0.alpha_prior": 2.0})
+   100	    gp_bad = [GPPosteriorSample(mean=np.zeros(4), cov=np.eye(4), hyperparameters=bad)]
+   101	    with pytest.raises(ValueError, match="alpha_prior"):
+   102	        compute_log_marginal_likelihoods(gp_bad, x, y, kernel_builder=build_toy_kernels)
+   103	    gp_good = [GPPosteriorSample(mean=np.zeros(4), cov=np.eye(4), hyperparameters=good)]
+   104	    lm = compute_log_marginal_likelihoods(gp_good, x, y, kernel_builder=build_toy_kernels)
+   105	    assert np.isfinite(lm).all()
+   106	
+   107	
+   108	# ── R2 ──────────────────────────────────────────────────────────────
+   109	
+   110	def test_r2_failed_draw_is_dropped_whole(toy, monkeypatch):
+   111	    model, lik, x, y, x_test = toy
+   112	    samples = _samples([1.0, 2.0], [1.0, 0.5], [0.05, 0.1], [0.1, 0.2])
+   113	    real = debias.decompose_component
+   114	    calls = {"n": 0}
+   115	
+   116	    def flaky(*args, **kwargs):
+   117	        calls["n"] += 1
+   118	        if calls["n"] == 2:          # second target of the first draw
+   119	            raise RuntimeError("injected after the first target")
+   120	        return real(*args, **kwargs)
+   121	
+   122	    monkeypatch.setattr(debias, "decompose_component", flaky)
+   123	    res = decompose_model_hmc(model, lik, x, y, x_test, samples, kernel_builder=build_toy_kernels,
+   124	                              n_posterior_samples=2, strict=False, rng=np.random.default_rng(0))
+   125	    assert res.n_draws_retained == 1 and len(res.dropped) == 1
+   126	    for comp in list(res.components.values()) + [res.full]:
+   127	        assert comp.conditional_means.shape[0] == 1 and comp.n_draws == 1
+   128	        assert np.allclose(np.diag(comp.cov), comp.std ** 2)
+   129	    calls["n"] = 0
+   130	    with pytest.raises(RuntimeError, match="injected"):
+   131	        decompose_model_hmc(model, lik, x, y, x_test, samples, kernel_builder=build_toy_kernels,
+   132	                            n_posterior_samples=2, rng=np.random.default_rng(0))
+   133	
+   134	
+   135	# ── R3 ──────────────────────────────────────────────────────────────
+   136	
+   137	def test_r3_component_named_like_a_group_does_not_collide():
+   138	    x = torch.linspace(-6, 6, 14)
+   139	    y = torch.sin(x) + 0.25 * x
+   140	    x_test = torch.linspace(-7, 7, 9)
+   141	    model, lik = build_model(x, y, [ScaleKernel(RBFKernel()), LinearKernel(), ScaleKernel(RBFKernel())],
+   142	                             ["a", "b", "a,b"])
+   143	    pm = _raw_parameter_map(model, lik)
+   144	    samples = {n: np.array([float(p.item()), float(p.item()) + 0.1]) for n, p in pm.items()}
+   145	    res = decompose_model_mcmc(model, lik, x, y, x_test, samples, n_posterior_samples=2,
+   146	                               groups=[["a", "b"]], rng=np.random.default_rng(0))
+   147	    comp, grp = res.components["a,b"], res.group(["a", "b"])
+   148	    assert not np.allclose(comp.mean, grp.mean)
+   149	    assert np.allclose(grp.mean, res.components["a"].mean + res.components["b"].mean, atol=1e-10)
+   150	    assert "__full__" not in res.components and res.full.name == "__full__"
+   151	    # a repeated name is one member (review F3): no group is stored, the
+   152	    # request resolves to the component
+   153	    res2 = decompose_model_mcmc(model, lik, x, y, x_test, samples, n_posterior_samples=2,
+   154	                                groups=[["a", "a"]], rng=np.random.default_rng(0))
+   155	    assert res2.groups == {} and res2.group(["a", "a"]) is res2.components["a"]
+   156	
+   157	
+   158	# ── R5 ──────────────────────────────────────────────────────────────
+   159	
+   160	def test_f4_soft_transfer_rejects_non_finite_G():
+   161	    G = np.array([[0.0, 1.0], [np.nan, 0.5], [0.2, 0.3]])
+   162	    with pytest.raises(ValueError, match="soft_transfer: G_matrix contains non-finite"):
+   163	        soft_transfer(G, 1.0, ["a", "b"])
+   164	    with pytest.raises(ValueError, match="soft_transfer"):
+   165	        soft_transfer(np.array([[0.0, np.inf]]), 1.0, ["a", "b"])
+   166	
+   167	
+   168	def test_r5_class_names_need_one_label_per_column():
+   169	    G = np.array([[0.0, 1.0], [1.0, 0.0]])
+   170	    with pytest.raises(ValueError):
+   171	        soft_transfer(G, 1.0, ["a", "b"], class_names=["A", "B", "B"])
+   172	    with pytest.raises(ValueError):
+   173	        soft_transfer(G, 1.0, ["a", "b"], class_names=["A"])
+   174	    with pytest.raises(ValueError, match="instance_names"):
+   175	        soft_transfer(G, 1.0, ["a"])
+   176	    assert soft_transfer(G, 1.0, ["a", "b"], class_names=["B", "A"]).class_names == ["B", "A"]
+   177	
+   178	
+   179	# ── R6 ──────────────────────────────────────────────────────────────
+   180	
+   181	@pytest.mark.parametrize("offset", [0.0, 1e4, 1e12, 1e16])
+   182	def test_r6_large_common_offsets_cancel_exactly(offset):
+   183	    G = np.full((9, 2), offset)
+   184	    r = soft_transfer_weighted(G, 1.0, ["a", "b"], np.zeros(9))
+   185	    assert np.allclose(r.instance_posteriors, [0.5, 0.5], atol=1e-15)
+   186	    assert r.instance_posteriors.sum() == pytest.approx(1.0, abs=1e-15)
+   187	    assert np.allclose(r.weight_ess, 9.0, atol=1e-12)
+   188	    assert np.allclose(boltzmann_weight_ess(G, 1.0), 9.0, atol=1e-12)
+   189	    assert np.allclose(soft_transfer(G, 1.0, ["a", "b"]).weight_ess, 9.0, atol=1e-12)
+   190	
+   191	
+   192	def test_r6_weighted_scores_keep_the_pre_fix_scale():
+   193	    rng = np.random.default_rng(0)
+   194	    G, lw, tau = rng.uniform(0, 3, (6, 3)), rng.normal(size=6), 0.7
+   195	    w = np.exp(lw - lw.max())
+   196	    log_boltz = -G / tau
+   197	    log_boltz -= log_boltz.max()
+   198	    old = (w[:, None] * np.exp(log_boltz)).sum(0) / w.sum()
+   199	    assert np.allclose(soft_transfer_weighted(G, tau, list("abc"), lw).instance_scores, old, rtol=1e-12)
+   200	
+   201	
+   202	# ── R8(iii): the one ESS routine ────────────────────────────────────
+   203	
+   204	def test_log_weight_ess_distinguishes_nan_from_absent_support():
+   205	    assert log_weight_ess(np.array([0.0, 0.0, -np.inf])) == pytest.approx(2.0)
+   206	    assert log_weight_ess(np.array([-np.inf, -np.inf])) == 0.0
+   207	    assert np.isnan(log_weight_ess(np.array([0.0, np.nan])))
+   208	    assert np.isnan(_weight_ess(np.array([0.0, np.nan]))) and _weight_ess(np.array([-np.inf])) == 0.0
+   209	    col = log_weight_ess(np.array([[0.0, np.nan, -np.inf], [0.0, 0.0, -np.inf]]), axis=0)
+   210	    assert col[0] == pytest.approx(2.0) and np.isnan(col[1]) and col[2] == 0.0
+   211	    big = np.array([700.0, 699.0])                 # exp(700) overflows without the shift
+   212	    with np.errstate(over="raise"):
+   213	        assert log_weight_ess(big) == pytest.approx((1 + np.exp(-1.0)) ** 2 / (1 + np.exp(-2.0)))
+   214	
+   215	
+   216	# ── R7 / R8: strict evaluation failures and NaN paths in the Laplace routines ──
+   217	
+   218	X_EVAL = np.linspace(0.0, 1.0, 5)
+   219	GP = GPPosteriorSample(mean=0.5 * X_EVAL, cov=0.01 * np.eye(5), hyperparameters={})
+   220	
+   221	
+   222	def _space(predict, name="Probe"):
+   223	    return ModelParameterSpace(name, [ParameterSpec("a", (-1.0, 1.0), None),
+   224	                                      ParameterSpec("sigma", (0.5, 0.5001), None)], predict)
+   225	
+   226	
+   227	def _raises_in_band(lo, hi):
+   228	    def predict(x, p):
+   229	        if lo < p["a"] < hi:
+   230	            raise ValueError("predictor failed inside the optimizer's step")
+   231	        return p["a"] * x
+   232	    return predict
+   233	
+   234	
+   235	def test_r7_strict_evaluation_failure_inside_the_optimizer_raises():
+   236	    ps = _space(_raises_in_band(0.0, 1e-6))          # fine at a=0, the 1e-8 finite-difference point raises
+   237	    start = [{"a": 0.0, "sigma": 0.5}]
+   238	    with pytest.raises(EvaluationFailure):
+   239	        laplace_log_Z_Mx(ps, X_EVAL, GP, tau=1.0, starts=start)
+   240	    with pytest.raises(EvaluationFailure):
+   241	        is_log_Z_Mx(ps, X_EVAL, GP, [1.0], n_is=50, starts=start)
+   242	    x_train = np.linspace(0.0, 1.0, 6)
+   243	    with pytest.raises(EvaluationFailure):
+   244	        laplace_log_evidence_ordinary(ps, x_train, 0.5 * x_train, mle_params={"a": 0.0, "sigma": 0.5})
+   245	    assert issubclass(EvaluationFailure, RuntimeError)     # pass-1 callers catching RuntimeError still do
+   246	    z = laplace_log_Z_Mx(ps, X_EVAL, GP, tau=1.0, starts=start, strict=False)
+   247	    assert not z.converged                                 # non-strict: a flagged fallback, no raise
+   248	
+   249	
+   250	def test_r8_start_order_is_irrelevant_under_nan_objectives():
+   251	    def predict(x, p):
+   252	        if p["a"] < 0:
+   253	            raise ValueError("undefined region")
+   254	        return p["a"] * x
+   255	    ps = _space(predict)
+   256	    bad, good = {"a": -0.5, "sigma": 0.5}, {"a": 0.5, "sigma": 0.5}
+   257	    r1 = laplace_log_Z_Mx(ps, X_EVAL, GP, tau=1.0, starts=[bad, good], strict=False)
+   258	    r2 = laplace_log_Z_Mx(ps, X_EVAL, GP, tau=1.0, starts=[good, bad], strict=False)
+   259	    assert np.isfinite(r1.log_Z) and r1.log_Z == r2.log_Z and r1.G_at_min == r2.G_at_min
+   260	    assert r1.n_starts_failed == r2.n_starts_failed == 1
+   261	    r3 = laplace_log_Z_Mx(ps, X_EVAL, GP, tau=1.0, starts=[bad], strict=False)
+   262	    assert np.isnan(r3.log_Z) and not r3.converged and r3.n_starts_failed == 1
+   263	
+   264	
+   265	def test_r8_non_finite_hessian_stencil_is_flagged():
+   266	    def predict(x, p):                      # finite at the optimum a=0.5 and at the 1e-8 gradient step,
+   267	        a = p["a"]                          # NaN on the 1e-4 Hessian stencil
+   268	        return (np.nan if 1e-6 < abs(a - 0.5) < 1e-3 else a) * x
+   269	    ps = _space(predict)
+   270	    z = laplace_log_Z_Mx(ps, X_EVAL, GP, tau=1.0, starts=[{"a": 0.5, "sigma": 0.5}], strict=False)
+   271	    assert np.isnan(z.log_Z) and z.converged is False and z.n_starts_failed == 1
+   272	    assert "non-finite Hessian" in z.optimizer["message"]
+   273	
+   274	
+   275	# ── R9 ──────────────────────────────────────────────────────────────
+   276	
+   277	FIXTURE = {
+   278	    "target_a": {"names": ["M1 (theta=0.15)", "M2 (theta=0.20)"],
+   279	                 "rows": [{"tau": 1.0, "M1 (theta=0.15)": 0.49965650872257117, "M2 (theta=0.20)": 0.5003434912774289},
+   280	                          {"tau": 1e-07, "M1 (theta=0.15)": 0.4, "M2 (theta=0.20)": 0.6}]},
+   281	    "target_b": {"names": ["M_x beta(50,50)", "M_z beta(2,2)"],
+   282	                 "rows": [{"tau": 1.0, "M_x beta(50,50)": 0.5296605155174497, "M_z beta(2,2)": 0.47033948448255036},
+   283	                          {"tau": 1e-07, "M_x beta(50,50)": 0.841418950016495, "M_z beta(2,2)": 0.15858104998350495}]},
+   284	    "abs_error_at_min_tau": {"A": 0.0, "B": 6.404745348520535e-07},
+   285	}
+   286	
+   287	
+   288	def test_r9_nan_columns_and_stored_fields_fail(tmp_path):
+   289	    p = tmp_path / "ok.json"
+   290	    p.write_text(json.dumps(FIXTURE))
+   291	    assert check_external_targets(str(p))["A"] == 0.0
+   292	    cases = [("target_a", "M1 (theta=0.15)", "A"), ("target_a", "M2 (theta=0.20)", "A"),
+   293	             ("target_b", "M_x beta(50,50)", "B"), ("target_b", "M_z beta(2,2)", "B")]
+   294	    for i, (block, col, key) in enumerate(cases):
+   295	        bad = copy.deepcopy(FIXTURE)
+   296	        bad[block]["rows"][-1][col] = float("nan")
+   297	        q = tmp_path / f"bad{i}.json"
+   298	        q.write_text(json.dumps(bad))
+   299	        with pytest.raises(AssertionError, match=f"external target {key}"):
+   300	            check_external_targets(str(q))
+   301	        with pytest.raises(AssertionError, match=f"external target {key}"):
+   302	            external_target_errors(bad)
+   303	    stale = copy.deepcopy(FIXTURE)
+   304	    stale["abs_error_at_min_tau"]["B"] = float("nan")
+   305	    q = tmp_path / "stale.json"
+   306	    q.write_text(json.dumps(stale))
+   307	    with pytest.raises(AssertionError, match="stored"):
+   308	        check_external_targets(str(q))
+   309	
+   310	
+   311	# ── R10 ─────────────────────────────────────────────────────────────
+   312	
+   313	def test_r10_total_covariance_matrix_matches_direct_conditioning(toy):
+   314	    model, lik, x, y, x_test = toy
+   315	    draws = [(0.7, 1.5, 0.05, 0.1), (3.0, 0.4, 0.2, 0.3), (1.2, 0.9, 0.1, 0.05)]
+   316	    names = list(model.component_names)
+   317	    res = decompose_model_hmc(model, lik, x, y, x_test, _samples(*zip(*draws)),
+   318	                              kernel_builder=build_toy_kernels, n_posterior_samples=3,
+   319	                              groups=[names], rng=np.random.default_rng(0))
+   320	    direct = [_direct_draw(x, y, x_test, *d) for d in draws]
+   321	    for name in names:
+   322	        means = np.stack([d[0][name][0] for d in direct])
+   323	        covs = np.stack([d[0][name][1] for d in direct])
+   324	        expected = covs.mean(0) + np.cov(means, rowvar=False, bias=True)
+   325	        assert np.allclose(res.components[name].cov, expected, atol=1e-10)
+   326	        between = np.cov(means, rowvar=False, bias=True)
+   327	        assert np.abs(between - np.diag(np.diag(between))).max() > 1e-6   # the fixture has off-diagonal between-draw terms
+   328	    fm = np.stack([d[1][0] for d in direct])
+   329	    fc = np.stack([d[1][1] for d in direct])
+   330	    assert np.allclose(res.full.cov, fc.mean(0) + np.cov(fm, rowvar=False, bias=True), atol=1e-10)
+   331	    assert np.allclose(res.group(names).cov, res.full.cov)
+   332	
+   333	
+   334	# ── firewall: rejection precedes any metric call ────────────────────
+   335	
+   336	def test_firewall_rejects_before_any_metric_call():
+   337	    calls = {"n": 0}
+   338	
+   339	    def counting(mu_p, cov_p, mu_q, cov_q):
+   340	        calls["n"] += 1
+   341	        return 0.0
+   342	
+   343	    METRICS["__counting__"] = counting
+   344	    try:
+   345	        gp = [GPPosteriorSample(mean=np.zeros(3), cov=np.eye(3), hyperparameters={})]
+   346	        mixed = [CandidateResult("a", np.zeros(3), np.eye(3), 1.0, {}, "toy"),
+   347	                 CandidateResult("b", np.zeros(3), np.eye(3), 1.0, {}, None)]
+   348	        with pytest.raises(ValueError):
+   349	            compute_G_matrix(gp, mixed, "__counting__")
+   350	        assert calls["n"] == 0
+   351	        same = [CandidateResult("a", np.zeros(3), np.eye(3), 1.0, {}, "toy"),
+   352	                CandidateResult("b", np.zeros(3), np.eye(3), 1.0, {}, "toy")]
+   353	        compute_G_matrix(gp, same, "__counting__")
+   354	        assert calls["n"] == 2
+   355	    finally:
+   356	        METRICS.pop("__counting__", None)

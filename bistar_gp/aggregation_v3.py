@@ -24,15 +24,21 @@ Three fixes, each attacking a different part of the problem:
     outlier samples (very long/short lengthscales) get downweighted.
 """
 
+import logging
+
 import numpy as np
 import torch
+from scipy.special import logsumexp
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 
 from bistar_gp.bms_star import (
     GPPosteriorSample, METRICS, compute_G_matrix, BMSStarResult,
-    _extract_marginals,
+    _extract_marginals, _assert_candidate_universes_consistent,
+    aggregate_convention, hard_win_statistics, log_weight_ess,
 )
+
+logger = logging.getLogger(__name__)
 
 torch.set_default_dtype(torch.float64)
 
@@ -74,6 +80,14 @@ def average_gp_posterior(gp_samples: List[GPPosteriorSample],
         w = w / w.sum()
 
     means = np.array([s.mean for s in gp_samples])   # (N, n_eval)
+    if not np.all(np.isfinite(means)):
+        bad = [i for i, m in enumerate(means) if not np.all(np.isfinite(m))]
+        raise ValueError(
+            f"average_gp_posterior: non-finite mean in draw(s) {bad[:10]}")
+    for i, s in enumerate(gp_samples):
+        if not np.all(np.isfinite(np.diag(s.cov))):
+            raise ValueError(
+                f"average_gp_posterior: non-finite covariance diagonal in draw {i}")
     mu_bar = w @ means                                 # (n_eval,)
 
     # Weighted average covariance + inter-sample mean spread
@@ -110,6 +124,10 @@ def score_averaged_gp(gp_samples: List[GPPosteriorSample],
     if metric_names is None:
         metric_names = ["pw_kl_vcal", "pw_hellinger_vcal", "pw_nll_gp",
                         "pw_mse", "pw_hellinger_mean"]
+
+    # This strategy scores the averaged pattern directly and never builds a
+    # G matrix, so the A4 firewall must run here explicitly (FIX-4).
+    _assert_candidate_universes_consistent(candidate_results)
 
     psi_bar = average_gp_posterior(gp_samples)
     instance_names = [cr.name for cr in candidate_results]
@@ -329,21 +347,26 @@ def compute_log_marginal_likelihoods(
     log_mlls = np.zeros(len(gp_samples))
 
     for idx, sample in enumerate(gp_samples):
+        kernels, names = kernel_builder()
+        fresh_lik = likelihood_builder()
+        fresh_model, fresh_lik = build_model(x_t, y_t, kernels, names, fresh_lik)
+
+        # Set hyperparameters OUTSIDE the numerical handler below. A site the
+        # model does not recognize is a silent-wrong-answer path (the
+        # likelihood would be scored at the fresh model's initialization
+        # value), so it raises and the error must escape (FIX-1; review R1
+        # found the pass-1 raise sitting inside the handler that converts
+        # numerical failures into -inf).
+        for pyro_name, val in sample.hyperparameters.items():
+            if not apply_hp_value(fresh_model, fresh_lik, pyro_name, val):
+                raise ValueError(
+                    f"compute_log_marginal_likelihoods: apply_hp_value did "
+                    f"not recognize site {pyro_name!r} for draw {idx}")
+
+        fresh_model.eval()
+        fresh_lik.eval()
+
         try:
-            kernels, names = kernel_builder()
-            fresh_lik = likelihood_builder()
-            fresh_model, fresh_lik = build_model(x_t, y_t, kernels, names, fresh_lik)
-
-            # Set hyperparameters
-            for pyro_name, val in sample.hyperparameters.items():
-                try:
-                    apply_hp_value(fresh_model, fresh_lik, pyro_name, val)
-                except (IndexError, AttributeError, RuntimeError):
-                    continue
-
-            fresh_model.eval()
-            fresh_lik.eval()
-
             with torch.no_grad():
                 noise_var = fresh_lik.noise.item()
                 K_XX = fresh_model.covar_module(x_t, x_t).evaluate().detach()
@@ -387,36 +410,38 @@ def soft_transfer_weighted(G_matrix: np.ndarray, tau: float,
 
     High marginal-likelihood samples contribute more.
     """
-    n_psi, n_theta = G_matrix.shape
+    G = np.asarray(G_matrix, dtype=float)
+    if not np.all(np.isfinite(G)):
+        # same rule as soft_transfer (review K3-3 / GLM F4): a non-finite
+        # divergence is never a score; NaN used to propagate silently here
+        raise ValueError("soft_transfer_weighted: G_matrix contains non-finite entries")
+    n_psi, n_theta = G.shape
+    lw = np.asarray(log_weights, dtype=float).copy()
+    lw[~np.isfinite(lw)] = -np.inf          # a non-finite draw weight is absent support
+    if not np.any(np.isfinite(lw)):
+        raise ValueError(
+            "soft_transfer_weighted: no draw carries a finite log weight; "
+            "refusing to substitute a uniform posterior")
 
-    # Normalize log weights to prevent overflow
-    valid = np.isfinite(log_weights)
-    if not valid.any():
-        # Fallback to uniform
-        w = np.ones(n_psi)
-    else:
-        lw = log_weights.copy()
-        lw[~valid] = -np.inf
-        lw -= lw[valid].max()
-        w = np.exp(lw)
-
-    # Weighted Boltzmann scores.
-    # Numerical stability: subtract a single GLOBAL scalar, which cancels in the
-    # cross-candidate normalization below. A per-candidate (axis=0) max does NOT
-    # cancel — it multiplies each candidate's score by exp(min_i G_ij / tau),
-    # distorting the posterior (same bug fixed in bms_star.soft_transfer).
-    log_boltz = -G_matrix / tau
-    log_boltz -= log_boltz.max()
-    boltz = np.exp(log_boltz)
-
-    # Weighted average
-    instance_scores = (w[:, None] * boltz).sum(axis=0) / w.sum()
-
-    total = instance_scores.sum()
-    if total > 0:
-        instance_posteriors = instance_scores / total
-    else:
-        instance_posteriors = np.ones(n_theta) / n_theta
+    # Joint log-space aggregation (2026-09 review FIX-6). The previous code
+    # stabilized the draw weights and the Boltzmann factors SEPARATELY and
+    # multiplied them, so when their maxima fell on different rows every
+    # product could underflow and the function silently returned a uniform
+    # posterior. Forming log w_i - G_ij/tau first and summing with
+    # log-sum-exp makes the result exact up to floating point.
+    log_terms = lw[:, None] - G / tau                            # (n_psi, n_theta)
+    # One GLOBAL shift before the two log-sum-exps (pass 1b, review R6): the
+    # cross-candidate normalization is then a difference of moderate numbers
+    # instead of two large nearly equal ones. The shift cancels exactly.
+    shift = np.max(log_terms)
+    ls = logsumexp(log_terms - shift, axis=0)                    # log-scores up to the shift
+    log_post = ls - logsumexp(ls)
+    instance_posteriors = np.exp(log_post)
+    log_scores = ls + shift - logsumexp(lw)                      # log[ sum_i w_i e^{-G_ij/tau} / sum_i w_i ]
+    # Scores on the pre-fix scale: sum_i w_i exp(-(G_ij - G_min)/tau) / sum_i w_i
+    instance_scores = np.exp(log_scores + G.min() / tau)
+    weight_ess = log_weight_ess(log_terms, axis=0)
+    credit, attainment, tie_fraction = hard_win_statistics(G)
 
     return BMSStarResult(
         metric_name="weighted",
@@ -426,7 +451,11 @@ def soft_transfer_weighted(G_matrix: np.ndarray, tau: float,
         instance_posteriors=instance_posteriors,
         class_names=list(instance_names),
         class_posteriors=instance_posteriors.copy(),
-        G_matrix=G_matrix,
+        G_matrix=G,
+        weight_ess=weight_ess,
+        hard_win_credit=credit,
+        attainment=attainment,
+        tie_fraction=tie_fraction,
     )
 
 

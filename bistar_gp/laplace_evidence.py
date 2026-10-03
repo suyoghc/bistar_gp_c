@@ -46,7 +46,7 @@ from scipy.special import softmax, logsumexp
 from scipy.linalg import solve_triangular
 from dataclasses import dataclass, field
 
-from bistar_gp.bms_star import GPPosteriorSample, METRICS
+from bistar_gp.bms_star import GPPosteriorSample, METRICS, log_weight_ess
 from bistar_gp.induced_prior import ModelParameterSpace
 import bistar_gp.metrics_v2  # noqa: F401 — registers pw_* metrics (incl. the default pw_kl_vcal) into METRICS
 
@@ -119,12 +119,25 @@ def compute_G_at_params(
     x_eval: np.ndarray,
     avg_gp: GPPosteriorSample,
     metric_fn,
+    strict: bool = True,
 ) -> float:
-    """Compute G between candidate prediction at φ and averaged GP."""
+    """Compute G between candidate prediction at φ and averaged GP.
+
+    Evaluation failures (a raising predict_fn or metric) are NOT converted
+    into a finite energy: before the 2026-09 review fix they returned 1e6,
+    which exp(-G/tau) turned into "an extremely poor fit" and which an
+    all-failed integral could even win with. Under strict=True (default) the
+    failure raises with the parameter point; under strict=False it returns
+    NaN, which propagates honestly through every integral and ESS.
+    """
     try:
         mu_theta = param_space.predict_fn(x_eval, param_dict)
-    except Exception:
-        return 1e6
+    except Exception as exc:
+        if strict:
+            raise EvaluationFailure(
+                f"compute_G_at_params: predict_fn of {param_space.model_name!r} "
+                f"raised {type(exc).__name__} at {param_dict}: {exc}") from exc
+        return np.nan
 
     sigma = _noise_sigma(param_space, param_dict)
     sigma2 = max(sigma ** 2, 1e-8)
@@ -133,8 +146,12 @@ def compute_G_at_params(
 
     try:
         return metric_fn(avg_gp.mean, avg_gp.cov, mu_theta, cov_theta)
-    except (np.linalg.LinAlgError, ValueError):
-        return 1e6
+    except (np.linalg.LinAlgError, ValueError, RuntimeError, FloatingPointError) as exc:
+        if strict:
+            raise EvaluationFailure(
+                f"compute_G_at_params: metric raised {type(exc).__name__} for "
+                f"{param_space.model_name!r} at {param_dict}: {exc}") from exc
+        return np.nan
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -171,6 +188,36 @@ class ZMxResult:
     tau: float
     converged: bool
     n_clipped: int = 0           # Hessian eigenvalues clipped: >0 means |H| was regularized
+    optimizer: Optional[Dict[str, object]] = None   # best start's OptimizerRecord (FIX-5)
+    n_starts_failed: int = 0     # starts whose minimize raised or reported failure
+
+
+class EvaluationFailure(RuntimeError):
+    """A candidate predictor or divergence metric failed under strict
+    evaluation (fix pass 1b). Subclass of RuntimeError for compatibility with
+    callers that catch the pass-1 exception; the optimizer fallback handlers
+    re-raise it so it can never turn into a start-point expansion."""
+
+
+@dataclass
+class OptimizerRecord:
+    """What scipy's minimize actually reported for one start (2026-09 FIX-5).
+
+    Before this record existed, an optimizer that raised fell back to the
+    start point with converged=False, and a non-successful result was
+    accepted silently; nothing carried either fact to the caller.
+    """
+    success: bool
+    status: Optional[int] = None
+    message: str = ""
+    nit: Optional[int] = None
+    nfev: Optional[int] = None
+    exception: Optional[str] = None
+
+    def as_dict(self) -> Dict[str, object]:
+        return {"success": bool(self.success), "status": self.status,
+                "message": str(self.message), "nit": self.nit, "nfev": self.nfev,
+                "exception": self.exception}
 
 
 @dataclass
@@ -186,11 +233,19 @@ class EvidenceResult:
     n_params: int = 0
     converged: bool = True
     n_clipped: int = 0           # Hessian eigenvalues clipped: >0 means |H| was regularized
+    optimizer: Optional[Dict[str, object]] = None   # FIX-5
+    n_starts_failed: int = 0
 
 
 @dataclass
 class ModelPosteriorResult:
-    """Normalized model posterior under a chosen assembly (§2 of the plan)."""
+    """Normalized model posterior under a chosen assembly (§2 of the plan).
+
+    A non-finite kernel for ANY model (a non-strict evaluation failure) makes
+    every posterior NaN: the softmax is a joint normalization, so no candidate
+    can win a comparison one of them failed (review F7); `all_converged` is
+    False in that case.
+    """
     construction: str                      # 'baseline' | 'I' | 'II'
     occam: bool
     tau: float
@@ -202,6 +257,10 @@ class ModelPosteriorResult:
     # can verify compatibility instead of silently mixing metrics (codex
     # finding: without this the mismatch was unenforceable).
     metric_name: str = ""
+    # FIX-5: False when any model's Laplace optimization did not converge;
+    # per-model detail in components[name]["converged"], ["n_clipped"],
+    # ["n_starts_failed"].
+    all_converged: bool = True
 
 
 def _log_reference_volume(param_space) -> float:
@@ -247,11 +306,18 @@ def _x0_and_bounds(param_space, mle_params):
     return x0, bounds
 
 
-def _log_likelihood(param_space, x_train, y_train, param_dict) -> float:
+def _log_likelihood(param_space, x_train, y_train, param_dict,
+                    strict: bool = True) -> float:
     try:
         mu = param_space.predict_fn(x_train, param_dict)
-    except Exception:
-        return -1e10
+    except Exception as exc:
+        # The -1e10 sentinel of the pre-2026-09 code made a raising predictor
+        # look like an astronomically poor fit; raise, or NaN when not strict.
+        if strict:
+            raise EvaluationFailure(
+                f"_log_likelihood: predict_fn of {param_space.model_name!r} "
+                f"raised {type(exc).__name__} at {param_dict}: {exc}") from exc
+        return np.nan
     sigma = _noise_sigma(param_space, param_dict)
     sigma2 = max(sigma ** 2, 1e-8)
     n = len(y_train)
@@ -259,15 +325,45 @@ def _log_likelihood(param_space, x_train, y_train, param_dict) -> float:
     return -0.5 * n * np.log(2 * np.pi * sigma2) - 0.5 * np.sum(resid ** 2) / sigma2
 
 
+def _optimizer_record(res) -> "OptimizerRecord":
+    return OptimizerRecord(
+        success=bool(getattr(res, "success", False)),
+        status=(int(res.status) if getattr(res, "status", None) is not None else None),
+        message=str(getattr(res, "message", "")),
+        nit=(int(res.nit) if getattr(res, "nit", None) is not None else None),
+        nfev=(int(res.nfev) if getattr(res, "nfev", None) is not None else None),
+    )
+
+
 def _laplace_log_integral(neg_log_f, x0, bounds, d, eps=1e-4):
-    """Generic Laplace: returns (log_integral, x_star, f_star, logdet, converged, n_clipped)."""
+    """Generic Laplace: returns (log_integral, x_star, f_star, logdet, converged,
+    n_clipped, optimizer_record). The record (FIX-5) carries scipy's own
+    success flag and message, or the exception text when minimize raised and
+    the start point was used instead."""
     try:
         res = minimize(neg_log_f, x0, bounds=bounds, method="L-BFGS-B",
                        options={"maxiter": 500, "ftol": 1e-10})
         x_star, converged = res.x, bool(res.success)
-    except Exception:
+        record = _optimizer_record(res)
+    except EvaluationFailure:
+        # A strict evaluation failure inside the optimizer's own function
+        # evaluations is not an optimizer fault: it must reach the caller
+        # (fix pass 1b, review R7), never a start-point expansion.
+        raise
+    except Exception as exc:
         x_star, converged = np.asarray(x0, dtype=float), False
+        record = OptimizerRecord(success=False, message="minimize raised",
+                                 exception=f"{type(exc).__name__}: {exc}")
+        logger.warning("Laplace optimizer raised (%s); expanding around the start point",
+                       record.exception)
     f_star = float(neg_log_f(x_star))
+    if not np.isfinite(f_star):
+        # Non-strict evaluation failure (NaN objective): no Hessian can be
+        # formed; propagate NaN honestly instead of clipping a NaN matrix.
+        logger.warning("Laplace objective is non-finite at x*=%s; returning NaN", x_star)
+        record.success = False
+        record.message = record.message or "non-finite objective at x*"
+        return np.nan, x_star, f_star, np.nan, False, 0, record
     # Bounds-aware Hessian point: L-BFGS-B may pin x* on the box boundary,
     # where a centered stencil evaluates the objective OUTSIDE the box (an
     # undefined regime the guards turn into cliffs, which the eigenvalue
@@ -285,18 +381,25 @@ def _laplace_log_integral(neg_log_f, x0, bounds, d, eps=1e-4):
     inset = np.minimum(2 * eps, 0.5 * (hi - lo))
     x_h = np.clip(x_star, lo + inset, hi - inset)
     H = numerical_hessian(neg_log_f, x_h, eps=eps)
+    if not np.all(np.isfinite(H)):
+        # Non-strict failure on the Hessian stencil (review R8): no expansion
+        # exists; keep the optimizer's own record, mark the integral invalid.
+        logger.warning("Laplace Hessian is non-finite at x*=%s; returning NaN", x_star)
+        record.success = False
+        record.message = f"non-finite Hessian at x*; optimizer: {record.message}"
+        return np.nan, x_star, f_star, np.nan, False, 0, record
     logdet, n_clipped = _laplace_logdet(H)
     if n_clipped:
         logger.warning(
             "Laplace Hessian regularized: %d of %d eigenvalues clipped at x*=%s; "
             "the log-integral carries a floor/cap-dependent term", n_clipped, d, x_star)
     log_integral = -f_star + 0.5 * d * np.log(2 * np.pi) - 0.5 * logdet
-    return log_integral, x_star, f_star, logdet, converged, n_clipped
+    return log_integral, x_star, f_star, logdet, converged, n_clipped, record
 
 
 def laplace_log_Z_Mx(param_space, x_eval, avg_gp, *, metric_name="pw_kl_vcal",
                      tau=1.0, occam=False, mle_params=None,
-                     starts=None) -> ZMxResult:
+                     starts=None, strict=True) -> ZMxResult:
     """Data-free GP-informed model prior Z_Mx = ∫ exp(−Ḡ/τ) [p_ref] dφ (§1.2).
 
     Expands at φ_G* = argmin Ḡ with the Hessian of Ḡ. NO data likelihood. With
@@ -320,18 +423,16 @@ def laplace_log_Z_Mx(param_space, x_eval, avg_gp, *, metric_name="pw_kl_vcal",
 
     neg_log_f = _guarded_neg_log(
         param_space, unpack,
-        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn))
+        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn,
+                                       strict=strict))
 
     start_list = list(starts) if starts else []
     if mle_params is not None or not start_list:
         start_list.append(mle_params)
-    best = None
-    for start in start_list:
-        x0, bounds = _x0_and_bounds(param_space, start)
-        run = _laplace_log_integral(neg_log_f, x0, bounds, d)
-        if best is None or run[2] < best[2]:   # min f_star == min Ḡ*
-            best = run
-    log_int, x_star, G_star, logdet, conv, n_clip = best
+    runs = [_laplace_log_integral(neg_log_f, *_x0_and_bounds(param_space, start), d)
+            for start in start_list]
+    best, n_failed = _select_start(runs)          # min f_star == min Ḡ* over finite runs
+    log_int, x_star, G_star, logdet, conv, n_clip, record = best
     # log_int is the τ=1 integral −Ḡ* + (d/2)log(2π) − ½log|H_Ḡ|; rescale to τ.
     log_int_tau = log_int + G_star - G_star / tau + 0.5 * d * np.log(tau)
     log_V = _log_reference_volume(param_space)
@@ -339,7 +440,8 @@ def laplace_log_Z_Mx(param_space, x_eval, avg_gp, *, metric_name="pw_kl_vcal",
     return ZMxResult(model_name=param_space.model_name, log_Z=log_Z,
                      G_at_min=G_star, phi_min=unpack(x_star), occam=occam,
                      log_volume=log_V, logdet_H=logdet, n_params=d, tau=tau,
-                     converged=conv, n_clipped=n_clip)
+                     converged=conv, n_clipped=n_clip,
+                     optimizer=record.as_dict(), n_starts_failed=n_failed)
 
 
 @dataclass
@@ -352,6 +454,8 @@ class ZMxSweepResult:
     estimator: str             # 'mc' | 'is'
     occam: bool
     n_samples: int
+    n_starts_failed: int = 0   # FIX-5: proposal-optimizer starts that failed (is only)
+    optimizer_records: Optional[List[Dict[str, object]]] = None
 
 
 def _pack(param_space, pd):
@@ -365,27 +469,41 @@ def _box(param_space):
     return lo, hi
 
 
-def _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X):
+def _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X, strict=True):
     """Ḡ evaluated row-wise on an (n, d) parameter matrix."""
     unpack = _unpacker(param_space)
     neg_log_f = _guarded_neg_log(
         param_space, unpack,
-        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn))
+        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn,
+                                       strict=strict))
     return np.array([neg_log_f(row) for row in X])
 
 
 def _weight_ess(log_w):
-    """ESS = (Σw)² / Σw² computed in log space; -inf entries contribute 0.
-    All--inf weights (every sample out of box / invalid) is ESS 0, not NaN —
-    the starvation warning must fire in exactly that case (codex P3)."""
-    total = logsumexp(log_w)
-    if not np.isfinite(total):
-        return 0.0
-    return float(np.exp(2.0 * total - logsumexp(2.0 * log_w)))
+    """ESS = (Σw)² / Σw² from log weights via the package's one ESS routine
+    (bms_star.log_weight_ess). All -inf weights (every sample out of box)
+    give 0, so the starvation warning fires (codex P3); a NaN weight (a
+    non-strict evaluation failure) gives NaN, distinct from absent support
+    (fix pass 1b, review R8)."""
+    return float(log_weight_ess(np.asarray(log_w, dtype=float)))
+
+
+def _select_start(runs):
+    """Pick the multi-start winner among runs with a FINITE objective; when
+    every run is non-finite return the first so the NaN propagates. The
+    result does not depend on the order of the starts (fix pass 1b, review
+    R8: `nan < x` is False, so a NaN first start used to absorb the minimum
+    while a NaN later start was ignored). Failed starts are those whose
+    optimizer record reports failure, which includes every non-finite run."""
+    n_failed = sum(1 for r in runs if not r[6].success)
+    finite = [r for r in runs if np.isfinite(r[2])]
+    if not finite:
+        return runs[0], n_failed
+    return min(finite, key=lambda r: r[2]), n_failed
 
 
 def mc_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_mc=200_000, seed=0,
-                metric_name="pw_kl_vcal", occam=False) -> ZMxSweepResult:
+                metric_name="pw_kl_vcal", occam=False, strict=True) -> ZMxSweepResult:
     """Uniform-box Monte Carlo Z_Mx across a τ ladder: Ḡ is computed ONCE and
     reweighted per τ (the legacy precompute_G_samples pattern, generalized).
 
@@ -402,7 +520,7 @@ def mc_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_mc=200_000, seed=0,
     lo, hi = _box(param_space)
     rng = np.random.default_rng(seed)
     X = rng.uniform(lo, hi, size=(n_mc, len(lo)))
-    G = _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X)
+    G = _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X, strict=strict)
 
     taus = np.asarray(list(taus), dtype=float)
     log_V = _log_reference_volume(param_space)
@@ -464,16 +582,20 @@ class _DefensiveProposal:
 
 
 def _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts,
-                         eps=1e-4):
-    """[(x*, Ḡ*, eigval_clipped, eigvec)] per start — the IS proposal's
-    Gaussian anchors, with the Hessian eigendecomposition kept EXPLICIT so
-    the caller inverts in eigen space (codex P2: reconstructing the clipped
-    matrix and calling np.linalg.inv can raise on the ~1e20-condition
-    flat+cliff combination the clipping exists to survive)."""
+                         eps=1e-4, strict=True):
+    """[(x*, Ḡ*, eigval_clipped, eigvec, optimizer_record)] per start — the IS
+    proposal's Gaussian anchors, with the Hessian eigendecomposition kept
+    EXPLICIT so the caller inverts in eigen space (codex P2: reconstructing
+    the clipped matrix and calling np.linalg.inv can raise on the
+    ~1e20-condition flat+cliff combination the clipping exists to survive).
+    The fifth element (FIX-5) records scipy's success flag and message, or
+    the exception when minimize raised; earlier code silently used the start
+    point in that case and never inspected res.success."""
     unpack = _unpacker(param_space)
     neg_log_f = _guarded_neg_log(
         param_space, unpack,
-        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn))
+        lambda pd: compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn,
+                                       strict=strict))
     lo, hi = _box(param_space)
     bounds = list(zip(lo, hi))
     out = []
@@ -483,21 +605,40 @@ def _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts,
             res = minimize(neg_log_f, x0, bounds=bounds, method="L-BFGS-B",
                            options={"maxiter": 500, "ftol": 1e-10})
             x_star = res.x
-        except Exception:
+            record = _optimizer_record(res)
+        except EvaluationFailure:
+            raise                     # strict evaluation failure: never a fallback (review R7)
+        except Exception as exc:
             x_star = np.asarray(x0, dtype=float)
+            record = OptimizerRecord(success=False, message="minimize raised",
+                                     exception=f"{type(exc).__name__}: {exc}")
+        if not record.success:
+            logger.warning("_multistart_G_optima(%s): start %s did not converge: %s",
+                           param_space.model_name, start, record.exception or record.message)
         inset = np.minimum(2 * eps, 0.5 * (hi - lo))
+        f_star = float(neg_log_f(x_star))
+        if not np.isfinite(f_star):
+            record.success = False
+            record.message = f"non-finite objective at x*; optimizer: {record.message}"
         H = numerical_hessian(neg_log_f, np.clip(x_star, lo + inset, hi - inset),
                               eps=eps)
         H = 0.5 * (H + H.T)
-        eigval, eigvec = np.linalg.eigh(H)
-        out.append((x_star, float(neg_log_f(x_star)),
-                    np.clip(eigval, 1e-8, 1e12), eigvec))
+        if np.all(np.isfinite(H)):
+            eigval, eigvec = np.linalg.eigh(H)
+        else:
+            # NaN objective (non-strict failure): anchor the proposal on an
+            # identity Hessian; the integral itself will carry the NaN.
+            record.success = False
+            record.message = record.message or "non-finite Hessian at x*"
+            eigval, eigvec = np.ones(len(x_star)), np.eye(len(x_star))
+        out.append((x_star, f_star, np.clip(eigval, 1e-8, 1e12), eigvec, record))
     return out
 
 
 def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
                 starts=None, metric_name="pw_kl_vcal", occam=False,
-                tau_ladder=(0.03, 0.3, 3.0), ess_warn=100.0) -> ZMxSweepResult:
+                tau_ladder=(0.03, 0.3, 3.0), ess_warn=100.0,
+                strict=True) -> ZMxSweepResult:
     """ORDINARY defensive-mixture importance sampling for Z_Mx across a τ
     ladder — the REFERENCE estimator for figure Z_Mx values (plan §1.2).
 
@@ -517,7 +658,10 @@ def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
     """
     metric_fn = METRICS[metric_name]
     lo, hi = _box(param_space)
-    optima = _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts)
+    optima = _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts,
+                                  strict=strict)
+    records = [rec.as_dict() for *_, rec in optima]
+    n_failed = sum(1 for *_, rec in optima if not rec.success)
     # Component covariances tau_k * H^-1, inverted in EIGEN space (never
     # reconstruct-then-inv, codex P2) with per-direction variances capped at
     # the box scale: a floored-flat Hessian direction would otherwise give a
@@ -526,7 +670,7 @@ def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
     # the cap keeps it efficient.
     var_cap = float(np.max(0.5 * (hi - lo)) ** 2)
     centers, covs = [], []
-    for x_star, _, eigval, eigvec in optima:
+    for x_star, _, eigval, eigvec, _rec in optima:
         for tk in tau_ladder:
             var = np.minimum(tk / eigval, var_cap)
             centers.append(x_star)
@@ -537,7 +681,8 @@ def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
     X = prop.sample(rng, n_is)
     log_q, in_box = prop.log_q(X)
     G = np.full(n_is, np.inf)
-    G[in_box] = _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X[in_box])
+    G[in_box] = _G_of_matrix(param_space, x_eval, avg_gp, metric_fn, X[in_box],
+                             strict=strict)
 
     taus = np.asarray(list(taus), dtype=float)
     log_V = _log_reference_volume(param_space)
@@ -556,11 +701,13 @@ def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
             float(ess.min()), worst)
     return ZMxSweepResult(model_name=param_space.model_name, taus=taus,
                           log_Z=log_Z, ess=ess, estimator="is", occam=occam,
-                          n_samples=n_is)
+                          n_samples=n_is, n_starts_failed=n_failed,
+                          optimizer_records=records)
 
 
 def laplace_log_evidence_ordinary(param_space, x_train, y_train, *,
-                                  mle_params=None, occam=True) -> EvidenceResult:
+                                  mle_params=None, occam=True,
+                                  strict=True) -> EvidenceResult:
     """Ordinary marginal likelihood p_ord(D|M) = ∫ p(y|φ) [p_ref] dφ (no GP).
 
     The GP-free primitive for the baseline and Construction I. With occam=True
@@ -575,36 +722,37 @@ def laplace_log_evidence_ordinary(param_space, x_train, y_train, *,
 
     neg_log_f = _guarded_neg_log(
         param_space, unpack,
-        lambda pd: -_log_likelihood(param_space, x_train, y_train, pd))
+        lambda pd: -_log_likelihood(param_space, x_train, y_train, pd, strict=strict))
 
-    log_int, x_star, f_star, logdet, conv, n_clip = _laplace_log_integral(neg_log_f, x0, bounds, d)
+    log_int, x_star, f_star, logdet, conv, n_clip, record = _laplace_log_integral(neg_log_f, x0, bounds, d)
     log_ev = log_int - (_log_reference_volume(param_space) if occam else 0.0)
     return EvidenceResult(model_name=param_space.model_name, log_evidence=log_ev,
                           kind="ordinary", log_lik_at_map=-f_star,
                           phi_star=unpack(x_star), n_params=d, converged=conv,
-                          n_clipped=n_clip)
+                          n_clipped=n_clip, optimizer=record.as_dict(),
+                          n_starts_failed=int(not record.success))
 
 
 def _laplace_log_N(param_space, x_train, y_train, x_eval, avg_gp, metric_fn,
-                   tau, mle_params, occam):
+                   tau, mle_params, occam, strict=True):
     """log N(M) = log ∫ p(y|φ) exp(−Ḡ/τ) [p_ref] dφ via the joint MAP."""
     d = param_space.n_params
     unpack = _unpacker(param_space)
     x0, bounds = _x0_and_bounds(param_space, mle_params)
 
     def _neg_log_joint(pd):
-        ll = _log_likelihood(param_space, x_train, y_train, pd)
-        G = compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn)
+        ll = _log_likelihood(param_space, x_train, y_train, pd, strict=strict)
+        G = compute_G_at_params(pd, param_space, x_eval, avg_gp, metric_fn, strict=strict)
         return -(ll - G / tau)
 
     neg_log_joint = _guarded_neg_log(param_space, unpack, _neg_log_joint)
 
-    log_int, x_star, f_star, logdet, conv, n_clip = _laplace_log_integral(neg_log_joint, x0, bounds, d)
+    log_int, x_star, f_star, logdet, conv, n_clip, record = _laplace_log_integral(neg_log_joint, x0, bounds, d)
     log_V = _log_reference_volume(param_space)
     log_N = log_int - (log_V if occam else 0.0)
     pd_star = unpack(x_star)
-    ll_star = _log_likelihood(param_space, x_train, y_train, pd_star)
-    G_star = compute_G_at_params(pd_star, param_space, x_eval, avg_gp, metric_fn)
+    ll_star = _log_likelihood(param_space, x_train, y_train, pd_star, strict=strict)
+    G_star = compute_G_at_params(pd_star, param_space, x_eval, avg_gp, metric_fn, strict=strict)
     # Additive decomposition of log_N at the joint MAP: fit + gp_penalty + occam == log_N.
     detail = {
         "log_N": log_N,
@@ -613,33 +761,40 @@ def _laplace_log_N(param_space, x_train, y_train, x_eval, avg_gp, metric_fn,
         "gp_penalty": -G_star / tau,
         "occam": 0.5 * d * np.log(2 * np.pi) - 0.5 * logdet - (log_V if occam else 0.0),
         "n_clipped": n_clip,
+        "converged": conv,
+        "n_starts_failed": int(not record.success),
+        "optimizer": record.as_dict(),
     }
     return log_N, pd_star, conv, detail
 
 
 def laplace_log_evidence_induced(param_space, x_train, y_train, x_eval, avg_gp, *,
                                  metric_name="pw_kl_vcal", tau=1.0,
-                                 mle_params=None) -> EvidenceResult:
+                                 mle_params=None, strict=True) -> EvidenceResult:
     """Within-model evidence under the GP-induced prior: p(y|M,ψ) = N(M)/Z_prior(M) (§1.3).
 
     Occam-independent: both N and Z_prior carry −log V_ref, which cancels.
     """
     metric_fn = METRICS[metric_name]
     log_N, phi_star, conv, detail = _laplace_log_N(param_space, x_train, y_train, x_eval, avg_gp,
-                                                   metric_fn, tau, mle_params, occam=True)
+                                                   metric_fn, tau, mle_params, occam=True,
+                                                   strict=strict)
     zprior = laplace_log_Z_Mx(param_space, x_eval, avg_gp, metric_name=metric_name,
-                              tau=tau, occam=True, mle_params=mle_params)
+                              tau=tau, occam=True, mle_params=mle_params, strict=strict)
     return EvidenceResult(model_name=param_space.model_name,
                           log_evidence=log_N - zprior.log_Z, kind="induced",
                           log_N=log_N, log_Z_prior=zprior.log_Z,
                           log_lik_at_map=detail["log_lik_at_map"],
-                          phi_star=phi_star, n_params=param_space.n_params, converged=conv,
-                          n_clipped=detail["n_clipped"] + zprior.n_clipped)
+                          phi_star=phi_star, n_params=param_space.n_params,
+                          converged=(conv and zprior.converged),
+                          n_clipped=detail["n_clipped"] + zprior.n_clipped,
+                          optimizer=detail["optimizer"],
+                          n_starts_failed=detail["n_starts_failed"] + zprior.n_starts_failed)
 
 
 def model_posterior(param_spaces, x_train, y_train, x_eval, avg_gp, mle_params, *,
                     construction="II", metric_name="pw_kl_vcal", tau=1.0,
-                    occam=False) -> ModelPosteriorResult:
+                    occam=False, strict=True) -> ModelPosteriorResult:
     """Normalized model posterior under the chosen assembly (§2). II is canonical.
 
       baseline: p(M|D) ∝ p_ord(D|M)                    (no GP)
@@ -653,29 +808,41 @@ def model_posterior(param_spaces, x_train, y_train, x_eval, avg_gp, mle_params, 
     metric_fn = METRICS[metric_name]
     names = list(param_spaces.keys())
     log_kernel, components = {}, {}
+    all_converged = True
 
     for name in names:
         ps = param_spaces[name]
         mp = mle_params.get(name) if mle_params else None
         if construction == "baseline":
             ev = laplace_log_evidence_ordinary(ps, x_train, y_train, mle_params=mp,
-                                               occam=occam)
+                                               occam=occam, strict=strict)
             log_kernel[name] = ev.log_evidence
-            components[name] = {"log_ord_evidence": ev.log_evidence}
+            components[name] = {"log_ord_evidence": ev.log_evidence,
+                                "converged": ev.converged, "n_clipped": ev.n_clipped,
+                                "n_starts_failed": ev.n_starts_failed}
         elif construction == "I":
             zmx = laplace_log_Z_Mx(ps, x_eval, avg_gp, metric_name=metric_name,
-                                   tau=tau, occam=occam, mle_params=mp)
+                                   tau=tau, occam=occam, mle_params=mp, strict=strict)
             ev = laplace_log_evidence_ordinary(ps, x_train, y_train, mle_params=mp,
-                                               occam=occam)
+                                               occam=occam, strict=strict)
             log_kernel[name] = zmx.log_Z + ev.log_evidence
-            components[name] = {"log_Z_Mx": zmx.log_Z, "log_ord_evidence": ev.log_evidence}
+            components[name] = {"log_Z_Mx": zmx.log_Z, "log_ord_evidence": ev.log_evidence,
+                                "converged": bool(zmx.converged and ev.converged),
+                                "n_clipped": zmx.n_clipped + ev.n_clipped,
+                                "n_starts_failed": zmx.n_starts_failed + ev.n_starts_failed}
         elif construction == "II":
-            log_N, _, _, detail = _laplace_log_N(ps, x_train, y_train, x_eval, avg_gp,
-                                                 metric_fn, tau, mp, occam=occam)
+            log_N, _, conv, detail = _laplace_log_N(ps, x_train, y_train, x_eval, avg_gp,
+                                                    metric_fn, tau, mp, occam=occam,
+                                                    strict=strict)
             log_kernel[name] = log_N
             components[name] = detail
         else:
             raise ValueError(f"unknown construction {construction!r}")
+        if not components[name]["converged"]:
+            all_converged = False
+            logger.warning("model_posterior(%s): Laplace optimization for %r did not "
+                           "converge; the reported posterior carries a start-point "
+                           "expansion", construction, name)
 
     logk = np.array([log_kernel[n] for n in names])
     post = softmax(logk)
@@ -684,6 +851,7 @@ def model_posterior(param_spaces, x_train, y_train, x_eval, avg_gp, mle_params, 
         posteriors={n: float(p) for n, p in zip(names, post)},
         log_kernel={n: float(log_kernel[n]) for n in names},
         components=components, metric_name=metric_name,
+        all_converged=all_converged,
     )
 
 
@@ -871,6 +1039,7 @@ def model_posterior_tau_sweep(
     construction: str = "II",
     metric_name: str = "pw_kl_vcal",
     occam: bool = False,
+    strict: bool = True,
 ) -> Tuple[List[str], np.ndarray]:
     """Model posteriors across τ values, exploiting per-construction structure
     instead of re-running the full Laplace machinery at every τ:
@@ -892,16 +1061,19 @@ def model_posterior_tau_sweep(
     if construction == "baseline":
         mpr = model_posterior(param_spaces, x_train, y_train, x_eval, avg_gp,
                               mle_params, construction="baseline",
-                              metric_name=metric_name, tau=1.0, occam=occam)
+                              metric_name=metric_name, tau=1.0, occam=occam,
+                              strict=strict)
         logk[:] = [mpr.log_kernel[n] for n in names]
     elif construction == "I":
         for j, name in enumerate(names):
             ps = param_spaces[name]
             mp = mle_params.get(name) if mle_params else None
             ev = laplace_log_evidence_ordinary(ps, x_train, y_train,
-                                               mle_params=mp, occam=occam)
+                                               mle_params=mp, occam=occam,
+                                               strict=strict)
             z1 = laplace_log_Z_Mx(ps, x_eval, avg_gp, metric_name=metric_name,
-                                  tau=1.0, occam=occam, mle_params=mp)
+                                  tau=1.0, occam=occam, mle_params=mp,
+                                  strict=strict)
             log_Z_tau = (z1.log_Z + z1.G_at_min * (1.0 - 1.0 / taus)
                          + 0.5 * ps.n_params * np.log(taus))
             logk[:, j] = log_Z_tau + ev.log_evidence
@@ -910,7 +1082,7 @@ def model_posterior_tau_sweep(
             mpr = model_posterior(param_spaces, x_train, y_train, x_eval,
                                   avg_gp, mle_params, construction="II",
                                   metric_name=metric_name, tau=float(tau),
-                                  occam=occam)
+                                  occam=occam, strict=strict)
             logk[t_idx] = [mpr.log_kernel[n] for n in names]
     else:
         raise ValueError(f"unknown construction {construction!r}")

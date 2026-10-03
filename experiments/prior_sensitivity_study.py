@@ -653,12 +653,11 @@ def stage_b_one(name, pc, x, y, x_eval, candidate_results, methods,
 
 def _boltzmann_posterior(G, tau):
     """Exact replication of bms_star.soft_transfer's aggregation
-    (normalize_per_draw=False, global-shift stabilization)."""
-    lw = -G / tau
-    w = np.exp(lw - lw.max())
-    s = w.mean(axis=0)
-    tot = s.sum()
-    return s / tot if tot > 0 else np.ones(G.shape[1]) / G.shape[1]
+    (normalize_per_draw=False, global-shift stabilization). Delegates to the
+    package's aggregate_convention("pooled"), which carries the same
+    arithmetic in the same order (2026-09 review FIX-9)."""
+    from bistar_gp.bms_star import aggregate_convention
+    return aggregate_convention(G, tau, "pooled")
 
 
 def _sir_bms(pc, x, y, x_eval, candidate_results, ths, lml, n_pred,
@@ -684,6 +683,11 @@ def _sir_bms(pc, x, y, x_eval, candidate_results, ths, lml, n_pred,
     )
     if not gp_samples:
         raise RuntimeError("no valid GP predictives from SIR draws")
+    if len(gp_samples) != n_pred:
+        raise RuntimeError(
+            f"_sir_bms: {len(gp_samples)} GP predictives retained of {n_pred} "
+            "SIR draws; the paper path must not score a numerically selected "
+            "subset of the draws (2026-09 review FIX-1)")
     results = run_bms_star(gp_samples, candidate_results, fmc.METRICS,
                            np.array(fmc.TAUS))
     per_metric, G_by_metric = {}, {}

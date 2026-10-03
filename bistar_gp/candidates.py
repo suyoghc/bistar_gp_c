@@ -8,10 +8,14 @@ Each model has:
     params()        → dict of fitted parameters
 """
 
+import logging
+
 import numpy as np
 from scipy.optimize import minimize
 from dataclasses import dataclass
 from typing import Tuple, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -41,19 +45,23 @@ class CandidateModel:
     def predict(self, x_eval: np.ndarray) -> CandidateResult:
         raise NotImplementedError
 
-    def _fit_mle(self, x, y, f_predict, p0, bounds=None):
+    def _fit_mle(self, x, y, f_predict, p0, bounds=None, return_status=False):
         """
         Generic MLE fitting. f_predict(x, params) -> mean vector.
         Assumes Gaussian noise: y ~ N(f(x; params), sigma^2 I).
         Last element of params is log(sigma).
 
-        Returns (params, nll). Multi-start callers must compare restarts by
-        this nll — the FULL negative log likelihood including the
-        0.5*n*log(2*pi*sigma^2) term. The residual term alone is useless for
-        that comparison: at any converged MLE sigma^2 = mean(residuals^2), so
-        0.5*sum(r^2)/sigma^2 = n/2 for EVERY restart, and selection degrades
-        to optimizer-noise tie-breaking (which picked a degenerate
-        near-linear "sinusoid" on the thesis toy data).
+        Returns (params, nll), or (params, nll, status) when
+        return_status=True, where status is scipy's report
+        {success, status, message, nit} (2026-09 review FIX-5: a
+        non-successful L-BFGS-B result used to be accepted silently).
+        Multi-start callers must compare restarts by this nll — the FULL
+        negative log likelihood including the 0.5*n*log(2*pi*sigma^2) term.
+        The residual term alone is useless for that comparison: at any
+        converged MLE sigma^2 = mean(residuals^2), so 0.5*sum(r^2)/sigma^2 =
+        n/2 for EVERY restart, and selection degrades to optimizer-noise
+        tie-breaking (which picked a degenerate near-linear "sinusoid" on the
+        thesis toy data).
         """
         def neg_log_lik(params):
             log_sigma = params[-1]
@@ -64,7 +72,26 @@ class CandidateModel:
             return 0.5 * n * np.log(2 * np.pi * sigma2) + 0.5 * np.sum(residuals**2) / sigma2
 
         result = minimize(neg_log_lik, p0, bounds=bounds, method="L-BFGS-B")
-        return result.x, result.fun
+        if not return_status:
+            return result.x, result.fun
+        status = {"success": bool(result.success), "status": int(result.status),
+                  "message": str(result.message), "nit": int(result.nit)}
+        return result.x, result.fun, status
+
+    @staticmethod
+    def _select_restart(candidates, model_name):
+        """Pick the best restart, preferring successful optimizer reports;
+        fall back to the best overall with a warning when none succeeded.
+        candidates: list of (params, nll, status)."""
+        if not candidates:
+            return None
+        ok = [c for c in candidates if c[2]["success"]]
+        pool = ok if ok else candidates
+        if not ok:
+            logger.warning("%s: no restart reported convergence (%s); using the "
+                           "best non-converged result", model_name,
+                           candidates[0][2]["message"])
+        return min(pool, key=lambda c: c[1])
 
     def _make_result(self, x_eval, mean, noise_var, params_dict):
         """Build CandidateResult with isotropic noise covariance."""
@@ -95,7 +122,9 @@ class LinearModel(CandidateModel):
             return params[0] * x + params[1]
 
         p0 = [0.0, 0.0, np.log(0.5)]
-        result, _ = self._fit_mle(x, y, f, p0)
+        result, _, status = self._fit_mle(x, y, f, p0, return_status=True)
+        if not status["success"]:
+            logger.warning("Linear fit did not converge: %s", status["message"])
         self.a, self.b = result[0], result[1]
         self.sigma = np.exp(result[2])
 
@@ -122,19 +151,18 @@ class SinusoidalModel(CandidateModel):
         def f(x, params):
             return params[0] * np.sin(params[1] * x + params[2])
 
-        # Try multiple initializations (omega is tricky)
-        best_nll = np.inf
-        best_params = None
+        # Try multiple initializations (omega is tricky); prefer restarts
+        # whose optimizer reported success (FIX-5).
+        restarts = []
         for omega_init in [0.5, 1.0, 1.5, 2.0]:
             for A_init in [0.5, 1.0, 2.0]:
                 p0 = [A_init, omega_init, 0.0, np.log(0.5)]
                 try:
-                    result, nll = self._fit_mle(x, y, f, p0)
-                    if nll < best_nll:
-                        best_nll = nll
-                        best_params = result
+                    restarts.append(self._fit_mle(x, y, f, p0, return_status=True))
                 except Exception:
                     continue
+        best = self._select_restart(restarts, self.name)
+        best_params = best[0] if best is not None else None
 
         if best_params is not None:
             self.A, self.omega, self.phi = best_params[0], best_params[1], best_params[2]
@@ -169,17 +197,15 @@ class SinLinearModel(CandidateModel):
         def f(x, params):
             return params[0] * np.sin(params[1] * x + params[2]) + params[3] * x + params[4]
 
-        best_nll = np.inf
-        best_params = None
+        restarts = []
         for omega_init in [0.5, 1.0, 1.5, 2.0]:
             p0 = [1.0, omega_init, 0.0, 0.25, 0.0, np.log(0.3)]
             try:
-                result, nll = self._fit_mle(x, y, f, p0)
-                if nll < best_nll:
-                    best_nll = nll
-                    best_params = result
+                restarts.append(self._fit_mle(x, y, f, p0, return_status=True))
             except Exception:
                 continue
+        best = self._select_restart(restarts, self.name)
+        best_params = best[0] if best is not None else None
 
         if best_params is not None:
             self.A = best_params[0]
@@ -218,7 +244,9 @@ class QuadraticModel(CandidateModel):
             return params[0] * x**2 + params[1] * x + params[2]
 
         p0 = [0.0, 0.0, 0.0, np.log(0.5)]
-        result, _ = self._fit_mle(x, y, f, p0)
+        result, _, status = self._fit_mle(x, y, f, p0, return_status=True)
+        if not status["success"]:
+            logger.warning("Quadratic fit did not converge: %s", status["message"])
         self.a, self.b, self.c = result[0], result[1], result[2]
         self.sigma = np.exp(result[3])
 

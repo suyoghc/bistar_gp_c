@@ -5716,3 +5716,166 @@ to be amended later merely to insert them. STOP before Ready or merge. NOT autho
 second correction pass, restoring/applying/dropping stash `5280d1e1…`, D59 work, evidence
 or figure changes, poster-repository work, the captions themselves, Della contact, new
 computation, holdout access, BMS*, Ready, or merge.
+
+## D68: Code review 2026-09 fix pass 1 — nine implementation fixes with pinning tests, four-channel review, pass 1b folds — 2026-09-08
+
+**Problem:** The 2026-09 implementation-correctness review (four channels: Fable, Codex
+gpt-6-astra xhigh, Kimi K3, GLM 5.3; governing document
+`docs/paper-sie-jmp/HANDOFF-code-review.md`; record `runs/code_review_2026_09/`) collated
+nine defect classes in the package against manuscript section 02, adjudicated in
+`runs/code_review_2026_09/ledger_draft.md` revision 3 and dispatched as
+`docs/paper-sie-jmp/prompts/code-review-fix1.txt`. The S1 item: `decompose_model_hmc` and
+`decompose_model_mcmc` reported `std` as the across-draw spread of the conditional means
+alone (dropping every draw's conditional variance), so every band they produced was
+understated (D58 Mauna cards by an order of magnitude), and the Mauna debias script added
+component variances as if independent (dropping cross-covariances). S2/S3 items: single-
+kernel pyro site names silently dropped by `select_hmc_sites`/`apply_hp_value`; draws dropped
+without accounting in `extract_gp_predictives`; `soft_transfer_weighted` stabilizing draw
+weights and Boltzmann factors separately (underflow to a uniform posterior);
+`compute_induced_prior` applying likelihood weights to posterior draws (density
+proportional to p(eta) p(y|eta)^2); metrics_v2 Hellinger variants using /4 sigma^2 instead of
+/8 sigma^2; the 1e6 / -1e10 failure sentinels in `laplace_evidence.py` that a metric could
+turn into a winning score; no draw-concentration diagnostic behind a pooled score; the W1
+metric roles and the M2bR withdrawn caches unrepresented in code; the van Bork targets never
+asserted; Case C importing the Case A script across branches for the aggregation conventions.
+
+**Decision:** Fix pass 1 implemented in the sibling worktree
+`/Users/sc8918/Documents/GitHub/bistar_gp_c-fix` (branch `fix/code-review-2026-09` from
+`71540836`) by Fable at the author's choice ("I code all nine"), under the work order's
+editable set and with the author-authorized package-change exception. FIX-1 site names and
+draw integrity (`model.py`, `bms_star.py` `PredictiveList`, `prior_sensitivity_study._sir_bms`
+raise). FIX-2 law-of-total-variance moments, joint group posteriors conditioned with the
+Cholesky factor of the ENTIRE training covariance (`DecompositionResult.group`), exact mixture
+central intervals ported from `experiments/toy_debias_demo.py` into
+`bistar_gp/decompose.mixture_central_interval`, `compute_debiased` rewritten on group outputs;
+the seven-field `DecompositionResult` positional contract kept. FIX-3 `boltzmann_weight_ess`,
+`hard_win_statistics` (exact-tie split credit), four optional `BMSStarResult` fields,
+`soft_transfer(metric_name=)`. FIX-4 Hellinger /8 sigma^2; universe firewall before any metric
+call in every candidate-aware entry point. FIX-5 `strict=True` raise / `strict=False` NaN in
+place of the sentinels, `OptimizerRecord` provenance, restart selection in `candidates.py`,
+strictly-worse penalty for failed draws in `induced_prior.py`. FIX-6 joint log-sum-exp
+weighting, `compute_induced_prior(weighting="uniform" | "likelihood_tilted")` with the three
+legacy callers set to uniform for `fit_hmc` draws, finite-input checks in
+`average_gp_posterior`. FIX-7 `PRIMARY_METRIC`, `APPENDIX_METRICS`, `WITHDRAWN_CACHES`,
+`load_hmc_samples(allow_withdrawn=False)`, appendix-metric warning on the implicit
+`run_bms_star` path. FIX-8 `bistar_gp/external_targets.py` (van Bork Targets A and B closed
+forms, `check_external_targets`). FIX-9 `aggregate_convention(G, tau, variant)` bit-identical
+to the Case A script's arithmetic; `prior_sensitivity_study._boltzmann_posterior` delegates.
+Nine test files `tests/test_fix1_*.py` (79 tests). Refuted items stayed out: no E6 failure
+gate, no finiteness explanation of the `aggregation_v3.py:77` warnings, no change to the
+pooled arithmetic or the `normalize_per_draw=False` default (D60).
+
+**Alternatives considered:** dispatching Codex Astra as implementer (rejected by the author
+for this pass); prepending the primary metric to `ExperimentConfig.metrics` (rejected:
+`experiments/bms_star_toy.py` slices `metrics[:4]`; appended instead, with on-demand
+registration of metrics_v2 so the config-named primary metric resolves); making
+`soft_transfer(metric_name=)` required as the work order said (deferred: two package callers
+outside the editable set omit it, `metrics_v2.py:398`, `mcse_strategy.py:177`; author accepted
+the optional keyword 2026-09-08, required in fix pass 2 with those callers).
+
+**Result:** Case E regression oracle (`experiments/toy_debias_demo.py` on
+`paper/case-e-debias`, run against this package) byte-identical to the committed
+`runs/toy_debias_demo/` artifacts (sha256 65c9ff5f..., c1153549..., 7096cd6e...). Full suite
+at the reviewed pass-1 state: 1327 passed, 3 skipped, 1 failed (the known lock-drift test
+`test_committed_dependency_lock_reproduces_at_head`, pypdf). Reviewed by Codex gpt-6-astra
+xhigh (REVISE, R1-R10) and a fresh Fable 5.1 instance (APPROVE, F1-F7); adjudication in
+`runs/code_review_2026_09/fix1_synthesis.md`; no S1, one S2 (a strict evaluation failure
+inside the optimizer's own evaluations was caught as an optimizer fault). Both channels
+answered the rewrite question ("delete and implement a more concise version?") with keep and
+simplify in place. Pass 1b (next commit) folds the accepted items.
+
+**Status:** pass 1 committed as reviewed; pass 1b follows in the same branch; fix pass 2
+(case-A script wiring of `check_external_targets`, Case C convention import, required
+`metric_name` with its two callers) OPEN; Kimi K3 and GLM 5.3 outputs on the fix pass pending.
+
+**Update 3 (2026-09-26, status correction):** passes 1, 1b and 1c are committed (`682e2d9`,
+`856b911`, `9b59d89`) and PR #42 is open; the Kimi K3 and GLM 5.3 fix-pass outputs landed
+2026-09-08 (Update 2). Fix pass 2 remains OPEN and is now scoped by D69.
+
+**Update 1 (2026-09-08, pass 1b):** review-round folds applied in this branch after the
+Codex and Fable 5.1 reviews (adjudication `runs/code_review_2026_09/fix1_synthesis.md`
+revision 2): atomic per-draw accumulation with typed keys and one `_summarize` factory
+shared by the MAP and draw paths (`debias.py`; `group_key` deduplicates); `EvaluationFailure`
+raised by the evaluators and re-raised by both optimizer handlers, order-independent
+`_select_start` over finite objectives, non-finite Hessian stencils flagged
+(`laplace_evidence.py`); one `log_weight_ess` routine (NaN for NaN, 0 for absent support),
+finite-G validation and class-label cardinality at `soft_transfer` entry,
+`_MetricRegistry.__missing__` replacing `_resolve_metric` (`bms_star.py`); sample sites
+applied outside the numerical handler and one global shift in `soft_transfer_weighted` with
+`instance_scores` on the pre-fix scale (`aggregation_v3.py`); `log_mlls` under uniform
+weighting raises (`induced_prior.py`); finite validation before every reduction in
+`external_targets.py`. `tests/test_fix1_review_round.py` (17 tests) and three test edits.
+Suite in this worktree: 1342 passed, 5 skipped (two fixture-gated pins needing
+`FIX1_FIXTURE_DIR`, three environmental), 1 known failure; Case E oracle byte-identical.
+`metric_name` stays optional by author disposition (2026-09-08); required in fix pass 2 with
+`metrics_v2.py:398` and `mcse_strategy.py:177`. Delta against the reviewed state:
+`runs/code_review_2026_09/fix1_bundle/fix1b_delta.diff`.
+
+**Update 2 (2026-09-08, pass 1c):** the two package-only channels reviewed the committed
+head `856b911` through OpenRouter (Kimi K3 `moonshotai/kimi-k3` APPROVE K3-1..K3-6; GLM 5.3
+`z-ai/glm-5.3` APPROVE F1-F8; record and verification in
+`runs/code_review_2026_09/fix1_synthesis.md` revision 3). Folds: finite-G validation at
+entry of `soft_transfer_weighted` (the head already raised from `hard_win_statistics`; the
+"silent NaN" claim of K3-3/GLM-F4 is refuted as stated) and of `aggregate_convention` (GLM F1:
+the Case A script's `tot > 0 else uniform` tail returned a uniform posterior for a NaN
+matrix; finite-input arithmetic untouched); a warning on the implicit `run_bms_star` path
+when the primary metric is not in the registered roster (K3-1; the roster is unchanged; no
+experiment script uses the implicit roster); the clipped conditional variance written back
+into the accumulated covariance so `diag(cov) == std**2` under a numerically negative
+diagonal (K3-4); an unknown singleton in `DecompositionResult.group` names the component
+(GLM F8). Not adopted: `PredictiveList` slice bookkeeping (K3-5; the record is the extraction
+history). Tests: three in `tests/test_fix1_review_round.py`, one in `tests/test_fix1_roles.py`.
+Suite 1346 passed, 5 skipped, 1 known failure; Case E oracle byte-identical.
+
+
+## D69: 2026-09-26 five-channel review of the current code and project; outcome and adopted plan — 2026-09-26
+
+**Problem:** After fix passes 1, 1b and 1c (D68, PR #42 at `ddf8c9d`) the author asked for
+independent reviews of the current code and the project state by five channels: Codex
+gpt-6-astra xhigh, a fresh Fable 5.1 instance (this session, which also implemented the fix
+passes; disclosed), an Opus 5.5 subagent, Kimi K3 and GLM 5.3 (package-only, via OpenRouter,
+two packages each). Governing brief `runs/project_review_2026_09/brief_project-review-2026-09-26.txt`
+(Part A code against manuscript section 02 and HANDOFF-code-review section 2; Part B project:
+manuscript-code consistency, branch topology, record, tests, reproducibility, readiness).
+
+**Decision (record and plan, author-authorized commit of the record 2026-09-26):** the
+record is committed under `runs/project_review_2026_09/` (five channel reviews, the plan
+checks, `SYNTHESIS.md` revision 1.3, project map, the package-only input bundle). Verdicts:
+code REVISE (four of five; adjudicated REVISE), project NOT READY (five of five). Every
+channel independently verified the fix-pass mathematics; three channels regenerated Cases A-E
+against the fixed package (A, C, D, E identical; B to round-off in ESS fields). Adjudicated
+findings of record: **S1** A-20 (Opus, reproduced by Fable): the Case D comparison archive
+`experiments/practice_EvansEtAL/results_hmc/` (committed `7026ad6`, 2026-02-16) came from the
+pre-D6 sampler that targeted the prior; regenerated with the corrected package (seed 0) the
+section 06 winner tables change materially (pw_hellinger 22/28, 32/18, 27/23 become 5/45,
+4/46, 5/45; same-winner 39/49/48 become 46/48/49), BIC and the MAP-conditional regret
+reconstruction unchanged. **S2** A-2 (induced-prior all-failed point can win; three
+reporters), A-3 (strict extraction accepts an incomplete site dictionary; Codex), A-21
+(Remark 1's per-draw ordering guarantee fails on the committed E7 `kl_forward` pooled row,
+because the headline path scores fixed observed-data instances; Codex and Opus). Latent
+S3/S4 items A-1, A-4 to A-19, A-22 to A-26 form the fix pass 2 queue (SYNTHESIS section 3).
+Project blockers: B-0 Case D (above), B-1 the five open ledger decisions of
+`runs/code_review_2026_09/ledger_draft.md` Items 1-5 (Item 4 widened to the two G-bar
+estimands and the candidate-fitting protocol), B-2 integration of seven branches (every pair
+conflicts on this file only), B-3 provenance (untracked manuscript apparatus; the
+`toy_elicited` prior-IS pools regenerate bit-identically for all three seeds, so a recipe plus
+hashes suffices). Plan checks: Codex Astra PLAN OK WITH AMENDMENTS (`codex_astra_plan_check.md`,
+verified in SYNTHESIS section 9); Opus 5.5 ADOPT WITH CHANGES (`opus_plan_check.md`, verified in
+section 10). The adopted plan is SYNTHESIS section 10: author decision sheet first (Items 1-5,
+D66/D67 items, `metric_name` option, `pypdf` policy); PR #38 to Draft with the D64/D6 addenda on
+`paper/case-d-mopen` (ruling also on `results_diag/` and `results_hierarchical/`); notation
+baseline committed before amendment; environment decision before any gating suite; merge #42
+(true merge), D60-D68 union on an integration branch with per-block hash reconciliation; fix
+pass 2 split 2a/2b/2c; Case D canonical run on two seeds from a commit containing #42 and 2a;
+integrate A, C, B, D, E, synthesis with true merges; final replays and suite in a clone;
+two-week cut line; 10-12 focused person-days plus review turnaround.
+
+**Alternatives considered:** deleting and re-implementing the fix passes (rejected by all
+channels: keep and simplify in place); a Notes-first union commit on `main` (rejected: it does
+not remove the conflicts and would break #42's fast-forward); re-locking the environment
+(rejected in favour of the ledger's recorded `pypdf` removal, as an author decision).
+
+**Result:** record committed; no code changed in this commit.
+
+**Status:** OPEN until the author's decision sheet is cast; PR #42 unchanged; the main
+worktree's untracked working copy of the record remains the live copy until then.

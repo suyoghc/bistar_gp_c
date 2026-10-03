@@ -1,0 +1,1562 @@
+=================== NEW FILE: bistar_gp/external_targets.py ===================
+     1	"""
+     2	External validation targets of van Bork, Romeijn and Wagenmakers (2025),
+     3	Synthese, doi:10.1007/s11229-025-05286-y, section 4, and a checker for the
+     4	artifact runs/vanbork_external_validation/results.json that
+     5	experiments/vanbork_external_validation.py writes on paper/case-a-vanbork.
+     6	
+     7	2026-09 review FIX-8: the case script prints its errors against these targets
+     8	and never asserts them, so a regression in its own divergence or quadrature
+     9	could regenerate the artifact with wrong error fields and exit 0. This module
+    10	holds the closed forms and the assertion the script (fix pass 2) and the
+    11	tests call. The checker recomputes the errors from the stored rows instead of
+    12	trusting the stored abs_error_at_min_tau field.
+    13	"""
+    14	
+    15	import json
+    16	from typing import Dict
+    17	
+    18	import numpy as np
+    19	
+    20	# Target A (non-overlapping point models): data prior 0.4 on s/n = 0.16 and
+    21	# 0.6 on s/n = 0.19; models theta = 0.15 and theta = 0.20; their answer is the
+    22	# data-prior mass on the nearest model.
+    23	VANBORK_TARGET_A: Dict[str, float] = {"M1 (theta=0.15)": 0.4, "M2 (theta=0.20)": 0.6}
+    24	
+    25	# Target B (completely overlapping models): point data prior at theta = 1/2;
+    26	# M_x with theta ~ Beta(50, 50) against M_z with theta ~ Beta(2, 2); their
+    27	# answer is the normalized ratio of the two prior densities at that point.
+    28	VANBORK_TARGET_B_PRIORS: Dict[str, tuple] = {"M_x beta(50,50)": (50.0, 50.0),
+    29	                                             "M_z beta(2,2)": (2.0, 2.0)}
+    30	VANBORK_TARGET_B_PSI = 0.5
+    31	
+    32	
+    33	def vanbork_target_b_densities(psi: float = VANBORK_TARGET_B_PSI) -> Dict[str, float]:
+    34	    """The two prior densities at the data-prior point."""
+    35	    from scipy.stats import beta as beta_dist
+    36	
+    37	    return {name: float(beta_dist.pdf(psi, a, b))
+    38	            for name, (a, b) in VANBORK_TARGET_B_PRIORS.items()}
+    39	
+    40	
+    41	def vanbork_target_b_weight(psi: float = VANBORK_TARGET_B_PSI) -> float:
+    42	    """Their closed form for p(M_x): d_x / (d_x + d_z) at double precision."""
+    43	    dens = vanbork_target_b_densities(psi)
+    44	    names = list(VANBORK_TARGET_B_PRIORS)
+    45	    return dens[names[0]] / (dens[names[0]] + dens[names[1]])
+    46	
+    47	
+    48	def vanbork_target_b() -> Dict[str, float]:
+    49	    w = vanbork_target_b_weight()
+    50	    names = list(VANBORK_TARGET_B_PRIORS)
+    51	    return {names[0]: w, names[1]: 1.0 - w}
+    52	
+    53	
+    54	def _min_tau_row(rows):
+    55	    finite = [r for r in rows if np.isfinite(float(r["tau"]))]
+    56	    if not finite:
+    57	        raise ValueError("no row carries a finite tau")
+    58	    return min(finite, key=lambda r: float(r["tau"]))
+    59	
+    60	
+    61	def external_target_errors(results: dict) -> Dict[str, float]:
+    62	    """Recompute max |ours - target| at the smallest-tau row of a results.json
+    63	    payload (the per-draw route rows for Target A, the Z_M route rows for
+    64	    Target B)."""
+    65	    a = results["target_a"]
+    66	    a_row = _min_tau_row(a["rows"])
+    67	    err_a = max(abs(float(a_row[n]) - VANBORK_TARGET_A[n]) for n in a["names"])
+    68	    b = results["target_b"]
+    69	    b_row = _min_tau_row(b["rows"])
+    70	    target_b = vanbork_target_b()
+    71	    err_b = max(abs(float(b_row[n]) - target_b[n]) for n in b["names"])
+    72	    return {"A": float(err_a), "B": float(err_b)}
+    73	
+    74	
+    75	def check_external_targets(results_json_path, tol_a: float = 1e-6, tol_b: float = 1e-5,
+    76	                           stored_field_tol: float = 1e-9) -> Dict[str, float]:
+    77	    """Assert that the artifact reproduces both published targets.
+    78	
+    79	    Raises AssertionError naming the offending target when a recomputed error
+    80	    exceeds its tolerance, when a row's masses do not sum to one, or when the
+    81	    stored abs_error_at_min_tau field disagrees with the recomputation.
+    82	    Returns the recomputed errors.
+    83	    """
+    84	    with open(results_json_path) as f:
+    85	        results = json.load(f)
+    86	    for key, block, target in (("A", results["target_a"], VANBORK_TARGET_A),
+    87	                               ("B", results["target_b"], vanbork_target_b())):
+    88	        if set(block["names"]) != set(target):
+    89	            raise AssertionError(
+    90	                f"external target {key}: model names {block['names']} do not match "
+    91	                f"the published targets {list(target)}")
+    92	        row = _min_tau_row(block["rows"])
+    93	        mass = sum(float(row[n]) for n in block["names"])
+    94	        if abs(mass - 1.0) > 1e-9:
+    95	            raise AssertionError(
+    96	                f"external target {key}: posterior masses sum to {mass!r} at tau={row['tau']}")
+    97	    errors = external_target_errors(results)
+    98	    stored = results.get("abs_error_at_min_tau", {})
+    99	    for key, tol in (("A", tol_a), ("B", tol_b)):
+   100	        if not np.isfinite(errors[key]) or errors[key] > tol:
+   101	            raise AssertionError(
+   102	                f"external target {key}: |ours - target| = {errors[key]:.3e} exceeds "
+   103	                f"tolerance {tol:.1e} at the smallest-tau row")
+   104	        if key in stored and abs(float(stored[key]) - errors[key]) > stored_field_tol:
+   105	            raise AssertionError(
+   106	                f"external target {key}: stored abs_error_at_min_tau {stored[key]!r} "
+   107	                f"disagrees with the recomputed {errors[key]!r}")
+   108	    return errors
+
+=================== NEW FILE: tests/test_fix1_sites.py ===================
+     1	"""
+     2	FIX-1 (2026-09 review): site assignment and draw integrity.
+     3	
+     4	Pins: single-kernel site names are selected and applied; predictives follow
+     5	the supplied kernel draws for single-kernel models (they were identical
+     6	before the fix); multi-kernel and legacy names keep their assignments; an
+     7	unrecognized site raises under strict mode; a sample dict without kernel
+     8	sites raises; a forced per-draw failure cannot yield a full-length result
+     9	under strict mode and is counted under non-strict mode; decompose_model_mcmc
+    10	matches raw parameters by name; _sir_bms refuses a short predictive list.
+    11	"""
+    12	
+    13	import os
+    14	import sys
+    15	from types import SimpleNamespace
+    16	
+    17	import numpy as np
+    18	import pytest
+    19	
+    20	torch = pytest.importorskip("torch")
+    21	gpytorch = pytest.importorskip("gpytorch")
+    22	
+    23	from gpytorch.constraints import Positive
+    24	from gpytorch.kernels import LinearKernel, RBFKernel, ScaleKernel
+    25	from gpytorch.priors import GammaPrior
+    26	
+    27	import bistar_gp.decompose as decompose_mod
+    28	from bistar_gp.bms_star import PredictiveList, extract_gp_predictives
+    29	from bistar_gp.debias import _raw_parameter_map, decompose_model_mcmc
+    30	from bistar_gp.model import (
+    31	    apply_hp_value, build_likelihood, build_model, build_toy_kernels,
+    32	    select_hmc_sites,
+    33	)
+    34	
+    35	torch.set_default_dtype(torch.float64)
+    36	REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    37	
+    38	
+    39	def _single_kernel_builder():
+    40	    se = ScaleKernel(
+    41	        RBFKernel(lengthscale_constraint=Positive(),
+    42	                  lengthscale_prior=GammaPrior(4.0, 12.0)),
+    43	        outputscale_constraint=Positive(),
+    44	        outputscale_prior=GammaPrior(4.0, 4.0),
+    45	    )
+    46	    return [se], ["smooth"]
+    47	
+    48	
+    49	@pytest.fixture
+    50	def single_kernel_model():
+    51	    x = torch.linspace(0, 1, 10)
+    52	    y = 1.0 / (1.0 + 5.0 * x)
+    53	    kernels, names = _single_kernel_builder()
+    54	    model, lik = build_model(x, y, kernels, names, build_likelihood())
+    55	    return model, lik, x, y
+    56	
+    57	
+    58	@pytest.fixture
+    59	def toy_model():
+    60	    x = torch.linspace(0, 6, 30)
+    61	    y = torch.sin(x) + 0.25 * x
+    62	    kers, names = build_toy_kernels()
+    63	    model, lik = build_model(x, y, kers, names)
+    64	    return model, lik, x, y
+    65	
+    66	
+    67	SINGLE_SITES = ["covar_module.outputscale_prior",
+    68	                "covar_module.base_kernel.lengthscale_prior",
+    69	                "likelihood.noise_covar.noise_prior"]
+    70	
+    71	
+    72	def test_single_kernel_sites_are_selected_and_applied(single_kernel_model):
+    73	    model, lik, _, _ = single_kernel_model
+    74	    emitted = [name for name, *_ in model.named_priors()]
+    75	    assert set(emitted) == set(SINGLE_SITES)
+    76	    selected = select_hmc_sites(emitted)
+    77	    assert set(selected) == set(SINGLE_SITES)
+    78	    assert apply_hp_value(model, lik, "covar_module.base_kernel.lengthscale_prior", 0.37)
+    79	    assert apply_hp_value(model, lik, "covar_module.outputscale_prior", 2.5)
+    80	    assert apply_hp_value(model, lik, "likelihood.noise_covar.noise_prior", 0.11)
+    81	    assert float(model.kernel_components[0].base_kernel.lengthscale) == pytest.approx(0.37)
+    82	    assert float(model.kernel_components[0].outputscale) == pytest.approx(2.5)
+    83	    assert float(lik.noise) == pytest.approx(0.11)
+    84	
+    85	
+    86	def test_single_kernel_predictives_follow_the_supplied_draws(single_kernel_model):
+    87	    """The Codex F4 probe: two draws with lengthscales 0.05 and 2.0 gave
+    88	    byte-identical predictives before the fix."""
+    89	    model, lik, x, y = single_kernel_model
+    90	    samples = {
+    91	        "covar_module.base_kernel.lengthscale_prior": np.array([0.05, 2.0]),
+    92	        "covar_module.outputscale_prior": np.array([0.2, 4.0]),
+    93	        "likelihood.noise_covar.noise_prior": np.array([0.1, 0.1]),
+    94	    }
+    95	    draws = extract_gp_predictives(model, lik, x, y, torch.linspace(0, 1, 5), samples,
+    96	                                   kernel_builder=_single_kernel_builder,
+    97	                                   n_posterior_samples=2, rng=np.random.default_rng(0))
+    98	    assert isinstance(draws, PredictiveList)
+    99	    assert len(draws) == 2 and draws.n_dropped == 0
+   100	    assert sorted(draws.retained_indices) == [0, 1]
+   101	    assert not np.allclose(draws[0].mean, draws[1].mean)
+   102	    assert not np.allclose(draws[0].cov, draws[1].cov)
+   103	    for d in draws:
+   104	        assert "covar_module.base_kernel.lengthscale_prior" in d.hyperparameters
+   105	        assert "covar_module.outputscale_prior" in d.hyperparameters
+   106	
+   107	
+   108	def test_multi_kernel_and_legacy_names_keep_their_assignments(toy_model):
+   109	    model, lik, _, _ = toy_model
+   110	    for prefix in ("covar_module.kernels.", "kernel_components."):
+   111	        assert apply_hp_value(model, lik, f"{prefix}0.base_kernel.lengthscale_prior", 2.5)
+   112	        assert apply_hp_value(model, lik, f"{prefix}0.outputscale_prior", 1.75)
+   113	        assert apply_hp_value(model, lik, f"{prefix}1.variance_prior", 0.6)
+   114	        assert float(model.kernel_components[0].base_kernel.lengthscale) == pytest.approx(2.5)
+   115	        assert float(model.kernel_components[1].variance) == pytest.approx(0.6)
+   116	    current = ["covar_module.kernels.0.base_kernel.lengthscale_prior",
+   117	               "covar_module.kernels.0.outputscale_prior",
+   118	               "covar_module.kernels.1.variance_prior",
+   119	               "likelihood.noise_covar.noise_prior"]
+   120	    assert select_hmc_sites(current) == current
+   121	    legacy = current + ["kernel_components.0.base_kernel.lengthscale_prior",
+   122	                        "noise_covar.noise_prior"]
+   123	    selected = select_hmc_sites(legacy)
+   124	    assert selected == current[:3] + ["noise_covar.noise_prior"]
+   125	
+   126	
+   127	def test_bare_covar_module_name_is_rejected_on_a_multi_kernel_model(toy_model):
+   128	    model, lik, _, _ = toy_model
+   129	    assert not apply_hp_value(model, lik, "covar_module.outputscale_prior", 1.0)
+   130	    assert not apply_hp_value(model, lik, "mean_module.constant_prior", 1.0)
+   131	
+   132	
+   133	def _toy_samples(n=2):
+   134	    return {
+   135	        "covar_module.kernels.0.base_kernel.lengthscale_prior": np.linspace(0.3, 5.0, n),
+   136	        "covar_module.kernels.0.outputscale_prior": np.linspace(2.0, 0.1, n),
+   137	        "covar_module.kernels.1.variance_prior": np.full(n, 0.5),
+   138	        "likelihood.noise_covar.noise_prior": np.full(n, 0.1),
+   139	    }
+   140	
+   141	
+   142	def test_unrecognized_site_raises_under_strict_and_warns_otherwise(toy_model, caplog):
+   143	    model, lik, x, y = toy_model
+   144	    samples = _toy_samples()
+   145	    samples["covar_module.kernels.0.base_kernel.alpha_prior"] = np.array([0.5, 50.0])
+   146	    x_eval = torch.linspace(0, 6, 7)
+   147	    with pytest.raises(ValueError, match="alpha_prior"):
+   148	        extract_gp_predictives(model, lik, x, y, x_eval, samples,
+   149	                               kernel_builder=build_toy_kernels, n_posterior_samples=2)
+   150	    import logging
+   151	    with caplog.at_level(logging.WARNING, logger="bistar_gp.bms_star"):
+   152	        draws = extract_gp_predictives(model, lik, x, y, x_eval, samples,
+   153	                                       kernel_builder=build_toy_kernels,
+   154	                                       n_posterior_samples=2, strict=False)
+   155	    assert len(draws) == 2
+   156	    assert any("alpha_prior" in rec.message for rec in caplog.records)
+   157	    # the unapplied value is not recorded as provenance
+   158	    assert all("alpha_prior" not in d.hyperparameters for d in draws)
+   159	
+   160	
+   161	def test_sample_dict_without_kernel_sites_raises(toy_model):
+   162	    model, lik, x, y = toy_model
+   163	    noise_only = {"likelihood.noise_covar.noise_prior": np.array([0.1, 0.2])}
+   164	    with pytest.raises(ValueError, match="no kernel hyperparameter site"):
+   165	        extract_gp_predictives(model, lik, x, y, torch.linspace(0, 6, 5), noise_only,
+   166	                               kernel_builder=build_toy_kernels, n_posterior_samples=2)
+   167	
+   168	
+   169	def test_forced_draw_failure_cannot_yield_a_full_result(toy_model, monkeypatch):
+   170	    model, lik, x, y = toy_model
+   171	    samples = _toy_samples(3)
+   172	    calls = {"n": 0}
+   173	    real = decompose_mod.compute_cholesky
+   174	
+   175	    def failing(K, noise_var, jitter=1e-6):
+   176	        calls["n"] += 1
+   177	        if calls["n"] == 2:
+   178	            raise RuntimeError("simulated factorization failure")
+   179	        return real(K, noise_var, jitter)
+   180	
+   181	    monkeypatch.setattr(decompose_mod, "compute_cholesky", failing)
+   182	    x_eval = torch.linspace(0, 6, 5)
+   183	    with pytest.raises(RuntimeError, match="simulated factorization failure"):
+   184	        extract_gp_predictives(model, lik, x, y, x_eval, samples,
+   185	                               kernel_builder=build_toy_kernels, n_posterior_samples=3,
+   186	                               rng=np.random.default_rng(0))
+   187	    calls["n"] = 0
+   188	    draws = extract_gp_predictives(model, lik, x, y, x_eval, samples,
+   189	                                   kernel_builder=build_toy_kernels, n_posterior_samples=3,
+   190	                                   rng=np.random.default_rng(0), strict=False)
+   191	    assert len(draws) == 2 and draws.n_dropped == 1
+   192	    assert len(draws.attempted_indices) == 3
+   193	    assert draws.dropped[0][0] == draws.attempted_indices[1]
+   194	
+   195	
+   196	def test_decompose_model_mcmc_matches_raw_parameters_by_name(toy_model):
+   197	    model, lik, x, y = toy_model
+   198	    names = list(_raw_parameter_map(model, lik))
+   199	    rng = np.random.default_rng(1)
+   200	    raw = {n: rng.normal(size=3) for n in names}
+   201	    x_test = torch.linspace(-1, 7, 9)
+   202	    ref = decompose_model_mcmc(model, lik, x, y, x_test, raw, n_posterior_samples=3,
+   203	                               rng=np.random.default_rng(0))
+   204	    permuted = {n: raw[n] for n in reversed(names)}
+   205	    out = decompose_model_mcmc(model, lik, x, y, x_test, permuted, n_posterior_samples=3,
+   206	                               rng=np.random.default_rng(0))
+   207	    assert np.allclose(out.full_mean, ref.full_mean)
+   208	    for n in ref.components:
+   209	        assert np.allclose(out.components[n].mean, ref.components[n].mean)
+   210	        assert np.allclose(out.components[n].std, ref.components[n].std)
+   211	    with pytest.raises(KeyError, match="unknown keys"):
+   212	        decompose_model_mcmc(model, lik, x, y, x_test, {**raw, "nonexistent.raw_x": raw[names[0]]},
+   213	                             n_posterior_samples=3, rng=np.random.default_rng(0))
+   214	    missing = {n: raw[n] for n in names[1:]}
+   215	    with pytest.raises(KeyError, match="parameters without a key"):
+   216	        decompose_model_mcmc(model, lik, x, y, x_test, missing, n_posterior_samples=3,
+   217	                             rng=np.random.default_rng(0))
+   218	
+   219	
+   220	def test_sir_bms_refuses_a_short_predictive_list(monkeypatch):
+   221	    sys.path.insert(0, os.path.join(REPO, "experiments"))
+   222	    pss = pytest.importorskip("prior_sensitivity_study")
+   223	    from bistar_gp import generate_toy_data
+   224	    x, y, _ = generate_toy_data()
+   225	    monkeypatch.setattr(pss, "extract_gp_predictives",
+   226	                        lambda *a, **k: [SimpleNamespace(mean=np.zeros(3), cov=np.eye(3))] * 2)
+   227	    ths = np.abs(np.random.default_rng(0).normal(size=(5, 4))) + 0.1
+   228	    lml = np.zeros(5)
+   229	    with pytest.raises(RuntimeError, match="retained of 3"):
+   230	        pss._sir_bms(pss.STUDY_CONFIGS["toy_elicited"], x, y, torch.linspace(-11, 11, 6),
+   231	                     [], ths, lml, 3)
+
+=================== NEW FILE: tests/test_fix1_decomposition.py ===================
+     1	"""
+     2	FIX-2 (2026-09 review): law-of-total-variance decomposition moments, joint
+     3	group posteriors, and exact mixture central intervals.
+     4	
+     5	Pins: identical hyperparameter draws keep positive conditional variance and
+     6	nonzero off-diagonal covariance; a two-draw fixture satisfies
+     7	std^2 = E_d[var_d] + Var_d[mean_d] against a direct per-draw computation;
+     8	the group of every component reproduces the full posterior in mean, total
+     9	variance, and mixture quantiles, and differs from the independence sum on
+    10	an anticorrelated pair; a singleton group is its component; an empty group
+    11	is zero; group key order is irrelevant; an unrequested group raises; the
+    12	mixture interval helper has the stated CDF coverage; the MAP path keeps its
+    13	values; the DecompositionResult positional contract is unchanged.
+    14	"""
+    15	
+    16	import dataclasses
+    17	
+    18	import numpy as np
+    19	import pytest
+    20	
+    21	torch = pytest.importorskip("torch")
+    22	gpytorch = pytest.importorskip("gpytorch")
+    23	
+    24	from gpytorch.constraints import Positive
+    25	from gpytorch.kernels import LinearKernel, RBFKernel, ScaleKernel
+    26	from gpytorch.priors import GammaPrior
+    27	from scipy.special import ndtr
+    28	
+    29	from bistar_gp.debias import (
+    30	    ComponentResult, DecompositionResult, decompose_model, decompose_model_hmc,
+    31	)
+    32	from bistar_gp.decompose import (
+    33	    compute_cholesky, decompose_additive_gp, decompose_component,
+    34	    mixture_central_interval,
+    35	)
+    36	from bistar_gp.model import build_model, build_toy_kernels
+    37	
+    38	torch.set_default_dtype(torch.float64)
+    39	
+    40	SITES = {
+    41	    "ls": "covar_module.kernels.0.base_kernel.lengthscale_prior",
+    42	    "os": "covar_module.kernels.0.outputscale_prior",
+    43	    "lv": "covar_module.kernels.1.variance_prior",
+    44	    "noise": "likelihood.noise_covar.noise_prior",
+    45	}
+    46	
+    47	
+    48	def _samples(ls, os_, lv, noise):
+    49	    return {SITES["ls"]: np.asarray(ls, float), SITES["os"]: np.asarray(os_, float),
+    50	            SITES["lv"]: np.asarray(lv, float), SITES["noise"]: np.asarray(noise, float)}
+    51	
+    52	
+    53	@pytest.fixture
+    54	def toy():
+    55	    x = torch.linspace(-6, 6, 14)
+    56	    y = torch.sin(x) + 0.25 * x
+    57	    kers, names = build_toy_kernels()
+    58	    model, lik = build_model(x, y, kers, names)
+    59	    x_test = torch.linspace(-7, 7, 11)
+    60	    return model, lik, x, y, x_test
+    61	
+    62	
+    63	def _direct_draw(x, y, x_test, ls, os_, lv, noise, jitter=1e-4):
+    64	    """Per-draw conditional moments computed independently of debias.py."""
+    65	    kers, names = build_toy_kernels()
+    66	    model, lik = build_model(x, y, kers, names)
+    67	    model.kernel_components[0].base_kernel.lengthscale = ls
+    68	    model.kernel_components[0].outputscale = os_
+    69	    model.kernel_components[1].variance = lv
+    70	    lik.noise = noise
+    71	    model.eval(); lik.eval()
+    72	    km = model.get_component_kernel_matrices(x, x_test)
+    73	    with torch.no_grad():
+    74	        per = decompose_additive_gp([km[n]["XX"] for n in names], [km[n]["XstarX"] for n in names],
+    75	                                    [km[n]["XstarXstar"] for n in names], [km[n]["XXstar"] for n in names],
+    76	                                    noise, y, jitter)
+    77	        L = compute_cholesky(sum(km[n]["XX"] for n in names), noise, jitter)
+    78	        fm, fc = decompose_component(sum(km[n]["XstarX"] for n in names),
+    79	                                     sum(km[n]["XstarXstar"] for n in names),
+    80	                                     sum(km[n]["XXstar"] for n in names), L, y)
+    81	    return {n: (m.numpy(), c.numpy()) for (m, c), n in zip(per, names)}, (fm.numpy(), fc.numpy())
+    82	
+    83	
+    84	def test_identical_draws_keep_conditional_variance(toy):
+    85	    model, lik, x, y, x_test = toy
+    86	    samples = _samples([1.0] * 3, [1.0] * 3, [0.05] * 3, [0.1] * 3)
+    87	    res = decompose_model_hmc(model, lik, x, y, x_test, samples, kernel_builder=build_toy_kernels,
+    88	                              n_posterior_samples=3, rng=np.random.default_rng(0))
+    89	    for comp in res.components.values():
+    90	        assert np.all(comp.std > 0)
+    91	        assert np.max(np.abs(comp.cov - np.diag(np.diag(comp.cov)))) > 0
+    92	        assert np.allclose(comp.between_var, 0.0, atol=1e-14)
+    93	        assert np.allclose(comp.std ** 2, comp.within_var_mean)
+    94	        assert comp.samples_kind == "conditional_means" and comp.n_draws == 3
+    95	    assert np.all(res.full_std > 0)
+    96	
+    97	
+    98	def test_two_draw_total_variance_identity_against_direct_computation(toy):
+    99	    model, lik, x, y, x_test = toy
+   100	    draws = [(0.7, 1.5, 0.05, 0.1), (3.0, 0.4, 0.2, 0.3)]
+   101	    samples = _samples(*zip(*draws))
+   102	    res = decompose_model_hmc(model, lik, x, y, x_test, samples, kernel_builder=build_toy_kernels,
+   103	                              n_posterior_samples=2, rng=np.random.default_rng(0))
+   104	    direct = [_direct_draw(x, y, x_test, *d) for d in draws]
+   105	    order = res.n_draws_retained
+   106	    assert order == 2
+   107	    for name, comp in res.components.items():
+   108	        means = np.stack(sorted([d[0][name][0] for d in direct], key=lambda a: a[0]))
+   109	        got = np.stack(sorted(list(comp.conditional_means), key=lambda a: a[0]))
+   110	        assert np.allclose(got, means)
+   111	        vars_ = np.stack(sorted([np.diag(d[0][name][1]) for d in direct], key=lambda a: a[0]))
+   112	        gotv = np.stack(sorted(list(comp.conditional_vars), key=lambda a: a[0]))
+   113	        assert np.allclose(gotv, vars_)
+   114	        assert np.allclose(comp.std ** 2, comp.within_var_mean + comp.between_var)
+   115	        assert np.allclose(comp.within_var_mean, vars_.mean(0))
+   116	        assert np.allclose(comp.between_var, means.var(0))
+   117	        assert np.allclose(np.diag(comp.cov), comp.std ** 2)
+   118	    full_means = np.stack([d[1][0] for d in direct])
+   119	    full_vars = np.stack([np.diag(d[1][1]) for d in direct])
+   120	    assert np.allclose(res.full_mean, full_means.mean(0))
+   121	    assert np.allclose(res.full_std ** 2, full_vars.mean(0) + full_means.var(0))
+   122	
+   123	
+   124	def test_all_components_group_is_the_full_posterior_and_not_the_independence_sum(toy):
+   125	    model, lik, x, y, x_test = toy
+   126	    samples = _samples([0.7, 3.0], [1.5, 0.4], [0.05, 0.2], [0.1, 0.3])
+   127	    names = list(model.component_names)
+   128	    res = decompose_model_hmc(model, lik, x, y, x_test, samples, kernel_builder=build_toy_kernels,
+   129	                              n_posterior_samples=2, groups=[names], rng=np.random.default_rng(0))
+   130	    g = res.group(names)
+   131	    assert g is res.full
+   132	    assert np.allclose(g.mean, sum(res.components[n].mean for n in names))
+   133	    lo_g, hi_g = g.central_interval(0.95)
+   134	    lo_f, hi_f = res.full.central_interval(0.95)
+   135	    assert np.allclose(lo_g, lo_f) and np.allclose(hi_g, hi_f)
+   136	    # means add across the decomposition per draw
+   137	    summed = sum(res.components[n].conditional_means for n in names)
+   138	    assert np.allclose(summed, res.full.conditional_means)
+   139	    # the independence sum of component variances is NOT the full variance
+   140	    indep = np.sqrt(sum(res.components[n].std ** 2 for n in names))
+   141	    assert not np.allclose(indep, res.full_std, rtol=1e-3)
+   142	    cross = 0.5 * (res.full_std ** 2 - sum(res.components[n].std ** 2 for n in names))
+   143	    assert np.any(cross < 0)   # SE and linear components are anticorrelated here
+   144	
+   145	
+   146	def test_singleton_empty_and_unordered_groups(toy):
+   147	    model, lik, x, y, x_test = toy
+   148	    samples = _samples([0.7, 3.0], [1.5, 0.4], [0.05, 0.2], [0.1, 0.3])
+   149	    names = list(model.component_names)
+   150	    res = decompose_model_hmc(model, lik, x, y, x_test, samples, kernel_builder=build_toy_kernels,
+   151	                              n_posterior_samples=2, rng=np.random.default_rng(0))
+   152	    assert res.group([names[0]]) is res.components[names[0]]
+   153	    empty = res.group([])
+   154	    assert np.allclose(empty.mean, 0) and np.allclose(empty.std, 0)
+   155	    assert res.group(list(reversed(names))) is res.full
+   156	
+   157	
+   158	def _three_component_builder():
+   159	    a = ScaleKernel(RBFKernel(lengthscale_constraint=Positive(), lengthscale_prior=GammaPrior(2, 2)),
+   160	                    outputscale_constraint=Positive(), outputscale_prior=GammaPrior(6, 0.85))
+   161	    b = LinearKernel(variance_constraint=Positive(), variance_prior=GammaPrior(6, 0.85))
+   162	    c = ScaleKernel(RBFKernel(lengthscale_constraint=Positive(), lengthscale_prior=GammaPrior(2, 2)),
+   163	                    outputscale_constraint=Positive(), outputscale_prior=GammaPrior(6, 0.85))
+   164	    return [a, b, c], ["a", "b", "c"]
+   165	
+   166	
+   167	def test_requested_pair_group_matches_direct_conditioning_and_unrequested_raises():
+   168	    x = torch.linspace(-6, 6, 14)
+   169	    y = torch.sin(x) + 0.25 * x
+   170	    kers, names = _three_component_builder()
+   171	    model, lik = build_model(x, y, kers, names)
+   172	    x_test = torch.linspace(-7, 7, 9)
+   173	    samples = {
+   174	        "covar_module.kernels.0.base_kernel.lengthscale_prior": np.array([0.7, 2.0]),
+   175	        "covar_module.kernels.0.outputscale_prior": np.array([1.5, 0.5]),
+   176	        "covar_module.kernels.1.variance_prior": np.array([0.05, 0.2]),
+   177	        "covar_module.kernels.2.base_kernel.lengthscale_prior": np.array([4.0, 6.0]),
+   178	        "covar_module.kernels.2.outputscale_prior": np.array([0.3, 0.6]),
+   179	        "likelihood.noise_covar.noise_prior": np.array([0.1, 0.2]),
+   180	    }
+   181	    res = decompose_model_hmc(model, lik, x, y, x_test, samples, kernel_builder=_three_component_builder,
+   182	                              n_posterior_samples=2, groups=[["a", "b"]], rng=np.random.default_rng(0))
+   183	    g = res.group(["b", "a"])
+   184	    # direct conditioning of the summed a+b blocks with the FULL training factor
+   185	    means, vars_ = [], []
+   186	    for i in range(2):
+   187	        kers_i, names_i = _three_component_builder()
+   188	        m_i, l_i = build_model(x, y, kers_i, names_i)
+   189	        m_i.kernel_components[0].base_kernel.lengthscale = samples["covar_module.kernels.0.base_kernel.lengthscale_prior"][i]
+   190	        m_i.kernel_components[0].outputscale = samples["covar_module.kernels.0.outputscale_prior"][i]
+   191	        m_i.kernel_components[1].variance = samples["covar_module.kernels.1.variance_prior"][i]
+   192	        m_i.kernel_components[2].base_kernel.lengthscale = samples["covar_module.kernels.2.base_kernel.lengthscale_prior"][i]
+   193	        m_i.kernel_components[2].outputscale = samples["covar_module.kernels.2.outputscale_prior"][i]
+   194	        l_i.noise = samples["likelihood.noise_covar.noise_prior"][i]
+   195	        m_i.eval(); l_i.eval()
+   196	        km = m_i.get_component_kernel_matrices(x, x_test)
+   197	        with torch.no_grad():
+   198	            L = compute_cholesky(sum(km[n]["XX"] for n in names_i), float(l_i.noise), 1e-4)
+   199	            mg, cg = decompose_component(km["a"]["XstarX"] + km["b"]["XstarX"],
+   200	                                         km["a"]["XstarXstar"] + km["b"]["XstarXstar"],
+   201	                                         km["a"]["XXstar"] + km["b"]["XXstar"], L, y)
+   202	        means.append(mg.numpy()); vars_.append(np.diag(cg.numpy()))
+   203	    means, vars_ = np.stack(means), np.stack(vars_)
+   204	    assert np.allclose(np.sort(g.conditional_means, axis=0), np.sort(means, axis=0))
+   205	    assert np.allclose(g.std ** 2, vars_.mean(0) + means.var(0))
+   206	    with pytest.raises(KeyError, match="not requested"):
+   207	        res.group(["a", "c"])
+   208	
+   209	
+   210	def test_mixture_interval_helper_coverage():
+   211	    lo, hi = mixture_central_interval(np.array([[0.0]]), np.array([[4.0]]), mass=0.95)
+   212	    assert lo[0] == pytest.approx(-2 * 1.959964, abs=1e-5)
+   213	    assert hi[0] == pytest.approx(2 * 1.959964, abs=1e-5)
+   214	    means = np.array([[0.0], [0.0], [5.0]])
+   215	    vars_ = np.array([[1.0], [1.0], [0.25]])
+   216	    lo, hi = mixture_central_interval(means, vars_, mass=0.9)
+   217	    cdf = lambda t: ndtr((t - means[:, 0]) / np.sqrt(vars_[:, 0])).mean()
+   218	    assert cdf(lo[0]) == pytest.approx(0.05, abs=1e-8)
+   219	    assert cdf(hi[0]) == pytest.approx(0.95, abs=1e-8)
+   220	    with pytest.raises(ValueError):
+   221	        mixture_central_interval(np.zeros((2, 3)), np.ones((2, 2)))
+   222	
+   223	
+   224	def test_map_path_values_and_moments(toy):
+   225	    model, lik, x, y, x_test = toy
+   226	    res = decompose_model(model, lik, x, y, x_test, n_samples=4)
+   227	    for comp in res.components.values():
+   228	        assert np.allclose(comp.std, np.sqrt(np.clip(np.diag(comp.cov), 1e-10, None)))
+   229	        assert comp.samples_kind == "function_draws" and comp.samples.shape == (4, len(x_test))
+   230	        lo, hi = comp.central_interval(0.95)
+   231	        assert np.all(lo < comp.mean) and np.all(hi > comp.mean)
+   232	    assert res.full is not None and np.allclose(res.full.std, res.full_std)
+   233	
+   234	
+   235	def test_rebuild_contract_unchanged():
+   236	    names = [f.name for f in dataclasses.fields(DecompositionResult)]
+   237	    assert names == ["x_test", "x_train", "y_train", "components",
+   238	                     "full_mean", "full_std", "noise_var"]
+   239	    comp = ComponentResult(name="c", mean=np.zeros(3), std=np.ones(3), cov=np.eye(3),
+   240	                           samples=np.zeros((2, 3)))
+   241	    res = DecompositionResult(np.zeros(3), np.zeros(2), np.zeros(2), {"c": comp},
+   242	                              np.zeros(3), np.ones(3), 0.1)
+   243	    assert res.groups == {} and res.full is None
+   244	    with pytest.raises(ValueError, match="no per-draw"):
+   245	        comp.central_interval()
+   246	
+   247	
+   248	def test_map_groups_condition_on_the_full_factor():
+   249	    """FIX-2d: decompose_model(groups=...) conditions the summed group blocks
+   250	    with the Cholesky factor of the ENTIRE training covariance."""
+   251	    x = torch.linspace(-6, 6, 14)
+   252	    y = torch.sin(x) + 0.25 * x
+   253	    kers = [ScaleKernel(RBFKernel()), LinearKernel(), ScaleKernel(RBFKernel())]
+   254	    names = ["a", "b", "c"]
+   255	    model, lik = build_model(x, y, kers, names)
+   256	    x_test = torch.linspace(-7, 7, 11)
+   257	    res = decompose_model(model, lik, x, y, x_test, n_samples=3, groups=[["b", "a"]])
+   258	    g = res.group(["a", "b"])
+   259	    assert g is res.group(["b", "a"]) and g.name == "a+b" and g.n_draws == 1
+   260	    assert np.allclose(g.mean, res.components["a"].mean + res.components["b"].mean, atol=1e-10)
+   261	    model.eval(); lik.eval()
+   262	    km = model.get_component_kernel_matrices(x, x_test)
+   263	    with torch.no_grad():
+   264	        L = compute_cholesky(sum(km[n]["XX"] for n in names), lik.noise.item(), 1e-4)
+   265	        m, c = decompose_component(km["a"]["XstarX"] + km["b"]["XstarX"],
+   266	                                   km["a"]["XstarXstar"] + km["b"]["XstarXstar"],
+   267	                                   km["a"]["XXstar"] + km["b"]["XXstar"], L, y)
+   268	    assert np.allclose(g.mean, m.numpy(), atol=1e-10)
+   269	    assert np.allclose(g.cov, c.numpy(), atol=1e-10)
+   270	    assert np.allclose(g.std ** 2, np.clip(np.diag(c.numpy()), 1e-10, None), atol=1e-12)
+   271	    lo, hi = g.central_interval(0.95)
+   272	    assert np.allclose(hi - lo, 2 * 1.959963984540054 * g.std, atol=1e-6)
+   273	    indep = res.components["a"].std ** 2 + res.components["b"].std ** 2
+   274	    assert not np.allclose(g.std ** 2, indep, rtol=1e-3)
+   275	    assert res.group(["a", "b", "c"]) is res.full
+   276	    assert res.group(["a"]) is res.components["a"]
+   277	    assert np.all(res.group([]).mean == 0.0)
+   278	    with pytest.raises(KeyError, match="not requested"):
+   279	        res.group(["a", "c"])
+   280	    with pytest.raises(KeyError, match="unknown"):
+   281	        decompose_model(model, lik, x, y, x_test, groups=[["a", "zzz"]])
+   282	
+   283	
+   284	def test_mauna_script_compute_debiased_uses_groups():
+   285	    """FIX-2d: the script helper reads joint groups and refuses independence sums."""
+   286	    pss = pytest.importorskip("experiments.bistar_debias_mauna_loa")
+   287	    x = torch.linspace(-6, 6, 14)
+   288	    y = torch.sin(x) + 0.25 * x
+   289	    kers = [ScaleKernel(RBFKernel()), LinearKernel(), ScaleKernel(RBFKernel())]
+   290	    model, lik = build_model(x, y, kers, ["trend", "seasonal", "medium_term"])
+   291	    x_test = torch.linspace(-7, 7, 11)
+   292	    res = decompose_model(model, lik, x, y, x_test, n_samples=2, groups=pss.INTERPRETATION_GROUPS)
+   293	    for interp in pss.INTERPRETATIONS.values():
+   294	        out = pss.compute_debiased(res, interp["truth"], interp["bias"])
+   295	        truth, bias = res.group(interp["truth"]), res.group(interp["bias"])
+   296	        assert np.array_equal(out["truth_mean"], truth.mean) and np.array_equal(out["truth_std"], truth.std)
+   297	        assert np.array_equal(out["bias_mean"], bias.mean) and np.array_equal(out["bias_std"], bias.std)
+   298	        assert np.all(out["truth_lo"] <= out["truth_mean"]) and np.all(out["truth_hi"] >= out["truth_mean"])
+   299	        assert np.allclose(out["truth_mean"] + out["bias_mean"], res.full_mean, atol=1e-10)
+   300	    bare = decompose_model(model, lik, x, y, x_test, n_samples=2)
+   301	    with pytest.raises(KeyError, match="INTERPRETATION_GROUPS"):
+   302	        pss.compute_debiased(bare, ["trend", "seasonal"], ["medium_term"])
+
+=================== NEW FILE: tests/test_fix1_diagnostics.py ===================
+     1	"""
+     2	FIX-3 (2026-09 review): draw-level diagnostics and the soft_transfer contract.
+     3	
+     4	Pins: uniform weights give ESS = N; one dominant draw gives ESS near 1; a
+     5	per-candidate column shift of G leaves ESS invariant; ESS stays finite when
+     6	a candidate's raw weights underflow; G = [[0, 0], [10, 11]] gives attainment
+     7	[1, 0.5] and split credit [0.75, 0.25]; the tau-to-zero limit of the
+     8	expected-posterior convention equals the split credit on a tied fixture;
+     9	existing pooled probabilities are unchanged; grouped class_names raise;
+    10	metric_name survives the result and is "unspecified" when absent.
+    11	"""
+    12	
+    13	import numpy as np
+    14	import pytest
+    15	
+    16	from bistar_gp.bms_star import (
+    17	    BMSStarResult, boltzmann_weight_ess, hard_win_statistics, soft_transfer,
+    18	)
+    19	
+    20	rng = np.random.default_rng(0)
+    21	
+    22	
+    23	def test_uniform_weights_give_ess_equal_to_n():
+    24	    G = np.tile(rng.gamma(2.0, 1.0, size=(1, 4)), (9, 1))   # every row identical
+    25	    assert np.allclose(boltzmann_weight_ess(G, 0.7), 9.0)
+    26	
+    27	
+    28	def test_one_dominant_draw_gives_ess_near_one():
+    29	    G = np.full((50, 3), 1000.0)
+    30	    G[7] = 0.0
+    31	    ess = boltzmann_weight_ess(G, 1.0)
+    32	    assert np.allclose(ess, 1.0, atol=1e-12)
+    33	
+    34	
+    35	def test_ess_invariant_under_column_shift_and_finite_under_underflow():
+    36	    G = rng.gamma(2.0, 1.0, size=(20, 4))
+    37	    shifted = G + rng.normal(size=(1, 4)) * 50.0
+    38	    assert np.allclose(boltzmann_weight_ess(G, 0.5), boltzmann_weight_ess(shifted, 0.5))
+    39	    G2 = np.array([[0.0, 0.0], [5000.0, 5000.0], [0.0, 10000.0]])
+    40	    ess = boltzmann_weight_ess(G2, 1.0)
+    41	    assert np.all(np.isfinite(ess))
+    42	    assert ess[0] == pytest.approx(2.0) and ess[1] == pytest.approx(1.0)
+    43	    with pytest.raises(ValueError):
+    44	        boltzmann_weight_ess(np.array([[0.0, np.inf]]), 1.0)
+    45	
+    46	
+    47	def test_tie_rule_on_the_ledger_fixture():
+    48	    G = np.array([[0.0, 0.0], [10.0, 11.0]])
+    49	    credit, attainment, tie_fraction = hard_win_statistics(G)
+    50	    assert np.allclose(attainment, [1.0, 0.5])
+    51	    assert np.allclose(credit, [0.75, 0.25])
+    52	    assert tie_fraction == pytest.approx(0.5)
+    53	    assert credit.sum() == pytest.approx(1.0)
+    54	    # candidate order must not break ties
+    55	    credit_r, attainment_r, _ = hard_win_statistics(G[:, ::-1])
+    56	    assert np.allclose(credit_r, credit[::-1]) and np.allclose(attainment_r, attainment[::-1])
+    57	    # tau -> 0 limit of expected-posterior aggregation equals the split credit
+    58	    tau = 1e-6
+    59	    w = np.exp(-(G - G.min(axis=1, keepdims=True)) / tau)
+    60	    eqp = (w / w.sum(axis=1, keepdims=True)).mean(axis=0)
+    61	    assert np.allclose(eqp, credit, atol=1e-12)
+    62	
+    63	
+    64	def test_soft_transfer_carries_diagnostics_and_keeps_probabilities():
+    65	    G = rng.gamma(2.0, 1.0, size=(30, 4))
+    66	    names = [f"m{j}" for j in range(4)]
+    67	    r = soft_transfer(G, 1.3, names, metric_name="pw_mse")
+    68	    direct = np.exp(-G / 1.3).mean(axis=0)
+    69	    assert np.allclose(r.instance_posteriors, direct / direct.sum(), atol=1e-12)
+    70	    assert r.metric_name == "pw_mse"
+    71	    assert np.allclose(r.weight_ess, boltzmann_weight_ess(G, 1.3))
+    72	    credit, attainment, tie = hard_win_statistics(G)
+    73	    assert np.allclose(r.hard_win_credit, credit) and np.allclose(r.attainment, attainment)
+    74	    assert r.tie_fraction == tie == 0.0
+    75	    r2 = soft_transfer(G, 1.3, names)
+    76	    assert r2.metric_name == "unspecified"
+    77	    r3 = soft_transfer(G, 0.4, names, normalize_per_draw=True, metric_name="x")
+    78	    Ge = G - G.min(axis=1, keepdims=True)
+    79	    assert np.allclose(r3.weight_ess, boltzmann_weight_ess(Ge, 0.4))
+    80	    assert isinstance(r3, BMSStarResult)
+    81	
+    82	
+    83	def test_grouped_class_names_raise_and_relabelling_passes():
+    84	    G = rng.gamma(2.0, 1.0, size=(5, 3))
+    85	    names = ["a", "b", "c"]
+    86	    with pytest.raises(ValueError, match="class-level averaging"):
+    87	        soft_transfer(G, 1.0, names, class_names=["A", "A", "B"])
+    88	    r = soft_transfer(G, 1.0, names, class_names=["A", "B", "C"])
+    89	    assert r.class_names == ["A", "B", "C"]
+    90	    assert np.allclose(r.class_posteriors, r.instance_posteriors)
+
+=================== NEW FILE: tests/test_fix1_metrics_firewall.py ===================
+     1	"""
+     2	FIX-4 (2026-09 review): Hellinger exponents and the firewall boundary.
+     3	
+     4	Pins: N(0,1) versus N(1,1) gives 1 - exp(-1/8) for both metrics_v2 Hellinger
+     5	variants, equality gives 0, and a variance-rescaled pair matches the base
+     6	pw_hellinger; every candidate-aware entry point rejects mixed and partially
+     7	tagged rosters before any metric call, while same-universe and all-untagged
+     8	rosters pass.
+     9	"""
+    10	
+    11	import numpy as np
+    12	import pytest
+    13	
+    14	import bistar_gp.metrics_v2  # noqa: F401  registers the v2 metrics
+    15	from bistar_gp.aggregation_v3 import (
+    16	    run_robust_aggregation, run_weighted_bms_star, score_averaged_gp,
+    17	)
+    18	from bistar_gp.bms_star import (
+    19	    METRICS, GPPosteriorSample, compute_G_matrix, hellinger_distance,
+    20	    pw_hellinger, run_bms_star, soft_transfer,
+    21	)
+    22	from bistar_gp.candidates import CandidateResult
+    23	
+    24	
+    25	def test_equal_variance_hellinger_identity():
+    26	    mu_p, cov_p, mu_q, cov_q = np.array([0.0]), np.eye(1), np.array([1.0]), np.eye(1)
+    27	    expected = 1.0 - np.exp(-1.0 / 8.0)
+    28	    assert expected == pytest.approx(0.11750309741540454)
+    29	    assert hellinger_distance(mu_p, cov_p, mu_q, cov_q) == pytest.approx(expected)
+    30	    assert pw_hellinger(mu_p, cov_p, mu_q, cov_q) == pytest.approx(expected)
+    31	    assert METRICS["pw_hellinger_vcal"](mu_p, cov_p, mu_q, cov_q) == pytest.approx(expected)
+    32	    assert METRICS["pw_hellinger_mean"](mu_p, cov_p, mu_q, cov_q) == pytest.approx(expected)
+    33	    assert METRICS["pw_hellinger_vcal"](mu_p, cov_p, mu_p, cov_p) == 0.0
+    34	    assert METRICS["pw_hellinger_mean"](mu_p, cov_p, mu_p, cov_p) == 0.0
+    35	
+    36	
+    37	def test_vcal_matches_base_pointwise_hellinger_at_matched_variances():
+    38	    rng = np.random.default_rng(2)
+    39	    n = 6
+    40	    mu_p, mu_q = rng.normal(size=n), rng.normal(size=n)
+    41	    var_p = rng.uniform(0.2, 3.0, size=n)
+    42	    cov_p = np.diag(var_p)
+    43	    # base metric with the candidate variance set equal to the GP variance
+    44	    base = pw_hellinger(mu_p, cov_p, mu_q, cov_p)
+    45	    assert METRICS["pw_hellinger_vcal"](mu_p, cov_p, mu_q, np.eye(n)) == pytest.approx(base)
+    46	    assert METRICS["pw_hellinger_mean"](mu_p, cov_p, mu_q, np.eye(n)) == pytest.approx(
+    47	        pw_hellinger(mu_p, np.eye(n), mu_q, np.eye(n)))
+    48	
+    49	
+    50	def _gp(n_eval=4, k=3, seed=0):
+    51	    rng = np.random.default_rng(seed)
+    52	    return [GPPosteriorSample(mean=rng.normal(size=n_eval), cov=np.diag(np.full(n_eval, 0.1)),
+    53	                              hyperparameters={"draw": float(i)}) for i in range(k)]
+    54	
+    55	
+    56	def _cand(name, universe, n_eval=4, shift=0.0):
+    57	    return CandidateResult(name=name, mean=np.full(n_eval, shift), cov=np.eye(n_eval) * 0.1,
+    58	                           noise_var=0.1, parameters={}, universe=universe)
+    59	
+    60	
+    61	MIXED = [_cand("Quad+2Harm", "main_ladder"), _cand("Quad+2Harm", "appendix_trend3", shift=0.1)]
+    62	PARTIAL = [_cand("Quad+2Harm", "appendix_trend3"), _cand("Linear", None, shift=0.1)]
+    63	SAME = [_cand("Linear+2Harm", "appendix_trend3"), _cand("Quad+2Harm", "appendix_trend3", shift=0.1)]
+    64	UNTAGGED = [_cand("Linear", None), _cand("Quadratic", None, shift=0.1)]
+    65	
+    66	
+    67	@pytest.mark.parametrize("roster", [MIXED, PARTIAL], ids=["mixed", "partial"])
+    68	def test_every_entry_point_rejects_bad_rosters(roster):
+    69	    gp = _gp()
+    70	    with pytest.raises(ValueError, match="A4"):
+    71	        compute_G_matrix(gp, roster, "pw_mse")
+    72	    with pytest.raises(ValueError, match="A4"):
+    73	        run_bms_star(gp, roster, ["pw_mse"], np.array([1.0]))
+    74	    with pytest.raises(ValueError, match="A4"):
+    75	        score_averaged_gp(gp, roster, ["pw_mse"])
+    76	    with pytest.raises(ValueError, match="A4"):
+    77	        run_robust_aggregation(gp, roster, ["pw_mse"])
+    78	    with pytest.raises(ValueError, match="A4"):
+    79	        run_weighted_bms_star(gp, roster, np.zeros(3), ["pw_mse"], np.array([1.0]))
+    80	
+    81	
+    82	@pytest.mark.parametrize("roster", [SAME, UNTAGGED], ids=["same-universe", "untagged"])
+    83	def test_permitted_rosters_pass_every_entry_point(roster):
+    84	    gp = _gp()
+    85	    G = compute_G_matrix(gp, roster, "pw_mse")
+    86	    assert G.shape == (3, 2)
+    87	    assert soft_transfer(G, 1.0, [c.name for c in roster], metric_name="pw_mse").instance_posteriors.sum() == pytest.approx(1.0)
+    88	    assert run_bms_star(gp, roster, ["pw_mse"], np.array([1.0]))["pw_mse"][1.0].instance_posteriors.sum() == pytest.approx(1.0)
+    89	    assert score_averaged_gp(gp, roster, ["pw_mse"])["pw_mse"]["posteriors"].sum() == pytest.approx(1.0)
+    90	    assert run_robust_aggregation(gp, roster, ["pw_mse"])["pw_mse"]["median"].posteriors.sum() == pytest.approx(1.0)
+    91	    r = run_weighted_bms_star(gp, roster, np.zeros(3), ["pw_mse"], np.array([1.0]))
+    92	    assert r["pw_mse"][1.0].instance_posteriors.sum() == pytest.approx(1.0)
+
+=================== NEW FILE: tests/test_fix1_sentinels.py ===================
+     1	"""
+     2	FIX-5 (2026-09 review): evaluation failures are not finite energies, and
+     3	optimizer provenance reaches the caller.
+     4	
+     5	Pins: an always-raising predictor raises under strict mode and yields NaN
+     6	evidence with zero ESS under non-strict mode, so it cannot win a comparison
+     7	with a finite probability; a valid very large divergence stays a valid
+     8	finite evidence; a negative-valued metric cannot reward a failed draw in the
+     9	induced prior; a forced optimizer exception and a forced success=False both
+    10	reach the caller's record; the multi-start candidate fits prefer successful
+    11	restarts; every pre-existing Laplace/estimator value is unchanged (the
+    12	existing suites run alongside this file).
+    13	"""
+    14	
+    15	from types import SimpleNamespace
+    16	
+    17	import numpy as np
+    18	import pytest
+    19	from scipy.optimize import OptimizeResult
+    20	
+    21	pytest.importorskip("torch")
+    22	
+    23	import bistar_gp.laplace_evidence as le
+    24	from bistar_gp.bms_star import METRICS, GPPosteriorSample
+    25	from bistar_gp.candidates import CandidateModel, build_toy_candidates
+    26	from bistar_gp.induced_prior import ModelParameterSpace, ParameterSpec, compute_induced_prior
+    27	from bistar_gp.laplace_evidence import (
+    28	    is_log_Z_Mx, laplace_log_Z_Mx, mc_log_Z_Mx, model_posterior,
+    29	)
+    30	
+    31	X_EVAL = np.linspace(0.0, 4.0, 15)
+    32	GP = SimpleNamespace(mean=0.5 * X_EVAL - 0.3, cov=np.eye(15) * 0.05)
+    33	
+    34	
+    35	@pytest.fixture
+    36	def mse_metric():
+    37	    name = "_mse_fix5_test"
+    38	    METRICS[name] = lambda mp, cp, mq, cq: float(np.mean((np.asarray(mp) - np.asarray(mq)) ** 2))
+    39	    yield name
+    40	    del METRICS[name]
+    41	
+    42	
+    43	def _space(predict_fn, name="Lin"):
+    44	    return ModelParameterSpace(
+    45	        model_name=name,
+    46	        param_specs=[ParameterSpec("a", (-1.0, 1.0), None), ParameterSpec("b", (-1.0, 1.0), None)],
+    47	        predict_fn=predict_fn, noise_param="sigma")
+    48	
+    49	
+    50	def _raise(x, p):
+    51	    raise ZeroDivisionError("always failing predictor")
+    52	
+    53	
+    54	def test_raising_predictor_raises_under_strict(mse_metric):
+    55	    ps = _space(_raise)
+    56	    with pytest.raises(RuntimeError, match="always failing predictor"):
+    57	        laplace_log_Z_Mx(ps, X_EVAL, GP, metric_name=mse_metric)
+    58	    with pytest.raises(RuntimeError, match="always failing predictor"):
+    59	        mc_log_Z_Mx(ps, X_EVAL, GP, [1.0], n_mc=50, metric_name=mse_metric)
+    60	    with pytest.raises(RuntimeError, match="always failing predictor"):
+    61	        is_log_Z_Mx(ps, X_EVAL, GP, [1.0], n_is=50, metric_name=mse_metric,
+    62	                    starts=[{"a": 0.5, "b": -0.3}])
+    63	
+    64	
+    65	def test_raising_predictor_yields_nan_not_a_win_under_non_strict(mse_metric):
+    66	    ps = _space(_raise)
+    67	    z = laplace_log_Z_Mx(ps, X_EVAL, GP, metric_name=mse_metric, strict=False)
+    68	    assert np.isnan(z.log_Z) and not z.converged
+    69	    mc = mc_log_Z_Mx(ps, X_EVAL, GP, [1.0], n_mc=50, metric_name=mse_metric, strict=False)
+    70	    assert np.isnan(mc.log_Z[0]) and mc.ess[0] == 0.0
+    71	    iss = is_log_Z_Mx(ps, X_EVAL, GP, [1.0], n_is=50, metric_name=mse_metric,
+    72	                      starts=[{"a": 0.5, "b": -0.3}], strict=False)
+    73	    assert np.isnan(iss.log_Z[0]) and iss.ess[0] == 0.0 and iss.n_starts_failed >= 1
+    74	    good = _space(lambda x, p: p["a"] * x + p["b"], "Good")
+    75	    mpr = model_posterior({"Good": good, "Bad": ps}, X_EVAL, GP.mean, X_EVAL, GP, None,
+    76	                          construction="I", metric_name=mse_metric, tau=0.5,
+    77	                          occam=False, strict=False)
+    78	    assert np.isnan(mpr.posteriors["Bad"])          # not a finite win
+    79	    assert mpr.all_converged is False
+    80	    assert mpr.components["Bad"]["converged"] is False
+    81	
+    82	
+    83	def test_valid_huge_divergence_stays_valid(mse_metric):
+    84	    far = _space(lambda x, p: 2000.0 + 0.0 * x + p["a"] * 0.0 + p["b"] * 0.0, "Far")
+    85	    z = laplace_log_Z_Mx(far, X_EVAL, GP, metric_name=mse_metric, tau=1.0)
+    86	    assert np.isfinite(z.log_Z)
+    87	    assert z.G_at_min == pytest.approx(np.mean((GP.mean - 2000.0) ** 2))
+    88	
+    89	
+    90	def test_negative_metric_cannot_reward_a_failed_draw():
+    91	    name = "_neg_flaky_fix5"
+    92	
+    93	    def metric(mu_p, cov_p, mu_q, cov_q):
+    94	        if float(mu_p[0]) == 999.0:
+    95	            raise ValueError("simulated failure on the marker draw")
+    96	        return -5.0 + 0.01 * float(np.mean((np.asarray(mu_p) - np.asarray(mu_q)) ** 2))
+    97	
+    98	    METRICS[name] = metric
+    99	    try:
+   100	        ok = GPPosteriorSample(mean=np.zeros(3), cov=np.eye(3), hyperparameters={})
+   101	        bad = GPPosteriorSample(mean=np.array([999.0, 0.0, 0.0]), cov=np.eye(3), hyperparameters={})
+   102	        ps = ModelParameterSpace(model_name="C", param_specs=[ParameterSpec("c", (0.0, 1.0), None)],
+   103	                                 predict_fn=lambda x, p: p["c"] + 0.0 * x, noise_param="sigma")
+   104	        ip = compute_induced_prior(ps, [ok, bad], np.zeros(3), np.zeros(2), metric_name=name,
+   105	                                   n_param_samples=4, seed=0)
+   106	        for s_idx in range(4):
+   107	            c = ip.param_samples[s_idx, 0]
+   108	            g_ok = metric(ok.mean, ok.cov, np.full(3, c), np.eye(3) * 0.09)
+   109	            # the failed draw must pull the average ABOVE the healthy value
+   110	            assert ip.G_per_sample[s_idx] > g_ok
+   111	    finally:
+   112	        del METRICS[name]
+   113	
+   114	
+   115	def test_forced_optimizer_exception_and_failure_reach_the_caller(mse_metric, monkeypatch):
+   116	    ps = _space(lambda x, p: p["a"] * x + p["b"])
+   117	
+   118	    def boom(*a, **k):
+   119	        raise RuntimeError("forced optimizer failure")
+   120	
+   121	    monkeypatch.setattr(le, "minimize", boom)
+   122	    z = laplace_log_Z_Mx(ps, X_EVAL, GP, metric_name=mse_metric)
+   123	    assert z.converged is False and z.n_starts_failed == 1
+   124	    assert "forced optimizer failure" in z.optimizer["exception"]
+   125	
+   126	    def not_converged(fun, x0, **k):
+   127	        return OptimizeResult(x=np.asarray(x0, float), success=False, status=2,
+   128	                              message="forced non-convergence", nit=0, nfev=1, fun=fun(x0))
+   129	
+   130	    monkeypatch.setattr(le, "minimize", not_converged)
+   131	    z2 = laplace_log_Z_Mx(ps, X_EVAL, GP, metric_name=mse_metric)
+   132	    assert z2.converged is False and z2.n_starts_failed == 1
+   133	    assert z2.optimizer["message"] == "forced non-convergence" and z2.optimizer["exception"] is None
+   134	    ev = le.laplace_log_evidence_ordinary(ps, X_EVAL, GP.mean)
+   135	    assert ev.converged is False and ev.n_starts_failed == 1
+   136	    mpr = model_posterior({"Lin": ps}, X_EVAL, GP.mean, X_EVAL, GP, None,
+   137	                          construction="II", metric_name=mse_metric, tau=0.5)
+   138	    assert mpr.all_converged is False and mpr.components["Lin"]["n_starts_failed"] == 1
+   139	
+   140	
+   141	def test_candidate_fits_report_status_and_prefer_successful_restarts():
+   142	    x = np.linspace(-10, 10, 20)
+   143	    y = np.sin(x) + 0.25 * x
+   144	    for cand in build_toy_candidates():
+   145	        cand.fit(x, y)                       # every toy fit still completes
+   146	    cm = CandidateModel()
+   147	    params, nll, status = cm._fit_mle(x, y, lambda x_, p: p[0] * x_ + p[1],
+   148	                                      [0.0, 0.0, np.log(0.5)], return_status=True)
+   149	    assert set(status) == {"success", "status", "message", "nit"}
+   150	    assert status["success"] is True and np.isfinite(nll)
+   151	    two = cm._fit_mle(x, y, lambda x_, p: p[0] * x_ + p[1], [0.0, 0.0, np.log(0.5)])
+   152	    assert len(two) == 2
+   153	    worse_but_ok = (np.zeros(3), 5.0, {"success": True, "message": "ok"})
+   154	    better_but_failed = (np.ones(3), 1.0, {"success": False, "message": "ABNORMAL"})
+   155	    chosen = CandidateModel._select_restart([better_but_failed, worse_but_ok], "T")
+   156	    assert chosen is worse_but_ok
+   157	    only_failed = CandidateModel._select_restart([better_but_failed], "T")
+   158	    assert only_failed is better_but_failed
+
+=================== NEW FILE: tests/test_fix1_weighting.py ===================
+     1	"""
+     2	FIX-6 (2026-09 review): weighted aggregation in joint log space and posterior
+     3	draw weighting.
+     4	
+     5	Pins: G = [[1000, 1001], [0, 0]], log_weights = [0, -1000], tau = 1 returns
+     6	[0.59384548, 0.40615452] (the pre-fix code underflowed to uniform); a common
+     7	log-weight shift cancels; all-absent support raises; the two-state posterior
+     8	example (equal prior masses, likelihood ratio 1:9, one mean-0 row and nine
+     9	mean-2 rows, unit variances, candidate means 0 and 2) gives mean divergences
+    10	[1.8, 0.2] under uniform weighting and the double-counted [1.9756, 0.0244]
+    11	under the explicit likelihood tilt; non-finite draws fail at entry of
+    12	average_gp_posterior.
+    13	"""
+    14	
+    15	import logging
+    16	
+    17	import numpy as np
+    18	import pytest
+    19	from scipy.special import logsumexp
+    20	
+    21	import bistar_gp.metrics_v2  # noqa: F401  registers pw_kl_vcal
+    22	from bistar_gp.aggregation_v3 import average_gp_posterior, soft_transfer_weighted
+    23	from bistar_gp.bms_star import GPPosteriorSample
+    24	from bistar_gp.induced_prior import (
+    25	    ModelParameterSpace, ParameterSpec, compute_induced_prior,
+    26	)
+    27	
+    28	NAMES = ["a", "b"]
+    29	
+    30	
+    31	def test_pinned_underflow_case_is_exact():
+    32	    G = np.array([[1000.0, 1001.0], [0.0, 0.0]])
+    33	    lw = np.array([0.0, -1000.0])
+    34	    r = soft_transfer_weighted(G, 1.0, NAMES, lw)
+    35	    assert np.allclose(r.instance_posteriors, [0.59384548, 0.40615452], atol=1e-8)
+    36	    exact = np.array([2.0, 1.0 + np.exp(-1.0)])
+    37	    assert np.allclose(r.instance_posteriors, exact / exact.sum(), atol=1e-12)
+    38	    assert r.metric_name == "weighted" and r.weight_ess.shape == (2,)
+    39	    assert np.all(r.weight_ess >= 1.0) and np.all(r.weight_ess <= 2.0 + 1e-12)
+    40	
+    41	
+    42	def test_common_log_weight_shift_cancels():
+    43	    rng = np.random.default_rng(6)
+    44	    G = rng.normal(size=(7, 3))
+    45	    lw = rng.normal(size=7)
+    46	    a = soft_transfer_weighted(G, 0.7, ["x", "y", "z"], lw).instance_posteriors
+    47	    b = soft_transfer_weighted(G, 0.7, ["x", "y", "z"], lw + 123.0).instance_posteriors
+    48	    c = soft_transfer_weighted(G, 0.7, ["x", "y", "z"], lw - 999.0).instance_posteriors
+    49	    assert np.allclose(a, b, atol=1e-12) and np.allclose(a, c, atol=1e-12)
+    50	
+    51	
+    52	def test_matches_direct_formula_in_the_representable_regime():
+    53	    rng = np.random.default_rng(7)
+    54	    G = rng.uniform(0.0, 3.0, size=(6, 4))
+    55	    lw = rng.normal(size=6)
+    56	    tau = 0.9
+    57	    w = np.exp(lw)
+    58	    terms = w[:, None] * np.exp(-G / tau)
+    59	    direct = terms.sum(axis=0) / w.sum()
+    60	    r = soft_transfer_weighted(G, tau, list("pqrs"), lw)
+    61	    assert np.allclose(r.instance_posteriors, direct / direct.sum(), atol=1e-12)
+    62	    ess = terms.sum(axis=0) ** 2 / (terms ** 2).sum(axis=0)
+    63	    assert np.allclose(r.weight_ess, ess, rtol=1e-10)
+    64	    # scores are the direct scores up to one global factor
+    65	    ratio = r.instance_scores / direct
+    66	    assert np.allclose(ratio, ratio[0], rtol=1e-10)
+    67	
+    68	
+    69	def test_all_absent_support_raises():
+    70	    G = np.zeros((3, 2))
+    71	    with pytest.raises(ValueError, match="no draw carries a finite log weight"):
+    72	        soft_transfer_weighted(G, 1.0, NAMES, np.full(3, -np.inf))
+    73	    with pytest.raises(ValueError):
+    74	        soft_transfer_weighted(G, 1.0, NAMES, np.array([np.nan, -np.inf, np.nan]))
+    75	
+    76	
+    77	def test_absent_draws_are_dropped_not_uniformized():
+    78	    G = np.array([[0.0, 5.0], [5.0, 0.0], [0.0, 5.0]])
+    79	    lw = np.array([0.0, -np.inf, 0.0])            # the middle draw is absent
+    80	    r = soft_transfer_weighted(G, 1.0, NAMES, lw)
+    81	    exact = np.array([1.0, np.exp(-5.0)])
+    82	    assert np.allclose(r.instance_posteriors, exact / exact.sum(), atol=1e-12)
+    83	
+    84	
+    85	# ── two-state posterior example (posterior draws must be weighted uniformly) ──
+    86	
+    87	def _two_state_draws():
+    88	    means = [0.0] + [2.0] * 9              # posterior draws already at 1:9
+    89	    return [GPPosteriorSample(mean=np.array([m]), cov=np.eye(1), hyperparameters={})
+    90	            for m in means]
+    91	
+    92	
+    93	def _point_space(mean_value):
+    94	    # degenerate bounds make the reference prior draw the value exactly
+    95	    return ModelParameterSpace(
+    96	        model_name=f"const{mean_value}",
+    97	        param_specs=[ParameterSpec("m", (mean_value, mean_value), None),
+    98	                     ParameterSpec("sigma", (1.0, 1.0), None)],
+    99	        predict_fn=lambda x, p: np.full(len(x), p["m"]),
+   100	    )
+   101	
+   102	
+   103	@pytest.mark.parametrize("metric", ["kl_forward", "pw_kl_vcal"])
+   104	def test_two_state_posterior_uniform_weighting(metric):
+   105	    draws = _two_state_draws()
+   106	    x_eval = np.array([0.0])
+   107	    for mean_value, expected in ((0.0, 1.8), (2.0, 0.2)):
+   108	        res = compute_induced_prior(_point_space(mean_value), draws, x_eval,
+   109	                                    metric_name=metric, tau=1.0, n_param_samples=3, seed=0)
+   110	        assert np.allclose(res.G_per_sample, expected, atol=1e-12)
+   111	
+   112	
+   113	def test_two_state_posterior_likelihood_tilt_double_counts():
+   114	    draws = _two_state_draws()
+   115	    x_eval = np.array([0.0])
+   116	    log_mlls = np.log(np.array([1.0] + [9.0] * 9))
+   117	    for mean_value, expected in ((0.0, 2.0 * 81 / 82), (2.0, 2.0 / 82)):
+   118	        res = compute_induced_prior(_point_space(mean_value), draws, x_eval, log_mlls=log_mlls,
+   119	                                    weighting="likelihood_tilted", metric_name="kl_forward",
+   120	                                    n_param_samples=2, seed=0)
+   121	        assert np.allclose(res.G_per_sample, expected, atol=1e-12)
+   122	    assert np.isclose(2.0 * 81 / 82, 1.9756, atol=5e-5)
+   123	    assert np.isclose(2.0 / 82, 0.0244, atol=5e-5)
+   124	
+   125	
+   126	def test_uniform_default_ignores_log_mlls_with_a_warning(caplog):
+   127	    draws = _two_state_draws()
+   128	    with caplog.at_level(logging.WARNING, logger="bistar_gp.induced_prior"):
+   129	        res = compute_induced_prior(_point_space(0.0), draws, np.array([0.0]),
+   130	                                    log_mlls=np.log(np.array([1.0] + [9.0] * 9)),
+   131	                                    metric_name="kl_forward", n_param_samples=2, seed=0)
+   132	    assert np.allclose(res.G_per_sample, 1.8)
+   133	    assert any("ignored" in rec.getMessage() for rec in caplog.records)
+   134	
+   135	
+   136	def test_tilt_requires_log_mlls_and_unknown_weighting_raises():
+   137	    draws = _two_state_draws()
+   138	    with pytest.raises(ValueError, match="requires log_mlls"):
+   139	        compute_induced_prior(_point_space(0.0), draws, np.array([0.0]),
+   140	                              weighting="likelihood_tilted", metric_name="kl_forward",
+   141	                              n_param_samples=2)
+   142	    with pytest.raises(ValueError, match="unknown weighting"):
+   143	        compute_induced_prior(_point_space(0.0), draws, np.array([0.0]),
+   144	                              weighting="mll", metric_name="kl_forward", n_param_samples=2)
+   145	
+   146	
+   147	def test_average_gp_posterior_rejects_nonfinite_draws():
+   148	    good = GPPosteriorSample(mean=np.zeros(3), cov=np.eye(3), hyperparameters={})
+   149	    bad_mean = GPPosteriorSample(mean=np.array([0.0, np.nan, 0.0]), cov=np.eye(3), hyperparameters={})
+   150	    with pytest.raises(ValueError, match=r"non-finite mean in draw\(s\) \[1\]"):
+   151	        average_gp_posterior([good, bad_mean])
+   152	    bad_cov = GPPosteriorSample(mean=np.zeros(3), cov=np.diag([1.0, np.inf, 1.0]), hyperparameters={})
+   153	    with pytest.raises(ValueError, match="covariance diagonal in draw 1"):
+   154	        average_gp_posterior([good, bad_cov])
+   155	    out = average_gp_posterior([good, good])
+   156	    assert np.all(np.isfinite(out.mean)) and np.all(np.isfinite(out.cov))
+
+=================== NEW FILE: tests/test_fix1_roles.py ===================
+     1	"""
+     2	FIX-7 (2026-09 review): metric roles (W1) and the withdrawn-cache registry
+     3	(M2bR banner), package side.
+     4	
+     5	Pins: ExperimentConfig().metrics contains the primary metric and keeps the
+     6	legacy entries; run_bms_star warns about appendix-only metrics only on the
+     7	implicit metric_names=None path; load_hmc_samples refuses every registered
+     8	withdrawn path and admits it, with a warning, under allow_withdrawn=True.
+     9	"""
+    10	
+    11	import logging
+    12	import os
+    13	import subprocess
+    14	import sys
+    15	import warnings
+    16	
+    17	import numpy as np
+    18	import pytest
+    19	
+    20	import bistar_gp.metrics_v2  # noqa: F401  registers pw_kl_vcal
+    21	from bistar_gp.bms_star import GPPosteriorSample, run_bms_star
+    22	from bistar_gp.candidates import CandidateResult
+    23	from bistar_gp.config import (
+    24	    APPENDIX_METRICS, PRIMARY_METRIC, WITHDRAWN_CACHES, ExperimentConfig,
+    25	    is_withdrawn_cache, load_hmc_samples,
+    26	)
+    27	
+    28	
+    29	def test_metric_roles_in_config():
+    30	    assert PRIMARY_METRIC == "pw_kl_vcal"
+    31	    assert APPENDIX_METRICS == ("kl_forward",)
+    32	    metrics = ExperimentConfig().metrics
+    33	    assert PRIMARY_METRIC in metrics
+    34	    legacy = ["kl_forward", "kl_backward", "kl_symmetric", "hellinger",
+    35	              "pw_kl_forward", "pw_kl_backward", "pw_kl_symmetric", "pw_hellinger",
+    36	              "pw_mse", "pw_nll"]
+    37	    assert metrics[:len(legacy)] == legacy      # positional slices keep their meaning
+    38	
+    39	
+    40	def test_primary_metric_resolves_without_an_explicit_v2_import():
+    41	    """experiments/bms_star_toy.py hands ExperimentConfig().metrics to
+    42	    run_bms_star without importing metrics_v2; the lookup must register it."""
+    43	    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    44	    code = (
+    45	        "import numpy as np\n"
+    46	        "from bistar_gp.bms_star import GPPosteriorSample, compute_G_matrix, METRICS\n"
+    47	        "from bistar_gp.candidates import CandidateResult\n"
+    48	        "from bistar_gp.config import ExperimentConfig, PRIMARY_METRIC\n"
+    49	        "assert PRIMARY_METRIC not in METRICS\n"
+    50	        "gp = [GPPosteriorSample(mean=np.zeros(3), cov=np.eye(3), hyperparameters={})]\n"
+    51	        "c = [CandidateResult(name='a', mean=np.ones(3), cov=np.eye(3), noise_var=1.0, parameters={})]\n"
+    52	        "for m in ExperimentConfig().metrics:\n"
+    53	        "    G = compute_G_matrix(gp, c, m)\n"
+    54	        "    assert G.shape == (1, 1) and np.isfinite(G).all(), m\n"
+    55	        "assert PRIMARY_METRIC in METRICS\n"
+    56	        "print('ok')\n"
+    57	    )
+    58	    out = subprocess.run([sys.executable, "-c", code], cwd=repo, capture_output=True, text=True)
+    59	    assert out.returncode == 0, out.stderr
+    60	    assert out.stdout.strip().endswith("ok")
+    61	
+    62	
+    63	def _gp(n_eval=4, k=3, seed=0):
+    64	    rng = np.random.default_rng(seed)
+    65	    return [GPPosteriorSample(mean=rng.normal(size=n_eval), cov=np.diag(np.full(n_eval, 0.1)),
+    66	                              hyperparameters={"draw": float(i)}) for i in range(k)]
+    67	
+    68	
+    69	def _cand(name, shift=0.0, n_eval=4):
+    70	    return CandidateResult(name=name, mean=np.full(n_eval, shift), cov=np.eye(n_eval) * 0.1,
+    71	                           noise_var=0.1, parameters={}, universe=None)
+    72	
+    73	
+    74	def _appendix_warnings(records):
+    75	    return [r for r in records if "appendix-only" in r.getMessage()]
+    76	
+    77	
+    78	def test_appendix_warning_fires_only_on_the_implicit_path(caplog):
+    79	    gp, cands = _gp(), [_cand("a"), _cand("b", shift=1.0)]
+    80	    taus = np.array([1.0])
+    81	    with caplog.at_level(logging.WARNING, logger="bistar_gp.bms_star"):
+    82	        out = run_bms_star(gp, cands, taus=taus)
+    83	    assert "kl_forward" in out and PRIMARY_METRIC in out
+    84	    warned = _appendix_warnings(caplog.records)
+    85	    assert len(warned) == 1 and "kl_forward" in warned[0].getMessage()
+    86	    assert PRIMARY_METRIC in warned[0].getMessage()
+    87	
+    88	    caplog.clear()
+    89	    with caplog.at_level(logging.WARNING, logger="bistar_gp.bms_star"):
+    90	        run_bms_star(gp, cands, metric_names=["kl_forward"], taus=taus)
+    91	        run_bms_star(gp, cands, metric_names=[PRIMARY_METRIC], taus=taus)
+    92	        run_bms_star(gp, cands, metric_names=[PRIMARY_METRIC, "kl_forward"], taus=taus)
+    93	    assert _appendix_warnings(caplog.records) == []
+    94	
+    95	
+    96	def test_withdrawn_registry_contents():
+    97	    assert "runs/fit_method_metric_comparison/samples_hmc.npz" in WITHDRAWN_CACHES
+    98	    assert "runs/toy_tau_metric_comparison/" in WITHDRAWN_CACHES
+    99	
+   100	
+   101	def test_loader_refuses_withdrawn_caches_and_admits_under_flag(tmp_path):
+   102	    for entry in WITHDRAWN_CACHES:
+   103	        rel = entry + "samples.npz" if entry.endswith("/") else entry
+   104	        path = tmp_path / rel
+   105	        path.parent.mkdir(parents=True, exist_ok=True)
+   106	        np.savez(path, a=np.arange(3.0))
+   107	        assert is_withdrawn_cache(path) and is_withdrawn_cache(str(path))
+   108	        with pytest.raises(RuntimeError, match="M2bR"):
+   109	            load_hmc_samples(str(path))
+   110	        with pytest.warns(UserWarning, match="WITHDRAWN"):
+   111	            out = load_hmc_samples(str(path), allow_withdrawn=True)
+   112	        assert np.allclose(out["a"], np.arange(3.0))
+   113	    # a deeper file under the withdrawn prefix is refused too
+   114	    deep = tmp_path / "runs/toy_tau_metric_comparison/sub/x.npz"
+   115	    deep.parent.mkdir(parents=True, exist_ok=True)
+   116	    np.savez(deep, a=np.zeros(1))
+   117	    with pytest.raises(RuntimeError):
+   118	        load_hmc_samples(str(deep))
+   119	
+   120	
+   121	def test_loader_admits_other_caches_silently(tmp_path):
+   122	    ok = tmp_path / "runs/other_study/samples_hmc.npz"
+   123	    ok.parent.mkdir(parents=True, exist_ok=True)
+   124	    np.savez(ok, a=np.arange(2.0))
+   125	    assert not is_withdrawn_cache(ok)
+   126	    with warnings.catch_warnings():
+   127	        warnings.simplefilter("error")
+   128	        out = load_hmc_samples(str(ok))
+   129	    assert np.allclose(out["a"], np.arange(2.0))
+
+=================== NEW FILE: tests/test_fix1_external_targets.py ===================
+     1	"""
+     2	FIX-8 (2026-09 review): van Bork, Romeijn and Wagenmakers (2025) Targets A
+     3	and B as package closed forms, and a checker that asserts an artifact
+     4	against them by recomputing the errors from its rows.
+     5	
+     6	Pins: the closed forms; the committed
+     7	runs/vanbork_external_validation/results.json values (its smallest-tau rows,
+     8	embedded here from the driver-provided fixture, and the fixture file itself
+     9	when present) pass; a copy with the Target B column shifted by 0.1 fails;
+    10	a corrupted Target A column, a stored error field that disagrees with the
+    11	rows, and an over-tight tolerance fail with the target named.
+    12	"""
+    13	
+    14	import copy
+    15	import json
+    16	import os
+    17	
+    18	import numpy as np
+    19	import pytest
+    20	
+    21	from bistar_gp.external_targets import (
+    22	    VANBORK_TARGET_A, VANBORK_TARGET_B_PRIORS, check_external_targets,
+    23	    external_target_errors, vanbork_target_b, vanbork_target_b_densities,
+    24	    vanbork_target_b_weight,
+    25	)
+    26	
+    27	# Driver-provided `git show` copy of the case-A artifact; set FIX1_FIXTURE_DIR to
+    28	# the directory holding vanbork_results.json to exercise it (skipped otherwise).
+    29	SCRATCH_FIXTURE = os.path.join(os.environ.get("FIX1_FIXTURE_DIR", ""), "vanbork_results.json")
+    30	
+    31	# Smallest-tau rows (and the tau = 1 rows) of the committed artifact, copied
+    32	# from the driver-provided `git show` fixture of paper/case-a-vanbork.
+    33	COMMITTED = {
+    34	    "source": "van Bork, Romeijn & Wagenmakers 2025, Synthese, doi:10.1007/s11229-025-05286-y, Section 4",
+    35	    "taus": [1.0, 0.1, 0.01, 0.001, 0.0001, 1e-05, 1e-06, 1e-07],
+    36	    "target_a": {
+    37	        "names": ["M1 (theta=0.15)", "M2 (theta=0.20)"],
+    38	        "target": {"M1 (theta=0.15)": 0.4, "M2 (theta=0.20)": 0.6},
+    39	        "rows": [
+    40	            {"tau": 1.0, "M1 (theta=0.15)": 0.49965650872257117, "M2 (theta=0.20)": 0.5003434912774289},
+    41	            {"tau": 1e-07, "M1 (theta=0.15)": 0.4, "M2 (theta=0.20)": 0.6},
+    42	        ],
+    43	    },
+    44	    "target_b": {
+    45	        "names": ["M_x beta(50,50)", "M_z beta(2,2)"],
+    46	        "published_densities_at_mle": {"M_x beta(50,50)": 7.95892373871788, "M_z beta(2,2)": 1.5000000000000007},
+    47	        "published_weight_Mx": 0.8414195904910299,
+    48	        "rows": [
+    49	            {"tau": 1.0, "M_x beta(50,50)": 0.5296605155174497, "M_z beta(2,2)": 0.47033948448255036},
+    50	            {"tau": 1e-07, "M_x beta(50,50)": 0.841418950016495, "M_z beta(2,2)": 0.15858104998350495},
+    51	        ],
+    52	    },
+    53	    "abs_error_at_min_tau": {"A": 0.0, "B": 6.404745348520535e-07},
+    54	}
+    55	
+    56	
+    57	def _write(tmp_path, payload, name="results.json"):
+    58	    p = tmp_path / name
+    59	    p.write_text(json.dumps(payload))
+    60	    return str(p)
+    61	
+    62	
+    63	def test_closed_forms():
+    64	    assert VANBORK_TARGET_A == {"M1 (theta=0.15)": 0.4, "M2 (theta=0.20)": 0.6}
+    65	    dens = vanbork_target_b_densities()
+    66	    assert dens["M_x beta(50,50)"] == pytest.approx(7.95892373871788, rel=1e-12)
+    67	    assert dens["M_z beta(2,2)"] == pytest.approx(1.5, rel=1e-12)
+    68	    assert vanbork_target_b_weight() == pytest.approx(0.8414195904910299, abs=1e-12)
+    69	    tb = vanbork_target_b()
+    70	    assert set(tb) == set(VANBORK_TARGET_B_PRIORS) and sum(tb.values()) == pytest.approx(1.0)
+    71	
+    72	
+    73	def test_committed_values_pass(tmp_path):
+    74	    path = _write(tmp_path, COMMITTED)
+    75	    errors = check_external_targets(path)
+    76	    assert errors["A"] == 0.0
+    77	    assert errors["B"] == pytest.approx(6.404745348520535e-07, abs=1e-12)
+    78	    assert external_target_errors(COMMITTED) == errors
+    79	
+    80	
+    81	@pytest.mark.skipif(not os.environ.get("FIX1_FIXTURE_DIR") or not os.path.exists(SCRATCH_FIXTURE),
+    82	                    reason="FIX1_FIXTURE_DIR with vanbork_results.json not provided")
+    83	def test_driver_fixture_passes():
+    84	    errors = check_external_targets(SCRATCH_FIXTURE)
+    85	    with open(SCRATCH_FIXTURE) as f:
+    86	        stored = json.load(f)["abs_error_at_min_tau"]
+    87	    assert errors["A"] == pytest.approx(stored["A"], abs=1e-12)
+    88	    assert errors["B"] == pytest.approx(stored["B"], abs=1e-12)
+    89	
+    90	
+    91	def test_target_b_column_shift_fails(tmp_path):
+    92	    bad = copy.deepcopy(COMMITTED)
+    93	    for row in bad["target_b"]["rows"]:
+    94	        row["M_x beta(50,50)"] += 0.1
+    95	        row["M_z beta(2,2)"] -= 0.1          # masses still sum to one
+    96	    with pytest.raises(AssertionError, match="external target B"):
+    97	        check_external_targets(_write(tmp_path, bad))
+    98	    unbalanced = copy.deepcopy(COMMITTED)
+    99	    for row in unbalanced["target_b"]["rows"]:
+   100	        row["M_x beta(50,50)"] += 0.1
+   101	    with pytest.raises(AssertionError, match="external target B"):
+   102	        check_external_targets(_write(tmp_path, unbalanced, "u.json"))
+   103	
+   104	
+   105	def test_target_a_corruption_and_stored_field_disagreement_fail(tmp_path):
+   106	    bad_a = copy.deepcopy(COMMITTED)
+   107	    bad_a["target_a"]["rows"][-1]["M1 (theta=0.15)"] = 0.41
+   108	    bad_a["target_a"]["rows"][-1]["M2 (theta=0.20)"] = 0.59
+   109	    with pytest.raises(AssertionError, match="external target A"):
+   110	        check_external_targets(_write(tmp_path, bad_a))
+   111	    stale = copy.deepcopy(COMMITTED)
+   112	    stale["abs_error_at_min_tau"]["B"] = 0.0
+   113	    with pytest.raises(AssertionError, match="disagrees"):
+   114	        check_external_targets(_write(tmp_path, stale, "s.json"))
+   115	    with pytest.raises(AssertionError, match="external target B"):
+   116	        check_external_targets(_write(tmp_path, COMMITTED, "t.json"), tol_b=1e-8)
+   117	
+   118	
+   119	def test_min_tau_row_is_selected_regardless_of_order(tmp_path):
+   120	    shuffled = copy.deepcopy(COMMITTED)
+   121	    for key in ("target_a", "target_b"):
+   122	        shuffled[key]["rows"] = shuffled[key]["rows"][::-1]
+   123	    assert external_target_errors(shuffled) == external_target_errors(COMMITTED)
+
+=================== NEW FILE: tests/test_fix1_conventions.py ===================
+     1	"""
+     2	FIX-9 (2026-09 review): the three aggregation conventions of section 2.3 in
+     3	the package, so Cases A and C share one implementation.
+     4	
+     5	Pins: `pooled` equals soft_transfer(normalize_per_draw=False) posteriors to
+     6	1e-12 and is bit-identical to the pre-fix _boltzmann_posterior arithmetic;
+     7	`rowmin` equals normalize_per_draw=True; `expected_posterior` equals a
+     8	per-row softmax averaged over rows and is bit-identical to the Case A
+     9	script's arithmetic; its tau-to-0 limit equals the FIX-3 split credit on a
+    10	tied fixture; a global G offset leaves all three unchanged and a per-row
+    11	offset changes `pooled` only; prior_sensitivity_study._boltzmann_posterior
+    12	delegates to the pooled variant.
+    13	"""
+    14	
+    15	import importlib.util
+    16	import os
+    17	import sys
+    18	
+    19	import numpy as np
+    20	import pytest
+    21	from scipy.special import softmax
+    22	
+    23	import bistar_gp
+    24	from bistar_gp.bms_star import aggregate_convention, hard_win_statistics, soft_transfer
+    25	
+    26	VARIANTS = ("pooled", "rowmin", "expected_posterior")
+    27	EXPERIMENTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "experiments")
+    28	
+    29	
+    30	def _import_pss():
+    31	    """prior_sensitivity_study imports its sibling scripts by bare name."""
+    32	    if EXPERIMENTS_DIR not in sys.path:
+    33	        sys.path.insert(0, EXPERIMENTS_DIR)
+    34	    return pytest.importorskip("prior_sensitivity_study")
+    35	# Driver-provided copy of the case-A script; set FIX1_FIXTURE_DIR to the directory
+    36	# holding e7_convention_sensitivity.py to exercise it (skipped otherwise).
+    37	E7_FIXTURE = os.path.join(os.environ.get("FIX1_FIXTURE_DIR", ""), "e7_convention_sensitivity.py")
+    38	
+    39	
+    40	def _old_boltzmann_posterior(G, tau):
+    41	    """Verbatim pre-fix experiments/prior_sensitivity_study._boltzmann_posterior."""
+    42	    lw = -G / tau
+    43	    w = np.exp(lw - lw.max())
+    44	    s = w.mean(axis=0)
+    45	    tot = s.sum()
+    46	    return s / tot if tot > 0 else np.ones(G.shape[1]) / G.shape[1]
+    47	
+    48	
+    49	def _case_a_aggregate(G, tau, variant):
+    50	    """Verbatim arithmetic of experiments/e7_convention_sensitivity.aggregate
+    51	    (paper/case-a-vanbork), with pss._boltzmann_posterior inlined."""
+    52	    if variant == "pooled":
+    53	        return _old_boltzmann_posterior(G, tau)
+    54	    if variant == "rowmin":
+    55	        Ge = G - G.min(axis=1, keepdims=True)
+    56	        return _old_boltzmann_posterior(Ge, tau)
+    57	    if variant == "expected_posterior":
+    58	        lw = -(G - G.min(axis=1, keepdims=True)) / tau
+    59	        w = np.exp(lw)
+    60	        w = w / w.sum(axis=1, keepdims=True)
+    61	        s = w.mean(axis=0)
+    62	        return s / s.sum()
+    63	    raise ValueError(variant)
+    64	
+    65	
+    66	def _G(seed=0, n=9, m=4, scale=3.0):
+    67	    return np.random.default_rng(seed).uniform(0.0, scale, size=(n, m))
+    68	
+    69	
+    70	@pytest.mark.parametrize("seed", [0, 1, 2])
+    71	@pytest.mark.parametrize("tau", [0.05, 0.3, 1.0, 10.0])
+    72	def test_bit_identical_to_the_case_a_arithmetic(seed, tau):
+    73	    G = _G(seed)
+    74	    for variant in VARIANTS:
+    75	        assert np.array_equal(aggregate_convention(G, tau, variant), _case_a_aggregate(G, tau, variant))
+    76	
+    77	
+    78	def test_pooled_and_rowmin_match_soft_transfer():
+    79	    G, names = _G(3), list("abcd")
+    80	    for tau in (0.1, 1.0, 5.0):
+    81	        pooled = aggregate_convention(G, tau, "pooled")
+    82	        rowmin = aggregate_convention(G, tau, "rowmin")
+    83	        st_false = soft_transfer(G, tau, names, normalize_per_draw=False).instance_posteriors
+    84	        st_true = soft_transfer(G, tau, names, normalize_per_draw=True).instance_posteriors
+    85	        assert np.allclose(pooled, st_false, atol=1e-12)
+    86	        assert np.allclose(rowmin, st_true, atol=1e-12)
+    87	        assert np.array_equal(pooled, _old_boltzmann_posterior(G, tau))
+    88	
+    89	
+    90	def test_expected_posterior_is_the_average_per_row_softmax():
+    91	    G = _G(4)
+    92	    for tau in (0.2, 1.0):
+    93	        ref = softmax(-G / tau, axis=1).mean(axis=0)
+    94	        assert np.allclose(aggregate_convention(G, tau, "expected_posterior"), ref, atol=1e-12)
+    95	
+    96	
+    97	def test_expected_posterior_low_tau_limit_is_split_credit():
+    98	    G = np.array([[0.0, 0.0, 1.0],
+    99	                  [0.0, 1.0, 0.0],
+   100	                  [2.0, 2.0, 2.0],
+   101	                  [0.5, 0.0, 0.7]])
+   102	    # rows: {0,1} tied; {0,2} tied; all three tied; candidate 1 alone
+   103	    hand = np.array([(0.5 + 0.5 + 1 / 3 + 0.0) / 4,
+   104	                     (0.5 + 0.0 + 1 / 3 + 1.0) / 4,
+   105	                     (0.0 + 0.5 + 1 / 3 + 0.0) / 4])
+   106	    credit = hard_win_statistics(G)[0]
+   107	    assert np.allclose(credit, hand, atol=1e-12)
+   108	    assert np.allclose(aggregate_convention(G, 1e-9, "expected_posterior"), hand, atol=1e-12)
+   109	
+   110	
+   111	def test_offsets():
+   112	    G = _G(5)
+   113	    rows = np.random.default_rng(9).normal(size=(G.shape[0], 1))
+   114	    for tau in (0.3, 2.0):
+   115	        for variant in VARIANTS:
+   116	            base = aggregate_convention(G, tau, variant)
+   117	            assert np.allclose(aggregate_convention(G + 7.5, tau, variant), base, atol=1e-12)
+   118	            shifted = aggregate_convention(G + rows, tau, variant)
+   119	            if variant == "pooled":
+   120	                assert not np.allclose(shifted, base, atol=1e-6)
+   121	            else:
+   122	                assert np.allclose(shifted, base, atol=1e-12)
+   123	
+   124	
+   125	def test_unknown_variant_raises_and_export_exists():
+   126	    with pytest.raises(ValueError, match="unknown aggregation variant"):
+   127	        aggregate_convention(_G(), 1.0, "median")
+   128	    assert bistar_gp.aggregate_convention is aggregate_convention
+   129	
+   130	
+   131	def test_prior_sensitivity_study_delegates():
+   132	    pss = _import_pss()
+   133	    G = _G(11)
+   134	    for tau in (0.1, 1.0):
+   135	        assert np.array_equal(pss._boltzmann_posterior(G, tau), aggregate_convention(G, tau, "pooled"))
+   136	        assert np.array_equal(pss._boltzmann_posterior(G, tau), _old_boltzmann_posterior(G, tau))
+   137	
+   138	
+   139	@pytest.mark.skipif(not os.environ.get("FIX1_FIXTURE_DIR") or not os.path.exists(E7_FIXTURE),
+   140	                    reason="FIX1_FIXTURE_DIR with e7_convention_sensitivity.py not provided")
+   141	def test_matches_the_case_a_script_fixture():
+   142	    pss = _import_pss()
+   143	    spec = importlib.util.spec_from_file_location("e7_fixture", E7_FIXTURE)
+   144	    mod = importlib.util.module_from_spec(spec)
+   145	    sys.modules.setdefault("prior_sensitivity_study", pss)
+   146	    try:
+   147	        spec.loader.exec_module(mod)
+   148	    except Exception as exc:  # the fixture's own imports are not under test
+   149	        pytest.skip(f"fixture not importable here: {exc!r}")
+   150	    G = _G(12)
+   151	    for tau in (0.1, 1.0, 3.0):
+   152	        for variant in VARIANTS:
+   153	            assert np.array_equal(aggregate_convention(G, tau, variant), mod.aggregate(G, tau, variant))
+

@@ -163,7 +163,7 @@ def main():
             print(f"\n  Computing induced prior for {model_name}...")
             ip = compute_induced_prior(
                 ps, gp_samples, x_eval,
-                log_mlls=log_mlls,
+                weighting="uniform",   # fit_hmc caches are posterior draws (FIX-6)
                 metric_name=args.metric,
                 tau=args.tau,
                 n_param_samples=args.n_param_samples,
@@ -278,7 +278,7 @@ def main():
             print(f"\n  τ = {tau_val}:")
             ip = compute_induced_prior(
                 sl_space, gp_samples, x_eval,
-                log_mlls=log_mlls,
+                weighting="uniform",   # fit_hmc caches are posterior draws (FIX-6)
                 metric_name=args.metric,
                 tau=tau_val,
                 n_param_samples=args.n_param_samples,

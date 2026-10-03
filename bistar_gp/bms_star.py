@@ -9,12 +9,15 @@ Extends Bayesian induction (Chandramouli & Shiffrin, 2016) by:
 Supports: KL(ψ||θ), KL(θ||ψ), Symmetric KL, Hellinger distance
 """
 
+import logging
+
 import numpy as np
 import torch
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
 torch.set_default_dtype(torch.float64)
+logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -188,7 +191,22 @@ def pw_nll(mu_psi, cov_psi, mu_theta, cov_theta):
 
 
 # Registry of available metrics
-METRICS = {
+class _MetricRegistry(dict):
+    """METRICS[name] imports the v2 metrics on the first miss (FIX-7), so the
+    primary metric pw_kl_vcal, defined in metrics_v2, resolves for a caller
+    that never imported that module (ExperimentConfig.metrics names it).
+    Registered names resolve exactly as in a plain dict; .keys() on the
+    implicit run_bms_star path lists v2 names only after their first import,
+    as before."""
+
+    def __missing__(self, name):
+        from . import metrics_v2  # noqa: F401  registers into this dict
+        if name in self:
+            return dict.__getitem__(self, name)
+        raise KeyError(f"unknown metric {name!r}; registered: {sorted(self)}")
+
+
+METRICS = _MetricRegistry({
     # Joint (full n-dimensional Gaussian)
     "kl_forward": kl_forward,       # KL(ψ || θ)
     "kl_backward": kl_backward,     # KL(θ || ψ)
@@ -201,7 +219,7 @@ METRICS = {
     "pw_hellinger": pw_hellinger,
     "pw_mse": pw_mse,               # mean-only baseline
     "pw_nll": pw_nll,               # mean + variance calibration
-}
+})
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -216,11 +234,32 @@ class GPPosteriorSample:
     hyperparameters: Dict[str, float]
 
 
+class PredictiveList(list):
+    """List of GPPosteriorSample with draw-integrity bookkeeping (FIX-1).
+
+    Behaves exactly like the plain list it replaces (len, iteration, indexing,
+    truthiness) and additionally records which draw indices were attempted,
+    which were retained, and why any were dropped, so a caller can see when
+    the returned ensemble is a numerically selected subset of the draws.
+    """
+
+    def __init__(self, items=(), attempted_indices=None, retained_indices=None,
+                 dropped=None):
+        super().__init__(items)
+        self.attempted_indices = list(attempted_indices or [])
+        self.retained_indices = list(retained_indices or [])
+        self.dropped = list(dropped or [])   # (draw index, reason) pairs
+
+    @property
+    def n_dropped(self):
+        return len(self.dropped)
+
+
 def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
                            mcmc_samples, kernel_builder,
                            likelihood_builder=None,
                            n_posterior_samples=200, jitter=1e-4,
-                           condition_on_data=True, rng=None):
+                           condition_on_data=True, rng=None, strict=True):
     """
     Extract full GP predictive distributions for each hyperparameter sample.
 
@@ -250,9 +289,17 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
         condition_on_data: posterior (True) vs prior (False) predictive
         rng: optional numpy.random.Generator for the draw subsampling;
              None preserves the legacy global-np.random behavior
+        strict: True (default) raises on any silent-wrong-answer path: a
+             sample site apply_hp_value does not recognize, an exception
+             while applying a site, a sample dict with no recognized kernel
+             site, or a draw whose predictive fails numerically. False keeps
+             the pre-2026-09 behavior (warn, skip the site or drop the draw)
+             for exploratory use; the dropped draws are then recorded on the
+             returned PredictiveList.
 
     Returns:
-        List[GPPosteriorSample]
+        PredictiveList (a list of GPPosteriorSample carrying
+        attempted_indices, retained_indices, dropped, n_dropped)
     """
     from .model import build_model, select_hmc_sites, apply_hp_value
     from .decompose import compute_cholesky
@@ -284,23 +331,49 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
         indices = np.random.choice(total_mcmc, n_take, replace=False)
 
     relevant_keys = select_hmc_sites(mcmc_samples.keys())
+    kernel_keys = [k for k in relevant_keys
+                   if not k.endswith("noise_covar.noise_prior")]
+    if not kernel_keys:
+        msg = ("extract_gp_predictives: no kernel hyperparameter site was "
+               f"recognized among {sorted(mcmc_samples.keys())}; every "
+               "predictive would be built at the fresh model's initialization "
+               "kernel values (only the noise would vary)")
+        if strict:
+            raise ValueError(msg)
+        logger.warning(msg)
 
     results = []
+    retained = []
+    dropped = []
 
     for idx in indices:
         kernels, names = kernel_builder()
         fresh_likelihood = likelihood_builder()
         fresh_model, fresh_likelihood = build_model(x_train, y_train, kernels, names, fresh_likelihood)
 
-        # Set parameters from this MCMC sample
+        # Set parameters from this MCMC sample. Only values that were
+        # actually applied are recorded as the draw's hyperparameters.
         hp_dict = {}
         for pyro_name in relevant_keys:
             val = float(mcmc_samples[pyro_name][idx])
-            hp_dict[pyro_name] = val
             try:
-                apply_hp_value(fresh_model, fresh_likelihood, pyro_name, val)
-            except (IndexError, AttributeError, RuntimeError):
+                applied = apply_hp_value(fresh_model, fresh_likelihood, pyro_name, val)
+            except (IndexError, AttributeError, RuntimeError) as exc:
+                msg = (f"extract_gp_predictives: applying site {pyro_name!r} "
+                       f"for draw {int(idx)} raised {type(exc).__name__}: {exc}")
+                if strict:
+                    raise ValueError(msg) from exc
+                logger.warning(msg)
                 continue
+            if not applied:
+                msg = (f"extract_gp_predictives: apply_hp_value did not recognize "
+                       f"site {pyro_name!r} (draw {int(idx)}); the fresh model "
+                       "keeps its initialization value for that hyperparameter")
+                if strict:
+                    raise ValueError(msg)
+                logger.warning(msg)
+                continue
+            hp_dict[pyro_name] = val
 
         fresh_model.eval()
         fresh_likelihood.eval()
@@ -338,11 +411,23 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
                     cov=pred_cov,
                     hyperparameters=hp_dict,
                 ))
-            except RuntimeError:
+                retained.append(int(idx))
+            except RuntimeError as exc:
+                if strict:
+                    raise RuntimeError(
+                        f"extract_gp_predictives: the predictive for draw "
+                        f"{int(idx)} failed ({exc}); pass strict=False to drop "
+                        "failing draws and record them instead") from exc
+                dropped.append((int(idx), str(exc)))
                 continue
 
     print(f"  Extracted {len(results)}/{len(indices)} GP predictives")
-    return results
+    if dropped:
+        logger.warning("extract_gp_predictives dropped %d of %d draws: %s",
+                       len(dropped), len(indices),
+                       [d for d, _ in dropped][:10])
+    return PredictiveList(results, attempted_indices=[int(i) for i in indices],
+                          retained_indices=retained, dropped=dropped)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -363,6 +448,84 @@ class BMSStarResult:
     class_posteriors: np.ndarray        # (n_classes,) — normalized
     # Raw G matrix for diagnostics
     G_matrix: np.ndarray               # (n_psi, n_theta)
+    # Draw-level diagnostics (2026-09 review FIX-3). weight_ess is the
+    # per-candidate effective number of draws behind the pooled score,
+    # (sum_i w_ij)^2 / sum_i w_ij^2 with w_ij = exp(-G_ij/tau) on the weights
+    # actually aggregated: a concentration summary, not an MCMC ESS and not an
+    # error bar. hard_win_credit splits each draw's unit of credit equally
+    # among its exact co-minimizers (sums to one across candidates);
+    # attainment is the fraction of draws on which a candidate attains the
+    # row minimum (ties counted for every co-minimizer); tie_fraction is the
+    # fraction of draws whose minimum is tied.
+    weight_ess: Optional[np.ndarray] = None
+    hard_win_credit: Optional[np.ndarray] = None
+    attainment: Optional[np.ndarray] = None
+    tie_fraction: Optional[float] = None
+
+
+def log_weight_ess(log_w, axis: int = 0):
+    """Effective sample size (sum w)^2 / sum w^2 from LOG weights.
+
+    The one ESS routine of the package (fix pass 1b): the per-column maximum
+    is subtracted before exponentiation, so a large common offset cancels
+    exactly instead of surviving as a difference of two large log-sum-exps
+    (review R6), and no weight can overflow. Entries of -inf contribute
+    nothing. A column whose weights are all -inf has ESS 0 (absent support);
+    a column containing NaN has ESS NaN (an invalid evaluation), which is
+    deliberately distinct from absent support (review R8). A 1-D input
+    returns a float.
+    """
+    lw = np.asarray(log_w, dtype=float)
+    one_d = lw.ndim == 1
+    if one_d:
+        lw = lw[:, None]
+        axis = 0
+    nan_col = np.isnan(lw).any(axis=axis)
+    m = np.max(np.where(np.isnan(lw), -np.inf, lw), axis=axis, keepdims=True)
+    supported = np.isfinite(m)
+    w = np.exp(lw - np.where(supported, m, 0.0))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        ess = w.sum(axis=axis) ** 2 / (w ** 2).sum(axis=axis)
+    ess = np.where(np.squeeze(supported, axis=axis), ess, 0.0)
+    ess = np.where(nan_col, np.nan, ess)
+    return float(ess[0]) if one_d else ess
+
+
+def boltzmann_weight_ess(G_matrix: np.ndarray, tau: float) -> np.ndarray:
+    """Per-candidate effective number of draws behind a pooled Boltzmann score.
+
+    ESS_j = (sum_i w_ij)^2 / sum_i w_ij^2 with w_ij = exp(-G_ij / tau), computed
+    from log weights (log_weight_ess) so that a candidate whose raw weights
+    underflow still gets a finite value. Invariant under a per-candidate
+    column shift of G, which is the multiplicative factor the cross-candidate
+    normalization removes.
+    """
+    lw = -np.asarray(G_matrix, dtype=float) / float(tau)
+    if not np.all(np.isfinite(lw)):
+        raise ValueError("boltzmann_weight_ess requires finite G values")
+    return log_weight_ess(lw, axis=0)
+
+
+def hard_win_statistics(G_matrix: np.ndarray):
+    """Tau-free draw-win statistics with an explicit, order-free tie rule.
+
+    Exact ties on the validated finite scores: for draw i let T_i be the set
+    of candidates attaining the row minimum. Returns
+      hard_win_credit_j = mean_i [ 1(j in T_i) / |T_i| ]   (sums to one),
+      attainment_j      = mean_i [ 1(j in T_i) ],
+      tie_fraction      = mean_i [ |T_i| > 1 ].
+    A first-argmin rule would silently award every tie to the first candidate.
+    """
+    G = np.asarray(G_matrix, dtype=float)
+    if G.ndim != 2 or not np.all(np.isfinite(G)):
+        raise ValueError("hard_win_statistics requires a finite 2-D G matrix")
+    row_min = G.min(axis=1, keepdims=True)
+    tied = (G == row_min)
+    sizes = tied.sum(axis=1, keepdims=True)
+    credit = (tied / sizes).mean(axis=0)
+    attainment = tied.mean(axis=0)
+    tie_fraction = float(np.mean(sizes[:, 0] > 1))
+    return credit, attainment, tie_fraction
 
 
 def compute_G_matrix(gp_samples: List[GPPosteriorSample],
@@ -379,7 +542,13 @@ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
     Returns:
         G matrix of shape (n_psi, n_theta)
     """
-    metric_fn = METRICS[metric_name]
+    # A4 universe firewall at the boundary that still holds candidate
+    # metadata (2026-09 review FIX-4): every path that builds a G matrix
+    # through the package passes here, including the aggregation_v3 entry
+    # points that never call run_bms_star.
+    _assert_candidate_universes_consistent(candidate_results)
+
+    metric_fn = METRICS[metric_name]          # registers metrics_v2 on a miss
     n_psi = len(gp_samples)
     n_theta = len(candidate_results)
     G = np.zeros((n_psi, n_theta))
@@ -409,32 +578,54 @@ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
 def soft_transfer(G_matrix: np.ndarray, tau: float,
                   instance_names: List[str],
                   class_names: Optional[List[str]] = None,
-                  normalize_per_draw: bool = False) -> BMSStarResult:
+                  normalize_per_draw: bool = False,
+                  metric_name: Optional[str] = None) -> BMSStarResult:
     """
     Soft BMS* scoring.
 
     score(θ_j) = (1/N) Σ_i exp(-G(ψ_i, θ_j) / τ)
 
-    For class-level, average within classes (not sum, to avoid size bias).
+    Class level: only the one-instance-per-class mapping is supported, in
+    which class posteriors equal instance posteriors. Any ``class_names``
+    that groups instances raises rather than silently returning instance
+    posteriors under a class label (2026-09 review FIX-3).
 
     Args:
         G_matrix: (n_psi, n_theta) divergence matrix
         tau: temperature parameter
         instance_names: names for each θ
-        class_names: if None, each instance is its own class
+        class_names: None or a 1:1 relabelling of the instances
         normalize_per_draw: if True, subtract per-row minimum before
             Boltzmann weighting. This removes systematic offset so that
             only *relative* divergence within each GP draw matters.
             Prevents microscopic absolute bias from being amplified
             into false certainty across many draws.
+        metric_name: the divergence that produced G_matrix. None is recorded
+            as "unspecified" rather than an invented identity.
 
     Returns:
-        BMSStarResult with normalized posteriors
+        BMSStarResult with normalized posteriors and draw-level diagnostics
     """
     n_psi, n_theta = G_matrix.shape
+    if not np.all(np.isfinite(G_matrix)):
+        # A NaN or infinite divergence is never a score. compute_G_matrix
+        # returns finite penalties, so only a hand-built matrix reaches this;
+        # the pre-fix code returned a uniform posterior for it (review F4).
+        raise ValueError("soft_transfer: G_matrix contains non-finite entries")
 
+    if len(instance_names) != n_theta:
+        raise ValueError(
+            f"soft_transfer: {len(instance_names)} instance_names for "
+            f"{n_theta} candidate columns")
     if class_names is None:
         class_names = instance_names
+    elif len(class_names) != n_theta or len(set(class_names)) != n_theta:
+        # one label per column and no repeats (review R5: a length check
+        # alone, or a uniqueness check alone, each admits a malformed list)
+        raise ValueError(
+            "soft_transfer: class-level averaging over grouped instances is "
+            "not implemented; pass class_names=None (or a 1:1 relabelling) "
+            "and aggregate classes explicitly")
 
     # Optionally normalize: subtract best-model score per draw
     G_effective = G_matrix.copy()
@@ -461,12 +652,16 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
     else:
         instance_posteriors = np.ones(n_theta) / n_theta
 
-    # Class posteriors = instance posteriors (1:1 mapping for now)
+    # Class posteriors = instance posteriors (1:1 mapping, enforced above)
     class_posteriors = instance_posteriors.copy()
 
-    metric_name = "unknown"  # will be set by caller
+    # Draw-level diagnostics on the weights actually aggregated (G_effective)
+    # and the tau-free win statistics on the raw matrix.
+    weight_ess = boltzmann_weight_ess(G_effective, tau)
+    credit, attainment, tie_fraction = hard_win_statistics(G_matrix)
+
     return BMSStarResult(
-        metric_name=metric_name,
+        metric_name=metric_name if metric_name is not None else "unspecified",
         tau=tau,
         instance_names=list(instance_names),
         instance_scores=instance_scores,
@@ -474,7 +669,50 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
         class_names=list(class_names),
         class_posteriors=class_posteriors,
         G_matrix=G_matrix,
+        weight_ess=weight_ess,
+        hard_win_credit=credit,
+        attainment=attainment,
+        tie_fraction=tie_fraction,
     )
+
+
+def aggregate_convention(G_matrix: np.ndarray, tau: float, variant: str) -> np.ndarray:
+    """The three aggregation conventions of section 2.3 over one G matrix
+    (n_draws, n_candidates) at temperature tau (2026-09 review FIX-9; moved
+    into the package from the Case A script so that Cases A and C share one
+    implementation instead of a cross-branch import).
+
+      "pooled": the shipped default; mean over draws of exp(-G/tau) with one
+          global stabilizing shift, normalized once (identical arithmetic to
+          soft_transfer with normalize_per_draw=False).
+      "rowmin": subtract each draw's minimum first, then as "pooled"
+          (identical to soft_transfer with normalize_per_draw=True).
+      "expected_posterior": normalize each draw into a posterior over
+          candidates, then average (van Bork et al. Eq. 4).
+    """
+    G = np.asarray(G_matrix, dtype=float)
+    if not np.all(np.isfinite(G)):
+        # the Case A script's `tot > 0 else uniform` tail would otherwise
+        # return a uniform posterior for a NaN matrix (GLM F1); on finite
+        # input that tail is dead, so the arithmetic below is unchanged
+        raise ValueError("aggregate_convention requires a finite G matrix")
+    if variant == "pooled":
+        G_eff = G
+    elif variant == "rowmin":
+        G_eff = G - G.min(axis=1, keepdims=True)
+    elif variant == "expected_posterior":
+        lw = -(G - G.min(axis=1, keepdims=True)) / tau
+        w = np.exp(lw)
+        w = w / w.sum(axis=1, keepdims=True)
+        s = w.mean(axis=0)
+        return s / s.sum()
+    else:
+        raise ValueError(f"unknown aggregation variant {variant!r}")
+    lw = -G_eff / tau
+    w = np.exp(lw - lw.max())
+    s = w.mean(axis=0)
+    tot = s.sum()
+    return s / tot if tot > 0 else np.ones(G.shape[1]) / G.shape[1]
 
 
 def _assert_candidate_universes_consistent(candidate_results):
@@ -501,9 +739,10 @@ def _assert_candidate_universes_consistent(candidate_results):
             f"{getattr(cr, 'name', '?')}[{getattr(cr, 'universe', None)}]"
             for cr in candidate_results)
         raise ValueError(
-            "run_bms_star received candidates spanning multiple universes or "
-            f"a mix of tagged and untagged results ({labels}); decision A4 "
-            "forbids merging Mauna candidate universes into one normalization")
+            "compute_G_matrix/run_bms_star received candidates spanning "
+            "multiple universes or a mix of tagged and untagged results "
+            f"({labels}); decision A4 forbids merging Mauna candidate "
+            "universes into one normalization")
 
 
 def run_bms_star(gp_samples: List[GPPosteriorSample],
@@ -521,10 +760,28 @@ def run_bms_star(gp_samples: List[GPPosteriorSample],
     Returns:
         results[metric_name][tau] = BMSStarResult
     """
+    implicit_metrics = metric_names is None
     if metric_names is None:
         metric_names = list(METRICS.keys())
     if taus is None:
         taus = np.logspace(-1, 2, 20)
+    if implicit_metrics:
+        from .config import APPENDIX_METRICS, PRIMARY_METRIC
+        appendix = [m for m in metric_names if m in APPENDIX_METRICS]
+        if appendix:
+            logger.warning(
+                "run_bms_star: scoring appendix-only metric(s) %s because "
+                "metric_names was not given; W1 makes %s the primary metric",
+                appendix, PRIMARY_METRIC)
+        if PRIMARY_METRIC not in metric_names:
+            # The implicit roster is whatever is registered at call time; the
+            # primary metric registers on first use of metrics_v2 (Kimi K3-1).
+            # The roster is left as it is so existing implicit calls keep
+            # their outputs; the omission is announced instead.
+            logger.warning(
+                "run_bms_star: the primary metric %s is not in the implicit "
+                "roster (metrics_v2 not imported yet); pass metric_names "
+                "explicitly to score it", PRIMARY_METRIC)
 
     _assert_candidate_universes_consistent(candidate_results)
 
@@ -552,8 +809,8 @@ def run_bms_star(gp_samples: List[GPPosteriorSample],
         results[metric_name] = {}
         for tau in taus:
             bms_result = soft_transfer(G, tau, instance_names,
-                                       normalize_per_draw=normalize_per_draw)
-            bms_result.metric_name = metric_name
+                                       normalize_per_draw=normalize_per_draw,
+                                       metric_name=metric_name)
             results[metric_name][tau] = bms_result
 
     return results
