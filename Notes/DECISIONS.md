@@ -5986,8 +5986,11 @@ mutant fails the R8 correlation check. The Case D producer's two-subject smoke r
 seed 0) reproduces exactly on a seeded rerun and is unchanged by the folds apart from the new
 `candidate_failures` field.
 
-**Status:** Committed in this commit on `fix/pass-2a` (parent `69deeda`) by author instruction,
-2026-10-03, with `bistar_gp/errors.py` included; not pushed, no PR. Open for the author
+**Status:** Committed as `eee2ea5` on `fix/pass-2a` (parent `69deeda`) by author instruction,
+2026-10-03, with `bistar_gp/errors.py` included; pushed the same day and opened as PR #43
+(https://github.com/suyoghc/bistar_gp_c/pull/43), stacked on PR #42 with base
+`fix/code-review-2026-09`, the PR number recorded by a Notes-only follow-up commit. Merge order:
+PR #42 first, then retarget PR #43 to `main` before merging it. Open for the author
 (report, "Not done"): the inherited penalty overflow near the float maximum; the
 `score_averaged_gp` NaN path; direct `np.load` reads in `prior_sensitivity_study` outside its
 serialization block; the alias table into `model.py` (R16); D58 cards 7-8 that do not re-render
