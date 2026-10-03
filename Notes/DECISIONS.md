@@ -5877,5 +5877,128 @@ not remove the conflicts and would break #42's fast-forward); re-locking the env
 
 **Result:** record committed; no code changed in this commit.
 
-**Status:** OPEN until the author's decision sheet is cast; PR #42 unchanged; the main
-worktree's untracked working copy of the record remains the live copy until then.
+**Status:** OPEN until the author's decision sheet is cast; the main worktree's untracked
+working copy of the record remains the live copy until then. Update 2026-10-03: by direct
+author instruction, PR #42 was merged into `main` ahead of sheet line B9 (whose A1-A3 gate is
+still uncast), as the true merge `8c6e6b2` (parents `7154083` and `69deeda`; tree identical to
+`69deeda`; branch `fix/code-review-2026-09` kept). The six paper PRs #36-#41, clean against
+`main` before the merge, now conflict with it on `Notes/DECISIONS.md` only, to be resolved by
+the section 10 union with per-block hash checks.
+
+
+## D70: Fix pass 2a, decision-free package contracts from the 2026-09-26 review (SYNTHESIS A-1 to A-4, A-6, A-10, A-11 with A-24, A-13 code half, A-23 package half, hardened Case D producer; optional A-5, A-7, A-15, A-18) — 2026-10-03
+
+**Problem:** D69's adopted plan (SYNTHESIS section 10, step 5) splits fix pass 2 into 2a
+(package contracts that need no author decision), 2b (script wiring after the A and C merges)
+and 2c (decision-gated artifacts). The 2a queue (`docs/paper-sie-jmp/HANDOFF-fix-pass-2.md`
+section 3) holds the adjudicated paths on which a failure became a plausible number or a
+record was dropped: an all-failed divergence table, or a candidate failing on every draw,
+became finite support (A-1); the induced prior let an all-failed point outrank valid ones and
+returned uniform weights when every point failed (A-2); strict extraction accepted an
+incomplete site dictionary, and ragged arrays raised or dropped a draw depending on dict order
+(A-3); an empty IS ladder doubled the integral (A-4); sinusoid fits fell back silently to a
+preset candidate (A-6); `noise_var` was the last retained draw's value (A-10); the
+fit-method experiment read its cache before the withdrawal guard, whose registry named two of
+the caches D33/D34 withdrew (A-11, A-24); the weight ESS never warned, and first-index
+`argmin` gave ties to the first candidate (A-13); the tau sweep and the ablation ladder dropped
+their convergence records, jitter escalations went unrecorded, and the Case D producer dropped
+failing configurations silently and passed no seed (A-23).
+
+**Decision:** Implemented in the worktree `bistar_gp_c-fix2a`, branch `fix/pass-2a` from
+`69deeda`; report `runs/project_review_2026_09/fix2a_report.md` (per item: files, signatures,
+callers, pins). `compute_G_matrix` raises `EvaluationFailure` when every entry, a whole
+candidate column or a whole draw row fails and `ValueError` on an empty table, while partial
+failures keep the strictly-worse penalty with a logged count. `EvaluationFailure` moves to the
+new `bistar_gp/errors.py` (re-exported by `laplace_evidence` and the package);
+`compute_induced_prior(..., strict=True)` raises on a failed point (a raising predictor, or no
+finite divergence under the `compute_G_at_params` failure classes), gives it zero weight with
+`n_failed_points` under `strict=False`, and raises whenever every point fails.
+`extract_gp_predictives` and `decompose_model_hmc` share one preflight that compares the
+supplied sites with the model's `named_priors()` inventory under the legacy aliases (strict
+raises naming each missing site) and validates one leading length before any indexing
+(`sample_draw_count`, `missing_sample_sites`, `_validate_sample_sites` in `bms_star.py`);
+`compute_log_marginal_likelihoods` checks each draw's sites and `decompose_model_mcmc` the
+lengths. `is_log_Z_Mx` rejects empty, non-finite or non-positive ladders.
+`SinusoidalModel.fit` and `SinLinearModel.fit` raise when every restart raised.
+`DecompositionResult.noise_var` is the retained-draw mean, with `noise_var_draws` attached.
+`WITHDRAWN_CACHES` has 17 entries derived from D33/D34, each group cited (including the two
+historical toy_elicited HMC caches), and `fit_method_metric_comparison.run_one_method` reads its
+cache through `load_hmc_samples` (`allow_withdrawn`, `--allow-withdrawn`).
+`soft_transfer(..., ess_warn=100.0)` warns below `min(ess_warn, 0.1 * n_draws)`, `run_bms_star`
+prints tie-split credit, and `_sir_bms` serializes `hard_win_credit`, `attainment`,
+`tie_fraction` and `weight_ess` beside `hard_win_fractions`. `model_posterior_tau_sweep` and
+`ablation_ladder_posteriors` return a tuple and a dict subclass carrying `converged`,
+`n_clipped`, `n_starts_failed` and `all_converged`; `compute_cholesky` logs each escalation.
+`experiments/practice_EvansEtAL/run.py` threads `seed` and `strict=True` through `run_all`;
+under strict no configuration or candidate goes missing or gets substituted silently, while
+non-strict records configuration failures (keeping the sampling record when only extraction
+failed) and drops failing candidates into `candidate_failures` instead of scoring the former
+flat-mean substitute; each subject JSON records the seed, requested and retained draws and the
+sampler diagnostics, with the draws in a `.npz` beside it. Optional items: `viz.py` plots the
+mixture central interval and labels conditional-mean traces for package-produced results (MAP
+traces are eigendecomposition joint draws), while results rebuilt without per-draw provenance
+render exactly as before so the frozen D58 driver re-renders card6 byte for byte;
+`robust_rank` averages tied ranks in floating storage; docstrings for
+`InducedPriorResult.log_weights` and the in-place writes of `decompose_model_mcmc`. Tests:
+`tests/test_fix2a_contracts.py`, 12 tests, each failing on `69deeda`. Author decisions
+2026-10-03: (1) `tests/test_bms_aggregation.py` joins the editable set as a one-file exception;
+its two D2 tests (`569ee39`) asserted the penalty for a candidate failing on every draw, the
+configuration A-1 adjudicates as the defect (Opus C4); a read-only consultation of Codex
+gpt-6-astra xhigh and Fable chose adaptation, found neither test weakened and advised against a
+strict flag; Fable's version, adopted, keeps the D2 property on a candidate that fails on one
+draw, pins the raise for the always-failing one, and adds a check that fails if the penalty
+were only the largest finite value. (2) A five-channel review round on the uncommitted pass
+(record `runs/project_review_2026_09/fix2a_review/`: Codex gpt-6-astra xhigh REVISE X01-X09,
+Fable REVISE F1-F7, GLM 5.3 APPROVE G1-G7, Kimi K3 REVISE K3-1..K3-5, Gemini 3.1 Pro APPROVE
+GEM-1/2; collation and probe verification in its `SYNTHESIS.md`, R1-R22; no S1, no rewrite;
+worktrees, refs and `stash@{0}` unchanged by the reviewers). (3) For the fold list and the
+dead-row policy the author answered "check with fable"; Fable endorsed the folds with one
+change (drop and record a failing candidate instead of scoring it) and recommended raising on a
+dead row, and fold pass 2a-b implements R1-R15 and R18 accordingly. The most consequential fold
+is R7 (Fable F1): the first version of A-5 changed the frozen D58 driver's card6 re-render,
+which at `69deeda` reproduces its pin `0fe67b15...` byte for byte.
+
+**Alternatives considered:** leaving the two D2 tests failing for the author (B in the
+consultation) or narrowing 2a-1 so a dead column keeps the penalty (C, rejected: it restores
+A-1); a strict flag on `compute_G_matrix` (rejected by both consultants); keeping
+`EvaluationFailure` in `laplace_evidence` (impossible, because `laplace_evidence` imports
+`induced_prior`); symlinking the regeneration inputs as the earlier reviews did (copied
+instead, so no script could write into the main worktree); for a dead row, keeping the penalty
+with a recorded count (rejected: `compute_G_matrix` returns a bare array, so the record would
+be a log line) or leaving it for later; for a failing Case D candidate under non-strict,
+keeping the flat substitute with a record (rejected by Fable: a scored substitute still shifts
+the other candidates' posteriors); tolerance ties in `robust_rank` (Kimi R17, not adopted:
+exact ties are the package rule); moving the alias table into `model.py` (R16, deferred:
+outside the editable set).
+
+**Result:** Full suite in the worktree at the final state (after fold pass 2a-b): 1354 passed,
+5 failed, 5 skipped, 372 s (collected 1364 = 1352 + 12 new). The failures are the known
+lock-drift test (the drift is now `pypdf==6.14.2` in the user site plus `imageio-ffmpeg==0.6.0`
+in the base site-packages) and four `test_m2cr_realroot_integration.py` launch tests whose
+`git stash create` snapshot omitted the then-untracked `bistar_gp/errors.py`; with this commit's
+files staged, so that the snapshot includes it, the four pass (4 passed, 3,333 s), and the
+lock-drift test is the only known failure. Earlier runs: 1352/7/5 (365 s) before the D2 test adaptation; 1353/6/5 (729 s, load
+average about 90) before the review round, the sixth failure a timing flake that passed alone,
+in its file and in the final run. Case E oracle byte-identical in all three runs (65c9ff5f...,
+c1153549..., 7096cd6e...), also reproduced by Astra and Fable. Regenerations against the final
+package: Case A E7 and external targets, Case C and Case D identical on every existing key;
+Case B identical except 2,815 ESS-derived fields in `e6_results.json` and 8 in
+`figure_results.json`, at most 2.1e-14 relative (the pass-1b ESS routine, the counts D69
+recorded); the three regeneration runs agree in every number. The D58 card6 re-render through
+the frozen driver equals its pin `0fe67b15...` again. Each of the 12 contract tests fails on
+`69deeda`; 8 of 12 fail on the pre-fold 2a tree, one per fold, and a diagonal-only sampler
+mutant fails the R8 correlation check. The Case D producer's two-subject smoke run (E1 NUTS,
+seed 0) reproduces exactly on a seeded rerun and is unchanged by the folds apart from the new
+`candidate_failures` field.
+
+**Status:** Committed as `eee2ea5` on `fix/pass-2a` (parent `69deeda`) by author instruction,
+2026-10-03, with `bistar_gp/errors.py` included; pushed the same day and opened as PR #43
+(https://github.com/suyoghc/bistar_gp_c/pull/43), first stacked on PR #42 with base
+`fix/code-review-2026-09`. After PR #42 was merged (true merge `8c6e6b2`, D69), PR #43 was
+retargeted to `main` the same day, where it merges cleanly; PR #43 itself is not merged.
+Notes-only follow-up commits record the PR number, the merge and the retarget. Open for the author
+(report, "Not done"): the inherited penalty overflow near the float maximum; the
+`score_averaged_gp` NaN path; direct `np.load` reads in `prior_sensitivity_study` outside its
+serialization block; the alias table into `model.py` (R16); D58 cards 7-8 that do not re-render
+from the committed arrays since fix pass 1 (owned by the 2c D58 correction); the grown lock
+drift (sheet B1).

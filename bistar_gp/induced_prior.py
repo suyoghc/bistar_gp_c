@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 from bistar_gp.bms_star import GPPosteriorSample, METRICS
 from bistar_gp.candidates import CandidateResult
+from bistar_gp.errors import EvaluationFailure
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -157,18 +158,30 @@ def build_toy_parameter_spaces(true_params: Dict = None) -> Dict[str, ModelParam
 
 @dataclass
 class InducedPriorResult:
-    """Result of computing the GP-induced prior over model parameters."""
+    """Result of computing the GP-induced prior over model parameters.
+
+    ``weights`` is the normalized induced prior over ``param_samples``.
+    ``log_weights`` is on an internal scale (SYNTHESIS A-15): -G/tau shifted
+    by its maximum, plus log of the sum of the shifted weights; it is neither
+    the raw nor the normalized log weight (the normalized one is
+    ``np.log(weights)``), and failed points carry -inf.
+    """
     model_name: str
     prior_name: str          # which GP prior config
     param_names: List[str]
     param_samples: np.ndarray   # (n_samples, n_params) — reference prior draws
     log_weights: np.ndarray     # (n_samples,) — log induced prior weight per sample
     weights: np.ndarray         # (n_samples,) — normalized weights
-    G_per_sample: np.ndarray    # (n_samples,) — average G across GP samples
+    G_per_sample: np.ndarray    # (n_samples,) — average G across GP samples (NaN at a failed point)
     tau: float
     effective_sample_size: float
     mle_values: Optional[Dict[str, float]] = None
     true_values: Optional[Dict[str, float]] = None
+    # Non-strict evaluation records (fix pass 2a, SYNTHESIS A-2): parameter
+    # points with no valid divergence (zero weight), and single (point, draw)
+    # evaluations replaced by the strictly-worse penalty.
+    n_failed_points: int = 0
+    n_penalized_evaluations: int = 0
 
 
 def compute_induced_prior(
@@ -181,6 +194,7 @@ def compute_induced_prior(
     n_param_samples: int = 10000,
     seed: int = 42,
     weighting: str = "uniform",
+    strict: bool = True,
 ) -> InducedPriorResult:
     """
     Compute the GP-induced prior over model parameters.
@@ -201,6 +215,15 @@ def compute_induced_prior(
           Requires log_mlls. Never use with posterior draws.
     The pre-fix code made the likelihood weighting mandatory and its legacy
     callers fed it posterior draws.
+
+    strict (fix pass 2a, SYNTHESIS A-2): a parameter point FAILS when its
+    predict_fn raises or when no GP draw yields a finite divergence there.
+    True (default) raises EvaluationFailure naming the point. False gives the
+    point log weight -inf (zero mass, G_per_sample NaN) and counts it in
+    n_failed_points; the ESS is then over the valid points only. Every point
+    failing raises under either setting. A point where only some draws fail
+    keeps the strictly-worse penalty for those draws, counted in
+    n_penalized_evaluations and logged.
     """
     metric_fn = METRICS[metric_name]
     n_draws = len(gp_samples)
@@ -235,6 +258,8 @@ def compute_induced_prior(
 
     # For each parameter sample, compute MLL-weighted G
     G_per_sample = np.zeros(n_param_samples)
+    failed_points = np.zeros(n_param_samples, dtype=bool)
+    n_penalized = 0
 
     for s_idx in range(n_param_samples):
         # Build parameter dict
@@ -244,8 +269,13 @@ def compute_induced_prior(
         # Generate prediction
         try:
             mu_theta = param_space.predict_fn(x_eval, param_dict)
-        except Exception:
-            G_per_sample[s_idx] = np.inf
+        except Exception as exc:
+            if strict:
+                raise EvaluationFailure(
+                    f"compute_induced_prior: predict_fn of {param_space.model_name!r} "
+                    f"raised {type(exc).__name__} at {param_dict}: {exc}") from exc
+            failed_points[s_idx] = True
+            G_per_sample[s_idx] = np.nan
             continue
 
         sigma = param_dict.get(param_space.noise_param, 0.3)
@@ -258,7 +288,9 @@ def compute_induced_prior(
         for i, psi in enumerate(gp_samples):
             try:
                 g_vals[i] = metric_fn(psi.mean, psi.cov, mu_theta, cov_theta)
-            except (np.linalg.LinAlgError, ValueError):
+            except (np.linalg.LinAlgError, ValueError, RuntimeError, FloatingPointError):
+                # the failure classes compute_G_at_params treats as evaluation
+                # failures (review round R11)
                 g_vals[i] = np.inf
 
         # Replace a failed draw with a value strictly WORSE than every finite
@@ -266,34 +298,54 @@ def compute_induced_prior(
         # score) whenever the metric is negative-valued (pw_nll_gp), the bug
         # class compute_G_matrix already documents (2026-09 review FIX-5).
         finite_mask = np.isfinite(g_vals)
-        if finite_mask.any():
+        if not finite_mask.any():
+            # The former G = 1e6 sentinel could outrank valid points whose G
+            # exceeds it (SYNTHESIS A-2); a point with no valid evaluation
+            # carries no mass.
+            if strict:
+                raise EvaluationFailure(
+                    f"compute_induced_prior: every divergence evaluation failed "
+                    f"for {param_space.model_name!r} at {param_dict}")
+            failed_points[s_idx] = True
+            G_per_sample[s_idx] = np.nan
+            continue
+        if not finite_mask.all():
             max_finite = np.max(g_vals[finite_mask])
             g_vals[~finite_mask] = max_finite + 10.0 * (abs(max_finite) + 1.0)
-        else:
-            g_vals[:] = 1e6
+            n_penalized += int((~finite_mask).sum())
 
         G_per_sample[s_idx] = np.sum(mll_weights * g_vals)
 
+    n_failed = int(failed_points.sum())
+    if n_failed == n_param_samples:
+        raise EvaluationFailure(
+            f"compute_induced_prior: every one of the {n_param_samples} parameter "
+            f"points of {param_space.model_name!r} failed; no induced prior exists")
+    if n_failed or n_penalized:
+        logger.warning(
+            "compute_induced_prior(%s): %d of %d parameter points failed (zero "
+            "weight); %d single evaluations scored with the worse-than-finite "
+            "penalty", param_space.model_name, n_failed, n_param_samples, n_penalized)
+
     # Compute induced prior weights
     log_weights = -G_per_sample / tau
+    log_weights[failed_points] = -np.inf
 
     # Numerical stability
     finite = np.isfinite(log_weights)
-    if finite.any():
-        log_weights[~finite] = -np.inf
-        log_weights -= np.max(log_weights[finite])
-    else:
-        log_weights[:] = 0.0
+    if not finite.any():
+        raise EvaluationFailure(
+            f"compute_induced_prior: no parameter point of {param_space.model_name!r} "
+            "carries a finite log weight; refusing to substitute uniform weights")
+    log_weights[~finite] = -np.inf
+    log_weights -= np.max(log_weights[finite])
 
     weights = np.exp(log_weights)
     total = weights.sum()
-    if total > 0:
-        weights /= total
-    else:
-        weights[:] = 1.0 / n_param_samples
+    weights /= total
 
-    # Effective sample size
-    ess = 1.0 / np.sum(weights ** 2) if np.sum(weights ** 2) > 0 else 0
+    # Effective sample size; failed points carry zero weight and drop out
+    ess = 1.0 / np.sum(weights ** 2)
 
     # Collect true and MLE values
     true_vals = {ps.name: ps.true_value for ps in param_space.param_specs
@@ -303,7 +355,8 @@ def compute_induced_prior(
 
     # Weighted statistics
     print(f"\n  [{param_space.model_name}] Induced prior (τ={tau}, metric={metric_name}):")
-    print(f"    ESS: {ess:.0f} / {n_param_samples}")
+    print(f"    ESS: {ess:.0f} / {n_param_samples - n_failed}"
+          + (f" valid points ({n_failed} failed)" if n_failed else ""))
     for j, ps in enumerate(param_space.param_specs):
         w_mean = np.sum(weights * param_samples[:, j])
         w_std = np.sqrt(np.sum(weights * (param_samples[:, j] - w_mean)**2))
@@ -322,6 +375,8 @@ def compute_induced_prior(
         effective_sample_size=ess,
         mle_values=mle_vals if mle_vals else None,
         true_values=true_vals if true_vals else None,
+        n_failed_points=n_failed,
+        n_penalized_evaluations=n_penalized,
     )
 
 

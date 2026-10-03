@@ -696,12 +696,21 @@ def _sir_bms(pc, x, y, x_eval, candidate_results, ths, lml, n_pred,
         G = bms_by_tau[fmc.TAUS[0]].G_matrix
         G_by_metric[metric] = G
         winners = np.argmin(G, axis=1)
+        tau_free = bms_by_tau[fmc.TAUS[0]]
         per_metric[metric] = {
             "posteriors": {str(tau): [float(pp) for pp in
                                       bms_by_tau[tau].instance_posteriors]
                            for tau in fmc.TAUS},
+            # first-index argmin, kept so committed artifacts stay comparable
             "hard_win_fractions": [float(np.mean(winners == j))
                                    for j in range(G.shape[1])],
+            # tie-aware draw-win record and per-tau weight concentration
+            # (fix pass 2a, SYNTHESIS A-13); weight_ess is not an MCMC ESS
+            "hard_win_credit": [float(c) for c in tau_free.hard_win_credit],
+            "attainment": [float(a) for a in tau_free.attainment],
+            "tie_fraction": float(tau_free.tie_fraction),
+            "weight_ess": {str(tau): [float(e) for e in bms_by_tau[tau].weight_ess]
+                           for tau in fmc.TAUS},
         }
     return per_metric, G_by_metric, ths[idx, ORDER.index("noise")], idx
 

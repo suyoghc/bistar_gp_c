@@ -8,9 +8,13 @@ decompose posterior predictions into individual component GPs.
 Pure PyTorch — no GPyTorch dependency. This is the mathematical core.
 """
 
+import logging
+
 import numpy as np
 import torch
 from typing import List, Tuple, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def compute_cholesky(
@@ -21,7 +25,8 @@ def compute_cholesky(
     """
     Compute Cholesky factor of (K_sum(X,X) + sigma_y^2 I).
     Shared across all component decompositions.
-    Progressive jitter fallback on failure.
+    Progressive jitter fallback on failure; each escalation is logged with
+    its level (fix pass 2a, SYNTHESIS A-23) and the return value is unchanged.
     """
     n = K_sum_XX.shape[0]
     A = K_sum_XX + (noise_var + jitter) * torch.eye(n, dtype=K_sum_XX.dtype, device=K_sum_XX.device)
@@ -29,6 +34,8 @@ def compute_cholesky(
         return torch.linalg.cholesky(A)
     except RuntimeError:
         for extra in [1e-5, 1e-4, 1e-3, 1e-2]:
+            logger.warning("compute_cholesky: factorization of K + (noise + %g) I "
+                           "failed; retrying with extra jitter %g", jitter, extra)
             try:
                 return torch.linalg.cholesky(
                     A + extra * torch.eye(n, dtype=A.dtype, device=A.device)

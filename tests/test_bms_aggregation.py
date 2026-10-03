@@ -9,6 +9,8 @@ Two confirmed result-invalidating bugs are guarded here:
   2. compute_G_matrix replaced failed cells with 10*max_finite, which is the
      SMALLEST value (best score) when the metric can be negative (pw_nll), so a
      numerically failed candidate could win. The fix uses a strictly-worse penalty.
+     Since fix pass 2a the penalty covers partial failures only; a candidate that
+     fails on every draw raises EvaluationFailure (SYNTHESIS A-1).
 """
 
 import numpy as np
@@ -17,6 +19,7 @@ from types import SimpleNamespace
 
 import bistar_gp.bms_star as bs
 from bistar_gp.bms_star import soft_transfer, compute_G_matrix
+from bistar_gp.errors import EvaluationFailure
 
 rng = np.random.default_rng(0)
 
@@ -127,7 +130,8 @@ def flaky_metric():
     name = "_flaky_test_metric"
 
     def metric(mu_p, cov_p, mu_q, cov_q):
-        if float(mu_q[0]) == 999.0:           # the "failed" candidate
+        # 999 fails on every draw; 1.5 fails only on the draw with mean 7
+        if float(mu_q[0]) == 999.0 or (float(mu_q[0]) == 1.5 and float(mu_p[0]) == 7.0):
             raise ValueError("simulated numerical failure")
         return -5.0 + float(mu_q[0])          # negative divergence values
 
@@ -137,21 +141,29 @@ def flaky_metric():
 
 
 def test_failed_cell_is_worse_than_all_finite_for_negative_metric(flaky_metric):
-    psi = [SimpleNamespace(mean=np.array([0.0]), cov=np.eye(1)) for _ in range(3)]
+    psi = [SimpleNamespace(mean=np.array([m]), cov=np.eye(1)) for m in (0.0, 0.0, 7.0)]
     cands = [SimpleNamespace(mean=np.array([float(j)]), cov=np.eye(1)) for j in (0, 1)]
-    cands.append(SimpleNamespace(mean=np.array([999.0]), cov=np.eye(1)))  # fails
+    cands.append(SimpleNamespace(mean=np.array([1.5]), cov=np.eye(1)))  # fails on draw 2
 
     G = compute_G_matrix(psi, cands, flaky_metric)
-    finite_max = G[:, :2].max()
-    assert np.all(G[:, 2] > finite_max)          # failure is the WORST, not best
+    failed = np.zeros_like(G, dtype=bool)
+    failed[2, 2] = True
+    assert G[2, 2] > G[~failed].max()            # failure is the WORST, not best
     assert np.all(np.argmin(G, axis=1) != 2)     # failed candidate never wins a row
+
+    cands[2] = SimpleNamespace(mean=np.array([999.0]), cov=np.eye(1))  # fails on every draw
+    with pytest.raises(EvaluationFailure):       # a dead column is a failure, not a penalty
+        compute_G_matrix(psi, cands, flaky_metric)
 
 
 def test_failed_candidate_gets_lowest_posterior(flaky_metric):
-    psi = [SimpleNamespace(mean=np.array([0.0]), cov=np.eye(1)) for _ in range(3)]
+    psi = [SimpleNamespace(mean=np.array([m]), cov=np.eye(1)) for m in (0.0, 0.0, 7.0)]
     cands = [SimpleNamespace(mean=np.array([0.0]), cov=np.eye(1)),    # best (G=-5)
              SimpleNamespace(mean=np.array([1.0]), cov=np.eye(1)),    # G=-4
-             SimpleNamespace(mean=np.array([999.0]), cov=np.eye(1))]  # fails
+             SimpleNamespace(mean=np.array([1.5]), cov=np.eye(1))]    # G=-3.5, fails on draw 2
     G = compute_G_matrix(psi, cands, flaky_metric)
     p = _posteriors(G, 1.0)
     assert p[0] > p[1] > p[2]
+    typical = G.copy()
+    typical[2, 2] = G[0, 2]                      # failed cell at the candidate's finite value
+    assert p[2] < _posteriors(typical, 1.0)[2]   # a failure costs mass, never adds it

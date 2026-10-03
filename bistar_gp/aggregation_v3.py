@@ -35,7 +35,8 @@ from dataclasses import dataclass
 from bistar_gp.bms_star import (
     GPPosteriorSample, METRICS, compute_G_matrix, BMSStarResult,
     _extract_marginals, _assert_candidate_universes_consistent,
-    aggregate_convention, hard_win_statistics, log_weight_ess,
+    _require_sample_sites, aggregate_convention, hard_win_statistics,
+    log_weight_ess,
 )
 
 logger = logging.getLogger(__name__)
@@ -246,13 +247,19 @@ def robust_rank(G_matrix: np.ndarray,
     Completely nonparametric — immune to scale differences between
     GP samples. A model that consistently ranks #1 or #2 wins,
     regardless of the absolute G values.
+
+    Exactly tied candidates share the average of their ranks (fix pass 2a,
+    SYNTHESIS A-7; the tie rule of hard_win_statistics), so the result does
+    not depend on column order; the double argsort it replaces ranked ties
+    by position.
     """
+    from scipy.stats import rankdata
+
     n_psi, n_theta = G_matrix.shape
 
-    # For each row (GP sample), compute ranks
-    ranks = np.zeros_like(G_matrix)
-    for i in range(n_psi):
-        ranks[i] = np.argsort(np.argsort(G_matrix[i])) + 1  # 1-indexed
+    # For each row (GP sample), compute ranks (1-indexed, floating so that
+    # average ranks survive integer input; review round R10)
+    ranks = rankdata(G_matrix, method="average", axis=1)
 
     avg_ranks = ranks.mean(axis=0)
 
@@ -356,7 +363,12 @@ def compute_log_marginal_likelihoods(
         # likelihood would be scored at the fresh model's initialization
         # value), so it raises and the error must escape (FIX-1; review R1
         # found the pass-1 raise sitting inside the handler that converts
-        # numerical failures into -inf).
+        # numerical failures into -inf). A sampled site the draw does not
+        # carry would be scored at its initialization value, so it raises
+        # too (fix pass 2a, SYNTHESIS A-3).
+        _require_sample_sites(fresh_model, sample.hyperparameters,
+                              f"compute_log_marginal_likelihoods (draw {idx})",
+                              strict=True)
         for pyro_name, val in sample.hyperparameters.items():
             if not apply_hp_value(fresh_model, fresh_lik, pyro_name, val):
                 raise ValueError(

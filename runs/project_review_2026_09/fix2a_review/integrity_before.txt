@@ -1,0 +1,57 @@
+== fix2a
+69deedaee11b53b36c90a609abd00b1ab979f401
+ M Notes/DECISIONS.md
+ M bistar_gp/__init__.py
+ M bistar_gp/aggregation_v3.py
+ M bistar_gp/bms_star.py
+ M bistar_gp/candidates.py
+ M bistar_gp/config.py
+ M bistar_gp/debias.py
+ M bistar_gp/decompose.py
+ M bistar_gp/induced_prior.py
+ M bistar_gp/laplace_evidence.py
+ M bistar_gp/viz.py
+ M experiments/fit_method_metric_comparison.py
+ M experiments/practice_EvansEtAL/run.py
+ M experiments/prior_sensitivity_study.py
+ M tests/test_bms_aggregation.py
+?? bistar_gp/errors.py
+?? runs/project_review_2026_09/fix2a_report.md
+?? tests/test_fix2a_contracts.py
+313e023ab3f82437ddf576f9d15e6fbdc67de5db59d8f575d9e71caf21349ac8  Notes/DECISIONS.md
+bf96879e7538d960fd616f34aa6c8bc3b99d5a80ec1105cd9b96974d1b61c3a6  bistar_gp/__init__.py
+3739e39e5d2141fb1881df8f8ba481271a4c308480d92d6bd8f69f5395a109c7  bistar_gp/aggregation_v3.py
+d9e2715726d5fbf3fb5b832c4a8897bdf1f55b0f1e78329432e252efb25213c0  bistar_gp/bms_star.py
+c482d1771f9704a55b9e1792004e2ccd72f0d6169b8093aa99c04b498eed972a  bistar_gp/candidates.py
+8fd5b3403fc219abd3ea8ee6e1a003ed7ebdc17f4fd7566fd69b32a17dbb51d7  bistar_gp/config.py
+ca2e86a3705b657d5a2c7a84b84d43fc575dc859d5edce021826cd8bb622ecb4  bistar_gp/debias.py
+d1b26d0c16df7b532efc11219a0fe72fd6c22904af805a1dfa1448d2246ac8a4  bistar_gp/decompose.py
+ec662289da12800f7245876fddb554a65f606b6714c1a00ee24fb7c7b4caab5b  bistar_gp/induced_prior.py
+2eb1661ad8125325c72424c7d340070867a678c3f506024f7e08a7d089729816  bistar_gp/laplace_evidence.py
+82147ee8879f35845acd23835c779f9a9b7bf109a73cb3612d7d7402906b540d  bistar_gp/viz.py
+48401dd4aee7cea00b6cf3da59704f2470179dba6b39154dcc5dee43f3a73a0b  experiments/fit_method_metric_comparison.py
+5cb17f5da23a04e677148fcf77ce3b409d132a776e25d1f92464b99d2004e4f8  experiments/practice_EvansEtAL/run.py
+9237035ac9132c68f1b8c65444c17378725d971c15ac581d64faa6c670627eb4  experiments/prior_sensitivity_study.py
+c06ed21ff53e4544dbefa1de2bafe33ba9adca4ac64dc979445037b669112dfe  tests/test_bms_aggregation.py
+6c08b524b2f8ab3aa4b70750548f7604c6e303ced26d8a577239bda2826e4dd5  bistar_gp/errors.py
+67c87c14622167e12e09fd21680023dccfca557feb37bc87f34460126964bf63  runs/project_review_2026_09/fix2a_report.md
+6551bbfd9a2c158db84ce91f7b6685c1937358bf826856f406a9fa9957b8ee9a  tests/test_fix2a_contracts.py
+== fix
+69deedaee11b53b36c90a609abd00b1ab979f401
+       0
+== main
+a07e61ea6433b0ec0bd430e31a37324a61e2669b
+5340b96590c7001a6ba17cfe7e0b57f0249982f3b3a93b2e404e9541e1067ec6  -
+== refs
+c7d76694d40fc26e4069bf4cfe515b875cd148ae6fa03e7347ebda15777d7c9d  -
+stash@{0}: On feat/d58-poster-prep: pre-D58-POST preserve D59 draft Notes/DECISIONS.md blob 025cd1a5745c711bc335cd5059cf4db66b1276cb
+/Users/sc8918/Documents/GitHub/bistar_gp_c a07e61e
+/private/tmp/claude-501/-Users-sc8918-Documents-GitHub-bistar-gp-c/67dd9d0a-0647-4695-aa96-f9391caeb044/scratchpad/r2-detached-worktree 6a90522
+/private/tmp/claude-501/-Users-sc8918-Documents-GitHub-bistar-gp-c/d9d6eac2-6c0f-4fc8-b055-743950bc8205/scratchpad/r4_exec_wt 367667f
+/private/tmp/claude-501/-Users-sc8918-Documents-GitHub-bistar-gp-c/d9d6eac2-6c0f-4fc8-b055-743950bc8205/scratchpad/r4_regen_wt f745bcd
+/private/tmp/claude-501/-Users-sc8918-Documents-GitHub-bistar-gp-c/d9d6eac2-6c0f-4fc8-b055-743950bc8205/scratchpad/r4_regen_wt2 473a3f8
+/private/tmp/claude-501/-Users-sc8918-Documents-GitHub-bistar-gp-c/d9d6eac2-6c0f-4fc8-b055-743950bc8205/scratchpad/r4_regen_wt3 b1ee5ec
+/private/tmp/claude-501/-Users-sc8918-Documents-GitHub-bistar-gp-c/d9d6eac2-6c0f-4fc8-b055-743950bc8205/scratchpad/r4_regen_wt4 2797cef
+/private/tmp/claude-501/-Users-sc8918-Documents-GitHub-bistar-gp-c/d9d6eac2-6c0f-4fc8-b055-743950bc8205/scratchpad/r4_regen_wt5 6636929
+/Users/sc8918/Documents/GitHub/bistar_gp_c-fix 69deeda
+/Users/sc8918/Documents/GitHub/bistar_gp_c-fix2a 69deeda
