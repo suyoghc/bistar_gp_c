@@ -16,6 +16,8 @@ import torch
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
+from .errors import EvaluationFailure
+
 torch.set_default_dtype(torch.float64)
 logger = logging.getLogger(__name__)
 
@@ -255,6 +257,96 @@ class PredictiveList(list):
         return len(self.dropped)
 
 
+def sample_draw_count(mcmc_samples, keys, caller):
+    """The one nonempty leading length shared by the sample arrays `keys`.
+
+    Checked before any draw is indexed, with a message listing every length
+    by sorted key, so a ragged dictionary raises the same ValueError whatever
+    its order (fix pass 2a, SYNTHESIS A-3: the draw count used to come from
+    whichever key came first, so one order dropped a draw silently and
+    another raised IndexError).
+    """
+    lengths = {k: (np.shape(mcmc_samples[k])[0] if np.ndim(mcmc_samples[k]) else None)
+               for k in keys}
+    distinct = set(lengths.values())
+    if len(distinct) != 1 or None in distinct or 0 in distinct:
+        detail = ", ".join(f"{k}: {lengths[k]}" for k in sorted(lengths))
+        raise ValueError(f"{caller}: the sample arrays must share one nonempty "
+                         f"leading length; got {detail}")
+    return distinct.pop()
+
+
+def missing_sample_sites(model, supplied_keys):
+    """Sampled hyperparameter sites of `model` that `supplied_keys` does not
+    supply (fix pass 2a, SYNTHESIS A-3).
+
+    The inventory is ``model.named_priors()``: one pyro sample site per
+    prior, the set fit_hmc samples (a parameter without a prior, such as the
+    frozen Mauna period, is not sampled and not required). Supplied names are
+    compared under the aliases select_hmc_sites and apply_hp_value accept:
+    "kernel_components.{i}." for "covar_module.kernels.{i}.", the bare
+    "noise_covar.noise_prior", and component 0 of a single-kernel model, whose
+    kernel is covar_module itself. A missing site would otherwise keep the
+    fresh model's initialization value in every draw.
+    """
+    components = getattr(model, "kernel_components", None) or []
+    single = len(components) == 1 and model.covar_module is components[0]
+
+    def canonical(name):
+        if name.endswith("noise_covar.noise_prior"):
+            return "likelihood.noise_covar.noise_prior"
+        for prefix in ("covar_module.kernels.", "kernel_components."):
+            if name.startswith(prefix):
+                idx, _, rest = name[len(prefix):].partition(".")
+                if single and idx == "0":
+                    return f"covar_module.{rest}"
+                return f"covar_module.kernels.{idx}.{rest}"
+        return name
+
+    supplied = {canonical(k) for k in supplied_keys}
+    return sorted(name for name, *_ in model.named_priors()
+                  if canonical(name) not in supplied)
+
+
+def _require_sample_sites(model, supplied_keys, caller, strict):
+    """Raise (strict) or warn naming every required site the supply lacks."""
+    missing = missing_sample_sites(model, supplied_keys)
+    if missing:
+        msg = (f"{caller}: the samples supply no draws for the sampled site(s) "
+               f"{missing}; every draw would keep the fresh model's "
+               "initialization value for them")
+        if strict:
+            raise ValueError(msg)
+        logger.warning(msg)
+
+
+def _validate_sample_sites(mcmc_samples, kernel_builder, likelihood_builder,
+                           x_train, y_train, caller, strict):
+    """(relevant_keys, n_draws) for a draw dictionary, checked before any draw
+    is indexed (fix pass 2a, SYNTHESIS A-3): the selected sites, a draw for
+    every site the model samples (the inventory of one probe model built like
+    the per-draw models; strict raises naming every missing site, otherwise a
+    warning), and one leading length shared by the indexed arrays (raises
+    under either setting)."""
+    from .model import build_model, select_hmc_sites
+
+    relevant_keys = select_hmc_sites(mcmc_samples.keys())
+    kernels, names = kernel_builder()
+    probe_model, _ = build_model(x_train, y_train, kernels, names, likelihood_builder())
+    missing = missing_sample_sites(probe_model, relevant_keys)
+    if not [k for k in relevant_keys if not k.endswith("noise_covar.noise_prior")]:
+        msg = (f"{caller}: no kernel hyperparameter site was recognized among "
+               f"{sorted(mcmc_samples.keys())}; every draw would keep the fresh "
+               f"model's initialization kernel values (missing sampled sites: {missing})")
+        if strict:
+            raise ValueError(msg)
+        logger.warning(msg)
+    elif missing:
+        _require_sample_sites(probe_model, relevant_keys, caller, strict)
+    n_draws = sample_draw_count(mcmc_samples, relevant_keys or list(mcmc_samples), caller)
+    return relevant_keys, n_draws
+
+
 def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
                            mcmc_samples, kernel_builder,
                            likelihood_builder=None,
@@ -292,16 +384,18 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
         strict: True (default) raises on any silent-wrong-answer path: a
              sample site apply_hp_value does not recognize, an exception
              while applying a site, a sample dict with no recognized kernel
-             site, or a draw whose predictive fails numerically. False keeps
-             the pre-2026-09 behavior (warn, skip the site or drop the draw)
-             for exploratory use; the dropped draws are then recorded on the
-             returned PredictiveList.
+             site, a sampled site of the model with no draws supplied
+             (missing_sample_sites), or a draw whose predictive fails
+             numerically. False keeps the pre-2026-09 behavior (warn, skip
+             the site or drop the draw) for exploratory use; the dropped
+             draws are then recorded on the returned PredictiveList. Sample
+             arrays of unequal length raise under either setting.
 
     Returns:
         PredictiveList (a list of GPPosteriorSample carrying
         attempted_indices, retained_indices, dropped, n_dropped)
     """
-    from .model import build_model, select_hmc_sites, apply_hp_value
+    from .model import build_model, apply_hp_value
     from .decompose import compute_cholesky
     import gpytorch
     from gpytorch.constraints import Positive
@@ -320,8 +414,10 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
     y_train = y_train.double() if isinstance(y_train, torch.Tensor) else torch.tensor(y_train).double()
     x_eval = x_eval.double() if isinstance(x_eval, torch.Tensor) else torch.tensor(x_eval).double()
 
-    first_key = list(mcmc_samples.keys())[0]
-    total_mcmc = len(mcmc_samples[first_key])
+    relevant_keys, total_mcmc = _validate_sample_sites(
+        mcmc_samples, kernel_builder, likelihood_builder, x_train, y_train,
+        "extract_gp_predictives", strict)
+
     n_take = min(n_posterior_samples, total_mcmc)
     if rng is not None:
         indices = rng.choice(total_mcmc, n_take, replace=False)
@@ -329,18 +425,6 @@ def extract_gp_predictives(model, likelihood, x_train, y_train, x_eval,
         # legacy path: global np.random state (callers that need
         # reproducibility without the rng= parameter seed globally)
         indices = np.random.choice(total_mcmc, n_take, replace=False)
-
-    relevant_keys = select_hmc_sites(mcmc_samples.keys())
-    kernel_keys = [k for k in relevant_keys
-                   if not k.endswith("noise_covar.noise_prior")]
-    if not kernel_keys:
-        msg = ("extract_gp_predictives: no kernel hyperparameter site was "
-               f"recognized among {sorted(mcmc_samples.keys())}; every "
-               "predictive would be built at the fresh model's initialization "
-               "kernel values (only the noise would vary)")
-        if strict:
-            raise ValueError(msg)
-        logger.warning(msg)
 
     results = []
     retained = []
@@ -541,6 +625,13 @@ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
 
     Returns:
         G matrix of shape (n_psi, n_theta)
+
+    Raises:
+        EvaluationFailure when no entry is finite, when some candidate has no
+        finite entry (a candidate that failed on every draw is a failure, not
+        an extremely poor fit; fix pass 2a, SYNTHESIS A-1), or when some draw
+        has no finite entry. ValueError for an empty table (no draws or no
+        candidates).
     """
     # A4 universe firewall at the boundary that still holds candidate
     # metadata (2026-09 review FIX-4): every path that builds a G matrix
@@ -551,6 +642,9 @@ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
     metric_fn = METRICS[metric_name]          # registers metrics_v2 on a miss
     n_psi = len(gp_samples)
     n_theta = len(candidate_results)
+    if n_psi == 0 or n_theta == 0:
+        raise ValueError(f"compute_G_matrix({metric_name}): empty table "
+                         f"({n_psi} draws x {n_theta} candidates)")
     G = np.zeros((n_psi, n_theta))
 
     for i, psi in enumerate(gp_samples):
@@ -560,26 +654,46 @@ def compute_G_matrix(gp_samples: List[GPPosteriorSample],
             except (np.linalg.LinAlgError, ValueError):
                 G[i, j] = np.inf
 
-    # Replace any inf/nan with a value guaranteed to be WORSE (larger) than any
-    # finite divergence. A plain `10 * max_finite` is wrong when the metric can
-    # be negative (e.g. pw_nll, whose 0.5*log(2*pi*sigma^2) term goes negative):
-    # 10*max_finite would then be the *smallest* G, so a failed computation would
-    # win the comparison. This penalty is always strictly greater than max_finite.
-    if np.any(np.isfinite(G)):
-        max_finite = np.nanmax(G[np.isfinite(G)])
-        penalty = max_finite + 10.0 * (abs(max_finite) + 1.0)
-    else:
-        penalty = 1e6
-    G = np.where(np.isfinite(G), G, penalty)
-
-    return G
+    failed = ~np.isfinite(G)
+    if not failed.any():
+        return G
+    names = [getattr(c, "name", str(j)) for j, c in enumerate(candidate_results)]
+    if failed.all():
+        raise EvaluationFailure(
+            f"compute_G_matrix({metric_name}): all {G.size} divergence "
+            f"evaluations ({n_psi} draws x {n_theta} candidates) failed")
+    dead = [names[j] for j in np.flatnonzero(failed.all(axis=0))]
+    if dead:
+        raise EvaluationFailure(
+            f"compute_G_matrix({metric_name}): candidate(s) {dead} failed on "
+            f"every one of the {n_psi} draws")
+    dead_draws = np.flatnonzero(failed.all(axis=1)).tolist()
+    if dead_draws:
+        # a draw no candidate can be scored against says nothing about any of
+        # them; a uniform penalty row would add equal support to every
+        # candidate under normalize_per_draw (review round R4)
+        raise EvaluationFailure(
+            f"compute_G_matrix({metric_name}): draw(s) {dead_draws} failed "
+            f"for every one of the {n_theta} candidates")
+    # A partial failure keeps a penalty strictly WORSE (larger) than every
+    # finite divergence, also for negative-valued metrics (pw_nll: a plain
+    # 10 * max_finite would be the smallest G and win), and is announced
+    # with (name, count) pairs, so repeated names keep separate counts.
+    per_candidate = [(names[j], int(n)) for j, n in enumerate(failed.sum(axis=0)) if n]
+    logger.warning(
+        "compute_G_matrix(%s): %d of %d divergence evaluations failed %s; each "
+        "is scored with a penalty worse than every finite value",
+        metric_name, int(failed.sum()), G.size, per_candidate)
+    max_finite = np.max(G[~failed])
+    return np.where(failed, max_finite + 10.0 * (abs(max_finite) + 1.0), G)
 
 
 def soft_transfer(G_matrix: np.ndarray, tau: float,
                   instance_names: List[str],
                   class_names: Optional[List[str]] = None,
                   normalize_per_draw: bool = False,
-                  metric_name: Optional[str] = None) -> BMSStarResult:
+                  metric_name: Optional[str] = None,
+                  ess_warn: Optional[float] = 100.0) -> BMSStarResult:
     """
     Soft BMS* scoring.
 
@@ -602,6 +716,12 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
             into false certainty across many draws.
         metric_name: the divergence that produced G_matrix. None is recorded
             as "unspecified" rather than an invented identity.
+        ess_warn: log a warning when the smallest per-candidate weight_ess
+            falls below min(ess_warn, 0.1 * n_draws), as is_log_Z_Mx does for
+            its weights (fix pass 2a, SYNTHESIS A-13); None disables it. The
+            relative part keeps uniform weights over few draws silent. The
+            weight ESS measures how many draws carry a candidate's pooled
+            score; it is not an MCMC effective sample size.
 
     Returns:
         BMSStarResult with normalized posteriors and draw-level diagnostics
@@ -659,6 +779,15 @@ def soft_transfer(G_matrix: np.ndarray, tau: float,
     # and the tau-free win statistics on the raw matrix.
     weight_ess = boltzmann_weight_ess(G_effective, tau)
     credit, attainment, tie_fraction = hard_win_statistics(G_matrix)
+    floor = None if ess_warn is None else min(ess_warn, 0.1 * n_psi)
+    if floor is not None and np.min(weight_ess) < floor:
+        worst = int(np.argmin(weight_ess))
+        logger.warning(
+            "soft_transfer(%s, tau=%g): weight ESS below %g for %s (min %.1f of "
+            "%d draws, %s); the pooled score rests on few draws",
+            metric_name or "unspecified", tau, floor,
+            [n for n, e in zip(instance_names, weight_ess) if e < floor],
+            float(weight_ess[worst]), n_psi, instance_names[worst])
 
     return BMSStarResult(
         metric_name=metric_name if metric_name is not None else "unspecified",
@@ -794,11 +923,17 @@ def run_bms_star(gp_samples: List[GPPosteriorSample],
 
         print(f"    G stats — min: {G.min():.2f}, median: {np.median(G):.2f}, max: {G.max():.2f}")
 
-        # Per-draw diagnostic: how often does each model win raw?
-        raw_winners = np.argmin(G, axis=1)
+        # Per-draw diagnostic: how often does each model win raw? Exact ties
+        # split the draw's credit (fix pass 2a, SYNTHESIS A-13: a first-index
+        # argmin gave every tie to the first candidate).
+        credit, attainment, tie_fraction = hard_win_statistics(G)
+        n_draws = G.shape[0]
         for m_idx, name in enumerate(instance_names):
-            n_wins = np.sum(raw_winners == m_idx)
-            print(f"    {name} wins {n_wins}/{len(raw_winners)} draws (raw G)")
+            print(f"    {name} wins {credit[m_idx] * n_draws:g}/{n_draws} draws "
+                  f"(raw G, ties split; attains the minimum on "
+                  f"{attainment[m_idx] * n_draws:g})")
+        if tie_fraction:
+            print(f"    tied minimum on {tie_fraction * n_draws:g} draws")
 
         if normalize_per_draw:
             row_deltas = G - G.min(axis=1, keepdims=True)

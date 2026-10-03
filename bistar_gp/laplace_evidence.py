@@ -47,6 +47,7 @@ from scipy.linalg import solve_triangular
 from dataclasses import dataclass, field
 
 from bistar_gp.bms_star import GPPosteriorSample, METRICS, log_weight_ess
+from bistar_gp.errors import EvaluationFailure  # noqa: F401  re-exported; defined in errors (fix pass 2a, SYNTHESIS A-2)
 from bistar_gp.induced_prior import ModelParameterSpace
 import bistar_gp.metrics_v2  # noqa: F401 — registers pw_* metrics (incl. the default pw_kl_vcal) into METRICS
 
@@ -190,13 +191,6 @@ class ZMxResult:
     n_clipped: int = 0           # Hessian eigenvalues clipped: >0 means |H| was regularized
     optimizer: Optional[Dict[str, object]] = None   # best start's OptimizerRecord (FIX-5)
     n_starts_failed: int = 0     # starts whose minimize raised or reported failure
-
-
-class EvaluationFailure(RuntimeError):
-    """A candidate predictor or divergence metric failed under strict
-    evaluation (fix pass 1b). Subclass of RuntimeError for compatibility with
-    callers that catch the pass-1 exception; the optimizer fallback handlers
-    re-raise it so it can never turn into a start-point expansion."""
 
 
 @dataclass
@@ -655,7 +649,16 @@ def is_log_Z_Mx(param_space, x_eval, avg_gp, taus, *, n_is=100_000, seed=0,
     (covariances τ_k·H⁻¹ over tau_ladder); pass the same starts you would
     give laplace_log_Z_Mx. The uniform half of the mixture defends against
     optima the starts missed. Warns when any per-τ ESS < ess_warn.
+
+    tau_ladder must be non-empty, finite and positive (fix pass 2a, SYNTHESIS
+    A-4): with no Gaussian components every draw came from the uniform box
+    while log q still gave the box half the mass, doubling the integral.
     """
+    tau_ladder = tuple(tau_ladder)
+    ladder = np.asarray(tau_ladder, dtype=float)
+    if ladder.size == 0 or not np.all(np.isfinite(ladder)) or np.any(ladder <= 0):
+        raise ValueError(f"is_log_Z_Mx: tau_ladder must be a non-empty sequence of "
+                         f"finite positive values; got {tau_ladder}")
     metric_fn = METRICS[metric_name]
     lo, hi = _box(param_space)
     optima = _multistart_G_optima(param_space, x_eval, avg_gp, metric_fn, starts,
@@ -1027,6 +1030,38 @@ def plot_model_posteriors_by_prior(
     return fig
 
 
+class TauSweepPosteriors(tuple):
+    """``(model_names, posteriors)`` exactly as before, carrying the Laplace
+    records the sweep used to drop (fix pass 2a, SYNTHESIS A-23): arrays
+    ``converged``, ``n_clipped``, ``n_starts_failed`` of shape
+    (n_taus, n_models), and ``all_converged``."""
+
+    def __new__(cls, names, posteriors, converged, n_clipped, n_starts_failed):
+        obj = super().__new__(cls, (names, posteriors))
+        obj.converged = np.asarray(converged, dtype=bool)
+        obj.n_clipped = np.asarray(n_clipped, dtype=int)
+        obj.n_starts_failed = np.asarray(n_starts_failed, dtype=int)
+        obj.all_converged = bool(obj.converged.all())
+        return obj
+
+    def __getnewargs__(self):            # pickling and copy.deepcopy
+        return (self[0], self[1], self.converged, self.n_clipped, self.n_starts_failed)
+
+
+class LadderPosteriors(dict):
+    """``{construction: {model_name: posterior}}`` exactly as before, carrying
+    the per-construction, per-model ``converged``, ``n_clipped`` and
+    ``n_starts_failed`` records, and ``all_converged`` (fix pass 2a, SYNTHESIS
+    A-23). Compares equal to the plain dict of posteriors."""
+
+    def __init__(self, posteriors, converged, n_clipped, n_starts_failed):
+        super().__init__(posteriors)
+        self.converged = converged
+        self.n_clipped = n_clipped
+        self.n_starts_failed = n_starts_failed
+        self.all_converged = all(v for per in converged.values() for v in per.values())
+
+
 def model_posterior_tau_sweep(
     param_spaces: Dict[str, ModelParameterSpace],
     x_train: np.ndarray,
@@ -1052,11 +1087,21 @@ def model_posterior_tau_sweep(
       II       — the joint MAP of log p(y|φ) − Ḡ(φ)/τ genuinely moves with τ,
                  so it is honestly recomputed per τ (no shortcut exists).
 
-    Returns (model_names, posteriors[t_idx, m_idx]).
+    Returns (model_names, posteriors[t_idx, m_idx]) as a TauSweepPosteriors,
+    which also carries the per-(τ, model) converged / n_clipped /
+    n_starts_failed records (τ-independent constructions repeat theirs).
     """
     names = list(param_spaces.keys())
     taus = np.asarray(list(taus), dtype=float)
     logk = np.zeros((len(taus), len(names)))
+    converged = np.ones((len(taus), len(names)), dtype=bool)
+    n_clipped = np.zeros((len(taus), len(names)), dtype=int)
+    n_starts_failed = np.zeros((len(taus), len(names)), dtype=int)
+
+    def _record(t_slice, j, comp):
+        converged[t_slice, j] = bool(comp["converged"])
+        n_clipped[t_slice, j] = int(comp["n_clipped"])
+        n_starts_failed[t_slice, j] = int(comp["n_starts_failed"])
 
     if construction == "baseline":
         mpr = model_posterior(param_spaces, x_train, y_train, x_eval, avg_gp,
@@ -1064,6 +1109,8 @@ def model_posterior_tau_sweep(
                               metric_name=metric_name, tau=1.0, occam=occam,
                               strict=strict)
         logk[:] = [mpr.log_kernel[n] for n in names]
+        for j, n in enumerate(names):
+            _record(slice(None), j, mpr.components[n])
     elif construction == "I":
         for j, name in enumerate(names):
             ps = param_spaces[name]
@@ -1077,6 +1124,10 @@ def model_posterior_tau_sweep(
             log_Z_tau = (z1.log_Z + z1.G_at_min * (1.0 - 1.0 / taus)
                          + 0.5 * ps.n_params * np.log(taus))
             logk[:, j] = log_Z_tau + ev.log_evidence
+            _record(slice(None), j, {
+                "converged": z1.converged and ev.converged,
+                "n_clipped": z1.n_clipped + ev.n_clipped,
+                "n_starts_failed": z1.n_starts_failed + ev.n_starts_failed})
     elif construction == "II":
         for t_idx, tau in enumerate(taus):
             mpr = model_posterior(param_spaces, x_train, y_train, x_eval,
@@ -1084,10 +1135,13 @@ def model_posterior_tau_sweep(
                                   metric_name=metric_name, tau=float(tau),
                                   occam=occam, strict=strict)
             logk[t_idx] = [mpr.log_kernel[n] for n in names]
+            for j, n in enumerate(names):
+                _record(t_idx, j, mpr.components[n])
     else:
         raise ValueError(f"unknown construction {construction!r}")
 
-    return names, softmax(logk, axis=1)
+    return TauSweepPosteriors(names, softmax(logk, axis=1),
+                              converged, n_clipped, n_starts_failed)
 
 
 def plot_tau_effect_on_evidence(
@@ -1161,7 +1215,9 @@ def ablation_ladder_posteriors(
     ModelPosteriorResult (same metric/τ/occam — enforced) to skip the N(M)
     optimizations too.
 
-    Returns {construction: {model_name: posterior}}.
+    Returns {construction: {model_name: posterior}} as a LadderPosteriors,
+    which also carries each construction's per-model converged / n_clipped /
+    n_starts_failed records.
     """
     metric_fn = METRICS[metric_name]
     names = list(param_spaces.keys())
@@ -1177,7 +1233,10 @@ def ablation_ladder_posteriors(
                 "precomputed_II must be a construction='II' result with the "
                 "same tau/occam/metric_name/model set as this ladder call")
 
-    logk = {c: [] for c in ("baseline", "I", "II")}
+    constructions = ("baseline", "I", "II")
+    logk = {c: [] for c in constructions}
+    records = {key: {c: {} for c in constructions}
+               for key in ("converged", "n_clipped", "n_starts_failed")}
     for name in names:
         ps = param_spaces[name]
         mp = mle_params.get(name) if mle_params else None
@@ -1187,16 +1246,28 @@ def ablation_ladder_posteriors(
                                tau=tau, occam=occam, mle_params=mp)
         if precomputed_II is not None:
             log_N = precomputed_II.log_kernel[name]
+            detail = precomputed_II.components[name]
         else:
-            log_N, _, _, _ = _laplace_log_N(ps, x_train, y_train, x_eval,
-                                            avg_gp, metric_fn, tau, mp,
-                                            occam=occam)
+            log_N, _, _, detail = _laplace_log_N(ps, x_train, y_train, x_eval,
+                                                 avg_gp, metric_fn, tau, mp,
+                                                 occam=occam)
         logk["baseline"].append(ev.log_evidence)
         logk["I"].append(zmx.log_Z + ev.log_evidence)
         logk["II"].append(log_N)
+        per_construction = {
+            "baseline": (ev.converged, ev.n_clipped, ev.n_starts_failed),
+            "I": (zmx.converged and ev.converged, zmx.n_clipped + ev.n_clipped,
+                  zmx.n_starts_failed + ev.n_starts_failed),
+            "II": (detail["converged"], detail["n_clipped"], detail["n_starts_failed"]),
+        }
+        for c, (conv, clip, failed) in per_construction.items():
+            records["converged"][c][name] = bool(conv)
+            records["n_clipped"][c][name] = int(clip)
+            records["n_starts_failed"][c][name] = int(failed)
 
-    return {c: {n: float(p) for n, p in zip(names, softmax(np.array(arr)))}
-            for c, arr in logk.items()}
+    posteriors = {c: {n: float(p) for n, p in zip(names, softmax(np.array(arr)))}
+                  for c, arr in logk.items()}
+    return LadderPosteriors(posteriors, **records)
 
 
 def plot_ablation_ladder(

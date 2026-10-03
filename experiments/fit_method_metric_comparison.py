@@ -35,6 +35,7 @@ from bistar_gp.fit import fit_map, fit_gp, GP_INFERENCE_METHODS
 from bistar_gp.candidates import build_toy_candidates
 from bistar_gp.config import (
     PRIOR_CONFIGS, build_kernels_from_config, build_likelihood_from_config,
+    load_hmc_samples,
 )
 from bistar_gp.bms_star import extract_gp_predictives, run_bms_star
 import bistar_gp.metrics_v2  # noqa: F401 — registers pw_kl_vcal etc. into METRICS
@@ -118,22 +119,24 @@ def method_budgets(quick: bool, max_tree_depth=None) -> dict:
 
 def run_one_method(method, kwargs, prior_config, x_train, y_train, x_eval,
                    candidate_results, n_posterior_samples,
-                   cache_path=None, force_refit=False):
+                   cache_path=None, force_refit=False, allow_withdrawn=False):
     """MAP-fit a fresh model, run fit_gp(method), extract predictives, BMS*.
 
     cache_path: if set, raw fit_gp draws are loaded from / saved to this .npz —
     the sampler cost (hours for the NUTS methods) is decoupled from the cheap
     candidate/metric/tau side, which can then be recomputed freely.
+    allow_withdrawn: the cache is read through config.load_hmc_samples, which
+    refuses the caches the M2bR record withdrew (fix pass 2a, SYNTHESIS
+    A-11); True admits them, with a warning, for labelled archival
+    reproduction only.
     """
     kernels, names = build_kernels_from_config(prior_config)
     likelihood = build_likelihood_from_config(prior_config)
     model, likelihood = build_model(x_train, y_train, kernels, names, likelihood)
 
     if cache_path and os.path.exists(cache_path) and not force_refit:
-        with np.load(cache_path) as z:
-            samples = {k: z[k] for k in z.files if k != "_fit_seconds"}
-            fit_seconds = float(z["_fit_seconds"])
-        print(f"  loaded cached draws <- {cache_path}")
+        samples = load_hmc_samples(cache_path, allow_withdrawn=allow_withdrawn)
+        fit_seconds = float(samples.pop("_fit_seconds"))
     else:
         torch.manual_seed(SEED)
         # Timer covers the shared MAP prefit too: it is part of every
@@ -336,6 +339,9 @@ def main():
                         help="regenerate the markdown from the saved JSON")
     parser.add_argument("--force-refit", action="store_true",
                         help="ignore cached fit_gp draws and re-run samplers")
+    parser.add_argument("--allow-withdrawn", action="store_true",
+                        help="read caches the M2bR record withdrew (D33/D34), "
+                             "with a warning; labelled archival reproduction only")
     parser.add_argument("--out-suffix", default="",
                         help="suffix for json/md outputs under runs/ (used by "
                              "parallel cache-population runs so they don't "
@@ -414,7 +420,8 @@ def main():
         out["methods"][method] = run_one_method(
             method, budgets[method], prior_config, x_train, y_train,
             x_eval_torch, candidate_results, args.n_predictives,
-            cache_path=cache_path, force_refit=args.force_refit)
+            cache_path=cache_path, force_refit=args.force_refit,
+            allow_withdrawn=args.allow_withdrawn)
         print(f"  fit took {out['methods'][method]['fit_seconds']:.1f}s, "
               f"{out['methods'][method]['n_draws']} draws, "
               f"{out['methods'][method]['n_predictives']} predictives")

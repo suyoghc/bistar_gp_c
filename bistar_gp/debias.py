@@ -31,6 +31,7 @@ from .decompose import (
     decompose_additive_gp, decompose_component, compute_cholesky,
     sample_from_component, mixture_central_interval,
 )
+from .bms_star import sample_draw_count, _validate_sample_sites
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,10 @@ class DecompositionResult:
     The seven fields below are a positional rebuild contract pinned by
     tests/test_poster_d58_driver.py; additional per-draw information is
     attached as non-field attributes in __post_init__ (``full``, ``groups``,
-    ``n_draws_attempted``, ``n_draws_retained``) so that contract holds.
+    ``n_draws_attempted``, ``n_draws_retained``, ``noise_var_draws``) so that
+    contract holds. ``noise_var`` is the mean observation-noise variance over
+    the retained draws and ``noise_var_draws`` the per-draw values, so
+    neither depends on draw order (fix pass 2a, SYNTHESIS A-10).
     """
     x_test: np.ndarray
     x_train: np.ndarray
@@ -94,6 +98,7 @@ class DecompositionResult:
         self.groups: Dict[Tuple[str, ...], ComponentResult] = {}
         self.n_draws_attempted: int = 0
         self.n_draws_retained: int = 0
+        self.noise_var_draws: Optional[np.ndarray] = None
 
     @staticmethod
     def group_key(names: Sequence[str]) -> Tuple[str, ...]:
@@ -263,16 +268,21 @@ class _DrawAccumulator:
         return components, full, groups
 
 
-def _assemble(x_test, x_train, y_train, components, full, groups, noise_var,
+def _assemble(x_test, x_train, y_train, components, full, groups, noise_draws,
               n_attempted, n_retained) -> DecompositionResult:
+    """Package a draw-path decomposition. ``noise_draws`` holds the retained
+    draws' noise variances; ``noise_var`` is their mean (fix pass 2a,
+    SYNTHESIS A-10: it used to be the last retained draw's value)."""
+    noise_draws = np.asarray(noise_draws, dtype=float)
     result = DecompositionResult(
         x_test=x_test.numpy(), x_train=x_train.numpy(), y_train=y_train.numpy(),
         components=components, full_mean=full.mean, full_std=full.std,
-        noise_var=noise_var)
+        noise_var=float(noise_draws.mean()))
     result.full = full
     result.groups = groups
     result.n_draws_attempted = n_attempted
     result.n_draws_retained = n_retained
+    result.noise_var_draws = noise_draws
     return result
 
 
@@ -350,6 +360,7 @@ def decompose_model(model, likelihood, x_train, y_train, x_test, n_samples=25, j
     result.full = full
     result.groups = group_results
     result.n_draws_attempted = result.n_draws_retained = 1
+    result.noise_var_draws = np.array([noise_var])
     return result
 
 
@@ -378,6 +389,10 @@ def decompose_model_mcmc(model, likelihood, x_train, y_train, x_test,
     silently mis-assigned any differently ordered dict); every parameter must
     have a key and every key must name a parameter, or the call raises.
     Bands are law-of-total-variance moments (see the module docstring).
+
+    The draws are written into the caller's ``model`` and ``likelihood`` in
+    place, and the parameters keep the last decomposed draw's values on
+    return (SYNTHESIS A-18); refit or restore the model before reusing it.
     """
     model.eval()
     likelihood.eval()
@@ -394,7 +409,7 @@ def decompose_model_mcmc(model, likelihood, x_train, y_train, x_test,
             f"match by name (unknown keys {unknown}, parameters without a key "
             f"{missing}); positional pairing is no longer performed")
 
-    total_mcmc = len(mcmc_samples[keys[0]])
+    total_mcmc = sample_draw_count(mcmc_samples, keys, "decompose_model_mcmc")
     n_take = min(n_posterior_samples, total_mcmc)
     if rng is not None:
         indices = rng.choice(total_mcmc, n_take, replace=False)
@@ -403,7 +418,7 @@ def decompose_model_mcmc(model, likelihood, x_train, y_train, x_test,
 
     names = list(model.component_names)
     acc = _DrawAccumulator(names, n_test, groups)
-    noise_var = float(likelihood.noise.item())
+    noise_draws = []
     for idx in indices:
         for name, p in param_map.items():
             p.data.fill_(float(mcmc_samples[name][idx]))
@@ -411,10 +426,11 @@ def decompose_model_mcmc(model, likelihood, x_train, y_train, x_test,
         km = model.get_component_kernel_matrices(x_train, x_test)
         with torch.no_grad():
             acc.add_draw(km, noise_var, y_train, jitter)
+        noise_draws.append(noise_var)
 
     components, full, group_results = acc.finalize()
     return _assemble(x_test, x_train, y_train, components, full, group_results,
-                     noise_var, len(indices), acc.n)
+                     noise_draws, len(indices), acc.n)
 
 
 def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
@@ -429,36 +445,31 @@ def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
     groups: optional list of component-name lists; each requested group's
             joint posterior (sum of the components) is computed per draw and
             available through DecompositionResult.group(names).
-    strict: True (default) raises on an unrecognized or failing sample site
-            and on a draw whose decomposition fails; False keeps the previous
-            skip-and-continue behavior and records the dropped draws.
+    strict: True (default) raises on an unrecognized or failing sample site,
+            on a sampled site of the model with no draws supplied, and on a
+            draw whose decomposition fails; False keeps the previous
+            skip-and-continue behavior and records the dropped draws. Sample
+            arrays of unequal length raise under either setting.
     """
-    from .model import build_model, build_likelihood, select_hmc_sites, apply_hp_value
+    from .model import build_model, build_likelihood, apply_hp_value
 
     x_train, y_train, x_test = x_train.double(), y_train.double(), x_test.double()
     n_test = x_test.shape[0]
 
-    first_key = list(mcmc_samples.keys())[0]
-    total_mcmc = len(mcmc_samples[first_key])
+    relevant_keys, total_mcmc = _validate_sample_sites(
+        mcmc_samples, kernel_builder, build_likelihood, x_train, y_train,
+        "decompose_model_hmc", strict)
+
     n_take = min(n_posterior_samples, total_mcmc)
     if rng is not None:
         indices = rng.choice(total_mcmc, n_take, replace=False)
     else:
         indices = np.random.choice(total_mcmc, n_take, replace=False)
 
-    relevant_keys = select_hmc_sites(mcmc_samples.keys())
-    kernel_keys = [k for k in relevant_keys if not k.endswith("noise_covar.noise_prior")]
-    if not kernel_keys:
-        msg = ("decompose_model_hmc: no kernel hyperparameter site recognized "
-               f"among {sorted(mcmc_samples.keys())}")
-        if strict:
-            raise ValueError(msg)
-        logger.warning(msg)
-
     names = list(model.component_names)
     acc = _DrawAccumulator(names, n_test, groups)
     dropped = []
-    last_noise = float(likelihood.noise.item())
+    noise_draws = []
 
     for idx in indices:
         kernels, fresh_names = kernel_builder()
@@ -495,7 +506,7 @@ def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
         with torch.no_grad():
             try:
                 acc.add_draw(km, noise_var, y_train, jitter)
-                last_noise = noise_var
+                noise_draws.append(noise_var)
             except RuntimeError as exc:
                 if strict:
                     raise RuntimeError(
@@ -515,6 +526,6 @@ def decompose_model_hmc(model, likelihood, x_train, y_train, x_test,
 
     components, full, group_results = acc.finalize()
     result = _assemble(x_test, x_train, y_train, components, full, group_results,
-                       last_noise, len(indices), acc.n)
+                       noise_draws, len(indices), acc.n)
     result.dropped = dropped
     return result

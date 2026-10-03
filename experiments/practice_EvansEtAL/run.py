@@ -18,7 +18,7 @@ import json
 import time
 import argparse
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 import warnings
 warnings.filterwarnings("ignore")
@@ -33,7 +33,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Local sandbox imports
 from candidates import (
     build_practice_candidates, build_core_candidates,
-    CandidateResult,
 )
 from kernels import (
     PRACTICE_CONFIGS, build_kernel, build_likelihood,
@@ -93,6 +92,16 @@ class SubjectResult:
     gp_hyperparameters: Dict
     n_gp_samples: int
     elapsed_seconds: float
+    # Run provenance (fix pass 2a, SYNTHESIS A-23): the sampler seed, whether
+    # a failing configuration stops the run, and per configuration the
+    # requested and retained draw counts and sampler diagnostics (or why it
+    # is missing), and candidates dropped because their fit failed.
+    # hmc_samples goes to the .npz beside the JSON.
+    seed: Optional[int] = None
+    strict: bool = True
+    sampler_records: Dict = field(default_factory=dict)
+    hmc_samples: Dict = field(default_factory=dict)
+    candidate_failures: Dict = field(default_factory=dict)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -331,8 +340,17 @@ def run_one(ncurve: NormalizedCurve,
             n_hmc_samples=200, n_warmup=100,
             n_eval=50, n_posterior_samples=100,
             metrics=None, taus=None, verbose=False,
-            normalize_per_draw=False) -> SubjectResult:
-    """Full BI* pipeline for one subject."""
+            normalize_per_draw=False, seed=None, strict=True) -> SubjectResult:
+    """Full BI* pipeline for one subject.
+
+    seed: passed to every fit_hmc call and, when given, to the predictive
+        subsample (np.random.default_rng(seed)); each subject's result is then
+        reproducible on its own, whatever the order and subset of subjects.
+    strict: True (default) raises when any prior configuration fails (MAP
+        fit, HMC fit, predictive extraction or BMS* scoring) instead of
+        silently dropping it; False keeps going and records the failure in
+        sampler_records (fix pass 2a, SYNTHESIS A-23).
+    """
 
     t0 = time.time()
     if prior_configs is None:
@@ -357,23 +375,30 @@ def run_one(ncurve: NormalizedCurve,
     candidate_results = []
     fitted_params = {}
     bic_log_ml = {}
+    candidate_failures = {}
 
     for cand in candidates:
         try:
             cand.fit(ncurve.x_raw, ncurve.y_raw)
             pred = cand.predict(x_eval_raw)
-            candidate_results.append(pred)
-            fitted_params[cand.name] = pred.parameters
-            bic_log_ml[cand.name] = cand.log_marginal_likelihood(ncurve.x_raw, ncurve.y_raw)
-        except Exception as e:
-            if verbose: print(f"    {cand.name} failed: {e}")
-            mean = np.full(n_eval, ncurve.y_raw.mean())
-            candidate_results.append(CandidateResult(
-                name=cand.name, mean=mean, cov=np.eye(n_eval) * ncurve.y_raw.var(),
-                noise_var=ncurve.y_raw.var(), parameters={}, n_params=cand.n_free_params + 1,
-            ))
-            fitted_params[cand.name] = {}
-            bic_log_ml[cand.name] = -np.inf
+            log_ml = cand.log_marginal_likelihood(ncurve.x_raw, ncurve.y_raw)
+        except Exception as exc:
+            # A candidate that cannot be fitted is never replaced by a preset
+            # flat curve scored under its name (fix pass 2a review round R3):
+            # strict raises; otherwise it is dropped and recorded.
+            msg = (f"{curve.dataset_id}/sub{curve.subject_id}: candidate "
+                   f"{cand.name!r} failed to fit ({type(exc).__name__}: {exc})")
+            if strict:
+                raise RuntimeError(msg) from exc
+            if verbose: print(f"    {msg}")
+            candidate_failures[cand.name] = msg
+            continue
+        candidate_results.append(pred)
+        fitted_params[cand.name] = pred.parameters
+        bic_log_ml[cand.name] = log_ml
+    if not candidate_results:
+        raise RuntimeError(f"{curve.dataset_id}/sub{curve.subject_id}: no candidate "
+                           f"could be fitted {sorted(candidate_failures)}")
 
     bic_winner = max(bic_log_ml, key=bic_log_ml.get)
 
@@ -383,6 +408,17 @@ def run_one(ncurve: NormalizedCurve,
     bistar_G_diagnostics = {}
     gp_hp = {}
     n_gp = 0
+    sampler_records = {}
+    hmc_samples = {}
+
+    def _missing(cfg_name, stage, exc):
+        """A configuration never goes missing silently: raise under strict,
+        otherwise record why it is absent."""
+        msg = (f"{curve.dataset_id}/sub{curve.subject_id} [{cfg_name}]: {stage} "
+               f"failed ({type(exc).__name__}: {exc})")
+        if strict:
+            raise RuntimeError(msg) from exc
+        sampler_records.setdefault(cfg_name, {})["failed"] = msg
 
     for cfg_name in prior_configs:
         config = PRACTICE_CONFIGS[cfg_name]
@@ -393,7 +429,8 @@ def run_one(ncurve: NormalizedCurve,
 
         try:
             fit_map(model, lik, x_train, y_train, n_iter=300, lr=0.05, verbose=False)
-        except Exception:
+        except Exception as exc:
+            _missing(cfg_name, "MAP fit", exc)
             continue
 
         if not gp_hp:
@@ -405,22 +442,58 @@ def run_one(ncurve: NormalizedCurve,
 
         # Extract ψ's (in normalized space)
         if mode == "map":
-            gp_samples = extract_map_predictives(
-                model, lik, x_train, y_train, x_eval_norm, n_samples=n_posterior_samples,
-            )
+            try:
+                gp_samples = extract_map_predictives(
+                    model, lik, x_train, y_train, x_eval_norm, n_samples=n_posterior_samples,
+                )
+            except Exception as exc:
+                _missing(cfg_name, "MAP predictive extraction", exc)
+                continue
+            sampler_records[cfg_name] = {
+                "mode": "map",
+                "n_predictives_requested": n_posterior_samples,
+                "n_predictives_retained": len(gp_samples),
+            }
         else:
             try:
-                mcmc_samples = fit_hmc(model, lik, x_train, y_train,
-                                       n_samples=n_hmc_samples, n_warmup=n_warmup, verbose=False)
+                mcmc_samples, diagnostics = fit_hmc(
+                    model, lik, x_train, y_train, n_samples=n_hmc_samples,
+                    n_warmup=n_warmup, verbose=False, seed=seed,
+                    return_diagnostics=True)
+            except Exception as exc:
+                _missing(cfg_name, "HMC fit", exc)
+                continue
+            # the sampling outcome is recorded before extraction, so a later
+            # failure keeps it (review round R12)
+            hmc_samples[cfg_name] = {k: np.asarray(v) for k, v in mcmc_samples.items()}
+            sampler_records[cfg_name] = {
+                "mode": "hmc",
+                "seed": seed,
+                "n_draws_requested": n_hmc_samples,
+                "n_warmup": n_warmup,
+                "n_draws_returned": int(len(next(iter(mcmc_samples.values())))),
+                "sampler_diagnostics": diagnostics.to_dict(),
+            }
+            try:
                 gp_samples = extract_gp_predictives(
                     model, lik, x_train, y_train, x_eval_norm, mcmc_samples,
                     get_kernel_builder(cfg_name), get_likelihood_builder(cfg_name),
                     n_posterior_samples=n_posterior_samples,
+                    rng=None if seed is None else np.random.default_rng(seed),
                 )
-            except Exception:
+            except Exception as exc:
+                _missing(cfg_name, "predictive extraction", exc)
                 continue
+            hmc_samples[cfg_name]["retained_indices"] = np.asarray(gp_samples.retained_indices)
+            sampler_records[cfg_name].update({
+                "n_predictives_requested": n_posterior_samples,
+                "n_predictives_retained": len(gp_samples),
+                "n_predictives_dropped": gp_samples.n_dropped,
+            })
 
         if not gp_samples:
+            _missing(cfg_name, "predictive extraction (no predictive retained)",
+                     RuntimeError("empty predictive list"))
             continue
         n_gp = max(n_gp, len(gp_samples))
 
@@ -438,7 +511,8 @@ def run_one(ncurve: NormalizedCurve,
             results = run_bms_star(gp_samples_raw, candidate_results,
                                    metric_names=metrics, taus=taus,
                                    normalize_per_draw=normalize_per_draw)
-        except Exception:
+        except Exception as exc:
+            _missing(cfg_name, "BMS* scoring", exc)
             continue
 
         bistar_winners[cfg_name] = {}
@@ -488,6 +562,8 @@ def run_one(ncurve: NormalizedCurve,
         bic_log_ml=bic_log_ml, bic_winner=bic_winner,
         fitted_params=fitted_params, gp_hyperparameters=gp_hp,
         n_gp_samples=n_gp, elapsed_seconds=time.time() - t0,
+        seed=seed, strict=strict, sampler_records=sampler_records,
+        hmc_samples=hmc_samples, candidate_failures=candidate_failures,
     )
 
 
@@ -495,8 +571,14 @@ def run_one(ncurve: NormalizedCurve,
 # Batch Execution
 # ═══════════════════════════════════════════════════════════════════
 
-def run_all(curves, output_dir, prior_configs=None, mode="map", verbose=True, **kwargs):
-    """Run BI* on all curves. Save incrementally."""
+def run_all(curves, output_dir, prior_configs=None, mode="map", verbose=True,
+            seed=None, strict=True, **kwargs):
+    """Run BI* on all curves. Save incrementally.
+
+    seed and strict are passed to run_one (see there). Under strict a failing
+    subject stops the run with its error instead of printing FAIL and
+    continuing (fix pass 2a, SYNTHESIS A-23).
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -504,6 +586,7 @@ def run_all(curves, output_dir, prior_configs=None, mode="map", verbose=True, **
     print(f"\n{'='*60}")
     print(f"BMS* for Law of Practice: {n_total} learning curves")
     print(f"Mode: {mode} | Configs: {prior_configs or ['practitioner','moderate','agnostic']}")
+    print(f"Seed: {seed} | Strict: {strict}")
     print(f"Output: {output_dir}")
     print(f"{'='*60}\n")
 
@@ -519,7 +602,8 @@ def run_all(curves, output_dir, prior_configs=None, mode="map", verbose=True, **
             continue
 
         try:
-            r = run_one(ncurve, prior_configs=prior_configs, mode=mode, verbose=False, **kwargs)
+            r = run_one(ncurve, prior_configs=prior_configs, mode=mode, verbose=False,
+                        seed=seed, strict=strict, **kwargs)
             results.append(r)
             if verbose:
                 print(f"BIC={r.bic_winner} t={r.elapsed_seconds:.1f}s")
@@ -527,6 +611,8 @@ def run_all(curves, output_dir, prior_configs=None, mode="map", verbose=True, **
             path = output_dir / f"{curve.dataset_id}_sub{curve.subject_id}_{curve.condition}.json"
             _save_json(r, path)
         except Exception as e:
+            if strict:
+                raise
             if verbose: print(f"FAIL: {e}")
 
     _print_aggregate(results, output_dir)
@@ -544,9 +630,18 @@ def _save_json(result: SubjectResult, path: Path):
         "bistar_winners": _strkeys(result.bistar_winners),
         "bistar_probs": _strkeys(result.bistar_probs),
         "bistar_G_diagnostics": _strkeys(result.bistar_G_diagnostics),
+        "seed": result.seed,
+        "strict": result.strict,
+        "sampler_records": _strkeys(result.sampler_records),
+        "candidate_failures": result.candidate_failures,
     }
     with open(path, 'w') as f:
         json.dump(d, f, indent=2, default=str)
+    if result.hmc_samples:
+        # the sampled draws themselves, per configuration, beside the JSON
+        np.savez(path.with_name(path.stem + "_samples.npz"),
+                 **{f"{cfg}/{site}": arr for cfg, sites in result.hmc_samples.items()
+                    for site, arr in sites.items()})
 
 
 def _strkeys(d):
@@ -644,6 +739,11 @@ def main():
     p.add_argument("--demo", action="store_true", help="Synthetic test data")
     p.add_argument("--normalize_per_draw", action="store_true",
                    help="Subtract per-draw min G before Boltzmann (removes systematic bias)")
+    p.add_argument("--seed", type=int, default=None,
+                   help="Sampler and predictive-subsample seed, recorded in every subject JSON")
+    p.add_argument("--allow_missing_configs", action="store_true",
+                   help="Record a failing prior configuration and continue "
+                        "instead of stopping the run (non-strict)")
     args = p.parse_args()
 
     curves = generate_demo_data(50) if args.demo else load_data(args.data_dir)
@@ -654,7 +754,8 @@ def main():
     run_all(curves, args.output_dir, prior_configs=args.configs, mode=args.mode,
             n_hmc_samples=args.n_hmc_samples, n_eval=args.n_eval,
             n_posterior_samples=args.n_posterior_samples,
-            normalize_per_draw=args.normalize_per_draw)
+            normalize_per_draw=args.normalize_per_draw,
+            seed=args.seed, strict=not args.allow_missing_configs)
 
 
 if __name__ == "__main__":

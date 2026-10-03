@@ -15,6 +15,8 @@ from scipy.optimize import minimize
 from dataclasses import dataclass
 from typing import Tuple, Dict, Optional
 
+from .errors import EvaluationFailure
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,6 +95,18 @@ class CandidateModel:
                            candidates[0][2]["message"])
         return min(pool, key=lambda c: c[1])
 
+    @staticmethod
+    def _require_restart(best, model_name, errors):
+        """The selected restart, or EvaluationFailure when every restart
+        raised: a preset parameter vector is not a fitted candidate (fix pass
+        2a, SYNTHESIS A-6; the sinusoid fits used to fall back silently to
+        A = omega = 1, phi = 0, sigma = std(y))."""
+        if best is None:
+            raise EvaluationFailure(
+                f"{model_name}: every one of the {len(errors)} optimizer restarts "
+                f"raised; no fitted candidate exists (last: {errors[-1] if errors else 'none'})")
+        return best
+
     def _make_result(self, x_eval, mean, noise_var, params_dict):
         """Build CandidateResult with isotropic noise covariance."""
         n = len(x_eval)
@@ -153,24 +167,19 @@ class SinusoidalModel(CandidateModel):
 
         # Try multiple initializations (omega is tricky); prefer restarts
         # whose optimizer reported success (FIX-5).
-        restarts = []
+        restarts, errors = [], []
         for omega_init in [0.5, 1.0, 1.5, 2.0]:
             for A_init in [0.5, 1.0, 2.0]:
                 p0 = [A_init, omega_init, 0.0, np.log(0.5)]
                 try:
                     restarts.append(self._fit_mle(x, y, f, p0, return_status=True))
-                except Exception:
-                    continue
-        best = self._select_restart(restarts, self.name)
-        best_params = best[0] if best is not None else None
-
-        if best_params is not None:
-            self.A, self.omega, self.phi = best_params[0], best_params[1], best_params[2]
-            self.sigma = np.exp(best_params[3])
-        else:
-            # Fallback: just use initial
-            self.A, self.omega, self.phi = 1.0, 1.0, 0.0
-            self.sigma = np.std(y)
+                except Exception as exc:
+                    errors.append(f"{type(exc).__name__}: {exc}")
+        best = self._require_restart(self._select_restart(restarts, self.name),
+                                     self.name, errors)
+        best_params = best[0]
+        self.A, self.omega, self.phi = best_params[0], best_params[1], best_params[2]
+        self.sigma = np.exp(best_params[3])
 
     def predict(self, x_eval):
         mean = self.A * np.sin(self.omega * x_eval + self.phi)
@@ -197,27 +206,22 @@ class SinLinearModel(CandidateModel):
         def f(x, params):
             return params[0] * np.sin(params[1] * x + params[2]) + params[3] * x + params[4]
 
-        restarts = []
+        restarts, errors = [], []
         for omega_init in [0.5, 1.0, 1.5, 2.0]:
             p0 = [1.0, omega_init, 0.0, 0.25, 0.0, np.log(0.3)]
             try:
                 restarts.append(self._fit_mle(x, y, f, p0, return_status=True))
-            except Exception:
-                continue
-        best = self._select_restart(restarts, self.name)
-        best_params = best[0] if best is not None else None
-
-        if best_params is not None:
-            self.A = best_params[0]
-            self.omega = best_params[1]
-            self.phi = best_params[2]
-            self.b = best_params[3]
-            self.c = best_params[4]
-            self.sigma = np.exp(best_params[5])
-        else:
-            self.A, self.omega, self.phi = 1.0, 1.0, 0.0
-            self.b, self.c = 0.25, 0.0
-            self.sigma = np.std(y)
+            except Exception as exc:
+                errors.append(f"{type(exc).__name__}: {exc}")
+        best = self._require_restart(self._select_restart(restarts, self.name),
+                                     self.name, errors)
+        best_params = best[0]
+        self.A = best_params[0]
+        self.omega = best_params[1]
+        self.phi = best_params[2]
+        self.b = best_params[3]
+        self.c = best_params[4]
+        self.sigma = np.exp(best_params[5])
 
     def predict(self, x_eval):
         mean = self.A * np.sin(self.omega * x_eval + self.phi) + self.b * x_eval + self.c

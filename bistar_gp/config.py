@@ -24,12 +24,41 @@ RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 PRIMARY_METRIC = "pw_kl_vcal"
 APPENDIX_METRICS = ("kl_forward",)
 
-# Caches the M2bR banner withdrew: `informative`-config HMC draws produced by
-# the pre-D6/D22 sampler. load_hmc_samples refuses them unless the caller
-# passes allow_withdrawn=True (and then warns). Entries ending in "/" are
-# directory prefixes; the rest are file paths relative to the repository.
+# Sampler caches whose draws the M2bR record withdrew (D33 and D34; all were
+# produced by the pre-D22 samplers, whose target was p(theta) L(theta)^N).
+# load_hmc_samples refuses them unless the caller passes allow_withdrawn=True
+# (and then warns). Entries ending in "/" are directory prefixes; the rest
+# are file paths relative to the repository. The list is derived from the
+# D33/D34 classification (fix pass 2a, SYNTHESIS A-24); the fit-method study
+# ran the informative config only (experiments/fit_method_metric_comparison.py).
 WITHDRAWN_CACHES = (
+    # D33 supersession determination: informative stays WITHDRAWN/UNVALIDATED
+    # (td10 uncapped and td7 capped; td7 and td10 behave identically there).
     "runs/fit_method_metric_comparison/samples_hmc.npz",
+    "runs/fit_method_metric_comparison/samples_hmc_td7.npz",
+    "runs/prior_sensitivity/samples_informative_hmc_td7.npz",
+    "runs/prior_sensitivity/samples_informative_hmc_td10.npz",
+    # D33 (informative stays withdrawn) with D22/D26: hmc_laplace is
+    # Laplace-whitened NUTS on the same defective informative target.
+    "runs/fit_method_metric_comparison/samples_hmc_laplace.npz",
+    "runs/fit_method_metric_comparison/samples_hmc_laplace_td7.npz",
+    # D33: vague and gamma_relaxed had single-chain audit runs only, so their
+    # historical HMC numbers remain withdrawn.
+    "runs/prior_sensitivity/samples_vague_hmc_td7.npz",
+    "runs/prior_sensitivity/samples_gamma_relaxed_hmc_td7.npz",
+    # D33: the historical toy_elicited HMC numbers are withdrawn and SUPERSEDED
+    # by the validated corrected run; these original caches stay invalid.
+    "runs/prior_sensitivity/samples_toy_elicited_hmc_td7.npz",
+    "runs/prior_sensitivity/samples_toy_elicited_hmc_td10.npz",
+    # D34 ratification 2 (interim-withdrawn W3): every historical VI value.
+    "runs/fit_method_metric_comparison/samples_vi.npz",
+    "runs/fit_method_metric_comparison/samples_vi_td7.npz",
+    "runs/prior_sensitivity/samples_informative_vi_td7.npz",
+    "runs/prior_sensitivity/samples_vague_vi_td7.npz",
+    "runs/prior_sensitivity/samples_gamma_relaxed_vi_td7.npz",
+    "runs/prior_sensitivity/samples_toy_elicited_vi_td7.npz",
+    # D68 FIX-7 (M2bR banner): the toy tau-metric comparison was built on the
+    # withdrawn informative HMC cache above.
     "runs/toy_tau_metric_comparison/",
 )
 
@@ -253,16 +282,16 @@ def save_hmc_samples(samples: Dict, path: str):
 def load_hmc_samples(path: str, allow_withdrawn: bool = False) -> Dict:
     """Load HMC samples from .npz file.
 
-    Refuses the caches the M2bR banner withdrew (WITHDRAWN_CACHES) unless
+    Refuses the caches the M2bR record withdrew (WITHDRAWN_CACHES) unless
     allow_withdrawn=True is passed explicitly, in which case it warns; a
     figure or number built from them must be labelled as withdrawn material.
     """
     import warnings
     import numpy as np
     if is_withdrawn_cache(path):
-        msg = (f"{path} is a WITHDRAWN cache (M2bR banner: informative-config "
-               "HMC draws from the pre-D6/D22 sampler must never be cited); "
-               "pass allow_withdrawn=True only for explicitly labelled archival "
+        msg = (f"{path} is a WITHDRAWN cache (M2bR banner, D33/D34: draws from "
+               "the pre-D22 samplers must never be cited); pass "
+               "allow_withdrawn=True only for explicitly labelled archival "
                "reproduction")
         if not allow_withdrawn:
             raise RuntimeError(msg)

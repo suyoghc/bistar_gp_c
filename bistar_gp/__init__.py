@@ -7,6 +7,7 @@ Implements the framework from Chandramouli & Shiffrin for:
 - Full Bayesian inference over hyperparameters
 """
 
+from .errors import EvaluationFailure
 from .decompose import decompose_additive_gp, sample_from_component, mixture_central_interval
 from .model import (
     AdditiveGPModel, build_model, build_toy_kernels, build_mauna_loa_kernels,
@@ -40,6 +41,7 @@ from .m2c_manifest import (
 )
 
 __all__ = [
+    "EvaluationFailure",
     "decompose_additive_gp", "sample_from_component", "mixture_central_interval",
     "AdditiveGPModel", "build_model", "build_toy_kernels", "build_mauna_loa_kernels", "build_likelihood",
     "assert_mauna_period_frozen", "MAUNA_FROZEN_PERIOD",
