@@ -5877,13 +5877,38 @@ not remove the conflicts and would break #42's fast-forward); re-locking the env
 
 **Result:** record committed; no code changed in this commit.
 
-**Status:** OPEN until the author's decision sheet is cast; the main worktree's untracked
-working copy of the record remains the live copy until then. Update 2026-10-03: by direct
-author instruction, PR #42 was merged into `main` ahead of sheet line B9 (whose A1-A3 gate is
-still uncast), as the true merge `8c6e6b2` (parents `7154083` and `69deeda`; tree identical to
+**Status:** Decision sheet CAST 2026-10-03 (cast update below). The committed record now
+supersedes the main worktree's untracked working copy, whose only extra content is the raw
+OpenRouter JSONs (local by design) and byte-identical copies of two apparatus files
+(`HANDOFF-fix-pass-2.md`, `prompt_fix-pass-2a.txt`). Update 2026-10-03 (merge): by direct
+author instruction, PR #42 was merged into `main` ahead of sheet line B9 (whose A1-A3 gate was
+then uncast), as the true merge `8c6e6b2` (parents `7154083` and `69deeda`; tree identical to
 `69deeda`; branch `fix/code-review-2026-09` kept). The six paper PRs #36-#41, clean against
 `main` before the merge, now conflict with it on `Notes/DECISIONS.md` only, to be resolved by
-the section 10 union with per-block hash checks.
+the section 10 union with per-block hash checks. Update 2026-10-03 (cast): the author cast the
+sheet, confirming the implementer's recommended cast for every line after read-only
+consultations of Codex gpt-6-astra xhigh and Fable on one brief. Committed with this update:
+`runs/project_review_2026_09/DECISION_SHEET.md` (cast column filled) and
+`runs/project_review_2026_09/sheet_consult/` (the brief, `astra.md`, `fable.md`, and integrity
+snapshots before and after, unchanged). Every A line takes its default. B1: uninstall both
+drifted packages, `pypdf==6.14.2` (user site) and `imageio-ffmpeg==0.6.0` (base), and keep the
+lock; the author's act, with PDF tooling moved to its own environment as the option says
+(`graphifyy` 0.3.1 in the base environment lists `pypdf` as its optional `pdf` extra; no
+repository file imports either package). B2: (i) instead of the default (ii), because (ii)
+edits the frozen `bistar_gp/mcse_strategy.py` for an S4 record field (both consultants); the
+metric name is passed at the one caller in 2b. B3-B7 take their defaults. B8: as listed, with
+the six paper PRs retargeted to the integration branch once it exists (not yet executed). B9:
+authorized, with the integration branch cut from `main` at `84e9881` instead of from PR #42,
+since #42 and 2a are merged. B10: accepted; of D70's leftovers, the R16 alias table, the
+`score_averaged_gp` NaN check and the unguarded `np.load` cache reads go to 2b, while the
+penalty overflow and the legacy cache archives stay behind the cut line. C1: (B), with the
+presented-asset inventory started; C2: after the inventory. Added to the plan: the Case D
+producer still defaults to the legacy metrics, has no metric flag and counts first-index
+`argmin` draw wins (`experiments/practice_EvansEtAL/run.py:359,530,540`), so the change A1a and
+A3 need goes to `main` as its own PR before the canonical run instead of waiting in 2b; the
+canonical run starts from `main` merged into `paper/case-d-mopen`, with two seeds, strict mode
+and diagnostics; the untracked manuscript sources go to `main` unchanged in a docs-only PR,
+while `tex/` and the Overleaf zip, which `build_tex.py` generates, stay local.
 
 
 ## D70: Fix pass 2a, decision-free package contracts from the 2026-09-26 review (SYNTHESIS A-1 to A-4, A-6, A-10, A-11 with A-24, A-13 code half, A-23 package half, hardened Case D producer; optional A-5, A-7, A-15, A-18) — 2026-10-03

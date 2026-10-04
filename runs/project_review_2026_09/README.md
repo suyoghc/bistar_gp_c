@@ -26,3 +26,9 @@ Committed on `fix/code-review-2026-09` on 2026-09-26 as the round's record; the 
 response JSONs (`*.raw.json`, driver-side provenance of the package-only calls) stay local.
 Probe scripts and logs named in the reviews were in the session scratchpad and are ephemeral;
 every finding they supported is restated with its evidence in the channel files and `SYNTHESIS.md`.
+
+Decision sheet: `DECISION_SHEET.md`, written 2026-09-26 and cast by the author on 2026-10-03
+(D69's cast update). The cast followed read-only consultations of Codex gpt-6-astra (xhigh) and
+Fable on one brief, recorded in `sheet_consult/` (`brief.md`, `astra.md`, `fable.md`, and
+integrity snapshots taken before and after, unchanged). Fix pass 2a's record is
+`fix2a_report.md` with `fix2a_review/` (D70).
