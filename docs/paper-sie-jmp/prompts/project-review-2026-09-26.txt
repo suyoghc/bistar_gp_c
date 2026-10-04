@@ -1,0 +1,118 @@
+[TASK CONTEXT]
+You are one of five independent reviewers of the CURRENT CODE AND PROJECT
+STATE of the BI*/BMS*-GP repository (Chandramouli & Shiffrin framework:
+Gaussian-process data priors, G divergence, Boltzmann soft transfer,
+Laplace/MC/IS model evidence, additive-kernel decomposition; a journal
+manuscript in preparation). Review date 2026-09-26.
+
+Code under review: the fix-branch head `ddf8c9d` on `fix/code-review-2026-09`
+(PR #42, a fast-forward of `main` 7154083 plus fix passes 1/1b/1c of the
+2026-09 implementation review), checked out read-only at
+  /Users/sc8918/Documents/GitHub/bistar_gp_c-fix
+The MAIN worktree /Users/sc8918/Documents/GitHub/bistar_gp_c (read-only) is on
+`paper/case-e-debias` and holds, untracked, the manuscript apparatus:
+docs/paper-sie-jmp/{00-notation.md, HANDOFF-cases.md, HANDOFF-code-review.md,
+prompts/, build_tex.py, tex/sections/*.tex}. Six unmerged paper branches
+(PRs #36-#41) carry the case sections and decision entries D59-D67; read them
+with read-only git only (`git show origin/<branch>:<path>`, `git log`,
+`git diff`, `git merge-tree`). The project map (branches, PRs, D-entry
+inventory, runs/, suite counts) is in runs/project_review_2026_09/project_map.md.
+Prior review records (runs/code_review_2026_09/, the case branches' review
+records) are CONTEXT, not evidence, and must not bound your review: derive
+your own findings, on the whole project, not only the fix-pass surface.
+
+[SCOPE, PART A: CODE]
+Does the package at `ddf8c9d` compute what the manuscript claims? Standard:
+docs/paper-sie-jmp/HANDOFF-code-review.md section 2; named targets T1-T11 of
+its section 3 remain in scope, now against the post-fix code. Specification:
+tex/sections/02-machinery.tex (and the case sections where they state what a
+number is), 00-notation.md. Hunt for: wrong mathematics, contract breaks,
+silent fallbacks that substitute a different estimator, sentinels that can
+win, path-dependent results (draw order, start order, dict order), numerical
+regimes that matter on the paper paths (N=20 toy, tau in [0.1, 100], KL and
+pw_kl_vcal magnitudes), tests that would pass against wrong code, and the
+seams the fix passes left (the required `metric_name` deferred to pass 2, the
+`samples` dual meaning, the implicit metric roster, provenance prose).
+
+[SCOPE, PART B: PROJECT]
+P1 Manuscript-code consistency: for each section 01-08, do the numbers,
+   conventions and terms come from code at this head via a named
+   experiments/ script into a runs/ artifact, and do the section's claims
+   survive the fix passes (in particular FIX-2: every earlier band from
+   decompose_model_hmc/mcmc was understated; which manuscript or poster
+   statements inherit that, and are they marked)?
+P2 Branch topology and merge plan: seven unmerged branches whose
+   Notes/DECISIONS.md diverge (D59-D67 on paper branches, D68 on the fix
+   branch), the A-before-C script dependency, package API changes on the fix
+   branch versus what the case scripts on the paper branches expect
+   (strict extraction now raises where scripts once relied on dropped draws;
+   `compute_induced_prior` weighting; `soft_transfer_weighted` raising;
+   `PredictiveList`; `DecompositionResult.group`). State the merge order you
+   would use and the conflicts or breakages you can demonstrate.
+P3 The record: HANDOFF-cases.md section 0 constraints (M2bR banner, W1
+   primary metric, W4 framing, no Mauna material) honoured in the sections;
+   open ledger items; D-entry statuses versus reality; the fix pass 2 list.
+P4 Test suite: value of the tests on the paper paths (tautological or
+   implementation-coupled tests; missing pins), the known failure, the
+   fixture-gated skips, runtime.
+P5 Reproducibility and provenance: runs/ artifacts versus the scripts that
+   claim to produce them; hashes; the Case E oracle; what a reader of the
+   manuscript could not regenerate.
+P6 Publication readiness: the blocking list, the risks, and what you would
+   do in the next two weeks, in priority order with effort estimates.
+
+[PROTOCOL]
+- Repo-access channels: run the suite once in the fix worktree
+  (`cd /Users/sc8918/Documents/GitHub/bistar_gp_c-fix && python -m pytest
+  tests/ -q -p no:cacheprovider`; expect 1346 passed, 5 skipped, 1 failed =
+  the known dependency-lock drift test; report your counts and runtime), then
+  probe. Package-resolution trap: `bistar_gp` is an editable install pointing
+  at the MAIN worktree; a probe script outside the fix worktree imports the
+  UNFIXED package unless you force the path (`PYTHONPATH=/Users/sc8918/
+  Documents/GitHub/bistar_gp_c-fix` or `sys.path.insert(0, ...)`). Print
+  `bistar_gp.__file__` once per probe.
+- Reproduce every claim (path:line at ddf8c9d, or branch:path:line for paper
+  branches, plus a command and an output excerpt). Mark each finding
+  CONFIRMED (reproduced) or PLAUSIBLE (argued). Package-only channels tag
+  execution-dependent claims NEEDS-REPO-VERIFICATION.
+- Severity, code: S1 a manuscript-path number is wrong; S2 wrong under a
+  reachable configuration; S3 latent, guarded; S4 hygiene. Severity,
+  project: BLOCKER (must be resolved before submission), MAJOR (would draw a
+  referee's objection or a retraction risk), MINOR.
+- Adversarial stance toward every record, report and test in the repository.
+
+[CONSTRAINTS]
+- READ-ONLY on both worktrees: create, edit or delete nothing under either,
+  except your single output file below; no git add/commit/stash/checkout/
+  reset/branch/rebase/worktree anywhere; never touch stash@{0}.
+- Scratch: only the directory named in your channel override.
+- No network, no new dependencies, no Mauna Loa inference, no change to the
+  dependency lock. Do not open the other channels' output files in
+  runs/project_review_2026_09/ (some may exist while you work).
+- Hard constraints of HANDOFF-cases.md section 0 apply to what you write:
+  the informative-config HMC caches are withdrawn (never cite
+  runs/fit_method_metric_comparison/samples_hmc.npz or
+  runs/toy_tau_metric_comparison/); pw_kl_vcal is the primary metric and
+  kl_forward appendix-only; no arrow glyphs; no "X is the Y" role-noun
+  constructions; no "lives/sits" for abstracta.
+
+[OUTPUT FORMAT]
+Write EXACTLY ONE file (the path is in your channel override) with:
+1. Verdict. Code: APPROVE / REVISE / REJECT, one sentence. Project: READY /
+   NOT READY for submission, with the blocking list.
+2. Code findings: summary table (ID, target or module, severity,
+   CONFIRMED/PLAUSIBLE, path:line, one-line claim), then per-finding detail
+   (what is wrong, reproduction, suggested change, the test that would pin it).
+3. Project findings: summary table (ID, P1-P6, severity, CONFIRMED/PLAUSIBLE,
+   location, claim), then detail, including your merge plan for P2.
+4. Verified-correct list (what you checked and found right, so the
+   synthesizer can see coverage).
+5. Recommendations: prioritized, each with an effort estimate and what it
+   unblocks.
+6. Commands run and their outcomes; what you could not run.
+Sign only with your channel label. Do not claim to be another reviewer.
+
+[SUCCESS CRITERIA]
+Every T1-T11 target and every P1-P6 item has an explicit judgement; every
+finding carries a reproduction or is marked PLAUSIBLE; the suite counts are
+reported (repo-access channels); the single output file exists.

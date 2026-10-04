@@ -1,0 +1,130 @@
+[TASK CONTEXT]
+You are implementing Case E — the toy debias demonstration — author-
+commissioned 2026-08-13, extending docs/paper-sie-jmp/HANDOFF-cases.md. FIRST
+verify `git branch --show-current` prints paper/case-e-debias; if not, STOP
+and report only the branch name. NO git mutations. The frozen notation file
+docs/paper-sie-jmp/00-notation.md binds all symbols. The worktree
+Notes/DECISIONS.md carries uncommitted entries D60-D66 above main's baseline;
+untouched except the one append below.
+
+MOTIVATION (write toward this): the thesis (ch. 5) and the accepted proposal
+set TWO goals: model evaluation via data priors, and bias mitigation — the
+same posterior powering truth/bias labeling and debiasing by
+marginalization. The manuscript's sections 1-6 and 8 deliver the first; this
+case restores the second as a small, honest, in-paper demonstration, and
+section 7 (currently a stub) becomes its home. The full development stays
+with the companion paper and the preregistered Mauna study, which this case
+must NOT touch.
+
+[ABSOLUTE OPERATIONAL RULES]
+1. Files you may CREATE: experiments/toy_debias_demo.py, everything under
+   runs/toy_debias_demo/.
+   Files you may EDIT: docs/paper-sie-jmp/07-debias-bridge.md, and
+   Notes/DECISIONS.md (append ONE entry "## D67: <title> — 2026-08-13" at
+   EOF only).
+2. READ-ONLY everything else. In particular: NO Mauna anything — do not
+   import from, execute, or cite experiments/bistar_debias_mauna_loa.py or
+   any Mauna script/artifact (the D58 preregistration boundary stands); the
+   decomposition machinery must come from the bistar_gp package itself
+   (locate the additive-kernel decomposition the package exposes — the same
+   machinery the toy_example figures used; import it, never copy).
+3. No network, no new dependencies. Local CPU; total runtime budget ~20
+   minutes. NO use of the withdrawn cache
+   (runs/fit_method_metric_comparison/samples_hmc.npz) or
+   runs/toy_tau_metric_comparison/. Fresh sampling is allowed and expected:
+   use the CORRECTED sampler configuration (the nuts_e1 path) — never the
+   pre-correction NUTS setup.
+
+[THE DEMONSTRATION]
+Data: bistar_gp.generate_toy_data() defaults — N=20, seed 42, noise 0.5,
+y = sin(x) + 0.25 x + noise. By construction the generator names the linear
+term the BIAS (bias_slope=0.25; info dict carries "true_signal", "bias",
+"combined"). The demo treats the sinusoid as the true process and the linear
+drift as the bias process, exactly the thesis's composite-process story.
+
+Steps:
+1. Fit the GP with the SE + linear additive kernel under the `toy_elicited`
+   prior configuration (the validated N=20 config; read its definition in
+   experiments/prior_sensitivity_study.py STUDY_CONFIGS). Sample
+   hyperparameters with the corrected NUTS path: TWO seeded chains for
+   rank-normalized R-hat (document seeds), a stated warmup/draw budget that
+   fits the runtime envelope, target_accept and max_tree_depth stated,
+   INIT STRATEGY DISCLOSED in results.json and prose (if you initialize at
+   a MAP point, say so and frame R-hat as within-mode evidence — the Case C
+   review made this a standing requirement).
+2. For each retained posterior draw, decompose the GP posterior additively
+   into the SE (truth-candidate) component and the linear (bias-candidate)
+   component via the package decomposition. Record decomposition
+   success/failure counts.
+3. DEBIAS by marginalization: the debiased posterior predictive of the true
+   process = the SE-component posterior with the linear component
+   marginalized out (averaged over draws). Produce:
+   (a) the composite posterior predictive against the observed data;
+   (b) the two labeled components with uncertainty bands;
+   (c) the debiased predictive against the KNOWN true sin(x) curve.
+4. Quantify recovery, with uncertainty:
+   - recovered bias slope posterior (mean, sd, central interval) vs the
+     generating 0.25;
+   - RMSE of the debiased posterior mean against sin(x) on a stated grid,
+     compared against the RMSE of the composite mean against sin(x) (the
+     improvement IS the debias claim);
+   - central-interval coverage of sin(x) by the debiased band on that grid.
+   State every number with its uncertainty layer and pin tolerances for
+   rerun reproducibility (seeded; if exact determinism across reruns holds,
+   assert byte-stable JSON like the other cases; if torch nondeterminism
+   prevents that, pin numeric tolerances instead and say so).
+5. ONE figure (runs/toy_debias_demo/debias_figure.png, under 2 MB,
+   colorblind-safe, #2E6FB8 primary / #C4356B reference): the
+   three-interpretation layout — (a) composite fit + data, (b) components,
+   (c) debiased vs true sin — with the recovered-slope readout annotated
+   from computed values only.
+6. results.json: config, seeds, sampler settings + init, diagnostics
+   (divergences, R-hat, ESS), decomposition counts, all recovery numbers,
+   grid definition. README.md: rerun command, seeds, tolerances, the
+   no-Mauna scope note, and the companion-paper pointer.
+
+SECTION 07 (docs/paper-sie-jmp/07-debias-bridge.md): flesh out from the stub,
+staying close to one page of prose plus the one figure:
+- the bridge claim: the same data-space posterior that grades candidate
+  models also supports labeling components as truth-candidate and
+  bias-candidate and debiasing by marginalization — evaluation and
+  mitigation share one object;
+- the demonstration with its numbers (each traced to results.json via an
+  evidence-tier footnote; follow the other sections' 🟢/🟠 convention and
+  the style rules);
+- honest scope: a demonstration on the synthetic toy whose bias process is
+  known by construction; the identification of "bias" with the linear
+  component is a modeling CHOICE the analyst must justify in applications
+  (kernel-labeling assumption stated plainly); the full development,
+  including the preregistered real-data study, belongs to the companion
+  line (cite thesis ch. 5 as the source of the program; no Mauna results,
+  no forward-promises of numbers);
+- the uncertainty-floor sentence in section 8.5 forward-references this
+  section: make the connection real with one sentence about beliefs
+  sourced outside the observed data.
+- provenance footer per the stub template.
+
+D67 at EOF: Problem / Decision / Alternatives considered / Result, self-
+contained (paths, seeds, sampler budget, init, headline recovery numbers
+with uncertainties, the no-Mauna scope, the kernel-labeling caveat).
+
+[STYLE — user's global rules; apply to ALL prose]
+No arrow glyphs. No "X is the Y" role-noun constructions. Never
+"lives"/"sits" for abstracta. Minimal em-dashes. No "Same X, different Y".
+No "This is the" openers. No staccato fragments. No anthropomorphic or
+spatial metaphors for abstract objects. Numbers: three decimals unless a
+pinned tolerance says otherwise; every number in prose must exist in
+results.json.
+
+[OUTPUT FORMAT]
+Final message: implementation report — files created/edited; exact rerun
+command; sampler diagnostics; the recovery numbers verbatim (slope posterior
+vs 0.25, RMSE composite vs debiased, coverage); determinism status; figure
+byte size; deviations; open driver questions.
+
+[SUCCESS CRITERIA]
+python experiments/toy_debias_demo.py reruns clean from the repo root inside
+the runtime budget; the debiased-vs-composite RMSE comparison is reported
+whichever way it comes out (a failure to improve is a reportable finding,
+not a failure); section 07 fleshed with the one figure; D67 at EOF; zero
+Mauna contact; zero git mutations.

@@ -1,0 +1,142 @@
+[TASK CONTEXT]
+Fix pass for Case A (HANDOFF §4 rule 4) in
+/Users/sc8918/Documents/GitHub/bistar_gp_c, branch paper/case-a-vanbork (tip
+31a9258). Four-model review + adversarial cross-verification produced the fix
+queue below. Six findings were REJECTED in cross-check (kl_forward-paragraph
+removal, D60 Mauna deletion, D60 arrow rewrite, D60 conjecture deletion,
+Laplace-display exp factor, highest-weight metric scoping) — do NOT implement
+their fixes; in particular the committed D60/D61 entries are historical
+records and stay byte-untouched.
+
+[ABSOLUTE OPERATIONAL RULES]
+1. NO git commands. The worktree carries uncommitted author work above the
+   committed entries (D62-D64); a protected stash exists.
+2. Files you may EDIT: docs/paper-sie-jmp/03-case-A-external-validation.md;
+   Notes/DECISIONS.md ONLY inside the existing D65 entry (in place; do not
+   touch D60-D64); experiments/e7_convention_sensitivity.py ONLY for FIX-8's
+   one-line import deletion.
+   READ-ONLY: everything else, including both run dirs (their committed
+   artifacts stay EXACTLY as committed — if you rerun e7 for FIX-8
+   verification, restore the committed results.json afterward if the rerun
+   changed only its date stamp; report what you observed).
+3. No network, no new dependencies, no new compute beyond the single FIX-8
+   verification rerun of experiments/e7_convention_sensitivity.py.
+
+[FIX QUEUE — implement ALL nine]
+
+FIX-1 [S2; three reporters]. The section credits the E7 artifact with a
+consistency check it does not contain, and quotes 696/1000 as if
+script-regenerable. Facts: results.json has no hard-win field; the script
+computes no check; the fraction's legitimate committed provenance is the D18
+record ("SIR hard fractions at n_pred=1000: 0.696 toy_elicited",
+Notes/DECISIONS.md around line 923, committed on main). Rewrite the sentence
+so that: the tau-to-0 identity (expected-posterior aggregation converges to
+hard best-match fractions) is stated as ANALYTIC (by construction); the
+0.696 value at tau=0.1 is cited to results.json; its equality with the
+D18-recorded SIR hard fraction 0.696 (696/1000) is attributed to the
+committed D18 record and noted as recorded in the E7 README; the phrase
+"the artifact's consistency check confirms that identity" is deleted. Add
+the D18 citation to footnote [^3] or a new footnote.
+
+FIX-2 [S2/S4 cluster; two reporters]. The shipped normalize_per_draw=True
+flag is not the same computation as Eq.-4 expected-posterior aggregation:
+the flag subtracts per-row minima then normalizes once after pooling
+(bistar_gp/bms_star.py:439-454), while expected-posterior normalizes each
+row into a posterior before averaging; they coincide at the tau-to-0
+unique-winner limit, which is why both rows read 0.400/0.600 in Target A.
+Also the Target A table row label "soft_transfer(..., normalize_per_draw=
+True)" implies the shipped function ran, while the script faithfully
+reimplements the semantics inline. Implement: relabel the row "shipped
+`normalize_per_draw=True` semantics (per-draw minimum shift)"; add one
+clause (table qualification or adjacent prose) stating the shipped
+semantics and Eq.-4 aggregation are distinct computations that coincide in
+the tau-to-0 unique-winner limit exercised here.
+
+FIX-3 [S2; confirmed]. Mapping-table row 3 omits the qualification the
+Target A correspondence rests on. Extend row 3's qualification (or one
+clause in 3.3): their Eq.-4 per-atom quantity is a Bayesian posterior model
+probability under an infinite-data idealization, ours a Boltzmann softmax
+as tau approaches zero; the Target A agreement follows because both
+collapse to the same hard nearest-model assignment.
+
+FIX-4 [S3; confirmed]. "Published target | 0.841420" mislabels a
+self-computed value. The paper prints densities 7.96 and 1.50 and a weight
+of approximately 0.84; 0.841420 is the repo's double-precision evaluation
+of their closed form (results.json published_weight_Mx 0.8414195905), and
+the printed-density quotient 7.96/(7.96+1.50) equals 0.841438. Implement:
+relabel the table row (e.g. "Their closed form, evaluated at double
+precision | 0.841420"); add one clause noting the paper prints 7.96, 1.50,
+and approximately 0.84, so the six-decimal comparison is against their
+formula evaluated exactly, not a printed six-decimal value; keep the
+6.4e-7 statement but state it as the error against that evaluated limit.
+Apply the same correction to the D65 Result wording ("against the
+published 0.841420") in place. Do NOT touch D60.
+
+FIX-5 [S3; confirmed]. "receives 0.992 at n=50 and remains between 0.93
+and 0.99 across all evaluated n" is self-contradictory. Use "receives
+0.992 at n=50 and stays at or above 0.93 across all evaluated n" in the
+body and in footnote [^4].
+
+FIX-6 [S3; confirmed]. Frozen-notation alignment: write the data-prior
+atom as a point mass at psi* = 1/2 (psi is the data-pattern symbol; the
+script itself uses psi_star), not theta*; keep theta as the candidate
+parameter; add the point-prior identity clause "with a point data prior,
+Gbar(phi) = G(psi*, phi)" so the Laplace display's second-derivative
+notation is anchored; adjust the display's argument symbols consistently
+without changing its mathematical content or its (correct, cross-check-
+upheld) point-prior scoping.
+
+FIX-7 [S4; confirmed]. "external checks on the induction and soft-transfer
+machinery" becomes "external checks on the induced-prior and soft-transfer
+machinery".
+
+FIX-8 [S4; confirmed]. Delete the dead `import fit_method_metric_comparison
+as fmc` line from experiments/e7_convention_sensitivity.py (fmc is unused;
+the module still arrives transitively via prior_sensitivity_study, which is
+fine and not yours to change). Then rerun
+`python experiments/e7_convention_sensitivity.py` once to verify the
+regenerated results.json is byte-identical to the committed artifact except
+the generated-date field; RESTORE the committed results.json afterward (the
+driver holds the original at the committed blob; simply `git show
+HEAD:runs/e7_convention_sensitivity/results.json` is FORBIDDEN since git is
+forbidden — instead copy the file aside BEFORE the rerun and copy it back
+after comparing). Report the comparison outcome.
+
+FIX-9 [S4; confirmed]. Add one sentence to 3.4: all three aggregation
+variants are applied to the SAME G matrix from one SIR realization
+(n_pred=1000), so the reported movements are paired differences rather
+than differences of independent estimates. Do not claim the SIR error
+"largely cancels" (unquantified); the paired-difference statement suffices.
+
+[HARD CONSTRAINTS — HANDOFF-cases.md §0, VERBATIM]
+**Hard constraints (repeat verbatim in every Codex prompt):**
+- M2bR banner: `informative`-config HMC is WITHDRAWN. Usable numbers:
+  `toy_elicited` SIR (headline 0.441), prior-IS, MAP, SIR hard-best-match
+  rates, corrected NUTS ≈ 0.42. Never cite the withdrawn cache
+  (`runs/fit_method_metric_comparison/samples_hmc.npz`) or
+  `runs/toy_tau_metric_comparison/` (poster-only per W7).
+- W1: primary metric `pw_kl_vcal`; `kl_forward` appendix-only.
+- W4: `runs/viz_unification/*` numbers are `informative`-config, MAP-based,
+  methods-validation role — prose must frame them so.
+- No Mauna Loa material of any kind (D58 prereg boundary not to be tested).
+- No changes to `bistar_gp/` package defaults or public APIs.
+- Style: no arrow glyphs in prose; no "X is the Y" role-noun constructions;
+  no "lives/sits" for abstracta; minimal em-dashes (see repo CLAUDE.md +
+  user's global rules quoted in `docs/paper-sie-jmp/00-notation.md`).
+- Every reported number must be regenerable from a named `experiments/`
+  script into a `runs/` artifact; each case commits a same-commit
+  `Notes/DECISIONS.md` entry (next free D number).
+- Commit scope per branch: `experiments/` script(s), `docs/paper-sie-jmp/`
+  section, `Notes/DECISIONS.md` entry, and (deliberately, if evidence-worthy)
+  the `runs/` JSON — never figures over 2 MB, never gitignored Notes files.
+
+[OUTPUT FORMAT]
+Final message: FIX-by-FIX report (files touched, the corrected sentences for
+FIX-1/FIX-4 verbatim, the FIX-8 byte-comparison outcome), confirmation that
+D60-D64 and both committed run artifacts are byte-unchanged, placeholder
+still intact, any deviation with reason.
+
+[SUCCESS CRITERIA]
+All nine fixes implemented; [FORK-DECISION-PLACEHOLDER] still present
+verbatim; D60-D64 untouched; committed run artifacts unchanged; rejected
+fixes not implemented; zero git operations.

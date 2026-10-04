@@ -1,0 +1,335 @@
+[TASK CONTEXT]
+Fix pass 1 for the 2026-09-05 implementation-correctness review of
+/Users/sc8918/Documents/GitHub/bistar_gp_c (HANDOFF-code-review.md §6; the
+§4 rules of HANDOFF-cases.md apply: one fix pass, then one re-review of the
+changed hunks by the raisers, no third round). Four channels reviewed the
+package, both repo-access channels cross-checked every single-reporter
+finding, and the author-adjudication ledger (runs/code_review_2026_09/
+ledger_draft.md, revision 3) separates the author's statistical decisions
+from the package repairs. THIS PASS IMPLEMENTS ONLY THE DECISION-INDEPENDENT
+PACKAGE REPAIRS. It regenerates NO manuscript artifact and touches NO case
+branch. The decision-gated work (E7 artifact extension, Case C diagnostic
+line, the Item 4 sensitivity artifact, the practice producer and Case D
+regeneration, the D58 correction act) is fix pass 2 and is NOT in scope;
+where a fix below enables it, build the package surface only.
+
+Evidence for every item is in runs/code_review_2026_09/: fable_review.md,
+codex_review.md, kimi_k3_review.md, glm_5_3_review.md (findings),
+fable_crosscheck.md and codex_crosscheck.md (dispositions, including the
+REFUTED items you must NOT implement), codex_recommendations.md (fix-queue
+rationale, tie rule, pins). Read those before editing.
+
+Worktree: the driver has created <FIX_WORKTREE> (a `git worktree` of branch
+fix/code-review-2026-09, branched from main at 71540836; the package tree
+bistar_gp/ is byte-identical on main and on every paper branch, verified
+fa2791d1). Work ONLY inside <FIX_WORKTREE>. The driver commits.
+
+[ABSOLUTE OPERATIONAL RULES]
+1. NO git commands of any kind inside any worktree (no add, commit, stash,
+   checkout, branch, reset). The driver commits after review. Never touch
+   the main worktree at /Users/sc8918/Documents/GitHub/bistar_gp_c, which
+   carries uncommitted author work and a protected stash.
+2. Files you may EDIT (all under <FIX_WORKTREE>): bistar_gp/model.py,
+   bistar_gp/bms_star.py, bistar_gp/aggregation_v3.py, bistar_gp/debias.py,
+   bistar_gp/decompose.py, bistar_gp/metrics_v2.py,
+   bistar_gp/laplace_evidence.py, bistar_gp/induced_prior.py,
+   bistar_gp/candidates.py, bistar_gp/config.py, bistar_gp/__init__.py;
+   experiments/bistar_debias_mauna_loa.py (the grouping function only),
+   experiments/bistar_induced_prior.py and
+   experiments/bistar_induced_prior_v2.py (uniform posterior weighting
+   only), experiments/prior_sensitivity_study.py (retained-count assertion
+   and the package convention import only); NEW test files under tests/
+   (one per FIX, named tests/test_fix1_<topic>.py). READ-ONLY: everything
+   else, in particular runs/ (every committed artifact stays byte-identical),
+   docs/, Notes/ (no D-entry edits; the driver and author write addenda),
+   docs/m2c_freeze/, experiments/practice_EvansEtAL/, and the poster
+   directories.
+3. No network, no new dependencies, no Mauna Loa inference of any kind, no
+   modification of the dependency lock. Probe scripts and scratch output go
+   under /private/tmp/claude-501/-Users-sc8918-Documents-GitHub-bistar-gp-c/
+   c59de7f7-0de6-4670-81b4-02e7226015e7/scratchpad/fixpass1/ only.
+4. Existing behaviour for every existing call pattern on the paper paths
+   must be preserved bit-exactly except where a FIX below says otherwise.
+   The regression oracle is the Case E rerun in [VERIFICATION].
+5. Do NOT implement the refuted items: no failure gate in E6 (its
+   verdict-either-way contract is the work order, HANDOFF-cases.md:79-80);
+   no finiteness "explanation" of the aggregation_v3.py:77 RuntimeWarnings
+   (they are spurious BLAS flags on all-finite zero input); no change to
+   `soft_transfer`'s canonical pooled arithmetic or to the
+   normalize_per_draw=False default (D60).
+
+[FIX QUEUE — implement ALL nine, in this order]
+
+FIX-1 [S2/S3; Codex F4 + Fable F5 + Kimi F5; two-reporter]. Site
+assignment and draw integrity.
+(a) bistar_gp/model.py: `select_hmc_sites` and `apply_hp_value` must handle
+    the single-kernel site names `covar_module.<hp>_prior` and
+    `covar_module.base_kernel.<hp>_prior` (no `.kernels.` segment), mapping
+    them to component 0 exactly when `model.covar_module is
+    model.kernel_components[0]`; keep the current and legacy precedence
+    rules for multi-kernel names unchanged.
+(b) bistar_gp/bms_star.py `extract_gp_predictives`: raise `ValueError`
+    naming the site when `apply_hp_value` returns False for any selected
+    site; raise when a selected site is absent from `mcmc_samples`; record
+    the attempted and retained draw indices on the returned list (attribute
+    or a small result wrapper that still iterates as a list) and expose
+    `n_dropped`; add `strict=True` (default) under which any dropped draw
+    raises with the draw index and the exception text, while
+    `strict=False` keeps the old print-and-continue behaviour for
+    exploratory use. Apply the same site check to
+    bistar_gp/aggregation_v3.py `compute_log_marginal_likelihoods` and to
+    bistar_gp/debias.py `decompose_model_hmc`.
+(c) experiments/prior_sensitivity_study.py `_sir_bms`: assert
+    `len(gp_samples) == n_pred` (the paper path must not silently drop
+    predictives).
+(d) bistar_gp/debias.py `decompose_model_mcmc`: replace the positional
+    mapping (`:103-118`) by name matching of RAW parameter names to RAW
+    values (its sole live caller feeds `fit_mcmc_simple` output, whose keys
+    are `named_parameters` names and whose values are raw); raise on any
+    key that matches no parameter or any parameter without a key. Do NOT
+    route it through the constrained pyro-site setters.
+Pins (tests/test_fix1_sites.py): single-kernel lengthscale/outputscale
+changes alter the extracted prediction; additive and legacy-name fixtures
+keep their assignments; a permuted `decompose_model_mcmc` dict gives the
+same decomposition; an unknown site raises; a forced per-draw Cholesky
+failure cannot yield a full-length result under strict mode and is counted
+under non-strict mode; `_sir_bms` raises on a short list; the existing D6
+likelihood-connectivity test still passes. Reproduce the Codex probe as a
+test: two practice-model draws with lengthscales 0.05 and 2.0 must give
+different predictives (they are identical today).
+
+FIX-2 [S1; four channels; Fable F1, Codex F1/F2, Kimi F1, GLM F1].
+Decomposition moments and grouping.
+(a) bistar_gp/debias.py `decompose_model_hmc` and `decompose_model_mcmc`:
+    retain per-draw conditional diagonal variances; accumulate the total
+    covariance per component as `mean_d(C_d) + Cov_d(m_d)` (accumulate the
+    sum of C_d across draws; do not store per-draw full matrices); report
+    `std` as the total-variance sd; store the per-draw conditional means
+    under `conditional_means` and variances under `conditional_vars`
+    (remove the `samples=means` naming; keep a deprecated alias only if a
+    caller in the editable set needs it); compute `full_mean`, `full_cov`,
+    `full_std` from the summed blocks per draw with the same construction.
+(b) Add group conditioning: given a list of component names, condition the
+    summed group blocks per draw with the Cholesky factor of the ENTIRE
+    fitted training covariance plus observation noise (never a group-only
+    factorization), returning the group's conditional mean and variance
+    rows; expose it through the decomposition result (e.g.
+    `DecompositionResult.group(names)`), so truth and removed-bias groups
+    are treated symmetrically.
+(c) Port `mixture_central_interval` from experiments/toy_debias_demo.py
+    (CDF bisection over an equally weighted Gaussian mixture) into the
+    package (bistar_gp/decompose.py or a new bistar_gp/mixture.py) and
+    make it the interval construction for components, the full posterior,
+    and groups; do not change the Case E script.
+(d) experiments/bistar_debias_mauna_loa.py `compute_debiased`: replace the
+    `Σ comp.std²` construction with the group outputs of (b); no figure is
+    regenerated in this pass.
+Pins (tests/test_fix1_decomposition.py): identical hyperparameter draws
+keep positive conditional variance and nonzero off-diagonal covariance; a
+two-draw analytic fixture pins both law-of-total-variance terms; an
+anticorrelated two-component fixture reproduces the directly conditioned
+sum; all components labelled truth equals the full posterior in mean,
+total variance, and mixture quantiles; a singleton group equals its
+component; an empty group is zero; component order is irrelevant; the
+quantile helper's CDF coverage is checked on a Gaussian and on an
+asymmetric mixture; existing tests/test_decompose.py still passes.
+
+FIX-3 [S2; Fable F3 + Codex T4; Item 5 package surface]. Diagnostics and
+result contract in bistar_gp/bms_star.py.
+(a) `BMSStarResult` gains, per candidate: `weight_ess` (Σ_i w_ij)²/Σ_i w_ij²
+    computed in log space with w_ij = exp(−G_ij/τ) for pooled aggregation;
+    `hard_win_credit` (equal split among exact co-minimizers, sums to one),
+    `attainment` (fraction of rows where the candidate attains the row
+    minimum), and `tie_fraction`; exact ties on the validated finite
+    scores, no tolerance. `run_bms_star` populates them and keeps its
+    prints as a courtesy only.
+(b) `soft_transfer` requires `metric_name` (no "unknown" stamp) and
+    rejects a `class_names` argument that groups instances, raising with a
+    message that class averaging is unsupported, instead of silently
+    copying instance posteriors.
+Do NOT alter the pooled arithmetic, its default, or any existing
+probability value. Pins (tests/test_fix1_diagnostics.py): uniform weights
+give ESS = N; a single dominant draw gives ESS → 1; a per-candidate column
+log-shift leaves ESS invariant; ESS stays finite when a candidate's raw
+weights underflow; G = [[0, 0], [10, 11]] gives attainment [1, 0.5] and
+split credit [0.75, 0.25]; the τ→0 limit of the expected-posterior
+convention equals the split credit; tests/test_bms_aggregation.py still
+passes unchanged; a grouping `class_names` raises; `metric_name` survives
+a round trip through the result.
+
+FIX-4 [S2; Codex F7 confirmed; Codex F8 + Fable F2 + Kimi F3 + GLM F2].
+Hellinger exponent and firewall boundary.
+(a) bistar_gp/metrics_v2.py `pw_hellinger_vcal` and `pw_hellinger_mean`:
+    the equal-variance Bhattacharyya exponent is Δ²/(8σ²) and Δ²/8; fix
+    both formulas and both docstrings.
+(b) bistar_gp/bms_star.py: call `_assert_candidate_universes_consistent`
+    inside `compute_G_matrix` (the boundary that still holds candidate
+    metadata) and keep the call in `run_bms_star`; the all-untagged legacy
+    contract stays permitted; `soft_transfer` receives only a matrix and is
+    not expected to authenticate a roster.
+Pins (tests/test_fix1_metrics_firewall.py): N(0,1) versus N(1,1) gives
+1 − exp(−1/8) for both variants (0.11750309741540454), equality gives 0, a
+variance-rescaled pair matches the base `pw_hellinger`; `compute_G_matrix`,
+`score_averaged_gp`, `run_robust_aggregation`, `run_weighted_bms_star`, and
+`soft_transfer_weighted`-via-`run_weighted_bms_star` all reject mixed and
+partially tagged rosters before any metric call, and accept same-universe
+and all-untagged rosters; tests/test_bms_star_universe_firewall.py still
+passes.
+
+FIX-5 [S2/S3; Kimi F2 + GLM F3 + Codex F9 + Fable F7]. Numerical failures
+and optimizer provenance in bistar_gp/laplace_evidence.py and
+bistar_gp/candidates.py.
+(a) `compute_G_at_params` and `_log_likelihood`: distinguish the declared
+    sigma guard (keep its finite penalty; it is an optimizer boundary) from
+    evaluation failure; on a raising `predict_fn` or metric, raise under
+    `strict=True` (default) and return NaN under `strict=False`; thread
+    `strict` through `laplace_log_Z_Mx`, `mc_log_Z_Mx`, `is_log_Z_Mx`,
+    `_laplace_log_N`, and `model_posterior`.
+(b) `_laplace_log_integral` and `_multistart_G_optima`: record
+    `success`, `status`, `message`, and `nit` per start; `ZMxResult` and
+    `EvidenceResult` gain `optimizer` (best start's record) and
+    `n_starts_failed`; `model_posterior` carries `converged`, `n_clipped`,
+    and `n_starts_failed` per model in `components` and a top-level
+    `all_converged`.
+(c) bistar_gp/candidates.py `_fit_mle`: return the `OptimizeResult`
+    success and message alongside `(params, nll)` through a keyword
+    `return_status=True` path, and have the multi-start callers in the
+    same file skip non-successful restarts when a successful one exists.
+(d) bistar_gp/induced_prior.py:235: replace `10 * max(finite)` with the
+    strictly-worse penalty used by `compute_G_matrix`.
+Pins (tests/test_fix1_sentinels.py): an always-raising predictor cannot
+receive finite evidence, ESS, or a win under strict mode and yields NaN
+under non-strict mode; a valid very large G stays valid; a negative-valued
+metric cannot reward a failed draw; a forced optimizer exception and a
+forced `success=False` both reach the caller's record; every existing
+value in tests/test_laplace_zmx.py and tests/test_zmx_estimators.py is
+unchanged.
+
+FIX-6 [S3; Codex F10 confirmed; Fable F6 MLL half confirmed-narrowed;
+GLM F5 hygiene only]. Weighted aggregation and posterior weighting.
+(a) bistar_gp/aggregation_v3.py `soft_transfer_weighted`: form
+    `log_weight_i − G_ij/τ` before exponentiation and aggregate with
+    log-sum-exp over rows; no uniform fallback on representational
+    underflow; an all-absent support (every log weight −inf) raises.
+(b) bistar_gp/induced_prior.py `compute_induced_prior`: make `log_mlls`
+    optional; `None` means uniform weights and is documented as the correct
+    choice for posterior draws (the `average_gp_posterior` docstring already
+    states the rule); rename the MLL-tilted path explicitly (e.g.
+    `weighting="likelihood_tilted"`) so it cannot be mistaken for a proposal
+    correction; update experiments/bistar_induced_prior.py and
+    experiments/bistar_induced_prior_v2.py to pass uniform weights for
+    `fit_hmc` draws.
+(c) bistar_gp/aggregation_v3.py `average_gp_posterior`: assert finite
+    means and covariance diagonals at entry, naming the offending draw.
+Pins (tests/test_fix1_weighting.py): G = [[1000, 1001], [0, 0]],
+log_weights = [0, −1000], τ = 1 returns [0.59384548, 0.40615452]; a common
+log-weight shift cancels; all-absent support raises; the two-state posterior
+example (equal prior masses, likelihood ratio 1:9, one mean-0 row and nine
+mean-2 rows, unit variances, candidate means 0 and 2) gives mean divergences
+[1.8, 0.2] under uniform weighting; manually supplied NaN means fail at
+entry; tests/test_bms_aggregation.py weighted tests still pass.
+
+FIX-7 [S4; Fable F8 confirmed-narrowed; Fable F9 confirmed-narrowed].
+Reporting roles and withdrawn caches, package side only.
+(a) bistar_gp/config.py: add `PRIMARY_METRIC = "pw_kl_vcal"` and
+    `APPENDIX_METRICS = ("kl_forward",)`; include `PRIMARY_METRIC` in
+    `ExperimentConfig.metrics` (keep the existing entries); leave
+    `compute_G_matrix`'s and `run_bms_star`'s generic defaults as they are
+    but make `run_bms_star` emit a `logging.warning` when it scores an
+    appendix metric without an explicit `metric_names` argument.
+(b) bistar_gp/config.py: add a `WITHDRAWN_CACHES` registry holding
+    `runs/fit_method_metric_comparison/samples_hmc.npz` and the
+    `runs/toy_tau_metric_comparison/` prefix; make `load_hmc_samples`
+    refuse them with a message citing the M2bR banner unless
+    `allow_withdrawn=True` is passed, in which case it warns. The local
+    figure scripts that read those caches are untracked and are not yours
+    to edit.
+Pins (tests/test_fix1_roles.py): `ExperimentConfig().metrics` contains the
+primary metric; the appendix warning fires only on the implicit path; the
+loader refuses each registered path and admits it under the explicit flag.
+
+FIX-8 [S4; Fable F10 van Bork half, confirmed-narrowed; package part only].
+Add to bistar_gp a small `external_targets` module (or a function in an
+existing module) exposing the van Bork Target A and Target B closed forms
+and a `check_external_targets(results_json_path, tol_a=1e-6, tol_b=1e-5)`
+helper that asserts `abs_error_at_min_tau` against them; the case-A script
+itself is on another branch and is fix pass 2's to wire in. Pins
+(tests/test_fix1_external_targets.py): the committed
+runs/vanbork_external_validation/results.json values (read from
+`git show` output that the driver has placed under the scratch directory
+as a fixture, since the artifact is on the case-A branch) pass; a corrupted
+copy with the Target B column shifted by 0.1 fails.
+
+FIX-9 [S3; new reproducibility finding, ledger revision 3]. Aggregation
+conventions into the package. Add `aggregate_convention(G, tau, variant)`
+with variants `pooled`, `rowmin`, `expected_posterior` to
+bistar_gp/aggregation_v3.py (or bms_star.py), matching
+experiments/e7_convention_sensitivity.py `aggregate` on the case-A branch
+exactly (the driver places that file under the scratch directory for you;
+do not import from a paper branch), and have
+experiments/prior_sensitivity_study.py `_boltzmann_posterior` delegate to
+the pooled variant. Pins (tests/test_fix1_conventions.py): `pooled` equals
+`soft_transfer(..., normalize_per_draw=False)` posteriors to 1e-12;
+`rowmin` equals `normalize_per_draw=True`; `expected_posterior` equals a
+per-row softmax averaged over rows; its τ→0 limit equals FIX-3's split
+credit on a tied fixture; a global G offset leaves all three unchanged and
+a per-row offset changes `pooled` only.
+
+[VERIFICATION — run all, report all]
+1. `python -m pytest tests/ -q -p no:cacheprovider` in <FIX_WORKTREE>:
+   expect every pre-existing test to pass (1249 at baseline) plus the new
+   files, and the single known failure
+   tests/test_m2cr_environment_freeze.py::test_committed_dependency_lock_reproduces_at_head
+   unless the author has removed pypdf from the designated interpreter;
+   report counts and runtime.
+2. Regression oracle: `python experiments/toy_debias_demo.py --out
+   <scratch>/toy_debias_demo` in <FIX_WORKTREE> (about one minute; it uses
+   `apply_hp_value`, `decompose_additive_gp`, `decompose_component`, and
+   `fit_hmc`); its results.json, debias_figure.png, and README.md must be
+   byte-identical to the committed files under the main worktree's
+   runs/toy_debias_demo/ (sha256 65c9ff5f…, c1153549…, 7096cd6e…). Compare
+   with shasum only; never copy into any repository directory.
+3. State explicitly which FIX changed a public signature, and list every
+   call site in the editable set that you updated for it.
+
+[HARD CONSTRAINTS — HANDOFF-cases.md §0, VERBATIM, with one author-authorized
+exception for this pass]
+**Hard constraints (repeat verbatim in every Codex prompt):**
+- M2bR banner: `informative`-config HMC is WITHDRAWN. Usable numbers:
+  `toy_elicited` SIR (headline 0.441), prior-IS, MAP, SIR hard-best-match
+  rates, corrected NUTS ≈ 0.42. Never cite the withdrawn cache
+  (`runs/fit_method_metric_comparison/samples_hmc.npz`) or
+  `runs/toy_tau_metric_comparison/` (poster-only per W7).
+- W1: primary metric `pw_kl_vcal`; `kl_forward` appendix-only.
+- W4: `runs/viz_unification/*` numbers are `informative`-config, MAP-based,
+  methods-validation role — prose must frame them so.
+- No Mauna Loa material of any kind (D58 prereg boundary not to be tested).
+- No changes to `bistar_gp/` package defaults or public APIs.
+  EXCEPTION FOR THIS PASS, by author authorization recorded in
+  runs/code_review_2026_09/ledger_draft.md revision 3: the package changes
+  listed in the FIX QUEUE are authorized; every other default and public
+  signature stays as it is, and every change is listed in the report.
+- Style: no arrow glyphs in prose; no "X is the Y" role-noun constructions;
+  no "lives/sits" for abstracta; minimal em-dashes (see repo CLAUDE.md +
+  user's global rules quoted in `docs/paper-sie-jmp/00-notation.md`).
+- Every reported number must be regenerable from a named `experiments/`
+  script into a `runs/` artifact; each case commits a same-commit
+  `Notes/DECISIONS.md` entry (next free D number).
+- Commit scope per branch: `experiments/` script(s), `docs/paper-sie-jmp/`
+  section, `Notes/DECISIONS.md` entry, and (deliberately, if evidence-worthy)
+  the `runs/` JSON — never figures over 2 MB, never gitignored Notes files.
+
+[OUTPUT FORMAT]
+Final message: FIX-by-FIX report (files touched, one-line description of
+each change, the new test file and its test count, any public-signature
+change with its updated call sites), the full-suite counts and runtime, the
+three Case E sha256 comparisons, the list of REFUTED items confirmed NOT
+implemented, any deviation with its reason, and confirmation that no file
+outside the editable set changed (`git status --short` in <FIX_WORKTREE>,
+run by the driver on request, is the check; you do not run git).
+
+[SUCCESS CRITERIA]
+All nine fixes implemented with their pinning tests; every pre-existing test
+still passes except the known lock-drift failure; the Case E rerun is
+byte-identical to the committed artifacts; no artifact under runs/ and no
+file under docs/ or Notes/ changed; zero git operations.

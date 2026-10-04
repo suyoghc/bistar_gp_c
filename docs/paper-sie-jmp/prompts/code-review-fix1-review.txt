@@ -1,0 +1,129 @@
+[TASK CONTEXT]
+You are an independent reviewer of FIX PASS 1 of the 2026-09 implementation-
+correctness review of the BI*/BMS*-GP package (Chandramouli & Shiffrin
+framework; Gaussian-process data priors, G divergence, Boltzmann soft
+transfer, Laplace/MC/IS model evidence, additive-kernel decomposition).
+
+Code under review: the UNCOMMITTED working tree of the sibling worktree
+  /Users/sc8918/Documents/GitHub/bistar_gp_c-fix
+(branch fix/code-review-2026-09, base commit 71540836). `git diff` there shows
+the tracked edits (15 files, +1126/-314); the untracked new files are
+bistar_gp/external_targets.py and nine tests/test_fix1_*.py (79 tests).
+The MAIN worktree /Users/sc8918/Documents/GitHub/bistar_gp_c holds the
+governing documents (read-only for you):
+  - the work order the implementer followed:
+      docs/paper-sie-jmp/prompts/code-review-fix1.txt  (FIX-1 .. FIX-9, pins,
+      refuted items, hard constraints)
+  - the author adjudication behind it:
+      runs/code_review_2026_09/ledger_draft.md (revision 3)
+  - the original four-channel findings and their collation:
+      runs/code_review_2026_09/{fable_review,codex_review,kimi_k3_review,
+      glm_5_3_review,COLLATION,fable_crosscheck,codex_crosscheck,
+      codex_recommendations}.md
+  - the implementer's own report of the pass (a CLAIM, not evidence):
+      runs/code_review_2026_09/fix1_report.md
+  - the specification the code must compute: docs/paper-sie-jmp/tex/
+      (section 02 methods), docs/paper-sie-jmp/00-notation.md, and the
+      review standard docs/paper-sie-jmp/HANDOFF-code-review.md section 2.
+  - a diff bundle (same content as the worktree, for convenience):
+      runs/code_review_2026_09/fix1_bundle/
+
+[OBJECTIVES]
+(a) CORRECTNESS OF THE RECENT CODE. For each of FIX-1 .. FIX-9 (and the
+    __init__ exports), decide whether the implementation computes what the
+    work order and the manuscript require. Hunt specifically for:
+    1. wrong mathematics: law-of-total-variance moments (mean of conditional
+       covariances plus covariance of conditional means), the exact mixture
+       central interval (CDF bisection over an equally weighted Gaussian
+       mixture), group conditioning with the Cholesky factor of the ENTIRE
+       training covariance (never a group-only factor), joint log-sum-exp
+       weighting in soft_transfer_weighted, Hellinger exponent (/8 sigma^2),
+       Boltzmann-weight ESS, exact-tie split credit, the three aggregation
+       conventions (pooled / rowmin / expected_posterior);
+    2. contract breaks: the seven-field positional DecompositionResult
+       contract (tests/test_poster_d58_driver.py), PredictiveList behaving as
+       the list it replaces, BMSStarResult field additions, ComponentResult
+       keyword construction used by experiments/poster_d58_mauna.py;
+    3. regressions on existing call patterns: every existing call pattern on
+       the paper paths must be preserved bit-exactly except where a FIX says
+       otherwise (the Case E oracle experiments/toy_debias_demo.py on branch
+       paper/case-e-debias was reported byte-identical: sha256 65c9ff5f... /
+       c1153549... / 7096cd6e...; the script is not in the fix worktree);
+    4. strict=False paths: does NaN propagate sanely through
+       laplace_evidence.py, or can a NaN turn into a silently "best" score?
+    5. tests that do not pin what they claim (tautological tests, tests that
+       would pass against the pre-fix code, missing pins from the work
+       order's "Pins" lists);
+    6. the deviations the report lists (mauna-script call sites,
+       _resolve_metric on-demand registration, appended primary metric,
+       oracle run through a scratch symlink, FIX1_FIXTURE_DIR env var):
+       justified or not;
+    7. anything in the work order's REFUTED list that got implemented anyway
+       (an E6 failure gate; a finiteness explanation of aggregation_v3.py:77
+       RuntimeWarnings; any change to soft_transfer's canonical pooled
+       arithmetic or to the normalize_per_draw=False default).
+(b) A BETTER, MORE CONCISE, MORE ELEGANT FIX. The author's workflow asks,
+    before committing: "knowing what we know now, should this fix be deleted
+    and re-implemented in a better, more concise, more elegant version?"
+    Answer it per FIX and for the pass overall. Name the accretion you see
+    (candidates: two places building ComponentResult in debias.py; strict
+    flags threaded through nine laplace_evidence.py functions; PredictiveList
+    bookkeeping; the WITHDRAWN_CACHES registry design; _resolve_metric;
+    aggregate_convention duplicating soft_transfer's arithmetic). For each,
+    give a concrete alternative (sketch the code shape), its cost (lines,
+    API surface, risk to the Case E byte-identity oracle and to the pinned
+    contracts, test churn), and a recommendation: KEEP / SIMPLIFY IN PLACE /
+    REWRITE, with the reason. Be honest when the current form is already the
+    right size.
+
+[PROTOCOL]
+- Run the suite in the fix worktree:
+    cd /Users/sc8918/Documents/GitHub/bistar_gp_c-fix
+    python -m pytest tests/ -q -p no:cacheprovider
+  Expected: 1327 passed, 3 skipped, 1 failed; the failure must be only
+  tests/test_m2cr_environment_freeze.py::test_committed_dependency_lock_reproduces_at_head
+  (dependency-lock drift, pre-existing). Report your counts and runtime.
+- Reproduce every claim with a probe script or a line reference
+  (path:line in the fix worktree). Mark each finding CONFIRMED (reproduced by
+  you) or PLAUSIBLE (argued, not reproduced). Default to "not a finding"
+  when you cannot reproduce.
+- Severity: S1 = a manuscript-path number would be wrong; S2 = wrong under a
+  reachable configuration; S3 = latent, currently guarded; S4 = hygiene.
+- Adversarial stance toward the implementer's report and toward the tests.
+
+[CONSTRAINTS]
+- READ-ONLY on BOTH worktrees: do not create, edit, or delete any file under
+  either worktree; no git add/commit/stash/checkout/reset/branch/rebase in
+  either; read-only git (status, diff, show, log) is fine. Never touch
+  stash@{0} of the main worktree.
+- Your scratch directory for probes and outputs, the only place you may
+  write besides the single output file below:
+  /private/tmp/claude-501/-Users-sc8918-Documents-GitHub-bistar-gp-c/c59de7f7-0de6-4670-81b4-02e7226015e7/scratchpad/fix1_review/codex/
+- No network, no new dependencies, no Mauna Loa inference, no change to the
+  dependency lock. No manuscript prose or style review. Do not re-litigate
+  the original findings' validity except where the fix's correctness
+  depends on it.
+- M2bR banner: informative-config HMC caches (runs/fit_method_metric_comparison/
+  samples_hmc.npz, runs/toy_tau_metric_comparison/) are withdrawn; never cite
+  them. W1: primary metric pw_kl_vcal; kl_forward appendix-only.
+
+[OUTPUT FORMAT]
+Write EXACTLY ONE file (this is the one permitted write outside scratch):
+  /Users/sc8918/Documents/GitHub/bistar_gp_c/runs/code_review_2026_09/fix1_codex_review.md
+with these sections, and return the same content as your final message:
+1. Verdict: APPROVE / REVISE / REJECT for the pass as a whole, one sentence.
+2. Findings on (a): a summary table (ID, FIX, severity, CONFIRMED/PLAUSIBLE,
+   path:line, one-line claim), then per-finding detail: what is wrong, how
+   you reproduced it (command + output excerpt), the suggested change, and
+   which test would pin it.
+3. Recommendations on (b): per FIX and overall: KEEP / SIMPLIFY IN PLACE /
+   REWRITE, the concrete sketch, the cost, the reason.
+4. Verified-correct list: what you checked and found right (so the
+   synthesizer can see coverage, not only complaints).
+5. Commands run and their outcomes (suite counts, runtime, probe scripts
+   with their scratch paths).
+
+[SUCCESS CRITERIA]
+Complete when every FIX has an explicit (a) judgement and (b) recommendation,
+every finding carries a reproduction or is marked PLAUSIBLE, the suite was
+run with counts reported, and the single output file exists.

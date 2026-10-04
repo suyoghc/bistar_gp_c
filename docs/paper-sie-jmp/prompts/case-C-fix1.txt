@@ -1,0 +1,171 @@
+[TASK CONTEXT]
+Fix pass for Case C (HANDOFF §4 rule 4) in
+/Users/sc8918/Documents/GitHub/bistar_gp_c, branch paper/case-c-haaf (tip
+87da084 holds your earlier implementation). The four-model review + adversarial
+cross-verification produced the fix queue below (raw record under
+runs/haaf_nested_constraint/reviews/ — you may read it). Implement every fix
+exactly; regenerate artifacts; nothing else.
+
+[ABSOLUTE OPERATIONAL RULES]
+1. NO git commands of any kind. The driver stages and commits. The working
+   tree carries uncommitted author work (Notes/DECISIONS.md holds uncommitted
+   D60/D61/D62 above your D63; a protected stash exists).
+2. Files you may EDIT: experiments/haaf_nested_constraint.py, everything
+   under runs/haaf_nested_constraint/ (regenerate),
+   docs/paper-sie-jmp/05-case-C-nested-constraints.md, requirements.txt and
+   pyproject.toml (ONLY the arviz dependency line, FIX-1), and
+   Notes/DECISIONS.md ONLY inside the existing D63 entry (in place; no new
+   entry; do not touch D60/D61/D62 or anything above).
+3. No network, no new imports beyond what already runs, no bistar_gp/ or
+   bistar_viz/ changes, no Mauna, local CPU only. Rerun the script after
+   edits so every artifact regenerates (budget ~20 minutes).
+4. Where a fix changes a printed number (FIX-9 paired SE), update section,
+   README, and D63 consistently.
+
+[FIX QUEUE — implement ALL]
+
+FIX-1 [S2; two reporters] arviz is imported unconditionally but declared in
+neither requirements.txt nor pyproject.toml, so a fresh clone cannot run the
+script (the work order explicitly authorized "add to requirements only if
+absent"). Add an arviz dependency line to BOTH manifests, with a lower bound
+compatible with the installed 0.23.4 (e.g. arviz>=0.17). Do not add pyro or
+other already-declared-or-not dependencies; if pyro is genuinely undeclared
+too, note that as an open driver question in your report instead of editing
+beyond the authorized arviz line.
+
+FIX-2 [S2/S3 cluster; two reporters + driver-verified facts] The main
+section's sentence "The appendix-only kl_forward calculation also remains
+within 0.0006 of an equal split across the grid" (a) violates W1 by placing
+the appendix metric's number in the main section, and (b) misdescribes it as
+corroboration when in fact: the POOLED kl_forward column is degenerate
+(exactly [0.5, 0.5] at every tau because the single differing row's
+kl_forward, about 6.3e10 against a grid median of 55.8, underflows to zero
+Boltzmann weight under the global max-shift), and the expected-posterior
+column REVERSES SIGN relative to the primary metric (the differing row
+favors the RESTRICTED candidate by 11.160 nats under kl_forward; the tau=1
+expected-posterior value 0.4995000142280 reconstructs from that single
+number; driver re-verified all three facts from results.json). Also, these
+kl_forward values are evaluations at pw_kl_vcal-optimal instances (sigma set
+from unweighted RMS residuals after a pw_kl_vcal fit), not min-over-region
+kl_forward scores, so the nesting inequality does not apply to them.
+Implement: remove the kl_forward sentence from the main section entirely; in
+the README's appendix/stress note (and a short results.json-adjacent
+comment if you keep one), state the degeneracy, the sign reversal, and the
+evaluated-at-primary-optima caveat explicitly.
+
+FIX-3 [S3; two reporters] The section's "Both candidates call the same
+bounded MLE routine, use the same starts" is false: the restricted fit
+additionally receives the free solutions as extra starts (clipped at b=0),
+and each candidate's selection pool contains the other's feasible vectors.
+Correct the section and the D63 wording to describe the four shared base
+starts plus the deliberate asymmetric warm-start/candidate pooling, and say
+why (it forces exact equality on shared optima instead of optimizer noise).
+
+FIX-4 [S1 NARROWED after adversarial check; author adjudication pending]
+The LOO interpretation overstates. The original strong claim (identical
+posteriors; the whole +0.413 gap is estimator noise) was REFUTED as unproved
+(local Gaussian argument only; omega/phi multimodality; no fold refits). The
+cross-check AFFIRMED the narrow core, which you must implement:
+(a) Delete "On its face, PSIS-LOO assigns the higher predictive score to the
+    restricted candidate" and the closing "This head-to-head does not
+    reproduce a categorical LOO failure" reading. A null-to-inconclusive LOO
+    difference IS the failure mode Haaf, Klaassen, and Rouder report; say
+    so.
+(b) Present the +0.413 (paired SE 0.263, or the FIX-9-corrected value)
+    difference as directionally inconclusive: smaller than twice its SE,
+    carrying a Pareto-k warning, and with the paired SE covering data-level
+    variability only (MCMC error not included).
+(c) State the structural reason LOO cannot separate these candidates here:
+    the two priors coincide up to normalization on b > 0, and the artifact's
+    own recorded local diagnostic (posterior SD of b 0.0129506, boundary
+    19.4028 SDs away, Gaussian tail 3.65e-84 — already in results.json)
+    indicates the constraint binds only where the locally-approximated
+    posterior carries negligible mass. Do NOT claim the posteriors are
+    exactly identical or that the gap is definitely pure noise; phrase it as
+    what the local approximation supports.
+(d) Amend the D63 Result wording ("split null" / any direction-favoring
+    phrasing) identically.
+
+FIX-5 [S2; confirmed] Table 5.1's nine decimals and the 7th-9th-digit
+monotone-trend reading contradict the run's own declared cross-machine
+tolerance (bms_probability_abs = 0.005) and the fact that ONE of 1000 SIR
+draws produces the entire gap (binomial MC SE on that fraction is about
+0.001 on 0.001). Implement: report the table at three decimals (0.500
+everywhere), state the free-minus-restricted gap as smaller than 1e-5 at
+every tau and attributable to the single negative-slope draw, and note the
+tau-monotonicity of the gap as a deterministic property of Boltzmann
+aggregation, not a measured effect. Full precision may remain in
+results.json.
+
+FIX-6 [S3; confirmed] The "nesting check passed at a 2e-7 absolute
+tolerance" sentence reports an unreachable guard as a verification: the
+cross-seeded candidate pools make constrained_candidates a subset of
+free_candidates, so free_G <= constrained_G holds by set inclusion, and the
+exact-0.0 equality on nonnegative rows arises from re-evaluating the same
+vector. Rewrite the section (and README if it repeats it) to state the
+ordering as an identity of the protocol (M_r within M_e forces
+min G over M_r >= min G over M_e), describe the cross-seeded pools, and
+frame the runtime gates as machinery regression guards rather than
+empirical tests. Keep the gates in the script.
+
+FIX-7 [S3; confirmed] State the one-sided-by-construction bound BEFORE
+Table 5.1: because the restricted region is a subset, the restricted
+candidate can never exceed the free candidate under either aggregation at
+any tau; the only empirical quantity is the gap's magnitude. Remove "in
+this instance" and "Here that event occurs" framings that present the
+direction as data-dependent. This composes with FIX-5's magnitude
+reporting.
+
+FIX-8 [S3; confirmed] Both NUTS chains of both models initialize
+deterministically at the same MLE via init_to_value, which no artifact
+disclosed, and the omega/phi likelihood is multimodal (sampled-grid aliases
+near 4.939 and 6.999 exist for omega 1.0302), so R-hat/ESS certify
+within-mode mixing only. Implement: record init_strategy (name + the
+initial values used) in results.json psis_loo candidate sampler blocks, add
+the disclosure to the README and section, and phrase the diagnostics as
+within-mode convergence evidence.
+
+FIX-9 [S4; confirmed] The paired difference SE uses ddof=1 (0.262534) while
+the per-model SEs follow az.loo's ddof=0 convention (3.457658/3.593845).
+Align: compute the paired SE with ddof=0 (0.255887) to match az.loo/
+az.compare, update every printed occurrence (section, README, D63), and
+record the convention in results.json psis_loo pairwise.
+
+FIX-10 [S4; confirmed] "evaluates 60 locations" is not traceable to the
+artifact. Add an x_eval block (n, range endpoints) to results.json's data
+section and keep the section's sentence consistent with it.
+
+[HARD CONSTRAINTS — HANDOFF-cases.md §0, VERBATIM]
+**Hard constraints (repeat verbatim in every Codex prompt):**
+- M2bR banner: `informative`-config HMC is WITHDRAWN. Usable numbers:
+  `toy_elicited` SIR (headline 0.441), prior-IS, MAP, SIR hard-best-match
+  rates, corrected NUTS ≈ 0.42. Never cite the withdrawn cache
+  (`runs/fit_method_metric_comparison/samples_hmc.npz`) or
+  `runs/toy_tau_metric_comparison/` (poster-only per W7).
+- W1: primary metric `pw_kl_vcal`; `kl_forward` appendix-only.
+- W4: `runs/viz_unification/*` numbers are `informative`-config, MAP-based,
+  methods-validation role — prose must frame them so.
+- No Mauna Loa material of any kind (D58 prereg boundary not to be tested).
+- No changes to `bistar_gp/` package defaults or public APIs.
+- Style: no arrow glyphs in prose; no "X is the Y" role-noun constructions;
+  no "lives/sits" for abstracta; minimal em-dashes (see repo CLAUDE.md +
+  user's global rules quoted in `docs/paper-sie-jmp/00-notation.md`).
+- Every reported number must be regenerable from a named `experiments/`
+  script into a `runs/` artifact; each case commits a same-commit
+  `Notes/DECISIONS.md` entry (next free D number).
+- Commit scope per branch: `experiments/` script(s), `docs/paper-sie-jmp/`
+  section, `Notes/DECISIONS.md` entry, and (deliberately, if evidence-worthy)
+  the `runs/` JSON — never figures over 2 MB, never gitignored Notes files.
+
+[OUTPUT FORMAT]
+Final message: numbered FIX-by-FIX report (files touched, one-line change
+description, the corrected sentences for FIX-4 verbatim, the new paired SE,
+confirmation the regenerated results.json carries init_strategy/x_eval/
+ddof records), rerun exit code and runtime, any deviation with reason, and
+open driver questions (e.g. pyro manifest status).
+
+[SUCCESS CRITERIA]
+All ten fixes implemented; python experiments/haaf_nested_constraint.py
+reruns clean; regenerated artifacts carry the new disclosure fields; section/
+README/D63 consistent; requirements.txt and pyproject.toml gain exactly the
+arviz line; zero git operations.

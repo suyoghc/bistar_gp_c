@@ -1,0 +1,36 @@
+You are continuing the BI*/BMS*-GP project (repository suyoghc/bistar_gp_c)
+from a fresh session. Your task is FIX PASS 2a: the decision-free package
+contracts that the 2026-09-26 five-channel project review accepted as
+defects. The complete handoff is here; read all of it before any action:
+
+    /Users/sc8918/Documents/GitHub/bistar_gp_c/docs/paper-sie-jmp/HANDOFF-fix-pass-2.md
+
+Then, in this order:
+
+1. Read the files its section 2 lists (the synthesis sections 3, 9, 10; the
+   Codex and Opus reviews' code findings; HANDOFF-code-review section 2; the
+   notation; the fix pass 1 report and synthesis; D68 and D69).
+2. Create the one worktree and branch its section 1 names (this prompt is the
+   author's authorization for that single git act), and work only there.
+3. Implement the ten items of its section 3 in order, with one pinning test
+   per item in tests/test_fix2a_contracts.py, keeping every existing
+   paper-path number bit-identical; do the optional items only if the ten are
+   green.
+4. Run the full verification of its section 5 (suite, Case E oracle by the
+   symlink method, regenerations of Cases A, B, C, D) and record counts,
+   hashes and runtimes.
+5. Write the report and the D70 draft of its section 6, then STOP before any
+   commit or push and wait for the author.
+
+Hard rules, repeated: the main worktree and the fix worktree are read-only;
+no git mutation beyond the one worktree creation; never touch stash@{0};
+force PYTHONPATH to your worktree in every probe and print bistar_gp.__file__;
+no Mauna Loa inference; no network; no new dependencies; do not uninstall
+pypdf or touch the dependency lock; do not edit the frozen M2bR/M2c drivers,
+the poster driver, or anything outside the editable set in section 4; no
+manuscript edits. If an item cannot be done as specified, do the rest and say
+so in the report rather than widening scope.
+
+Begin by summarizing, in ten lines, the state of the world as the handoff
+describes it, so the author can confirm you are oriented before you create
+the worktree.
