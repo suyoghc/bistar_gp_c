@@ -1,0 +1,173 @@
+[TASK CONTEXT]
+You are implementing Case C of the JMP special-issue paper work packages in the
+repo /Users/sc8918/Documents/GitHub/bistar_gp_c (BI*/BMS* with Gaussian
+processes). The repo is already checked out on branch paper/case-c-haaf
+(created off main == origin/main 7154083); do not change branches. The
+governing protocol is docs/paper-sie-jmp/HANDOFF-cases.md; its Case C work
+order and global hard constraints are repeated VERBATIM below and bind you.
+The section stub is docs/paper-sie-jmp/05-case-C-nested-constraints.md. The
+frozen notation file docs/paper-sie-jmp/00-notation.md binds all symbols; read
+it before writing prose and use its symbols exactly.
+
+[ABSOLUTE OPERATIONAL RULES — the driver session enforces these]
+1. NO git commands of any kind: no add, no commit, no stash, no checkout, no
+   branch, no reset, no push. The working tree carries uncommitted author work
+   (Notes/DECISIONS.md holds uncommitted entries D60, D61, and D62 beyond
+   main's baseline; a protected stash exists). You edit files only; the
+   driver session stages and commits.
+2. Files you may CREATE: experiments/haaf_nested_constraint.py, anything
+   under runs/haaf_nested_constraint/.
+   Files you may EDIT: docs/paper-sie-jmp/05-case-C-nested-constraints.md,
+   and Notes/DECISIONS.md (append ONE new entry, numbered D63, at end of file
+   ONLY; do not touch D60/D61/D62 or anything above them).
+   Everything else is READ-ONLY. In particular: the bistar_gp/ package,
+   experiments/prior_sensitivity_study.py,
+   experiments/e7_convention_sensitivity.py,
+   experiments/fit_method_metric_comparison.py, Notes/WRITEUP_DECISIONS.md
+   (gitignored, read-only), runs/prior_sensitivity/ (cached study artifacts).
+3. No network access. No new dependencies (arviz 0.23.4, pyro 1.9.1, torch,
+   gpytorch, numpy, matplotlib are installed; numpyro and emcee are NOT). No
+   Slurm/Della. Local CPU only; target total runtime under roughly 30
+   minutes.
+
+[OBJECTIVES — HANDOFF-cases.md §2 Case C work order, VERBATIM]
+### Case C — `paper/case-c-haaf`
+Scope: the one real build. `experiments/haaf_nested_constraint.py`:
+1. Candidate pair differing ONLY by a parameter-region constraint within one
+   functional form (mirror Haaf & Klaassen's ordinal-constraint setting):
+   free Sin+Linear vs slope-constrained (b ≥ 0) Sin+Linear, both via
+   `bistar_gp/candidates.py` `_fit_mle` with bounds.
+2. Constraint-consistent synthetic data (true b > 0), N=20 convention,
+   seeded.
+3. BMS* scoring on the validated path: reuse
+   `experiments/prior_sensitivity_study.py` stage-IS machinery exactly as
+   `experiments/e7_convention_sensitivity.py` does (imports, not copies);
+   report pooled AND expected-posterior variants (fork-agnostic table).
+4. PSIS-LOO head-to-head on the identical data via `arviz` (add to
+   requirements only if absent), for the same two candidates fitted as
+   Bayesian models with weakly-informative priors — document those priors;
+   they exist only on the LOO side of the comparison.
+5. Section `05-case-C-nested-constraints.md` from the stub. Output
+   `runs/haaf_nested_constraint/`.
+Acceptance: the comparison table shows, on identical data, what LOO awards
+the constrained candidate vs what BMS* awards it; whichever way it comes out
+is reported (a null result is reportable); DECISIONS entry present.
+
+[HARD CONSTRAINTS — HANDOFF-cases.md §0, VERBATIM]
+**Hard constraints (repeat verbatim in every Codex prompt):**
+- M2bR banner: `informative`-config HMC is WITHDRAWN. Usable numbers:
+  `toy_elicited` SIR (headline 0.441), prior-IS, MAP, SIR hard-best-match
+  rates, corrected NUTS ≈ 0.42. Never cite the withdrawn cache
+  (`runs/fit_method_metric_comparison/samples_hmc.npz`) or
+  `runs/toy_tau_metric_comparison/` (poster-only per W7).
+- W1: primary metric `pw_kl_vcal`; `kl_forward` appendix-only.
+- W4: `runs/viz_unification/*` numbers are `informative`-config, MAP-based,
+  methods-validation role — prose must frame them so.
+- No Mauna Loa material of any kind (D58 prereg boundary not to be tested).
+- No changes to `bistar_gp/` package defaults or public APIs.
+- Style: no arrow glyphs in prose; no "X is the Y" role-noun constructions;
+  no "lives/sits" for abstracta; minimal em-dashes (see repo CLAUDE.md +
+  user's global rules quoted in `docs/paper-sie-jmp/00-notation.md`).
+- Every reported number must be regenerable from a named `experiments/`
+  script into a `runs/` artifact; each case commits a same-commit
+  `Notes/DECISIONS.md` entry (next free D number).
+- Commit scope per branch: `experiments/` script(s), `docs/paper-sie-jmp/`
+  section, `Notes/DECISIONS.md` entry, and (deliberately, if evidence-worthy)
+  the `runs/` JSON — never figures over 2 MB, never gitignored Notes files.
+
+[DRIVER FACTS — verified this session; design around them]
+- Data: `bistar_gp.generate_toy_data()` defaults produce the validated N=20
+  thesis-toy instance with TRUE slope b = 0.25 > 0 (sin(x) + 0.25 x + noise
+  0.5, seed 42, bistar_gp/data.py:41). It is therefore already
+  constraint-consistent, and the `toy_elicited` prior stays bound to the
+  dataset its W5 elicitation used. Use exactly this instance. Do not invent a
+  new dataset: a fresh draw would sever the data-elicited prior binding and
+  the M2bR-validated basis. State in the section that the constraint the
+  restricted candidate imposes (b ≥ 0) holds in truth, mirroring Haaf &
+  Klaassen's satisfied-constraint case.
+- Validated scoring path, exactly as `e7_convention_sensitivity.py` does it:
+  path-insert experiments/, `import prior_sensitivity_study as pss`, config
+  `toy_elicited`, IS seeds [0, 1, 2], `pss.load_pooled_is(...)`, SIR
+  n_pred=1000, same subsample conventions, metric `pw_kl_vcal` primary,
+  `kl_forward` appendix-only. The pooled prior-IS draw caches
+  `runs/prior_sensitivity/is_draws_toy_elicited_s{0,1,2}.npz` exist locally
+  and are LOCAL/untracked; your README must document both the cache
+  dependency and the regeneration route (the prior_sensitivity_study.py
+  stage that produces them) for a fresh clone.
+- Aggregation variants for the fork-agnostic table: pooled (shipped default)
+  AND expected-posterior (van Bork Eq. 4), computed the way
+  `e7_convention_sensitivity.py` defines them (import from that module or
+  from pss; do not copy formulas). Report both across the e7 τ grid
+  (0.1, 0.3, 1.0, 3.0, 10.0 at minimum). τ = 1 carries the headline per the
+  ratified convention.
+- Constrained candidate WITHOUT package changes:
+  `bistar_gp/candidates.py` `_fit_mle(self, x, y, f_predict, p0,
+  bounds=None)` (line 44) already accepts bounds (L-BFGS-B). Build the
+  constrained Sin+Linear inside your experiments script (subclass or wrapper
+  that passes the b ≥ 0 bound and, where needed, a b ≥ 0-respecting p0),
+  leaving the package untouched. The free and constrained candidates must
+  differ ONLY in that bound. Verify and report the sanity identity: on draws
+  whose free best-fit slope is already nonnegative, the two candidates'
+  G values agree; on draws with negative free-fit slope, the constrained G
+  is no smaller (one-sided). Report the fraction of SIR predictives whose
+  free-fit slope comes out negative; that fraction drives any BMS* gap.
+- PSIS-LOO side: fit BOTH candidates as Bayesian models on the IDENTICAL
+  (x, y) with pyro NUTS (pyro 1.9.1; seeded, at least 1000 warmup + 1000
+  retained draws, single chain acceptable at this scale but report r_hat and
+  divergences), weakly-informative priors DOCUMENTED in section + README
+  (for example Normal(0, 5) on amplitude/slope/intercept-scale parameters,
+  a positive prior on observation sigma, and the constraint expressed
+  through the prior support on b for the constrained model, e.g. truncation
+  at zero or HalfNormal); state explicitly that these priors exist ONLY on
+  the LOO side of the comparison. Compute pointwise log-likelihoods, build
+  `arviz.InferenceData`, and report `arviz.loo` (elpd_loo, se, p_loo) per
+  candidate plus the pairwise elpd difference with its SE
+  (`arviz.compare` acceptable), and any Pareto-k warnings.
+- The comparison table (the case's deliverable): on identical data, what
+  LOO awards the constrained candidate vs what BMS* awards it (pooled AND
+  expected-posterior, across τ). Whichever direction it comes out is
+  reported; a null result is reportable. Do NOT tune anything toward a
+  desired outcome; no cherry-picking of seeds or τ.
+- All Case C outputs under runs/haaf_nested_constraint/: results.json with
+  every number the section cites (BMS* tables, LOO table, slope-sign
+  fraction, sampler diagnostics), README.md with exact rerun commands,
+  seeds, cache dependency, priors, and tolerances; a figure only if it earns
+  its place (under 2 MB).
+- Section 05: flesh out from the stub. Framing requirements: their case
+  concerns a parameter-region constraint within one functional form, and the
+  experiment mirrors that, not the toy's cross-family nesting; the
+  "sharpest published criticism" framing stays PROVISIONAL until Kellen &
+  Klauer 2020 is read (keep a visible provisional marker in the prose, e.g.
+  a bracketed note, per the stub); every number regenerable from your
+  script; provenance footer per the stub template; evidence-tier footnotes
+  in the style of section 04 (docs/paper-sie-jmp/04-case-B-occam-dial.md on
+  the case-b branch is NOT visible here — the local convention: 🟢
+  peer-reviewed / 🟠 empirical footnotes naming script + artifact).
+- Notes/DECISIONS.md entry, appended at EOF exactly once:
+  "## D63: <title> — 2026-08-11" with **Problem:** / **Decision:** /
+  **Alternatives considered:** / **Result:** blocks, self-contained (file
+  paths, flags, seeds, priors, headline numbers both sides, the
+  slope-fraction, diagnostics), per the repo convention.
+
+[STYLE — user's global rules; apply to ALL prose you write]
+No arrow glyphs in prose. No "X is the Y" role-noun constructions (rewrite
+with an active verb). Never "lives"/"sits" (any inflection) for abstract
+subjects. Minimal em-dashes; prefer commas, periods, colons, "because", "so".
+No "Same X, different Y" juxtapositions. No "This is the" / "That is the"
+openers. No staccato noun-phrase fragments as sentences. No anthropomorphic
+or spatial metaphors for abstract objects.
+
+[OUTPUT FORMAT]
+Your final message: a concise implementation report. Files created/edited
+(paths); exact rerun commands; the headline numbers (BMS* pooled and
+expected-posterior for both candidates at τ=1 plus the sweep shape, LOO
+elpd per candidate and the pairwise difference with SE, negative-slope draw
+fraction, sampler diagnostics); pinned tolerances; deviations from the work
+order if any; open questions for the driver session.
+
+[SUCCESS CRITERIA]
+python experiments/haaf_nested_constraint.py reruns clean from the repo
+root; runs/haaf_nested_constraint/ regenerates deterministically (seeded);
+the fork-agnostic comparison table complete either way it comes out;
+section 05 fleshed out per the stub with the provisional Kellen & Klauer
+marker; D63 appended at EOF; zero git operations performed.

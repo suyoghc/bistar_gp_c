@@ -1,0 +1,109 @@
+[CHANNEL] Codex — independent implementation-correctness review, 2026-09-05.
+The author selects the model and reasoning effort for this run.
+
+RECORD YOUR OWN IDENTITY: the first line of your output file must name the
+model you are actually running as and its reasoning-effort setting, in the
+form `Model: <identifier>, effort: <setting>`. The review record for this
+project pins the exact channel and model for every round, and the driver
+cannot supply that for you.
+
+You are ONE of two independent reviewers auditing whether the BI*/BMS*-GP
+implementation in /Users/sc8918/Documents/GitHub/bistar_gp_c actually computes
+what the journal manuscript says it computes. The other reviewer is Fable,
+working the identical package. You will not see its findings and it will not
+see yours; the driver collates both afterwards under an adversarial
+cross-check protocol in which single-reporter findings are default-refuted
+when ambiguous. Write for that standard.
+
+FIRST: read docs/paper-sie-jmp/HANDOFF-code-review.md in full. It is your
+governing document: repository state, scope, the correctness standard, the
+severity scale, eleven named targets T1-T11, the output format, and the ground
+rules. Follow it exactly. Everything below only supplements it.
+
+STANDING OBLIGATION THIS PASS DISCHARGES:
+
+Two open pull requests carry an author-ledger item reading, in both cases,
+"Substitute-implementer and driver-verification deviations (Codex locked to
+2026-08-18): ratify, or commission a Codex re-review after the lock lifts."
+The lock expired 2026-08-18. During that lock, work normally done by your
+channel was rerouted, and the record of every substitution is committed:
+
+  runs/synthesis_sections/reviews/VERDICTS.md   (PR #40)
+  runs/toy_debias_demo/reviews/VERDICTS.md      (PR #41)
+
+Read both. In addition to the code review, state explicitly whether the
+substituted work holds: (a) for the synthesis package, the fix pass performed
+by a substitute implementer and the driver's mechanical verification standing
+in for your re-review of findings SC1, SC2, SC3, SC5; (b) for Case E, the
+entire round, which ran without your channel, including a driver adjudication
+that refuted three single-reporter findings. Say whether you would have
+reached the same dispositions, and name any you would not. Put this in a
+section headed "Substitution ratification" in your output file.
+
+CONTEXT YOU NEED THAT THE HANDOFF ASSUMES:
+
+- The manuscript is a Journal of Mathematical Psychology special-issue paper
+  presenting BI*/BMS* with Gaussian Processes across five cases. Sections are
+  spread across branches; read them with `git show <branch>:<path>`:
+    paper/synthesis-sections  docs/paper-sie-jmp/01-intro.md, 02-machinery.md, 08-discussion.md
+    paper/case-a-vanbork      docs/paper-sie-jmp/03-case-A-external-validation.md
+    paper/case-b-occam-dial   docs/paper-sie-jmp/04-case-B-occam-dial.md
+    paper/case-c-haaf         docs/paper-sie-jmp/05-case-C-nested-constraints.md
+    paper/case-d-mopen        docs/paper-sie-jmp/06-case-D-mopen-calibration.md
+    paper/case-e-debias       docs/paper-sie-jmp/07-debias-bridge.md  (also on disk)
+  The repository is checked out on paper/case-e-debias. Notes/DECISIONS.md in
+  the working tree carries the full D60-D67 accumulation; the frozen symbol
+  definitions are in docs/paper-sie-jmp/00-notation.md.
+
+- Section 02 (machinery) states what the code does. Read it early and treat it
+  as the specification you are auditing against.
+
+- Committed evidence for each case is under runs/<case>/, each with a
+  results.json, a README, and a reviews/ subdirectory. Prior rounds reviewed
+  sections, artifacts, and diffs; no round has audited the package end to end.
+
+HOW TO WORK:
+
+1. Establish the baseline: run `python -m pytest tests/ -q` and report count
+   and result. It takes several minutes.
+2. Read section 02 against bistar_gp/metrics_v2.py, aggregation_v3.py,
+   bms_star.py, laplace_evidence.py, induced_prior.py, and decompose.py,
+   asking at every step whether the equation in the prose and the expression
+   in the code denote the same quantity.
+3. Work the eleven named targets T1-T11, confirming or refuting each on evidence.
+   T9 concerns experiments/toy_debias_demo.py, which your channel has never
+   seen; give it a full audit including the AST-based sampler-constant guard,
+   the raise on unmatched hyperparameter sites, the jitter probe, the exact
+   mixture-interval construction by CDF bisection, and the law-of-total-
+   variance inversion that produces the component cross-covariance.
+4. Then look where the named targets do not point. Places worth your judgment:
+   swallowed exceptions that continue rather than fail, defaults that encode a
+   modeling commitment, numerical fallbacks that substitute a different
+   estimator, precision boundaries, seeding and RNG reuse across supposedly
+   independent draws, and any interface where a structurally wrong argument
+   yields a well-formed number.
+5. For any finding touching a committed artifact, open the artifact.
+
+WHAT NOT TO DO:
+
+- Do not edit any file except your single output file,
+  runs/code_review_2026_09/codex_review.md.
+- No git mutations of any kind. Read-only git commands are expected.
+- Do not touch stash@{0}.
+- Do not read the other reviewer's output. If `runs/code_review_2026_09/fable_review.md`
+  exists, Fable has already reported; leave it unopened. Your findings must
+  be independently derived, and the collation protocol depends on it.
+- Do not review paper prose, style, or citations. Report a prose defect only
+  when the prose describes the computation incorrectly, which makes it a
+  claim-fidelity finding.
+- Do not propose Mauna Loa work; that preregistration boundary is closed.
+- Do not fix anything, and do not commit. Report only. Any approval-skipping
+  flag in the invocation exists to avoid prompts on read-only commands, not to
+  authorize writes beyond your one output file.
+
+OUTPUT: write runs/code_review_2026_09/codex_review.md in the handoff's §4
+format, opening with the `Model: ..., effort: ...` line described above, plus
+the "Substitution ratification" section described above, and
+return the same text as your final message. Rank findings most severe first.
+Include the test-suite result, the named-target dispositions, what you
+verified clean, and open questions for the author.

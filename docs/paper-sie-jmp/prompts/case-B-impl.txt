@@ -1,0 +1,170 @@
+[TASK CONTEXT]
+You are implementing Case B of the JMP special-issue paper work packages in the
+repo /Users/sc8918/Documents/GitHub/bistar_gp_c (BI*/BMS* with Gaussian
+processes). The repo is already checked out on branch paper/case-b-occam-dial
+(created off main == origin/main 7154083); do not change branches. The
+governing protocol is docs/paper-sie-jmp/HANDOFF-cases.md; its Case B work
+order and global hard constraints are repeated VERBATIM below and bind you.
+The section stub is docs/paper-sie-jmp/04-case-B-occam-dial.md. The frozen
+notation file docs/paper-sie-jmp/00-notation.md binds all symbols; read it
+before writing prose and use its symbols exactly.
+
+[ABSOLUTE OPERATIONAL RULES — the driver session enforces these]
+1. NO git commands of any kind: no add, no commit, no stash, no checkout, no
+   branch, no reset, no push. The working tree carries uncommitted author work
+   (Notes/DECISIONS.md holds uncommitted entries D60 and D61; a protected
+   stash exists). You edit files only; the driver session stages and commits.
+2. Files you may CREATE: experiments/occam_dial_figure.py,
+   experiments/e6_nesting_monotonicity.py, anything under runs/occam_dial/.
+   Files you may EDIT: docs/paper-sie-jmp/04-case-B-occam-dial.md,
+   kb/Wiki/REVIEW_AND_VET.md (the mandated E6 resolution edit only), and
+   Notes/DECISIONS.md (append ONE new entry, numbered D62, at end of file
+   ONLY; do not touch D60/D61 or anything above them).
+   Everything else is READ-ONLY. In particular: the bistar_gp/ package,
+   bistar_viz/ (import from it, do not edit), Notes/WRITEUP_DECISIONS.md
+   (gitignored, read-only), experiments/prior_sensitivity_study.py.
+3. No network access. No new dependencies. No Slurm/Della. Local CPU only;
+   target total runtime of your scripts under roughly 20 minutes.
+
+[OBJECTIVES — HANDOFF-cases.md §2 Case B work order, VERBATIM]
+### Case B — `paper/case-b-occam-dial`
+Scope: E4 figure + E6 check + section `04-case-B-occam-dial.md`.
+1. `experiments/occam_dial_figure.py`: side-by-side model posteriors under
+   occam=False vs occam=True from the MAP-based viz_unification artifacts
+   (`runs/viz_unification/p3_priors_canonical/`, `p1_priors_lap_occam/`;
+   D17 numbers 0.934 vs 0.693 at n=50), nesting relations annotated
+   (Linear ⊂ Sin+Linear via A=0; Sinusoidal ⊂ Sin+Linear via b=c=0;
+   Quadratic not nested). Output `runs/occam_dial/`.
+2. `experiments/e6_nesting_monotonicity.py`: verify min_φ Ḡ(encompassing) ≤
+   min_φ Ḡ(restricted) for both nested pairs across a τ-relevant grid, using
+   the existing Ḡ/multi-start machinery in `bistar_gp/laplace_evidence.py`
+   (do NOT reimplement). Output JSON + a one-paragraph resolution of the
+   `kb/Wiki/REVIEW_AND_VET.md` "Nesting monotonicity" entry (edit that file:
+   mark resolved with the numbers).
+3. Flesh out `docs/paper-sie-jmp/04-case-B-occam-dial.md` from the stub +
+   `kb/Wiki/Subset Problem and the Data Prior.md` (W4 framing discipline).
+Acceptance: figure regenerates; E6 verdict stated either way (a violation is
+a REPORTABLE finding, not a failure); DECISIONS entry present.
+
+[HARD CONSTRAINTS — HANDOFF-cases.md §0, VERBATIM]
+**Hard constraints (repeat verbatim in every Codex prompt):**
+- M2bR banner: `informative`-config HMC is WITHDRAWN. Usable numbers:
+  `toy_elicited` SIR (headline 0.441), prior-IS, MAP, SIR hard-best-match
+  rates, corrected NUTS ≈ 0.42. Never cite the withdrawn cache
+  (`runs/fit_method_metric_comparison/samples_hmc.npz`) or
+  `runs/toy_tau_metric_comparison/` (poster-only per W7).
+- W1: primary metric `pw_kl_vcal`; `kl_forward` appendix-only.
+- W4: `runs/viz_unification/*` numbers are `informative`-config, MAP-based,
+  methods-validation role — prose must frame them so.
+- No Mauna Loa material of any kind (D58 prereg boundary not to be tested).
+- No changes to `bistar_gp/` package defaults or public APIs.
+- Style: no arrow glyphs in prose; no "X is the Y" role-noun constructions;
+  no "lives/sits" for abstracta; minimal em-dashes (see repo CLAUDE.md +
+  user's global rules quoted in `docs/paper-sie-jmp/00-notation.md`).
+- Every reported number must be regenerable from a named `experiments/`
+  script into a `runs/` artifact; each case commits a same-commit
+  `Notes/DECISIONS.md` entry (next free D number).
+- Commit scope per branch: `experiments/` script(s), `docs/paper-sie-jmp/`
+  section, `Notes/DECISIONS.md` entry, and (deliberately, if evidence-worthy)
+  the `runs/` JSON — never figures over 2 MB, never gitignored Notes files.
+
+[DRIVER FACTS — verified this session; design around them]
+- runs/viz_unification/p1_priors_lap_occam/ and p3_priors_canonical/ contain
+  ONLY PNG figures. The per-stage numbers exist in
+  runs/viz_unification/delta_table.md and the two .log files. That whole
+  directory is LOCAL and untracked, so your scripts must not depend on it:
+  recompute the needed arm numbers through the repo's own machinery
+  (bistar_viz/scripts/_viz_spaces.py, the ported model-prior scripts, and
+  bistar_gp/laplace_evidence.py). Read
+  bistar_viz/scripts/viz_unification_compare.py first: it shows exactly how
+  the p1 and p3 arms are invoked (flags, seeds, n_is, starts conventions).
+  Use delta_table.md as a cross-check when present, never as the data source.
+- Anchor numbers your run must reproduce, asserted in-script within a
+  tolerance you pin and justify in the README:
+  p3_priors_canonical n=50: Sin+Linear 0.992;
+  p1_priors_lap_occam n=50: Linear 0.534, Sin+Linear 0.382.
+  If you also compute the p2 arm (recommended, see attribution below):
+  p2_priors_is_occam n=50: Linear 0.507, Sin+Linear 0.465.
+- The work order's "D17 numbers 0.934 vs 0.693 at n=50" are the LEGACY-script
+  contradiction recorded in Notes/DECISIONS.md D17 (near line 805): the
+  legacy trajectory script gave Sin+Linear 0.934 at n=50 while the legacy
+  priors script (occam hard-ON) picked Linear at 0.693. Quote them as
+  D17-recorded legacy findings with that provenance; do NOT recompute the
+  legacy arms (the pinned-commit extraction machinery in
+  viz_unification_compare.py regenerates them and can be named in the
+  provenance footer).
+- Attribution discipline (D17's own HIGH-severity review finding was exactly
+  this conflation; do not repeat it): p1 vs p3 differ by BOTH the Z-estimator
+  (pure Laplace vs IS) and the occam flag. The p2 arm (IS estimator, occam
+  ON) isolates the occam-only step p2 vs p3. Section prose must attribute
+  the verdict flip through the D17 ladder (the estimator swap narrows the
+  gap, the occam flip decides it), never present p1 vs p3 as a pure occam
+  contrast. The figure may show p1 vs p3 as the work order specifies, with
+  the ladder stated in the caption and prose; including p2 as a third
+  lighter series is allowed if it clarifies.
+- W4/W7 framing discipline (quote-level requirement): runs/viz_unification
+  numbers are informative-config, MAP-based, methods-validation /
+  legacy-comparison material. Per W7: "the dial figure argues about the
+  occam CONVENTION's effect, not about which model is true, and says so."
+  Every viz_unification number in the section must appear inside that role.
+- Numbers policy for the section: every number the section states as a
+  result must be recomputed by one of your two new scripts into
+  runs/occam_dial/ (§0 regenerability). The only exception: numbers quoted
+  explicitly as D17-recorded legacy findings (0.934, 0.693), cited to D17.
+- E6 target, VERBATIM from kb/Wiki/REVIEW_AND_VET.md:
+    **Claim:** in the tau -> 0 limit the induced model prior is
+    Popper-compliant, because an encompassing model's best achievable
+    divergence never exceeds that of a model nested inside it (its reachable
+    set in data space is a superset).
+    **Tier:** heuristic / argued, neither proven nor measured.
+    **Why shaky:** the nested candidates have different parameter-space
+    dimensions (Linear d=2 sits in Sin+Linear d=5 as the measure-zero A=0
+    slice), so this is not a Lebesgue-monotonicity argument in parameter
+    space; it rests on reachable sets in data space, and the finite-tau
+    volume term is not covered at all.
+    **What resolves it:** E6 — numerically verify min_phi Gbar for each
+    encompassing model against its nested restrictions across the toy
+    roster, and locate where in tau the ordering flips.
+  Implementation: use bistar_gp/laplace_evidence.py machinery
+  (_multistart_G_optima, is_log_Z_Mx and/or laplace_log_Z_Mx; do NOT
+  reimplement). Nested pairs: Linear within Sin+Linear (A=0) and Sinusoidal
+  within Sin+Linear (b=c=0); Quadratic not nested. Verify the min_φ Ḡ
+  inequality for both pairs AND compute the induced Z_M ordering across a τ
+  grid (per D17, one is_log_Z_Mx call per model returns the whole τ sweep)
+  under BOTH occam conventions, locating where in τ the ordering flips.
+  Build the averaged GP the same way the figure arms do, so both scripts
+  share provenance. A violated inequality is a REPORTABLE finding, not a
+  failure. Then edit kb/Wiki/REVIEW_AND_VET.md: mark the entry resolved,
+  with the numbers and the resolving script named.
+- All Case B outputs go under runs/occam_dial/ (the single case run dir):
+  figure PNG(s) each under 2 MB, results JSON for BOTH scripts holding every
+  number the section cites, and a README.md documenting exact regeneration
+  commands, seeds, anchors, and tolerances.
+- Notes/DECISIONS.md entry, appended at EOF exactly once:
+  "## D62: <title> — 2026-08-11" with **Problem:** / **Decision:** /
+  **Alternatives considered:** / **Result:** blocks, self-contained (file
+  paths, flags, seeds, anchor numbers, the E6 verdict numbers, τ-flip
+  locations), per the repo's decision-log convention.
+
+[STYLE — user's global rules; apply to ALL prose you write]
+No arrow glyphs in prose. No "X is the Y" role-noun constructions (rewrite
+with an active verb). Never "lives"/"sits" (any inflection) for abstract
+subjects. Minimal em-dashes; prefer commas, periods, colons, "because", "so".
+No "Same X, different Y" juxtapositions. No "This is the" / "That is the"
+openers. No staccato noun-phrase fragments as sentences. No anthropomorphic
+or spatial metaphors for abstract objects ("are correlated", not "move
+together"; "is defined over", not "lives in").
+
+[OUTPUT FORMAT]
+Your final message: a concise implementation report. Files created/edited
+(paths); exact rerun commands; the computed numbers (per-arm n=50 model
+posteriors, min-Ḡ per pair, Z_M τ-flip locations under both occam settings,
+the E6 verdict); pinned tolerances; deviations from the work order if any;
+open questions for the driver session.
+
+[SUCCESS CRITERIA]
+python experiments/occam_dial_figure.py and
+python experiments/e6_nesting_monotonicity.py rerun clean from the repo
+root; runs/occam_dial/ regenerates with the anchors asserted; section 04
+fleshed out per the stub inside W4 framing; REVIEW_AND_VET entry marked
+resolved with numbers; D62 appended at EOF; zero git operations performed.

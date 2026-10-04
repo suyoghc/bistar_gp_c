@@ -1,0 +1,152 @@
+[TASK CONTEXT]
+You are implementing the SYNTHESIS work package (author-commissioned
+2026-08-12, extending docs/paper-sie-jmp/HANDOFF-cases.md beyond its four
+cases) in /Users/sc8918/Documents/GitHub/bistar_gp_c. FIRST verify
+`git branch --show-current` prints paper/synthesis-sections; if not, STOP and
+report only the branch name. The frozen notation file
+docs/paper-sie-jmp/00-notation.md binds all symbols.
+
+The four case sections are COMPLETE on their own branches (not on this one):
+  Case A: paper/case-a-vanbork tip 74e0c43 — docs/paper-sie-jmp/03-...md
+  Case B: paper/case-b-occam-dial tip 32c0a58 — docs/paper-sie-jmp/04-...md
+  Case C: paper/case-c-haaf tip 0adde90 — docs/paper-sie-jmp/05-...md
+  Case D: paper/case-d-mopen tip 1a44b8d (content) — docs/paper-sie-jmp/06-...md
+Read them with read-only `git show <branch>:<path>` (allowed; the ONLY git
+you may run besides the branch check). The final manuscript assembles all
+branches, so cross-references to sections 3-6 are correct even though those
+files are absent from this branch's tree.
+
+[ABSOLUTE OPERATIONAL RULES]
+1. NO state-mutating git. The worktree Notes/DECISIONS.md carries
+   uncommitted entries D60-D65 above main's baseline; do not touch them.
+2. Files you may EDIT: docs/paper-sie-jmp/01-intro.md,
+   docs/paper-sie-jmp/02-machinery.md, docs/paper-sie-jmp/08-discussion.md,
+   and Notes/DECISIONS.md (append ONE new entry, numbered D66, at EOF only).
+   Everything else read-only. kb/ is gitignored: cite kb paths for argument
+   provenance only, never as the source of a number.
+3. No compute, no script execution, no network, no new artifacts.
+
+[OBJECTIVES]
+Flesh out the three stub sections per their own stub plans PLUS the
+case-derived additions below. Write final-quality manuscript prose in the
+voice and conventions of the completed case sections (read them first;
+evidence-tier footnotes 🟢/🟠; provenance footers per the stub template;
+W4 framing discipline wherever viz_unification material appears).
+
+SECTION 01 (intro), per its stub: the third-JMP-special-issue frame
+(Myung/Forster/Browne 2000; Wagenmakers & Waldorp 2006); data priors as the
+through-line from the 2016 JMP anchors; one deliberate Bonifay & Cai
+fit-propensity paragraph; the contributions list — organized so that
+contribution (iv) carries the paper's unifying frame: THE EVALUATIVE CHOICES
+MADE EXPLICIT AS DIALS (tau, occam, aggregation), each priced by a case
+(tau and occam by Case B section 4; aggregation by Case A section 3; the
+absence of the volume term on the table path by Case C section 5; metric
+scale-dependence by Case D section 6). One-sentence previews of the four
+cases with honest outcomes (including Case C's null and Case D's
+synthetic-only scope).
+
+SECTION 02 (machinery), per its stub outline 2.1-2.4, PLUS:
+(a) In 2.2/2.3, a numbered REMARK (the one-sidedness fact from Case C):
+    for nested candidate regions M_r within M_e evaluated by best-instance
+    divergence from shared data patterns, min-G containment holds per draw,
+    so table-path aggregation can never favor the restriction at any tau
+    under any convention; only the gap magnitude is empirical. Consequence,
+    stated in the same remark: crediting a satisfied restriction belongs to
+    the Z_M side (the volume/reference-measure term the occam flag
+    controls), not to the table path. Forward-reference Cases B and C.
+(b) In 2.3, aggregation as the third dial with the D60 RESOLUTION stated
+    (adopted as an explicit evaluation dial, pooled canonical, Eq.-4
+    reported where external correspondence matters; cite the D60 Resolution
+    addendum).
+(c) In 2.4, the SCALE-INVARIANCE WARNING (from Case D's review): soft-
+    transfer probability magnitudes are not comparable across metrics at a
+    shared tau (metrics differing by affine rescalings of G produce
+    arbitrarily different probability sharpness; Case D exhibits an exact
+    affine identity between two stored metrics). Reporting rule stated
+    normatively: compare within metric, and accompany soft-transfer tables
+    with tau-free draw-win fractions (the scale-invariant statistic; Case D
+    section 6 carries the worked instance). Also 2.4 keeps the W1 roles and
+    the D61 attribution per the stub.
+NUMBERS DISCIPLINE for 02: prefer zero re-quoted numbers; where one is
+unavoidable (the 0.441 anchor, if used), footnote it to the SAME artifact
+the case sections cite (runs/prior_sensitivity or the case-branch artifact)
+and mark the cross-branch location.
+
+SECTION 08 (discussion), per its stub, PLUS these subsections:
+(a) The three dials, revisited: what each case showed about each dial; the
+    B-to-C BRIDGE stated explicitly (Case C shows neither the table path
+    nor LOO credits a satisfied constraint; Case B shows the occam volume
+    term is the machinery that would; a Bayes-factor-style prior-mass
+    reward corresponds to the V_ref normalization choice).
+(b) M-open calibration: upgraded framing — the open problem stands, and
+    Case D contributes the first correct-specification reference material
+    (known-truth mean-G distributions), explicitly without setting a
+    rejection threshold.
+(c) Open questions per the stub, with the hybrid-Z_M item UPGRADED (now
+    carries a passing test via Target B; cite Case A section 3).
+(d) Relation to elpd/PSIS-LOO per the stub (mine kb Wiki
+    Vehtari-Gelman-Gabry Connection for the argument, not for numbers),
+    sharpened by Case C's head-to-head outcome.
+(e) A short VERIFICATION AND REPRODUCIBILITY paragraph (factual, modest):
+    every reported number regenerates from a named experiments/ script into
+    a committed runs/ artifact; each case section was independently
+    reviewed by four models under an adversarial cross-verification
+    protocol with findings, refutations, and fixes committed under
+    runs/<case>/reviews/ in the same repository; review outcomes are
+    recorded in the corresponding DECISIONS entries.
+(f) Limits: F1/F2 as scope conditions per the stub, informed by Case D's
+    non-identifiability outcome.
+
+D66 ENTRY appended at EOF ("## D66: <title> — 2026-08-12"), self-contained
+per repo convention: Problem / Decision / Alternatives considered / Result
+covering the synthesis package, the case-derived additions and where each
+landed, the cross-branch citation discipline, and the zero-new-numbers
+policy.
+
+[HARD CONSTRAINTS — HANDOFF-cases.md §0, VERBATIM]
+**Hard constraints (repeat verbatim in every Codex prompt):**
+- M2bR banner: `informative`-config HMC is WITHDRAWN. Usable numbers:
+  `toy_elicited` SIR (headline 0.441), prior-IS, MAP, SIR hard-best-match
+  rates, corrected NUTS ≈ 0.42. Never cite the withdrawn cache
+  (`runs/fit_method_metric_comparison/samples_hmc.npz`) or
+  `runs/toy_tau_metric_comparison/` (poster-only per W7).
+- W1: primary metric `pw_kl_vcal`; `kl_forward` appendix-only.
+- W4: `runs/viz_unification/*` numbers are `informative`-config, MAP-based,
+  methods-validation role — prose must frame them so.
+- No Mauna Loa material of any kind (D58 prereg boundary not to be tested).
+- No changes to `bistar_gp/` package defaults or public APIs.
+- Style: no arrow glyphs in prose; no "X is the Y" role-noun constructions;
+  no "lives/sits" for abstracta; minimal em-dashes (see repo CLAUDE.md +
+  user's global rules quoted in `docs/paper-sie-jmp/00-notation.md`).
+- Every reported number must be regenerable from a named `experiments/`
+  script into a `runs/` artifact; each case commits a same-commit
+  `Notes/DECISIONS.md` entry (next free D number).
+- Commit scope per branch: `experiments/` script(s), `docs/paper-sie-jmp/`
+  section, `Notes/DECISIONS.md` entry, and (deliberately, if evidence-worthy)
+  the `runs/` JSON — never figures over 2 MB, never gitignored Notes files.
+
+[SOURCES TO MINE — read before writing]
+The four case sections (git show, paths above); the stubs' own source lists;
+kb/Wiki/Paper Writing Guide.md; kb/Wiki/Metric Choice Justification.md;
+kb/Wiki/Vehtari-Gelman-Gabry Connection.md; kb/Wiki/BI-star Framework.md;
+kb/Wiki/GP-Induced Model Priors.md; kb/Wiki/Data Priors Citation Landscape.md;
+the committed D60 (with Resolution and Precision addenda), D61, and D17
+entries via git show paper/case-a-vanbork:Notes/DECISIONS.md; thesis chapter
+5 PDF only if needed for the 2016 anchors (kb/Raw/papers/important/).
+
+[STYLE — user's global rules; apply to ALL prose]
+No arrow glyphs. No "X is the Y" role-noun constructions. Never
+"lives"/"sits" for abstracta. Minimal em-dashes. No "Same X, different Y".
+No "This is the" openers. No staccato fragments. No anthropomorphic or
+spatial metaphors for abstract objects.
+
+[OUTPUT FORMAT]
+Final message: implementation report — the three sections' structure (heading
+list each); every number that appears anywhere in them with its artifact
+provenance (target: near-zero); the numbered remark verbatim; the
+verification paragraph verbatim; deviations; open driver questions.
+
+[SUCCESS CRITERIA]
+Three sections final-quality per the stub plans + additions; zero
+unregenerable numbers; D66 at EOF; zero state-mutating git; case-branch
+files untouched (they are not in this tree).

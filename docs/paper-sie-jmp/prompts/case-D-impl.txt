@@ -1,0 +1,206 @@
+[TASK CONTEXT]
+You are implementing Case D of the JMP special-issue paper work packages in
+the repo /Users/sc8918/Documents/GitHub/bistar_gp_c. The repo is checked out
+on branch paper/case-d-mopen (created off main == origin/main 7154083); do
+not change branches. The governing protocol is
+docs/paper-sie-jmp/HANDOFF-cases.md; its Case D work order and global hard
+constraints are repeated VERBATIM below and bind you. The section stub is
+docs/paper-sie-jmp/06-case-D-mopen-calibration.md. The frozen notation file
+docs/paper-sie-jmp/00-notation.md binds all symbols.
+
+[ABSOLUTE OPERATIONAL RULES — the driver session enforces these]
+1. NO git commands of any kind: no add, no commit, no stash, no checkout, no
+   branch, no reset, no push. The working tree carries uncommitted author
+   work (Notes/DECISIONS.md holds uncommitted entries D60, D61, D62, D63
+   above main's baseline; a protected stash exists). You edit files only;
+   the driver stages and commits.
+2. Files you may CREATE: experiments/regret_curves_mopen.py, anything under
+   runs/regret_curves_mopen/.
+   Files you may EDIT: docs/paper-sie-jmp/06-case-D-mopen-calibration.md,
+   and Notes/DECISIONS.md (append ONE new entry, numbered D64, at end of
+   file ONLY; do not touch D60-D63 or anything above them).
+   Everything else is READ-ONLY, including ALL of
+   experiments/practice_EvansEtAL/ (scripts, results dirs, logs) and the
+   bistar_gp/ package. Do NOT rerun run.py or any practice_EvansEtAL
+   script; do NOT modify their result JSONs.
+3. No network. No new dependencies (numpy, scipy, torch, gpytorch,
+   matplotlib installed). No Slurm/Della. NO NEW HMC anywhere. Local CPU;
+   target total runtime under roughly 20 minutes.
+
+[OBJECTIVES — HANDOFF-cases.md §2 Case D work order, VERBATIM]
+### Case D — `paper/case-d-mopen`
+Scope: regret curves + section; E8b optional module.
+1. FIRST inventory `experiments/practice_EvansEtAL/` (`run.py`, diag scripts,
+   `data/`): if regret-per-trial is already computed, reuse; else add
+   `experiments/regret_curves_mopen.py` implementing
+   regret_θ(t) = E_draws|μ_GP(t) − μ_θ(t)| per the formula in
+   `kb/Wiki/Limits Diagnostics and Open Questions.md`, on that experiment's
+   existing fitted artifacts (no new HMC).
+2. Section `06-case-D-mopen-calibration.md`: the decline-is-correct argument
+   (Navarro, Pitt & Myung 2004 digest in
+   `kb/Digests/Clippings/data_prior_regimes/`), divergence magnitudes as the
+   absolute inadequacy read, regret curves showing WHERE candidates fail.
+3. OPTIONAL `experiments/e8b_transform_space.py` (semi-log + log-log refit,
+   lognormal noise correction) — implement behind `[E8B-PLACEHOLDER]` blocks
+   in the section so the author can excise cleanly.
+Acceptance: regret figure regenerates from existing artifacts; section
+drafted; DECISIONS entry present.
+
+[DRIVER SCOPE DECISION] The OPTIONAL item 3 (e8b_transform_space.py) is NOT
+to be built in this pass. Leave the stub's [E8B-PLACEHOLDER] block in the
+section as an explicitly labeled unbuilt optional module the author may
+commission or excise. Record this in D64.
+
+[HARD CONSTRAINTS — HANDOFF-cases.md §0, VERBATIM]
+**Hard constraints (repeat verbatim in every Codex prompt):**
+- M2bR banner: `informative`-config HMC is WITHDRAWN. Usable numbers:
+  `toy_elicited` SIR (headline 0.441), prior-IS, MAP, SIR hard-best-match
+  rates, corrected NUTS ≈ 0.42. Never cite the withdrawn cache
+  (`runs/fit_method_metric_comparison/samples_hmc.npz`) or
+  `runs/toy_tau_metric_comparison/` (poster-only per W7).
+- W1: primary metric `pw_kl_vcal`; `kl_forward` appendix-only.
+- W4: `runs/viz_unification/*` numbers are `informative`-config, MAP-based,
+  methods-validation role — prose must frame them so.
+- No Mauna Loa material of any kind (D58 prereg boundary not to be tested).
+- No changes to `bistar_gp/` package defaults or public APIs.
+- Style: no arrow glyphs in prose; no "X is the Y" role-noun constructions;
+  no "lives/sits" for abstracta; minimal em-dashes (see repo CLAUDE.md +
+  user's global rules quoted in `docs/paper-sie-jmp/00-notation.md`).
+- Every reported number must be regenerable from a named `experiments/`
+  script into a `runs/` artifact; each case commits a same-commit
+  `Notes/DECISIONS.md` entry (next free D number).
+- Commit scope per branch: `experiments/` script(s), `docs/paper-sie-jmp/`
+  section, `Notes/DECISIONS.md` entry, and (deliberately, if evidence-worthy)
+  the `runs/` JSON — never figures over 2 MB, never gitignored Notes files.
+
+[DRIVER-VERIFIED FACTS — design around them; do not contradict them]
+- NO regret code exists anywhere in experiments/practice_EvansEtAL/ (grep
+  for "regret" across its .py files returns nothing), so work-order item 1
+  takes the "else add experiments/regret_curves_mopen.py" branch.
+- experiments/practice_EvansEtAL/data/ is EMPTY: the real Evans et al. CSVs
+  were never downloaded. EVERY existing artifact is the SYNTHETIC demo
+  cohort from run.py's generate_demo_data(n_subjects=50, seed=42),
+  deterministic: 25 power-truth + 25 exponential-truth subjects, n_trials=20
+  each. File naming: synth_power_subNN_default.json and
+  synth_exponential_subNN_default.json. The section MUST disclose the
+  synthetic provenance explicitly and must NOT imply the real Evans corpus
+  was analyzed. Consequence for framing: per subject the true generating
+  form is IN the candidate set (Power, Exponential), so this cohort is a
+  DISTINGUISHABILITY / mimicry study in the Navarro, Pitt & Myung sense, and
+  it supplies correct-specification reference levels for the divergence
+  magnitudes; frame the "decline is correct" argument accordingly and
+  honestly. The kb Wiki's note that formal M-open calibration "remains
+  undeveloped" may be cited; this cohort's mean_G levels under known truth
+  are exactly the kind of reference distribution that calibration needs.
+- Four results dirs exist (READ-ONLY): results/ (MAP mode), results_hmc/
+  (HMC mode; PREFER THIS ONE as the artifact source and say so), plus
+  results_diag/ and results_hierarchical/ (do not use unless you find a
+  documented reason; if you consult them, record why in D64).
+- Per-subject JSONs store: bic_winner, bic_log_ml, fitted_params for Power
+  and Exponential (a, b, c, sigma), ONE gp_hyperparameters block
+  (lengthscale, outputscale, noise; run.py:489 stores it once per subject —
+  READ run.py lines ~380-560 to pin which GP fit that block records and
+  document the provenance in README + D64), n_gp_samples=100,
+  bistar_winners/bistar_probs per config (practitioner, moderate, agnostic)
+  x metric (pw_hellinger, pw_mse, pw_nll) x 15 log-spaced tau values
+  (0.1 to 31.62), and bistar_G_diagnostics with per-model mean_G, std_G,
+  delta-from-best, raw_draw_wins, n_draws=100, G_min, G_max.
+- The JSONs do NOT store per-trial mu curves or GP draws. Reconstruction
+  path for regret WITHOUT new HMC: regenerate the deterministic synthetic
+  curves by importing generate_demo_data from run.py (path-insert the
+  practice dir; import, do not copy; run.py guards its CLI under
+  __main__), rebuild each subject's GP with the STORED gp_hyperparameters
+  (exact conditioning, no refitting, no hyperparameter sampling), draw
+  seeded GP posterior function samples (mirror n_gp_samples=100; fixed
+  seed), evaluate mu_theta(t) from the STORED fitted_params via the
+  candidates module in that directory (import), and compute
+  regret_theta(t) = E_draws|f_i(t) - mu_theta(t)| at the n_trials=20 trial
+  points. Verify reconstruction fidelity: the regenerated data must
+  reproduce each subject's stored bic_log_ml or fitted-parameter residual
+  structure within a stated tolerance (choose a concrete check and assert
+  it; if exact regeneration fails, STOP and report rather than silently
+  proceeding).
+- FORMULA NOTE: the kb Wiki's formal line uses the ABSOLUTE difference
+  (regret_theta(t) = E_HMC[|mu_GP(t) - mu_theta(t)|]); one chat-derived
+  Q&A in the same file says "squared". The work order pins the Wiki formula:
+  use ABSOLUTE. Record the discrepancy note in README + D64.
+- Aggregate headline (results_hmc/aggregate.json): n=50; BIC winners
+  Power 18 / Exponential 32 on a cohort that is 25/25 by construction;
+  bistar winner counts per config and robustness fractions per metric are
+  in the same file. Use these stored numbers for the section's
+  decline/mimicry narrative; every number you print must trace to either
+  the stored aggregate/subject JSONs (cite file) or your new
+  runs/regret_curves_mopen/ artifacts.
+- Divergence-magnitude read: build it from the STORED bistar_G_diagnostics
+  (e.g. per-subject per-model mean_G under pw_nll; sub25 exponential:
+  Power 4.881 vs Exponential 4.852 — near-identical, the mimicry
+  signature). Aggregate these stored values across subjects in your new
+  script into runs/regret_curves_mopen/results.json; do not recompute G.
+- Averell & Heathcote positioning sources exist in
+  kb/Wiki/Where Data Priors Bear Fruit.md and
+  kb/Digests/Clippings/shape_constrained_gp.md; the Navarro, Pitt & Myung
+  2004 digest is
+  kb/Digests/Clippings/data_prior_regimes/assessing_the_distinguishability_of_models_and_t.md.
+  Cite with the evidence-tier footnote convention (🟢 peer-reviewed with
+  full reference for published papers; 🟠 empirical naming script +
+  artifact). kb/ is gitignored (local-only): NEVER cite a kb path as the
+  provenance of a NUMBER; numbers trace to runs/ artifacts only.
+- The candidate roster in candidates.py includes DelayedExp and APEX, but
+  the stored artifacts fit only Power and Exponential; the section may
+  mention the fuller roster as context but every number concerns the
+  fitted pair.
+- Metric naming: the practice artifacts predate W1 and use pw_nll /
+  pw_mse / pw_hellinger (no pw_kl_vcal). State this explicitly in the
+  section and README: the stored practice-run metrics are the legacy
+  pointwise family; pw_nll plays the role closest to the W1 primary; no
+  new metric computation is authorized here. Do not relabel stored
+  metrics as pw_kl_vcal.
+
+[DELIVERABLES]
+1. experiments/regret_curves_mopen.py: reconstruction + regret computation
+   as specified; outputs runs/regret_curves_mopen/{results.json, README.md,
+   regret_curves.png (under 2 MB)}. results.json carries: per-cohort
+   (power-truth, exponential-truth) per-candidate regret curves over the 20
+   trials (mean and a dispersion band across subjects and draws — state
+   exactly what the band is), the per-trial discrimination gap
+   |regret_Power(t) - regret_Exponential(t)|, the aggregated stored mean_G
+   magnitude summaries per config/metric, the reconstruction-fidelity check
+   results, provenance (source artifact dir, n subjects, seeds, n_draws,
+   formula), and x/trial grid. Figure: regret curves per cohort with the
+   early-trial concentration visible if present; whichever way it comes
+   out is reported (a flat or null discrimination profile is reportable).
+2. docs/paper-sie-jmp/06-case-D-mopen-calibration.md fleshed from the stub:
+   failure-geometry framing (F1 representability / F2 mimicry, from
+   kb/Wiki/Where Data Priors Bear Fruit.md), the decline-is-correct
+   argument anchored on Navarro, Pitt & Myung, the divergence-magnitude
+   absolute-adequacy read from the stored diagnostics, the regret curves
+   showing WHERE the candidates differ, the synthetic-provenance
+   disclosure, the Averell & Heathcote positioning, and the
+   [E8B-PLACEHOLDER] block left explicitly as an unbuilt optional module.
+   Evidence-tier footnotes; provenance footer per the stub template.
+3. Notes/DECISIONS.md D64 appended at EOF exactly once
+   ("## D64: <title> — 2026-08-11"), self-contained per repo convention:
+   Problem / Decision / Alternatives considered / Result with file paths,
+   seeds, the artifact-source choice (results_hmc/), the gp_hyperparameters
+   provenance you pinned from run.py, the formula-discrepancy note, the
+   fidelity-check outcome, headline regret numbers, and the e8b deferral.
+
+[STYLE — user's global rules; apply to ALL prose]
+No arrow glyphs. No "X is the Y" role-noun constructions. Never
+"lives"/"sits" for abstracta. Minimal em-dashes. No "Same X, different Y".
+No "This is the" openers. No staccato fragments. No anthropomorphic or
+spatial metaphors for abstract objects.
+
+[OUTPUT FORMAT]
+Final message: implementation report — files created/edited; exact rerun
+command; the gp_hyperparameters provenance finding; fidelity-check numbers;
+headline regret results (where the discrimination signal concentrates, or
+that it does not); figure size; pinned tolerances; deviations with reasons;
+open driver questions.
+
+[SUCCESS CRITERIA]
+python experiments/regret_curves_mopen.py reruns clean from the repo root
+against the READ-ONLY practice artifacts; runs/regret_curves_mopen/
+regenerates deterministically; section 06 drafted with the synthetic
+disclosure and E8B placeholder; D64 appended at EOF; practice_EvansEtAL/
+byte-untouched; zero git operations.

@@ -1,0 +1,148 @@
+[TASK CONTEXT]
+You are implementing Case A of the JMP special-issue paper work packages in
+the repo /Users/sc8918/Documents/GitHub/bistar_gp_c. The repo is checked out
+on branch paper/case-a-vanbork (created off main == origin/main 7154083); do
+not change branches. The governing protocol is
+docs/paper-sie-jmp/HANDOFF-cases.md; its Case A work order and global hard
+constraints are repeated VERBATIM below and bind you. The section stub is
+docs/paper-sie-jmp/03-case-A-external-validation.md. The frozen notation
+file docs/paper-sie-jmp/00-notation.md binds all symbols.
+
+THIS CASE IS WRITING-ONLY. The compute already exists and is FINAL:
+runs/vanbork_external_validation/{results.json, README.md} (D60) and
+runs/e7_convention_sensitivity/{results.json, README.md} (D61), produced by
+experiments/vanbork_external_validation.py and
+experiments/e7_convention_sensitivity.py. NO new compute is authorized: do
+not run, modify, or regenerate any script or artifact.
+
+[ABSOLUTE OPERATIONAL RULES — the driver session enforces these]
+1. NO git commands of any kind. The working tree carries uncommitted author
+   work (Notes/DECISIONS.md holds uncommitted entries D60-D64 above main's
+   baseline; a protected stash exists). You edit files only; the driver
+   stages and commits.
+2. Files you may EDIT: docs/paper-sie-jmp/03-case-A-external-validation.md,
+   and Notes/DECISIONS.md (append ONE new entry, numbered D65, at end of
+   file ONLY; do not touch D60-D64 or anything above them).
+   EVERYTHING else is READ-ONLY, including both run dirs, both experiments
+   scripts, bistar_gp/, and kb/.
+3. No network, no script execution, no new dependencies.
+
+[OBJECTIVES — HANDOFF-cases.md §2 Case A work order, VERBATIM]
+### Case A — `paper/case-a-vanbork`
+Scope: writing-heavy; compute exists (`runs/vanbork_external_validation/`,
+`runs/e7_convention_sensitivity/`, both with READMEs; D60, D61).
+1. Flesh out `03-case-A-external-validation.md`: mapping table, Target B
+   six-decimal reproduction + the Laplace special-case argument, Target A
+   convention dependence, E7 movement numbers, the kl_forward attribution
+   (D61 finding 2) — leaving `[FORK-DECISION-PLACEHOLDER]` where the
+   canonical-convention statement goes.
+2. Add the multi-parameter reach demo paragraph citing
+   `runs/viz_unification/p3_priors_canonical/` under W4 framing.
+Acceptance: every number in the section traces to the two run dirs;
+placeholder intact; no new compute.
+
+[HARD CONSTRAINTS — HANDOFF-cases.md §0, VERBATIM]
+**Hard constraints (repeat verbatim in every Codex prompt):**
+- M2bR banner: `informative`-config HMC is WITHDRAWN. Usable numbers:
+  `toy_elicited` SIR (headline 0.441), prior-IS, MAP, SIR hard-best-match
+  rates, corrected NUTS ≈ 0.42. Never cite the withdrawn cache
+  (`runs/fit_method_metric_comparison/samples_hmc.npz`) or
+  `runs/toy_tau_metric_comparison/` (poster-only per W7).
+- W1: primary metric `pw_kl_vcal`; `kl_forward` appendix-only.
+- W4: `runs/viz_unification/*` numbers are `informative`-config, MAP-based,
+  methods-validation role — prose must frame them so.
+- No Mauna Loa material of any kind (D58 prereg boundary not to be tested).
+- No changes to `bistar_gp/` package defaults or public APIs.
+- Style: no arrow glyphs in prose; no "X is the Y" role-noun constructions;
+  no "lives/sits" for abstracta; minimal em-dashes (see repo CLAUDE.md +
+  user's global rules quoted in `docs/paper-sie-jmp/00-notation.md`).
+- Every reported number must be regenerable from a named `experiments/`
+  script into a `runs/` artifact; each case commits a same-commit
+  `Notes/DECISIONS.md` entry (next free D number).
+- Commit scope per branch: `experiments/` script(s), `docs/paper-sie-jmp/`
+  section, `Notes/DECISIONS.md` entry, and (deliberately, if evidence-worthy)
+  the `runs/` JSON — never figures over 2 MB, never gitignored Notes files.
+
+[DRIVER-VERIFIED FACTS — design around them]
+- Sources to read before writing: the two run READMEs and results.json
+  files; the D60 and D61 entries in the working-tree Notes/DECISIONS.md
+  (they are the provenance record and will be committed on THIS branch
+  together with your D65); the full-text ingest
+  kb/Raw/papers/important/vanBork_Romeijn_Wagenmakers_2025_subset_problem.md;
+  kb/Wiki/Subset Problem and the Data Prior.md. kb/ is gitignored: cite kb
+  paths for argument provenance only, never as the source of a NUMBER.
+- Number tracing (acceptance criterion): every number in the section traces
+  to runs/vanbork_external_validation/ or runs/e7_convention_sensitivity/
+  (results.json or README), with exactly one authorized exception: the
+  multi-parameter reach paragraph cites the D17-RECORDED canonical-arm
+  values (Sin+Linear 0.992 at n=50; 0.93-0.99 across all n) as recorded
+  findings in the committed Notes/DECISIONS.md D17 entry, regenerable via
+  the bistar_viz scripts — the same citation pattern Case B used for legacy
+  values, because runs/viz_unification/ is local and untracked. State that
+  provenance explicitly in the paragraph's footnote.
+- The fork paragraph slot: keep a literal bracketed placeholder line
+  containing the string [FORK-DECISION-PLACEHOLDER] where the
+  canonical-convention statement will go once the author decides D60's
+  fork. Draft everything AROUND it: state the fork honestly (pooled
+  preserves absolute magnitudes and the M-open signal but fails Target A;
+  expected-posterior matches their Eq. 4 and rescues kl_forward but spends
+  one unit of credit per draw), give the E7 movement numbers, and present
+  the candidate dial framing recorded in the E7 README as a candidate,
+  clearly not yet the author's decision.
+- Headline numbers you will need (verify each against the artifacts before
+  use): Target B convergence 0.792607 (tau 1e-2), 0.840781 (1e-4), 0.841413
+  (1e-6), 0.841419 (1e-7) vs paper 0.841420, abs err 6.4e-7; MLE prior
+  densities 7.9589 / 1.5000 vs quoted 7.96 / 1.50; Target A paper answer
+  0.4/0.6, pooled limit 0.000/1.000 (FAILS), per-atom and
+  normalize_per_draw=True both 0.400/0.600 exact, converged by tau 1e-4;
+  E7 anchor row pw_kl_vcal tau=1 pooled 0.183/0.192/0.441/0.184 (ratified
+  SIR headline); movement pooled vs expected-posterior 0.31 at tau=0.1,
+  0.072 at tau=1 (0.441 to 0.513), 0.001 at tau=10; kl_forward attribution
+  (D61 finding 2): pooled collapses Sin+Linear to ~0.000 at tau<=1 while
+  expected-posterior gives 0.696 at tau=0.1 equal to the raw hard-win
+  fraction 696/1000, the tau-to-0 identity holding by construction.
+- The Laplace special-case argument (from D60/the README): Z_M ≈
+  p_M(theta*)·sqrt(2·pi·tau/G''(theta*)); shared Bernoulli family cancels
+  G'' so the normalized ratio converges to the ratio of prior densities at
+  theta*; their published formula is therefore the tau-to-0, shared-family,
+  point-data-prior special case of Z_M, and Target B is the first passing
+  test of the HYBRID Z_M (within-model parameter prior in place of the
+  Lebesgue/V_ref reference measure), previously an open question.
+- Mapping table (their notions to ours): build it from the ingest + the
+  frozen notation (their data prior maps to p0(psi); their expected support
+  against the data prior maps to the divergence-based score; their Eq. 4
+  prior model probability = expected posterior maps to the per-draw
+  normalized aggregation; their completely-overlapping-models case maps to
+  the hybrid Z_M with within-model parameter priors; M_r subset M_e
+  notation adopted per 00-notation.md). Keep each row honest about
+  imperfect correspondences.
+- Evidence-tier footnotes per the repo convention (🟢 peer-reviewed with
+  full reference; 🟠 empirical naming script + artifact). Provenance footer
+  per the stub template. The van Bork reference: van Bork, R., Romeijn,
+  J.-W., & Wagenmakers, E.-J. (2025), Synthese,
+  doi:10.1007/s11229-025-05286-y (verify title spelling from the ingest
+  frontmatter).
+- Notes/DECISIONS.md D65 appended at EOF exactly once
+  ("## D65: <title> — 2026-08-12"), self-contained per repo convention:
+  Problem / Decision / Alternatives considered / Result covering the
+  section build, the placeholder discipline, the D17-recorded citation
+  pattern for the reach paragraph, and the explicit note that this branch
+  commits D60/D61 (the compute provenance) together with D65.
+
+[STYLE — user's global rules; apply to ALL prose]
+No arrow glyphs. No "X is the Y" role-noun constructions. Never
+"lives"/"sits" for abstracta. Minimal em-dashes. No "Same X, different Y".
+No "This is the" openers. No staccato fragments. No anthropomorphic or
+spatial metaphors for abstract objects.
+
+[OUTPUT FORMAT]
+Final message: implementation report — files edited; the section's number
+inventory with the artifact each traces to; confirmation the placeholder
+line survives verbatim; deviations with reasons; open driver questions.
+
+[SUCCESS CRITERIA]
+Section 03 fleshed out per the work order with the mapping table, Target B
+six-decimal story + Laplace argument, Target A convention dependence, E7
+movements, kl_forward attribution, reach paragraph under W4 framing, and
+the intact [FORK-DECISION-PLACEHOLDER]; D65 appended at EOF; zero git
+operations; zero compute; both run dirs byte-untouched.

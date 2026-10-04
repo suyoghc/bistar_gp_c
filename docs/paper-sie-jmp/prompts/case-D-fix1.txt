@@ -1,0 +1,140 @@
+[TASK CONTEXT]
+Fix pass for Case D (HANDOFF §4 rule 4) in
+/Users/sc8918/Documents/GitHub/bistar_gp_c, branch paper/case-d-mopen (tip
+a4b92c0 holds your earlier implementation). Four-model review + adversarial
+cross-verification produced the fix queue below (full record:
+runs/regret_curves_mopen/reviews/VERDICTS.md — read it). Implement every fix
+exactly; regenerate artifacts; nothing else. Five other findings were
+REJECTED in cross-check; do NOT implement their fixes (no subject bootstrap,
+no figure-shading change, no provenance assertion, no entropy-decomposition
+rewrite beyond what F-D1 requires, no cross-metric mimicry table).
+
+[ABSOLUTE OPERATIONAL RULES]
+1. NO git commands of any kind. The working tree carries uncommitted author
+   work (Notes/DECISIONS.md holds uncommitted D60-D63 above your D64; a
+   protected stash exists).
+2. Files you may EDIT: experiments/regret_curves_mopen.py, everything under
+   runs/regret_curves_mopen/ (regenerate),
+   docs/paper-sie-jmp/06-case-D-mopen-calibration.md, and Notes/DECISIONS.md
+   ONLY inside the existing D64 entry (in place; no new entry; do not touch
+   D60-D63 or anything above them).
+   experiments/practice_EvansEtAL/ stays READ-ONLY and byte-untouched.
+3. No network, no new dependencies, no bistar_gp/ changes, NO NEW HMC, no
+   Mauna. Rerun the script after edits (budget ~10 minutes; it runs in
+   seconds).
+
+[FIX QUEUE — implement ALL]
+
+FIX-D1 [S1/S2; two reporters] The pw_nll "weak confidence" vs pw_mse
+"sharp" contrast is a unit artifact. Facts your rewrite must carry (all
+verified): pw_nll = 0.5*log(2*pi*sigma_theta^2) + pw_mse/(2*sigma_theta^2)
+holds EXACTLY on all 300 stored mean_G values (max abs err 1.78e-15);
+BMS* scores exp(-G/tau) at a shared tau, so the "weak" 0.522 pw_nll medians
+and the "sharp" pw_mse decisions are the same statistic under a
+candidate-specific affine map (sigma_theta^2 factors 750-7150); no tau on
+the stored 15-point grid closes the gap (pw_nll median peaks ~0.573 at
+tau=0.1; pw_mse stays >0.98 at tau=31.6). Also pw_nll is NOT the closest
+analogue of the W1 primary: pw_nll weights by the CANDIDATE's fitted noise
+variance while pw_kl_vcal weights by the GP's variance; on that axis pw_mse
+is closer. Implement:
+(a) Delete the "closest to the W1 primary role" justification and the
+    probability-magnitude "weak confidence" / "much sharper pw_mse" reading.
+(b) State the affine identity and the non-invariance explicitly (one short
+    paragraph), concluding that soft-transfer probability magnitudes at a
+    shared tau are not comparable across metrics with different scales.
+(c) Carry the section's asymmetry thesis on the tau-free, scale-invariant
+    stored statistic instead: practitioner pw_nll raw_draw_wins — the true
+    family wins 39.0 percent of the 100 GP draws in the power-truth cohort
+    (9 of 25 subjects by majority) versus 98.7 percent in the
+    exponential-truth cohort (25 of 25). Add these to results.json
+    (aggregate them from the stored bistar_G_diagnostics raw_draw_wins
+    fields in your script; also record the moderate and agnostic config
+    values for the same statistic) and cite them in the section.
+(d) Keep every surviving pw_nll-scoped sentence explicitly metric-specific.
+(e) Reflect the same correction in README and D64 (in place).
+
+FIX-D2 [S2; two reporters] Estimand honesty. The script averages 100 latent
+function draws at the stored MAP point, so the computed quantity is the
+MAP-conditional posterior expected absolute deviation
+E_{f|y,eta_hat}|f(t) - mu_theta(t)|, NOT the kb formula's average of
+posterior MEAN functions over hyperparameter draws; by Jensen the
+draw-based version inflates each regret by roughly the per-trial latent SD
+and compresses the candidate gap trial-dependently. Implement:
+(a) Relabel the draw-based quantity throughout (script variable/JSON key
+    names may stay, but every printed/prose label and the JSON's
+    "formula"/description fields must say MAP-conditional posterior
+    expected absolute deviation of the latent function).
+(b) ALSO compute and record the mean-based plug-in regret
+    |posterior_mean(t) - mu_theta(t)| per subject/candidate/trial (the code
+    already holds posterior_mean), aggregate it identically, add it to
+    results.json, report BOTH estimands' headline numbers in the section
+    (a compact second table or added columns), and overlay the mean-based
+    cohort curves on the figure as dashed lines (keep the PNG under 2 MB).
+(c) Disclose the mean-vs-draw substitution next to the existing MAP-vs-HMC
+    disclosure, and soften "Regret therefore explains both sides of the
+    aggregate result" to a consistency statement.
+(d) Update README and D64 (in place) with both estimands and the relabel.
+
+FIX-D3 [S2; confirmed DC4] Remove the causal "scaffold-induced preference"
+attribution. The branch contains exactly one reconstruction (practitioner
+MAP, RBF); all three stored configs share the RBF family, so no scaffold
+contrast exists that could separate F1 representability from mimicry,
+metric behavior, or sampling noise. Rewrite to descriptive localization
+"under the stored practitioner-MAP scaffold" and state plainly that these
+artifacts cannot identify the failure source, consistent with the section's
+own earlier F1/F2-agnostic sentence.
+
+FIX-D4 [S3; confirmed DO5] Name both evaluation domains in one place: the
+stored practice G values were computed on a 50-point uniform grid spanning
+each subject's FULL series (20-79 trials), while the regret curves cover
+integer trials 1-20 only (about 24 percent of the compared domain for the
+longest subjects). Restrict any linkage between the regret curves and the
+stored aggregate comparisons to the shared early-trial region.
+
+FIX-D5 [S3; confirmed DO8] The "all configurations agree" row misreads as
+Power/Exponential splits. Move it out of that table (a separate one-row
+table or a sentence) or give it a clearly labeled separate column
+structure.
+
+FIX-D6 [S4; confirmed DO9] Remove the dead posterior_sd_min_raw /
+posterior_sd_max_raw fields, or replace them with correctly labeled
+marginal SDs (sqrt of the covariance diagonal, rescaled) that are actually
+written to results.json. Either way, no mislabeled or dead field remains.
+
+FIX-D7 [S4; confirmed DO11] Add the unit to the regret table (header or
+caption): raw response-time units (RT units), matching results.json's
+regret_units and the figure axis.
+
+[HARD CONSTRAINTS — HANDOFF-cases.md §0, VERBATIM]
+**Hard constraints (repeat verbatim in every Codex prompt):**
+- M2bR banner: `informative`-config HMC is WITHDRAWN. Usable numbers:
+  `toy_elicited` SIR (headline 0.441), prior-IS, MAP, SIR hard-best-match
+  rates, corrected NUTS ≈ 0.42. Never cite the withdrawn cache
+  (`runs/fit_method_metric_comparison/samples_hmc.npz`) or
+  `runs/toy_tau_metric_comparison/` (poster-only per W7).
+- W1: primary metric `pw_kl_vcal`; `kl_forward` appendix-only.
+- W4: `runs/viz_unification/*` numbers are `informative`-config, MAP-based,
+  methods-validation role — prose must frame them so.
+- No Mauna Loa material of any kind (D58 prereg boundary not to be tested).
+- No changes to `bistar_gp/` package defaults or public APIs.
+- Style: no arrow glyphs in prose; no "X is the Y" role-noun constructions;
+  no "lives/sits" for abstracta; minimal em-dashes (see repo CLAUDE.md +
+  user's global rules quoted in `docs/paper-sie-jmp/00-notation.md`).
+- Every reported number must be regenerable from a named `experiments/`
+  script into a `runs/` artifact; each case commits a same-commit
+  `Notes/DECISIONS.md` entry (next free D number).
+- Commit scope per branch: `experiments/` script(s), `docs/paper-sie-jmp/`
+  section, `Notes/DECISIONS.md` entry, and (deliberately, if evidence-worthy)
+  the `runs/` JSON — never figures over 2 MB, never gitignored Notes files.
+
+[OUTPUT FORMAT]
+Final message: FIX-by-FIX report (files touched, one-line change, the new
+raw_draw_wins aggregate values per config, both estimands' headline regret
+numbers, PNG size), rerun exit code and runtime, confirmation
+practice_EvansEtAL/ untouched, any deviation with reason.
+
+[SUCCESS CRITERIA]
+All seven fixes implemented; python experiments/regret_curves_mopen.py
+reruns clean; artifacts regenerated with the new fields and dual estimands;
+section/README/D64 consistent; rejected-finding fixes NOT implemented; zero
+git operations.
