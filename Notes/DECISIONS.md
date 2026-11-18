@@ -6842,9 +6842,13 @@ dependency-lock drift in the Miniconda base now consists of five packages instal
 lock (`brotli` 1.2.0, `curl_cffi` 0.16.3, `imageio-ffmpeg` 0.6.0, `mutagen` 1.48.1,
 `yt-dlp-ejs` 0.8.0) and two upgrades (`gallery_dl` 1.31.10 to 1.32.16, `yt-dlp` 2026.3.17 to
 2026.8.19), and `pypdf` no longer appears, so line B1 as cast no longer makes the lock test pass
-and needs a re-cast. Still outstanding from 2026-10-03: PR #38 to Draft and the PR #39 retitle
-(B8), the checksummed archive of the main worktree's untracked material (about 300 MB), and the
-D64 and D6 addenda.
+and needs a re-cast. Done the same day by author approval: the annotated local tag
+`archive/d59-draft` on the stash commit `5280d1e1`; the checksummed archive of the main
+worktree's untracked, ignored and uncommitted material (1,020 files, 339,726,928 bytes; excludes
+`.venv/`, `__pycache__/` and `poster/`) at `~/Documents/bistar_gp_c_local_archive/2026-11-18/`,
+tarball sha256 `9b1e492ee711189e1db29356cb66c13bd08806196adcc3ce512a8dd0891c8605`, with every
+per-file checksum verified after a full extraction; PR #38 set to Draft and PR #39 retitled (B8).
+Still outstanding: the D64 and D6 addenda, and the re-cast of B1.
 
 
 ## D70: Fix pass 2a, decision-free package contracts from the 2026-09-26 review (SYNTHESIS A-1 to A-4, A-6, A-10, A-11 with A-24, A-13 code half, A-23 package half, hardened Case D producer; optional A-5, A-7, A-15, A-18) — 2026-10-03
