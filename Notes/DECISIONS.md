@@ -6857,7 +6857,14 @@ added packages are uninstalled and `yt-dlp` 2026.3.17 and `gallery_dl` 1.31.10 r
 RECORD hash included, and its binary-extension aggregate now match exactly; the lock test still
 fails on one `pip freeze` line, `pypdf==6.14.2` in the user site, which the 2026-10-03 cast
 already sends to its own environment and which `graphify` (installed in the base) uses for PDF
-input. Still outstanding: the `pypdf` move, and the D64 and D6 addenda.
+input. The author then chose to move it: a new conda environment `pdf-tools` holds `graphifyy`
+0.3.1 with its required packages at the base's versions and `pypdf` 6.14.2 (installed with
+`PYTHONNOUSERSITE=1`, because the user site is shared by every Python 3.13), `pypdf` left the
+user site (now empty), and `~/.local/bin/graphify` links to the new environment's entry point,
+so the graphify skill's interpreter detection resolves to `pdf-tools` (checked in a fresh login
+shell, with `graphify` and `pypdf` importing). The base `graphifyy` stays, since the lock lists
+it. `tests/test_m2cr_environment_freeze.py` now passes (23 passed, 1 skipped). B1 is closed.
+Still outstanding: the D64 and D6 addenda.
 
 
 ## D70: Fix pass 2a, decision-free package contracts from the 2026-09-26 review (SYNTHESIS A-1 to A-4, A-6, A-10, A-11 with A-24, A-13 code half, A-23 package half, hardened Case D producer; optional A-5, A-7, A-15, A-18) — 2026-10-03
