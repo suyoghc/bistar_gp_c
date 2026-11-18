@@ -6841,14 +6841,23 @@ in `runs/project_review_2026_11/` of the main worktree, uncommitted until it lan
 dependency-lock drift in the Miniconda base now consists of five packages installed after the
 lock (`brotli` 1.2.0, `curl_cffi` 0.16.3, `imageio-ffmpeg` 0.6.0, `mutagen` 1.48.1,
 `yt-dlp-ejs` 0.8.0) and two upgrades (`gallery_dl` 1.31.10 to 1.32.16, `yt-dlp` 2026.3.17 to
-2026.8.19), and `pypdf` no longer appears, so line B1 as cast no longer makes the lock test pass
-and needs a re-cast. Done the same day by author approval: the annotated local tag
+2026.8.19), on top of `pypdf` 6.14.2 in the user site, so line B1 as cast no longer makes the lock
+test pass and needs a re-cast. Done the same day by author approval: the annotated local tag
 `archive/d59-draft` on the stash commit `5280d1e1`; the checksummed archive of the main
 worktree's untracked, ignored and uncommitted material (1,020 files, 339,726,928 bytes; excludes
 `.venv/`, `__pycache__/` and `poster/`) at `~/Documents/bistar_gp_c_local_archive/2026-11-18/`,
 tarball sha256 `9b1e492ee711189e1db29356cb66c13bd08806196adcc3ce512a8dd0891c8605`, with every
 per-file checksum verified after a full extraction; PR #38 set to Draft and PR #39 retitled (B8).
-Still outstanding: the D64 and D6 addenda, and the re-cast of B1.
+B1 re-cast the same day: the media tools move to a new conda environment `media` (`yt-dlp`
+2026.8.19 with `yt-dlp-ejs` 0.8.0, `curl_cffi` 0.16.3, `brotli` 1.2.0, `mutagen` 1.48.1,
+`gallery-dl` 1.32.16, `imageio-ffmpeg` 0.6.0), and the base returns to the locked state: the five
+added packages are uninstalled and `yt-dlp` 2026.3.17 and `gallery_dl` 1.31.10 reinstalled with
+`--no-deps` (the base `pip freeze` from before the change is saved as
+`base_pip_freeze_before_B1.txt` in the archive folder). The lock's distribution list, every
+RECORD hash included, and its binary-extension aggregate now match exactly; the lock test still
+fails on one `pip freeze` line, `pypdf==6.14.2` in the user site, which the 2026-10-03 cast
+already sends to its own environment and which `graphify` (installed in the base) uses for PDF
+input. Still outstanding: the `pypdf` move, and the D64 and D6 addenda.
 
 
 ## D70: Fix pass 2a, decision-free package contracts from the 2026-09-26 review (SYNTHESIS A-1 to A-4, A-6, A-10, A-11 with A-24, A-13 code half, A-23 package half, hardened Case D producer; optional A-5, A-7, A-15, A-18) — 2026-10-03
