@@ -6883,7 +6883,13 @@ most 2.1e-14 relative, as D70 recorded, with the figure's optional cross-check a
 untracked `runs/viz_unification/delta_table.md` reported unavailable; Cases C, D and E
 byte-identical, Case D still from the suspended archive); the full suite passes (1,359 passed,
 5 skipped, 316 s, load average about 5); and the tex built from the merged sections equals the
-last local build file for file. Nothing is pushed yet.
+last local build file for file. On the author's word the same day, `paper/case-d-mopen` was
+pushed (`6ac1be7`) and `paper/integration` was pushed (`c459dc6`) and opened as Draft PR #47 into
+`main`; PR #22 was closed, its branch kept. Retargeting the six paper PRs to
+`paper/integration`, as decision 7 cast, proved impossible, because GitHub refuses a base branch
+that already contains every commit of the head branch. The author decided instead to leave PRs
+#36-#41 open against `main`, each with a comment pointing to #47, so that they show as merged
+once #47 merges (the expected GitHub behaviour, to be confirmed then).
 
 
 ## D70: Fix pass 2a, decision-free package contracts from the 2026-09-26 review (SYNTHESIS A-1 to A-4, A-6, A-10, A-11 with A-24, A-13 code half, A-23 package half, hardened Case D producer; optional A-5, A-7, A-15, A-18) — 2026-10-03
