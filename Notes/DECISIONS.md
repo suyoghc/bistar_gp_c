@@ -6868,7 +6868,22 @@ user site (now empty), and `~/.local/bin/graphify` links to the new environment'
 so the graphify skill's interpreter detection resolves to `pdf-tools` (checked in a fresh login
 shell, with `graphify` and `pypdf` importing). The base `graphifyy` stays, since the lock lists
 it. `tests/test_m2cr_environment_freeze.py` now passes (23 passed, 1 skipped). B1 is closed.
-Still outstanding: the D64 and D6 addenda.
+The D64 and D6 addenda were committed on `paper/case-d-mopen` as `6ac1be7`, with wording the
+author approved. The six paper branches were then merged with true merges in the order A
+(`9f3d029`), C (`681f6a5`), B (`3099e49`), D (`c93bd35`), E (`eaab385`) and synthesis
+(`ac1b1f4`). At each merge only `Notes/DECISIONS.md` conflicted and the block rule resolved it
+(Case D's D6 and D64 came from the branch; Case E and the synthesis branch kept the integration
+D6), and every gate passed: no conflict markers, no line of the branch's log lost, the expected
+header count, and every other path the branch changed byte-identical to its tip. Post-merge
+gates, run in a fresh local clone of `paper/integration` with the three `toy_elicited` prior-IS
+pools copied in and checked against the archive hashes: the seven case scripts reproduce their
+committed artifacts (E7 and the van Bork targets identical apart from the generation date; the
+Case B `e6_results.json` and `figure_results.json` identical except 2,815 and 8 ESS fields at
+most 2.1e-14 relative, as D70 recorded, with the figure's optional cross-check against the
+untracked `runs/viz_unification/delta_table.md` reported unavailable; Cases C, D and E
+byte-identical, Case D still from the suspended archive); the full suite passes (1,359 passed,
+5 skipped, 316 s, load average about 5); and the tex built from the merged sections equals the
+last local build file for file. Nothing is pushed yet.
 
 
 ## D70: Fix pass 2a, decision-free package contracts from the 2026-09-26 review (SYNTHESIS A-1 to A-4, A-6, A-10, A-11 with A-24, A-13 code half, A-23 package half, hardened Case D producer; optional A-5, A-7, A-15, A-18) — 2026-10-03
