@@ -6809,6 +6809,43 @@ canonical run starts from `main` merged into `paper/case-d-mopen`, with two seed
 and diagnostics; the untracked manuscript sources go to `main` unchanged in a docs-only PR,
 while `tex/` and the Overleaf zip, which `build_tex.py` generates, stay local.
 
+**Update 2026-11-18 (integration started; plan re-cast):** the integration branch
+`paper/integration` was cut from `main` at `f6bd33d` (worktree `bistar_gp_c-integration`) by
+author approval, instead of the `84e9881` that sheet line B9 names, because PRs #45 and #46
+landed after the cast. Its first commit, `f9d3816`, inserts D60-D67 after D58, each copied from
+its owning branch, with per-block hashes checked against a read-only reconciliation; D59 (the
+draft in `stash@{0}`, `5280d1e`) stays out by author decision. An independent plan review
+(Fable 5.1 on the Princeton AI Sandbox) returned ADOPT WITH CHANGES with findings R1-R8. The
+author adopted its amended twelve-step plan on 2026-11-18 and cast its eight recommended
+answers: (1) the six paper branches merge now, ahead of 2b, the Case D canonical run and the E
+and synthesis ledgers, which re-casts the order of sheet line B9 and section 10 step 6, on
+condition that the D64 and D6 addenda land on `paper/case-d-mopen` first; (2) every merge
+resolves `Notes/DECISIONS.md` block by block: an identical block keeps the integration copy, a
+block changed only on the incoming branch takes the branch copy, and a block changed on both
+sides stops the merge for a hand merge recorded here; (3) the Case D canonical run takes place
+on `paper/integration` after the producer PR merges into `main` and `main` merges back, in place
+of `main` merged into `paper/case-d-mopen`; (4) fix pass 2b takes place on `paper/integration`,
+starting with the stage-a fix; (5) numbering: the Case D producer PR on `main` takes D71, the
+integration branch records its changes in place in this entry until `main` merges back, and 2b
+then takes the next free number; (6) `build_tex.py` reads the working tree and stamps
+`git rev-parse HEAD` into each generated header, and the generated tex tree joins the ignore
+file; (7) the branch is pushed only after the post-merge gates pass, the six paper PRs then
+retarget to `paper/integration` (expected to close as merged; GitHub behaviour not yet
+verified), one Draft PR runs from `paper/integration` to `main`, and PR #22 closes unless its
+July CHATLOG lines are wanted; (8) option 2 of review finding F3 (the E7 rerun at 5,000 SIR
+draws) counts as a 2c artifact act with its own re-review, and findings F1, F2, F4 and F5 go to
+the author's cast later without changing the plan. The record of the 2026-11 reviews is stored
+in `runs/project_review_2026_11/` of the main worktree, uncommitted until it lands on `main`:
+`TRIAGE.md`, `fable52_review.md`, `fable52_discussion.md`, and `integration/` with
+`reconcile_report.md` and `plan_review_fable51.md`. Facts changed since the 2026-10-03 cast: the
+dependency-lock drift in the Miniconda base now consists of five packages installed after the
+lock (`brotli` 1.2.0, `curl_cffi` 0.16.3, `imageio-ffmpeg` 0.6.0, `mutagen` 1.48.1,
+`yt-dlp-ejs` 0.8.0) and two upgrades (`gallery_dl` 1.31.10 to 1.32.16, `yt-dlp` 2026.3.17 to
+2026.8.19), and `pypdf` no longer appears, so line B1 as cast no longer makes the lock test pass
+and needs a re-cast. Still outstanding from 2026-10-03: PR #38 to Draft and the PR #39 retitle
+(B8), the checksummed archive of the main worktree's untracked material (about 300 MB), and the
+D64 and D6 addenda.
+
 
 ## D70: Fix pass 2a, decision-free package contracts from the 2026-09-26 review (SYNTHESIS A-1 to A-4, A-6, A-10, A-11 with A-24, A-13 code half, A-23 package half, hardened Case D producer; optional A-5, A-7, A-15, A-18) — 2026-10-03
 
