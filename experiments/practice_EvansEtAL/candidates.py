@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from typing import Dict
 import warnings
 
+from bistar_gp.errors import EvaluationFailure
+
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
@@ -62,6 +64,11 @@ class CandidateModel:
         """
         Robust fitting with differential evolution + multistart L-BFGS-B.
         Practice models have nasty likelihood surfaces.
+
+        Raises EvaluationFailure when no stage returns a finite objective
+        (differential evolution and every restart raised or returned a
+        non-finite value): the box midpoints returned before were not a
+        fitted candidate (2026-11 triage A3, D71).
         """
         n = len(y)
 
@@ -76,17 +83,19 @@ class CandidateModel:
             residuals = y - mu
             return 0.5 * n * np.log(2 * np.pi * sigma2) + 0.5 * np.sum(residuals**2) / sigma2
 
+        best_params, best_nll, last_error = None, np.inf, None
+
         # Stage 1: Differential evolution (global)
         try:
             de_result = differential_evolution(
                 neg_log_lik, bounds, maxiter=200, seed=42,
                 tol=1e-6, polish=True
             )
-            best_params = de_result.x
-            best_nll = de_result.fun
-        except Exception:
-            best_params = np.array([(b[0] + b[1]) / 2 for b in bounds])
-            best_nll = np.inf
+            if np.isfinite(de_result.fun):
+                best_params = de_result.x
+                best_nll = de_result.fun
+        except Exception as exc:
+            last_error = exc
 
         # Stage 2: Multistart L-BFGS-B refinement
         rng = np.random.RandomState(42)
@@ -97,9 +106,16 @@ class CandidateModel:
                 if result.fun < best_nll:
                     best_nll = result.fun
                     best_params = result.x
-            except Exception:
+            except Exception as exc:
+                last_error = exc
                 continue
 
+        if best_params is None:
+            cause = ("every objective was non-finite" if last_error is None
+                     else f"last error: {type(last_error).__name__}: {last_error}")
+            raise EvaluationFailure(
+                f"{self.name}: no optimizer stage succeeded (differential evolution "
+                f"and {n_starts} L-BFGS-B restarts); no fitted candidate exists ({cause})")
         return best_params
 
     def _make_result(self, x_eval, mean, noise_var, params_dict):
