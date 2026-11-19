@@ -230,6 +230,8 @@ test updated to the new signature).
 `runs/mauna_loa_sub150_hmc_*`) are prior-only and MUST be regenerated on the fixed code before any
 paper number is quoted. Panel verdict was NO-GO on the pre-fix branch; GO after this fix.
 
+**Archive addendum (2026-11-18; cast 2026-10-03 as sheet line A1c):** the Consequence above names the cached `.npz` archives and the Mauna runs but not the three February archives of the practice experiment, which `fit_hmc` also produced before this fix: `experiments/practice_EvansEtAL/results_hmc/` (51 JSON files, commit `7026ad6`), `results_diag/` (51, `be54c7f`) and `results_hierarchical/` (155, `7026ad6` and `f6c1d40`), all dated 2026-02-16. All three are withdrawn: no number derived from their HMC draws may be quoted. `results_hmc/` stays in the tree because section 06 reads it, including for the parts that do not depend on the HMC draws; the D64 suspension addendum governs that use until the canonical regeneration replaces the archive. `results_diag/` and `results_hierarchical/` have no reader in any manuscript section or case-study script on the six paper branches (checked 2026-11-18); `run_hierarchical.py` and `submit_hierarchical.slurm` name `results_hierarchical/` only as their output directory. The withdrawal is recorded here and in the D64 addendum, not in `WITHDRAWN_CACHES`: that registry is consulted only by `load_hmc_samples` for `.npz` caches, the Case D consumer `regret_curves_mopen.py` reads the JSON directly, and a registry entry would also flag a corrected rerun written to the same path.
+
 ---
 
 ## D7: prior/posterior predictive sampling (one pipeline, two checks) — 2026-07-02
@@ -5717,6 +5719,907 @@ second correction pass, restoring/applying/dropping stash `5280d1e1…`, D59 wor
 or figure changes, poster-repository work, the captions themselves, Della contact, new
 computation, holdout access, BMS*, Ready, or merge.
 
+## D60: External validation against van Bork, Romeijn & Wagenmakers (2025) — two published closed-form targets reproduced; the aggregation convention is adjudicated, and the M-open signal is in tension with it — 2026-08-11
+
+**Problem:** Every demonstration of the induced-prior / soft-transfer machinery
+to date is self-validating: we generate data from a known process and check that
+the framework recovers it. That establishes internal consistency, not external
+correctness. The full-text ingest of van Bork, Romeijn & Wagenmakers (2025,
+*Synthese*, doi:10.1007/s11229-025-05286-y) surfaced two model probabilities the
+authors derive in closed form from Rosenkrantz-style expected support against a
+"data prior" — independent ground truth, computed with no reference to this
+implementation.
+
+**Decision:** New driver `experiments/vanbork_external_validation.py`
+(local, seconds, no HMC and no GP: the paper supplies the data prior directly,
+so only the scoring half is under test). Outputs to
+`runs/vanbork_external_validation/{results.json, README.md}`.
+
+**Result — both targets reproduced.**
+
+*Target B (completely overlapping models, their beta example):* data prior a
+point mass at s/n = 1/2; M_x: theta ~ beta(50,50) vs M_z: theta ~ beta(2,2).
+Paper's answer 7.96/(7.96+1.50) = 0.841420. Ours converges to **0.841419** by
+tau = 1e-7 (abs err 6.4e-7); our densities at the MLE (7.9589, 1.5000) match
+their quoted 7.96/1.50. This required the HYBRID form
+Z_M = ∫ p_M(theta) exp(-G(theta)/tau) d theta, i.e. a within-model parameter
+prior in place of the Lebesgue/V_ref reference measure — the hybrid listed as an
+OPEN question. Analytic account: Laplace gives Z_M ≈ p_M(theta*)·sqrt(2 pi tau /
+G''(theta*)); both models share the Bernoulli family, so G'' cancels and the
+normalized ratio converges to the ratio of prior densities at theta*. **Their
+published formula is therefore the tau→0, shared-family, point-data-prior
+special case of Z_M.** The hybrid open question now has a passing test.
+
+*Target A (non-overlapping point models):* data prior 0.4 on s/n→0.16, 0.6 on
+s/n→0.19; models theta=0.15 vs theta=0.20; paper's answer 0.4/0.6. Three
+aggregation variants at tau→0:
+- pooled (**shipped default, `normalize_per_draw=False`**): → **0.000/1.000, FAILS**
+- per-atom renormalization then average (paper Eq. 4): → 0.400/0.600, exact
+- shipped `soft_transfer(..., normalize_per_draw=True)`: → 0.400/0.600, exact
+
+**Adjudication and the tension it exposes (OPEN — author call required):** the
+paper defines the prior model probability as the *expected posterior* across the
+data prior (their Eq. 4), which mandates normalizing each data-prior atom into a
+posterior over models before averaging. Under that reading the canonical default
+is wrong and `normalize_per_draw=True` is correct. But the two conventions serve
+different goals and the choice is not free:
+- **Per-draw** matches the expected-posterior derivation, but destroys absolute
+  divergence magnitudes — every draw must spend one full unit of credit, so a
+  draw that no candidate fits votes exactly as forcefully as one that all
+  candidates fit.
+- **Pooled** preserves absolute magnitudes, which is precisely what carries the
+  **M-open inadequacy signal** (uniformly high divergence ⇒ no candidate is
+  adequate) that D-series work and the poster both claim as a distinguishing
+  feature.
+So the framework cannot simultaneously have the paper's expected-posterior
+semantics and the M-open magnitude signal from a single aggregation. This is a
+substantive modeling fork, not a bug, and it is recorded here unresolved.
+
+**Scope note:** no poster figure is invalidated by this entry. All toy and Mauna
+runs use equal-weight GP draws, where the two conventions differ far less than
+in Target A's unequal-mass two-atom construction, and no claim on the poster
+depends on the unequal-mass case. Whether the toy/Mauna posteriors move
+materially under `normalize_per_draw=True` is UNTESTED — that check (E7) should
+precede any published claim that the framework reproduces the paper's targets.
+
+**Alternatives considered:** (a) validate against the paper's coin example using
+the GP scaffold — rejected, the example is binomial with a given data prior, so
+the scaffold has nothing to construct; (b) declare the default convention wrong
+and switch it — rejected, the M-open tension above makes this an author-level
+modeling decision, not a fix.
+
+**Resolution (2026-08-12, author):** the aggregation convention is adopted as
+an explicit evaluation dial alongside tau and occam (the E7 README's candidate
+stance, ratified). Canonical reporting keeps pooled aggregation: absolute
+divergence magnitudes, the M-open signal, and continuity with all ratified
+numbers are preserved, and the shipped normalize_per_draw=False default is
+unchanged. The expected-posterior (Eq. 4) variant is reported alongside wherever
+external correspondence matters; paper Case A reports both, and its section 3
+replaces the fork placeholder with this statement. The kl_forward aggregation
+attribution stays appendix-only (W1). Neither convention is declared universally
+correct. This closes the fork left OPEN above; the adjudication paragraph stands
+as written for the record.
+
+**Precision addendum (2026-08-12, author-approved via the Case A review):** two
+clarifications recorded without altering the body above. (1) The Target A
+table's row (c) reports the shipped `soft_transfer(..., normalize_per_draw=
+True)` semantics: per-draw minimum shift with a single post-pooling
+normalization. That computation differs from row (b)'s per-atom
+renormalization at finite tau and coincides with it in the tau-to-zero
+unique-winner limit the table reports, which is why both rows read
+0.400/0.600. (2) "0.841420" above denotes the authors' closed form evaluated
+at double precision; the paper prints 7.96, 1.50, and approximately 0.84
+(printed-density quotient 0.841438).
+
+## D61: E7 aggregation-convention sensitivity on the validated toy path — winner robust; kl_forward fragility attributed to pooled aggregation — 2026-08-11
+
+**Problem:** D60's external validation showed the shipped pooled soft-transfer
+convention fails van Bork et al.'s Target A while per-draw conventions
+reproduce it, exposing a fork (expected-posterior semantics vs M-open
+magnitudes). Before the JMP special-issue paper can cite either, the movement
+of the paper-facing toy numbers under the conventions had to be measured on the
+VALIDATED estimator path (M2bR banner: `toy_elicited` SIR; no withdrawn HMC).
+
+**Decision:** New driver `experiments/e7_convention_sensitivity.py`: reuses
+`prior_sensitivity_study.py`'s stage-IS machinery verbatim (pooled 3-seed
+prior-IS, SIR n_pred=1000, same seeds/subsample conventions), computes G for
+pw_kl_vcal (W1 primary) and kl_forward (W1 appendix), aggregates under (a)
+pooled/shipped default, (b) shipped normalize_per_draw=True (row-min), (c)
+expected-posterior (van Bork Eq. 4). Output
+`runs/e7_convention_sensitivity/{results.json, README.md}`. Anchor check: the
+pooled pw_kl_vcal tau=1 row reproduces the ratified SIR headline exactly
+(0.183/0.192/0.441/0.184).
+
+**Result:** (1) pw_kl_vcal: Sin+Linear wins under every variant at every tau;
+max movement 0.313 at tau=0.1, 0.072 at tau=1 (0.441 to 0.513), 0.001 at
+tau=10 — qualitative claims convention-robust. (2) NEW ATTRIBUTION: the
+kl_forward fragility recorded in W1/D18 is largely pooled-aggregation outlier
+sensitivity, not intrinsic to the metric: pooled collapses Sin+Linear to
+~0.000 at tau<=1 while expected-posterior yields 0.696 at tau=0.1, exactly the
+raw hard-best-match fraction (696/1000) — the tau->0 identity between
+expected-posterior aggregation and hard-win rates holds by construction and
+passed numerically. (3) Fork (OPEN, author): pooled keeps M-open magnitudes
+and continuity with all ratified numbers but fails van Bork Target A;
+expected-posterior matches their Eq.-4 semantics and rescues kl_forward but
+spends exactly one unit of credit per draw. Candidate paper stance recorded in
+the run README: treat the aggregation convention as an explicit evaluation
+dial alongside tau and occam.
+
+**Status:** E7 CLOSED as an experiment; D60 fork remains OPEN pending author
+call. Paper Case A blocked only on that call.
+
+**Status update (2026-08-12):** the D60 fork is RESOLVED (see the D60 Resolution
+addendum: aggregation adopted as an explicit evaluation dial; pooled canonical);
+Case A is unblocked and its placeholder is replaced.
+
+## D62: Case B Occam dial and E6 nesting check — 2026-08-11
+
+**Problem:** Case B needed a regenerable E4 figure that separated the D17
+estimator and `occam` changes, plus an E6 numerical check of the claim that an
+encompassing model cannot have a worse best achievable divergence than either
+of its exact restrictions. The local untracked `runs/viz_unification/` directory
+contains figures, logs, `delta_table.md`, `ess_by_stage.md` diagnostics, and
+extracted legacy scripts, so it cannot serve as the authoritative committed data
+source and the figure arms must be recomputed. When `delta_table.md` is present,
+the figure script parses it and enforces a 0.003 same-seed cross-check gate. The
+canonical visualization box also starts the sinusoid amplitude at 0.01, while
+exact Linear nesting requires A=0.
+
+**Decision:** Added `experiments/occam_dial_figure.py` and
+`experiments/e6_nesting_monotonicity.py`, both writing to
+`runs/occam_dial/`. Both scripts build the `informative`-configuration,
+MAP-based averaged GP through `bistar_viz/scripts/_viz_spaces.py` at n=50,
+with data seed 42, 80 evaluation points, and primary metric `pw_kl_vcal`.
+The figure runs the p1 pure-Laplace `occam=True`, p2 IS `occam=True`, and p3 IS
+`occam=False` arms at τ=0.3, IS seed 0, `n_is=40000`, and five seeded
+perturbations per start. Its 0.003 absolute-probability anchor tolerance provides
+a same-seed reproduction gate for three-decimal source anchors, not an accuracy
+claim. The p1 arm calls `laplace_log_Z_Mx` directly to retain each model's
+`n_clipped` and `converged` diagnostics and asserts that those direct log Z_M
+values match the arm values. E6 calls
+`_multistart_G_optima`, `compute_G_at_params`, and `is_log_Z_Mx` from
+`bistar_gp/laplace_evidence.py`; it does not reimplement Ḡ. E6 extends
+only the encompassing amplitude boundary to A=0, seeds its optimizer with
+the exact restricted optima, and uses seeds 0, 1, and 2 with `n_is=100000` per
+seed over 161 log-spaced temperatures. One IS call per model per seed supplies
+the raw sweep, and the package reference-volume helper supplies the
+`occam=True` sweep. Given the exact embeddings and mean-only divergence, each
+min-Ḡ inequality follows analytically from box containment; the retained check
+confirms the implementation reproduces that consequence and quantifies the
+margins. The min-Ḡ tolerance equals 10^-8, with a 10^-10 exact-embedding check.
+
+**Alternatives considered:** Reading `delta_table.md` or the local logs as the
+figure data source was rejected because those artifacts remain local and
+untracked; the table provides only the machine-dependent 0.003 same-seed
+cross-check when present. Comparing p1 directly with p3 as a pure `occam`
+ablation was rejected because the arms also
+change the Z_M estimator; p2 isolates the estimator step. Retaining the
+0.01 amplitude cutoff for E6 was rejected because it excludes the stated
+A=0 restriction. Reimplementing the divergence or optimizer was rejected
+in favor of the package machinery required by the work order.
+
+**Result:** `runs/occam_dial/figure_results.json` reproduces the n=50 induced
+model priors: p1 Linear 0.534, Sinusoidal 0.076, Sin+Linear 0.382, Quadratic
+0.008; p2 Linear 0.507, Sinusoidal 0.020, Sin+Linear 0.465, Quadratic 0.008;
+p3 Linear 0.007, Sinusoidal 0.001, Sin+Linear 0.992, Quadratic 0.000. At p2,
+ESS implies SE(log Z) of approximately 0.008, 0.017, and 0.038 nats for Linear,
+Sin+Linear, and Sinusoidal, respectively, with probability SE approximately
+0.005. Every p1 model has `n_clipped=0` and `converged=True`. The p1-to-p2
+estimator change narrows the Linear versus Sin+Linear gap, and the p2-to-p3
+convention change provides the robust magnitude change. D17's legacy 0.934 and
+0.693 values remain explicitly labeled as recorded legacy findings and are not
+recomputed by the new scripts.
+
+E6 confirms the analytic box-containment consequence and quantifies
+restricted-minus-encompassing margins of 2.379 nats for Linear and 2.501 nats
+for Sinusoidal. Under `occam=False`, neither pair crosses for seeds 0, 1, or 2.
+Under `occam=True`, the Linear crossing occurs at τ=0.295, 0.295, and 0.296;
+the seed-0 bracket is [0.282, 0.299], the per-seed spread is [0.295, 0.296],
+and the ESS-implied one-SE shift interval is [0.295, 0.296]. Its bracket delta
+swing of 0.354 nats exceeds the approximately 0.012-nat SE, supporting the
+three-decimal crossing. The Sinusoidal crossing occurs at 1.484, 1.584, and
+1.382 and supports only τ ≈ 1.5; the seed-0 bracket is [1.413, 1.496], the
+per-seed spread is [1.382, 1.584], and the ESS shift roots are [1.392, 1.563].
+The enclosing grid-and-seed uncertainty interval is about τ 1.33 to 1.59.
+Crossing resolution is set by the larger of grid spacing and
+Monte Carlo error. The empirical content comprises these margins and finite-τ
+crossings. The REVIEW_AND_VET resolution text is mirrored into the committed
+`runs/occam_dial/README.md` because `kb/` is gitignored. The figure remains
+below the 2 MB limit. Exact rerun commands:
+`python experiments/occam_dial_figure.py` and
+`python experiments/e6_nesting_monotonicity.py`.
+
+**Review outcome (2026-08-11):** §4 four-model protocol complete (Codex gpt-5.6-sol xhigh; Opus 5; Gemini 3.1 Pro via author-directed API substitution; Kimi K3 author-run pending) — round-1 REVISE with 11 cross-verified findings (0 refuted), all RESOLVED via fix pass c15a65f plus a bounded micro-fix for two hunk-introduced defects (driver-verified mechanically; no third review round per rule 4); full record runs/occam_dial/reviews/VERDICTS.md; author adjudications open: F2/NEW-1 and O2 statistical sign-offs, kb force-add variant, Kimi round.
+
+## D63: Case C nested slope constraint under BMS* and PSIS-LOO — 2026-08-11
+
+**Problem:** Case C needed a direct mirror of Haaf, Klaassen, and Rouder's
+parameter-region comparison, not the toy example's cross-family nesting. The
+comparison had to use the constraint-consistent, data-elicited $N=20$ toy
+instance and place a free Sin+Linear candidate beside an otherwise identical
+$b\geq0$ candidate. BMS* had to follow the validated `toy_elicited` SIR path
+under both pooled and expected-posterior aggregation, while PSIS-LOO had to fit
+Bayesian versions of the same pair on identical observations. The original
+directional claim could not determine how the comparison came out.
+
+**Decision:** Added `experiments/haaf_nested_constraint.py`, which writes
+`runs/haaf_nested_constraint/{results.json,README.md}`. The canonical command
+`python experiments/haaf_nested_constraint.py` uses
+`generate_toy_data()` defaults ($N=20$, data seed 42, true $b=0.25$, noise
+standard deviation 0.5). Both candidates call
+`bistar_gp.candidates.CandidateModel._fit_mle`; they receive four shared base
+starts and share all bounds except the lower slope bound, unrestricted for the
+free candidate and zero for the restricted candidate. The restricted fit also
+receives the free solutions, clipped at $b=0$ when necessary, and each
+candidate's selection pool includes the other candidate's feasible vectors.
+This deliberate asymmetric warm start and candidate pooling forces exact
+equality at shared optima instead of turning optimizer noise into a gap. A
+common log-sigma bound of [-10, 5] prevents exploratory underflow. Each shared
+$\psi$ receives a fresh fit, so the per-draw free-slope sign can account for
+the BMS* gap.
+
+The BMS* arm imports `prior_sensitivity_study.py`, loads the local
+`toy_elicited` prior-IS caches for seeds 0, 1, and 2, and calls the validated
+stage-IS machinery with SIR seed 42 and `n_pred=1000`. It imports the pooled
+and expected-posterior aggregations from
+`e7_convention_sensitivity.py`, reports $\tau\in\{0.1,0.3,1,3,10\}$, uses
+`pw_kl_vcal` as the primary metric, and confines `kl_forward` to an appendix
+stress table. Candidate-parameter priors do not enter BMS*.
+
+The LOO arm alone uses weakly informative priors: $A\sim$ HalfNormal(5),
+$\omega\sim$ LogNormal(0, 0.7), $\phi\sim$ Uniform($-\pi,\pi$),
+$c\sim$ Normal(0, 5), and $\sigma\sim$ HalfNormal(2); the free candidate uses
+$b\sim$ Normal(0, 5), while the restricted candidate uses $b\sim$
+HalfNormal(5). Pyro NUTS runs sequential chains with seeds 20260811 and
+20260812, each with 1,000 warmup iterations and 1,000 retained draws, target
+acceptance probability 0.90, and maximum tree depth 8. Every chain initializes
+deterministically at the common observed-data MLE through `init_to_value`.
+ArviZ computes pointwise PSIS-LOO. The $2\times10^{-7}$ structural G gates
+guard machinery regressions rather than empirically testing nesting;
+cross-machine artifact tolerances equal 0.005 for probabilities and the slope
+fraction, 0.25 elpd for each LOO estimate, and 0.25 elpd for the paired
+difference.
+
+**Alternatives considered:** Drawing new data was rejected because it would
+break the binding between the $N=20$ observations, their data-elicited GP
+prior, and the validated M2bR basis. Changing `bistar_gp/` was rejected because
+the existing protected `_fit_mle(..., bounds=...)` hook supplies the needed
+constraint. Fitting each candidate only once to the observations was rejected
+because the positive observed-data slope would make the two predictions
+identical and could not produce the required per-$\psi$ slope diagnostic.
+Reimplementing the SIR or aggregation formulas was rejected in favor of the
+required imports. The work order does not fix a chain count; the driver prompt
+allowed a single chain at this scale; two seeded chains were used instead to
+obtain rank-normalized $\widehat R$ diagnostics. A figure was omitted
+because the table and slope-sign count contain the full comparison.
+
+**Result:** The pooled prior-IS ESS equals 4,464.53, and the 1,000 SIR rows
+contain 883 unique cached draws. The free best-fit slope falls below zero on
+1/1,000 rows, a fraction of 0.001. The remaining 999 rows have identical
+primary G values for both candidates because the same feasible vector is
+re-evaluated. On the one negative-slope row, restricted minus free G equals
+0.000360. The one-sided ordering follows by set inclusion; the runtime gates
+record zero machinery-regression violations.
+
+At $\tau=1$, both aggregation conventions assign 0.500 to each candidate.
+The free-minus-restricted probability gap remains smaller than $10^{-5}$ at
+every $\tau$ under both conventions and comes entirely from the single
+negative-slope draw. Its monotone contraction with $\tau$ follows
+deterministically from Boltzmann aggregation, not from a measured temperature
+effect. The restricted candidate cannot exceed the free candidate because the
+restricted region is a subset; only the gap magnitude is empirical.
+
+PSIS-LOO reports `elpd_loo=-13.074` (SE 3.458, `p_loo=5.343`) for the free
+candidate and `elpd_loo=-12.661` (SE 3.594, `p_loo=5.169`) for the restricted
+candidate. The restricted-minus-free difference equals 0.413 with paired SE
+0.256, computed with `ddof=0` to match the ArviZ convention. Both NUTS fits
+have zero divergences; maximum rank-normalized
+$\widehat R$ equals 1.003 free and 1.002 restricted, and minimum bulk ESS
+equals 1,004 and 1,638. The free maximum Pareto $k$ equals 0.564 with no
+warning. The restricted maximum equals 0.718, and ArviZ flags one observation
+above its 0.697 good-$k$ threshold. Because both candidates' chains initialize
+at the same MLE and sampled-grid aliases occur near $\omega=4.939$ and 6.999,
+the $\widehat R$ and ESS values support within-mode convergence only.
+
+The difference is directionally inconclusive: its magnitude is smaller than
+twice its paired SE, the constrained estimate carries a Pareto-$k$ warning,
+and the paired SE covers data-level pointwise variability only, without MCMC
+error. Haaf, Klaassen, and Rouder report this kind of null-to-inconclusive LOO
+difference as the failure mode for a satisfied nested constraint.
+
+The two slope priors coincide up to normalization on $b>0$, so LOO has no
+structural contrast wherever negative-slope posterior mass is negligible. The
+artifact's own full-data local Gaussian diagnostic gives posterior SD
+0.0129506 for $b$, places the boundary 19.4028 SDs away, and gives a Gaussian
+left-tail probability of $3.65\times10^{-84}$. This local approximation
+supports the reading that the constraint binds only where the locally
+approximated posterior carries negligible mass. It does not prove that the
+global posteriors or leave-one-out fold posteriors are exactly identical, and
+it does not establish that the entire observed gap comes from estimator
+noise. Case C therefore records a null-to-inconclusive LOO comparison and an
+effective BMS* tie without a directional claim.
+
+**Review outcome (2026-08-11):** §4 four-model protocol complete (Codex gpt-5.6-sol xhigh REVISE-3; Opus 5 fresh-agent REVISE-10; Gemini 3.1 Pro package-only APPROVE-0 via author-directed API substitution; Kimi K3 author-run pending) — 13 collated findings, OC1 REFUTED as stated in adversarial cross-check with its narrowed core implemented, all others confirmed and RESOLVED via fix pass 0ce03ba plus a bounded micro-fix for one S4 naming defect (driver-verified; no third round per rule 4); notable outcome corrections: LOO direction reported as inconclusive (the null-to-inconclusive difference matches the Haaf/Klaassen/Rouder failure mode), BMS* one-sidedness stated as structural, table at declared-tolerance precision; full record runs/haaf_nested_constraint/reviews/VERDICTS.md; author adjudications open: OC1' LOO interpretation, kl_forward documentation + precision policy, arviz manifest scope note, Kimi round.
+
+## D64: Case D synthetic distinguishability calibration and MAP-conditional deviation localization — 2026-08-11
+
+**Problem:** Case D needed per-trial deviation curves and an honest M-open
+calibration argument from the existing practice-law artifacts, without rerunning
+`experiments/practice_EvansEtAL/run.py`, changing its artifacts, or starting new
+HMC. Inventory found no deviation implementation and no files under the practice
+data directory. The 50 `results_hmc/` subject files therefore concern only
+`generate_demo_data(n_subjects=50, seed=42)`, with 25 power-generated and 25
+exponential-generated series. Both generating forms appear in the fitted pair,
+so the cohort supports a distinguishability and mimicry study plus
+correct-specification reference levels for stored divergence magnitudes, not a
+real-Evans-data analysis or a direct M-open misspecification finding. Direct
+inspection also corrected one work-order shorthand: the stored and regenerated
+training series range from 20 to 79 trials rather than containing 20 trials
+each. Stored practice G values use a 50-point uniform grid over every subject's
+full series, while the reconstructed curves use integer trials 1 through 20.
+For the longest subjects, those trials span 24.4% of the full continuous trial
+range, so linkage to the aggregate G results stays within the shared early
+region.
+
+**Decision:** Added `experiments/regret_curves_mopen.py`, which writes
+`runs/regret_curves_mopen/{results.json,README.md,regret_curves.png}`. It prefers
+the read-only `experiments/practice_EvansEtAL/results_hmc/` directory, imports
+`generate_demo_data` and the Power and Exponential classes from the practice
+experiment rather than copying them, and evaluates stored fitted parameters on
+the regenerated full subject series before any deviation calculation. Data seed
+42 regenerates the observations. Subject `i` receives posterior-function seed
+`20260811 + i`, with 100 latent conditional GP draws and no added observation
+noise. The common evaluation grid contains trials 1 through 20. At each trial,
+the solid curve reports the MAP-conditional posterior expected absolute
+deviation of the latent function,
+`E_{f|y,eta_hat}[abs(f(t) - mu_theta(t))]`; its band spans the pooled 10th and
+90th percentiles across 25 subjects times 100 draws within each truth cohort,
+so it describes dispersion rather than a confidence interval for the mean. A
+dashed overlay reports the mean-based plug-in
+`abs(E[f(t)|y,eta_hat] - mu_theta(t))`, aggregated over the same 25 subjects.
+Jensen's inequality orders the exact estimands: the exact latent-draw deviation
+is no smaller than the plug-in deviation per subject, candidate, and trial. The
+finite 100-draw Monte Carlo estimates carry Monte Carlo error and may invert
+locally, as at trial 1 for the Power candidate under Power truth (116.333 versus
+116.506) and Exponential truth (131.415 versus 131.572). Unequal inflation
+changes the candidate gap trial-dependently, which motivates reporting both
+estimands.
+The formal limits-note equation and the Case D work order specify an absolute
+difference; a chat-derived Q&A in the same note says squared difference, and
+the binding absolute form takes precedence.
+
+`run.py` loops through practitioner, moderate, and agnostic configurations. It
+sets the single `gp_hyperparameters` block only while that block remains empty,
+immediately after a successful configuration MAP fit and before the HMC branch.
+All 50 source files contain every configuration's diagnostics, so their stored
+lengthscale, outputscale, and noise values come from the first, practitioner MAP
+fit even in `results_hmc/`. The subject JSONs do not retain HMC hyperparameter
+draws. The deviation script therefore rebuilds the practitioner RBF GP at that
+stored point and performs exact conditioning with normalized-variance jitter
+`1e-6`; it neither refits hyperparameters nor reconstructs HMC trajectories.
+Because the limits-note target averages posterior mean functions over
+hyperparameter draws, neither MAP-conditional reconstruction equals that
+target. Reporting both the latent-draw expected deviation and the posterior-mean
+plug-in makes the mean-versus-draw substitution explicit next to the MAP-versus-
+HMC limitation.
+
+The stored `bistar_G_diagnostics` values are aggregated without recomputing G.
+Those artifacts predate W1 and contain `pw_nll`, `pw_mse`, and
+`pw_hellinger`, not `pw_kl_vcal`. Legacy `pw_nll` weights by candidate fitted
+noise variance, while `pw_kl_vcal` weights by GP variance; `pw_mse` lies closer
+on that axis. The script verifies the candidate-specific affine identity between
+stored `pw_nll` and `pw_mse`, records the full temperature-scale diagnostic, and
+aggregates the tau-free `pw_nll` `raw_draw_wins` statistic for all three
+configurations. `docs/paper-sie-jmp/06-case-D-mopen-calibration.md` states these
+limits, separates F1 scaffold representability from F2 intrinsic mimicry, and
+positions the result against Navarro, Pitt, and Myung (2004), Evans et al.
+(2018), and Averell and Heathcote (2011).
+
+**Alternatives considered:** Using `results/` was rejected because the work
+order prefers the HMC-mode artifacts. `results_diag/` and
+`results_hierarchical/` were not consulted because no documented need emerged.
+Rerunning the practice scripts, refitting candidate or GP parameters, and
+starting HMC were rejected by scope and because the required reconstruction
+uses frozen artifacts. A squared deviation was rejected because it conflicts with
+the binding formula. A normalized 20-point refit was rejected in favor of
+conditioning on every regenerated observation and evaluating only the common
+20-trial grid. The optional transform-space E8b module was deferred by the
+driver; no `experiments/e8b_transform_space.py` was created, and the section
+retains an explicit `[E8B-PLACEHOLDER]` block for later commissioning or clean
+excision.
+
+**Result:** The fidelity gate recomputed 100 stored candidate BIC log marginal
+likelihoods from regenerated observations and stored parameters. Maximum and
+mean absolute errors equal `5.684e-14` and `5.116e-15`, below the asserted
+`1e-8` tolerance. The minimum posterior-covariance eigenvalue across subjects
+equals `-2.400e-15`, within the `1e-8` numerical PSD tolerance. Two consecutive
+runs produced identical SHA-1 values for all three outputs. The figure occupies
+182,245 bytes, below 2 MB.
+
+For power-generated curves, the MAP-conditional posterior expected absolute
+deviation averages 21.383 for Power and 20.681 for Exponential across 20 trials;
+the mean-based plug-in averages 17.638 and 17.325. Their trial-1 peak gaps equal
+33.782 and 34.052. For exponential-generated curves, the corresponding
+MAP-conditional means equal 35.587 and 14.855, and the plug-in means equal
+33.901 and 10.764; their trial-1 peak gaps equal 91.452 and 92.890. The
+MAP-conditional early-gap shares remain 70.0% and 82.2% through trials 5 and 10
+under power truth, versus 41.7% and 77.7% under exponential truth. The plug-in
+shares equal 63.3% and 74.0%, versus 40.0% and 75.0%. Both estimands therefore
+give a consistent descriptive localization under the stored practitioner-MAP
+scaffold.
+
+The aggregated stored practitioner `pw_nll` means equal 4.799 for Power and
+4.775 for Exponential under power truth, versus 5.003 and 4.582 under
+exponential truth. Synthetic exponential subject 25 supplies a particularly
+clear mimicry example: 4.881 for Power and 4.852 for Exponential, an absolute
+difference of 0.029. These known-truth levels show what a future absolute
+inadequacy calibration must condition on; Case D sets no rejection threshold.
+Every one of the 300 stored `mean_G` pairs satisfies
+`pw_nll = 0.5*log(2*pi*sigma_theta^2) + pw_mse/(2*sigma_theta^2)`, with maximum
+absolute error `1.78e-15`; the divisor `2*sigma_theta^2` ranges from 743 to
+7,161. Shared-temperature probability magnitudes therefore do not support a
+cross-metric confidence contrast. No temperature on the stored 15-point grid
+closes the gap: at `tau=0.1`, the power-cohort `pw_nll` medians are 0.581, 0.569,
+and 0.557 for practitioner, moderate, and agnostic, respectively, while the
+all-subject practitioner `pw_mse` median remains 0.987 at `tau=31.6`. On the
+tau-free practitioner `pw_nll`
+diagnostic, the true family wins 974/2,500 draws (39.0%) under power truth, with
+9/25 subject majorities, versus 2,467/2,500 (98.7%) and 25/25 under exponential
+truth. Moderate gives 39.9% with 8/25 versus 94.6% with 25/25; agnostic gives
+41.5% with 9/25 versus 92.1% with 25/25.
+
+Exactly one practitioner-MAP RBF reconstruction appears in this branch, and all
+three stored configurations use RBF kernels. The early-trial localization
+cannot identify whether the `pw_nll` asymmetry comes from F1 representability,
+F2 mimicry, metric behavior, or sampling noise. It remains consistent with the
+tau-free asymmetry only within the shared early-trial region.
+
+The bytewise inventory hash for every file under
+`experiments/practice_EvansEtAL/` remained
+`528fea7d955841cf496883df4f96bb85b8357b4a` before and after execution.
+
+**Review outcome (2026-08-12):** §4 four-model protocol complete (Codex gpt-5.6-sol xhigh REVISE-4; Opus 5 fresh-agent REVISE-11; Gemini 3.1 Pro package-only APPROVE-0 via author-directed API substitution; Kimi K3 author-run pending) — 14 collated findings; two-reporter clusters F-D1 (pw_nll/pw_mse contrast a unit artifact; exact affine identity; thesis re-carried by tau-free raw_draw_wins 39.0/39.9/41.5 vs 98.7/94.6/92.1 percent) and F-D2 (estimand relabeled MAP-conditional; posterior-mean plug-in added, asymmetry survives) plus DC4/DO5/DO8/DO9/DO11 confirmed and fixed in c57a70e; DO2/DO3/DO6/DO7/DO10 REFUTED in adversarial cross-check and logged; two hunk-introduced S3s fixed by bounded micro-fix with driver mechanical verification (no third round per rule 4); full record runs/regret_curves_mopen/reviews/VERDICTS.md; author adjudications open: F-D1/F-D2 statistical sign-offs, F-D3 framing, Kimi round.
+
+**Suspension addendum (2026-11-18; cast 2026-10-03 as sheet line A1, sequenced by D69's 2026-11-18 update):** the comparison layer of section 06 is suspended. Its stored values come from `experiments/practice_EvansEtAL/results_hmc/` (commit `7026ad6`, 2026-02-16), which `fit_hmc` produced before the D6 fix (`9f75fb0`, 2026-07-02), so the HMC draws behind it sampled the prior (SYNTHESIS A-20 and B-0; see the D6 archive addendum). Two independent regenerations on the corrected sampler in September changed the `pw_hellinger` winner labels from 22/28, 32/18 and 27/23 to 5/45, 4/46 and 5/45, and the same-winner counts from 39/49/48 to 46/48/49 (D69). Suspended until the canonical regeneration replaces them: the winner-label table; the same-winner counts; the tau = 0.1 medians 0.581, 0.569 and 0.557 and the 0.987 at tau = 31.6; the exponential-truth draw wins of 98.7, 94.6 and 92.1 percent, with the raw draw wins quoted in this entry's review outcome; the cohort mean-G table and the values derived from it (4.881, 4.852 and 0.029; 4.582 to 4.858); the asymmetric-recovery conclusions; and the sentences in other sections that rest on them (the known-truth reference material in sections 01 and 08, the asymmetric distinguishability in section 08, and the worked instance in section 02). Not suspended, because the September regenerations left them unchanged: the BIC baseline, including its 41 of 50, and the MAP-conditional regret reconstruction; the affine identity holds per draw by construction. Endpoint (option iii): regenerate the comparison layer on the corrected sampler, with `pw_kl_vcal` added to the legacy metrics (A1a, reported either way) and two seeds with per-subject, per-configuration sampler diagnostics in strict mode (A1b), from a commit that contains fix pass 1, fix pass 2a and the Case D producer PR (D71). The run takes place on `paper/integration` after D71 merges into `main` and `main` merges back, writes to a new output directory with an explicit `--seed` (`submit_hmc.slurm:20` writes to `results_hmc/` and passes no seed), and records its seed and the `nuts_e1` sampler in every subject JSON. The section 06 tables and the dependent sentences are then rewritten from the new artifact and re-reviewed, and this entry is updated in place. If the schedule cannot hold, the comparison layer is withdrawn (option i), not relabeled as prior-conditioned (option ii).
+
+## D65: Case A external-validation section with the aggregation fork preserved — 2026-08-12
+
+**Problem:** The Case A manuscript stub needed a self-contained external
+validation argument from the finalized D60 and D61 artifacts: an honest mapping
+to van Bork, Romeijn, and Wagenmakers; the six-decimal completely-overlapping
+target and its Laplace explanation; the non-overlapping target's dependence on
+aggregation; the validated toy-path sensitivity; the appendix-only
+`kl_forward` attribution; and a multi-parameter reach paragraph. The author has
+not yet selected a canonical aggregation convention, and the writing task did
+not authorize new compute or artifact regeneration.
+
+**Decision:** Replaced the stub in
+`docs/paper-sie-jmp/03-case-A-external-validation.md` with a mapping table and
+the full Case A account. Numerical claims use
+`runs/vanbork_external_validation/{results.json,README.md}` and
+`runs/e7_convention_sensitivity/{results.json,README.md}`, generated by
+`experiments/vanbork_external_validation.py` and
+`experiments/e7_convention_sensitivity.py`. The section keeps the author-decision
+placeholder on a standalone line at the canonical-convention slot. Surrounding
+prose states both sides of the fork and labels the E7
+evaluation-dial framing as a candidate rather than a decision. It treats
+`pw_kl_vcal` as primary and confines `kl_forward` to an appendix attribution.
+
+The multi-parameter paragraph follows W4: it labels
+`runs/viz_unification/p3_priors_canonical/` as an
+`informative`-configuration, MAP-based methods-validation check. Because that
+directory remains local and untracked, its 0.992 Sin+Linear value at \(n=50\)
+and values at or above 0.93 across evaluated \(n\) use the committed
+D17-recorded citation pattern and name the regenerating `bistar_viz` scripts
+explicitly. They do not enter the validated `toy_elicited` SIR headline.
+
+**Alternatives considered:** Selecting pooled aggregation was rejected because
+it would preempt the author and would leave Target A unresolved. Selecting
+expected-posterior aggregation was rejected because it would also preempt the
+author and would discard the absolute divergence magnitudes used for the
+M-open signal. Treating the untracked viz-unification directory as committed
+numerical authority was rejected in favor of the authorized D17-recorded
+provenance exception. New computation, rerunning either finalized experiment,
+and modifying scripts or run artifacts were all rejected by the Case A work
+order.
+
+**Result:** The section reports Target B's progression from 0.792607 to
+0.841419 against their closed form evaluated at double precision (0.841420 to
+six decimals), with absolute error against that evaluated limit
+\(6.4\times10^{-7}\), and connects the agreement to cancellation of shared
+Bernoulli curvature in the hybrid Laplace approximation. It reports Target A
+as 0.000/1.000 under pooled aggregation versus the exact 0.400/0.600 under both
+per-draw routes, with convergence by \(\tau=10^{-4}\). On the validated
+`toy_elicited` SIR path, it records the 0.183/0.192/0.441/0.184 pooled anchor,
+the 0.31, 0.072, and 0.001 maximum movements, and the appendix-only
+`kl_forward` change from approximately 0.000 under pooled aggregation to 0.696
+under expected-posterior aggregation, equal to 696/1000 hard wins at the
+reported precision. This branch commits D60 and D61, which record the finalized
+compute provenance, together with D65. No experiment or artifact-generation
+command ran during the original section-drafting pass. The review fix pass ran
+the single authorized E7 verification; its regenerated JSON differed only in
+the generated-date field, and the saved artifact was restored afterward.
+
+**Review outcome (2026-08-12):** §4 four-model protocol complete (Codex gpt-5.6-sol xhigh REVISE-6; Opus 5 fresh-agent REVISE-11; Gemini 3.1 Pro package-only REVISE-1; Kimi K3 author-run pending) — 15 collated findings; F-A1 (consistency-check attribution; 3 reporters) and F-A2 (rowmin/Eq.-4 distinction; 2 reporters) plus 7 confirmed singles fixed in 7b653cf; AC1/AC3/AC4/AC6/AO4/AO5 REFUTED in adversarial cross-checks and logged, the checks endorsing the author-record policy (D60/D61 byte-untouched; proposed D60 addendum on the author ledger); three hunk-introduced S4 cosmetics fixed by bounded micro-fix with driver mechanical verification (no third round per rule 4); [FORK-DECISION-PLACEHOLDER] intact throughout; full record runs/vanbork_external_validation/reviews/VERDICTS.md; author adjudications open: the D60 fork itself, the D60 addendum proposal, author-record policy ratification, Kimi round.
+
+**Author-directed addition (2026-08-12, post-sign-off):** the section gains an explicit claim/counterclaim framing (their expected-support construction subsumed as the zero-temperature hybrid-Z_M special case; the counterclaim that Eq.-4 per-draw semantics forecloses the M-open magnitude signal, priced by the aggregation dial); no numbers added.
+
+**Author-directed addition (2026-08-12, post-sign-off): figure.** experiments/vanbork_figure.py renders runs/vanbork_external_validation/target_figure.png from results.json (plotted-equals-artifact asserted; no recomputation); embedded in section 3.3.
+
+## D66: Synthesis sections integrate the four case studies — 2026-08-12
+
+**Problem:** The synthesis branch still contained stubs for the Introduction,
+Machinery, and Discussion after the four case sections were completed on their
+separate branches. The assembled manuscript needed those sections to adopt the
+case prose conventions, expose the author-resolved evaluation dials, carry the
+Case B-to-C nesting logic into the general account, and state the Case D scale
+and calibration limits without copying case results or treating knowledge-base
+files as numerical authority.
+
+**Decision:** Replaced the stubs in `docs/paper-sie-jmp/01-intro.md`,
+`docs/paper-sie-jmp/02-machinery.md`, and
+`docs/paper-sie-jmp/08-discussion.md` with final manuscript prose under the
+frozen notation in `docs/paper-sie-jmp/00-notation.md`.
+
+Section 1 frames the contribution for the third JMP model-evaluation special
+issue, treats data priors as the through-line from the foundational JMP papers,
+connects the construction to Bonifay and Cai's fit-propensity program, makes the
+three evaluation dials the unifying contribution, and previews the four cases
+with Case C's null and Case D's synthetic-only scope stated directly. Section 2
+develops the data prior, projection and induced priors, \(Z_M\), soft transfer,
+aggregation, and metric roles. It adds a numbered containment remark: for
+\(M_r\subset M_e\), best-instance divergence orders the encompassing candidate
+no worse on every shared pattern, so no listed table-path aggregation can favor
+the restriction at any \(\tau\); restriction credit belongs to the
+reference-measure side controlled by `occam`. It also records the D60
+Resolution, retains W1 and the D61 `kl_forward` attribution, and adds the Case D
+scale-invariance reporting rule. Section 8 revisits the dials, states the Case
+B-to-C bridge, preserves M-open calibration as open while recognizing Case D's
+known-truth reference material, upgrades hybrid \(Z_M\) with the Case A Target B
+test, distinguishes BMS*-GP from elpd and PSIS-LOO using Case C, records the
+verification protocol, and treats F1 and F2 as scope conditions.
+
+The verification paragraph reflects the completed case review archives. All
+four reviewer rounds are recorded for every case, with the fourth, Kimi K3, run
+at the author's direction on the same round-1 packages; the findings,
+refutations, fixes, and author sign-off records are committed under
+`runs/<case>/reviews/` in this repository. D65 records the provenance exception
+for the D17-recorded local methods-validation reach check, which Section 8
+states explicitly in the same terms.
+
+The case sections remain on their source branches and are cited at their
+assembled-manuscript paths: Case A from `paper/case-a-vanbork` at
+`docs/paper-sie-jmp/03-case-A-external-validation.md`; Case B from
+`paper/case-b-occam-dial` at
+`docs/paper-sie-jmp/04-case-B-occam-dial.md`; Case C from
+`paper/case-c-haaf` at
+`docs/paper-sie-jmp/05-case-C-nested-constraints.md`; and Case D from
+`paper/case-d-mopen` at
+`docs/paper-sie-jmp/06-case-D-mopen-calibration.md`. Synthesis footnotes name
+the case-generating `experiments/` scripts, `runs/` artifacts, and decision
+entries. Knowledge-base paths support arguments only.
+
+**Alternatives considered:** Re-quoting case headline values was rejected in
+favor of a zero-new-empirical-numbers policy. Copying the absent case files onto
+the synthesis branch was rejected because final assembly supplies sections 3
+through 6 from their case branches. Choosing a new canonical aggregation or
+`occam` convention was rejected in favor of the D60 Resolution and the frozen
+defaults. Treating the local `kb/` vault or an uncommitted visualization path as
+numerical authority was rejected; cross-branch case artifacts and decision
+records provide the empirical provenance.
+
+**Result:** The three synthesis sections contain no re-quoted empirical
+estimate. Their only numerals belong to section and equation references,
+notation, decision identifiers, and bibliographic metadata. All requested
+case-derived additions appear in the designated sections, provenance footers
+name the supporting scripts, artifacts, and decisions, and D66 was appended at
+the end of the decision log. No experiment, artifact-generation command,
+network request, or state-mutating git operation ran during the synthesis pass.
+
+**Review outcome (2026-08-12):** §4 protocol complete with ALL FOUR reviewers live in round 1 (Codex gpt-5.6-sol xhigh REVISE-5; Opus 5 fresh-agent REVISE-12; Gemini 3.1 Pro APPROVE-0; Kimi K3 APPROVE-2) — 19 collated findings; 9 confirmed + 1 checker-split (SC2, driver-adjudicated to fix) fixed in d6ee868 by a DISCLOSED SUBSTITUTE implementer (fresh Opus subagent; Codex usage-locked to 2026-08-18 after round 1, its cross-checks rerouted to non-originators and its re-review replaced by driver mechanical verification); 8 findings REFUTED and logged; re-review by available raisers all RESOLVED; three hunk-introduced defects fixed by micro-fix (plug-in-surrogate framing; section-7 forward-reference; projection softening) and driver-verified; full record runs/synthesis_sections/reviews/VERDICTS.md; author adjudications open: SC1 Gbar surrogate + frozen-notation amendment, SC2 pooled-limit sign-off, substitute-implementer ratification, uncommitted-local-material policy.
+
+## D67: Case E toy debias demonstration — evaluation and mitigation from one posterior — 2026-08-13
+
+**Problem:** The thesis (ch. 5) and the accepted proposal set two goals for the
+BI*/BMS*-GP program: model evaluation via data priors, and bias mitigation.
+Manuscript sections 1-6 and 8 deliver the first; section 7
+(`docs/paper-sie-jmp/07-debias-bridge.md`) was still a stub, so the second goal
+appeared in the paper only as a promise. The demonstration had to be small,
+in-paper, and honest, and it had to be built without touching the D58 Mauna Loa
+preregistration boundary, which reserves the real-data development for the
+companion line.
+
+**Decision:** Added `experiments/toy_debias_demo.py` and the run directory
+`runs/toy_debias_demo/` (`results.json`, `README.md`, `debias_figure.png`), and
+replaced the section 7 stub with the full section carrying that one figure.
+
+Data: `bistar_gp.generate_toy_data()` at its defaults (N=20 on [-10, 10], seed
+42, observation noise 0.5, `bias_slope=0.25`, y = sin(x) + 0.25x + noise), so
+the true process and the bias process are both known by construction.
+
+Fit: SE + linear additive kernel under `PRIOR_CONFIGS["toy_elicited_n20"]`, the
+registry entry byte-identical to `experiments/prior_sensitivity_study.py`
+STUDY_CONFIGS `toy_elicited`. Hyperparameters from the CORRECTED sampler path
+`bistar_gp.fit.fit_hmc` (`nuts_e1`); the pre-correction Pyro NUTS setup is not
+used. Two chains, seeds 20260813 and 20260814, 500 warmup + 500 retained draws
+each (1,000 pooled), `target_accept_prob` 0.8, `max_tree_depth` 8, initial step
+size 0.1 with adaptation. INIT DISCLOSURE: both chains start at the SAME MAP
+point (`fit_map`, torch seed 42, 500 iterations, lr 0.05), so the reported
+rank-normalized R-hat is WITHIN-MODE evidence about mixing around the
+optimizer's mode, not between-mode agreement from dispersed starts; the toy
+hyperparameter posterior is multi-basin (D12). The disclosure is carried in
+`results.json` (`config.init_strategy`), in the run README, and in the section
+prose, per the standing requirement from the Case C review.
+
+Decomposition: the package machinery only. `bistar_gp.decompose
+.decompose_additive_gp` for the SE (truth-candidate) and linear
+(bias-candidate) components, and `decompose_component` on the summed kernel
+blocks for the joint posterior, so the inter-component cross-covariance is
+retained rather than dropped by summing component covariances. Debiasing by
+marginalization: analytic within a draw (the returned component posterior
+already forms the marginal of the joint conditional Gaussian) and Monte Carlo
+across draws for the hyperparameters. Bands are latent-function bands with no
+observation noise, matching the convention documented in
+`experiments/honest_band_decomposition.py`; summary sds use the law of total
+variance, and reported intervals are EXACT central intervals of the draw
+mixture obtained by CDF bisection rather than mean ± 2 sd approximations.
+
+Slope read: gpytorch's `LinearKernel` gives k(x, x') = v x x', so the linear
+component's posterior mean is exactly linear and its posterior covariance
+exactly Var(b|θ) x xᵀ. Both properties are verified per draw and the worst
+deviations recorded (4.456e-13 for linearity, 1.896e-15 for rank-one variance),
+which licenses reading the slope moments off the decomposition output instead
+of introducing a separate formula.
+
+**Alternatives considered:** Importing `bistar_gp.debias.decompose_model_hmc`
+was rejected because it discards each draw's conditional covariance
+(`bistar_gp/debias.py:206`), so its bands show across-draw mean spread alone
+and would have understated the debiased uncertainty and wrecked the coverage
+number. Importing `total_variance_decomposition` from
+`experiments/honest_band_decomposition.py` was rejected because it returns
+summary bands only, whereas the recovery numbers need per-draw component
+moments for the mixture quantiles; that helper's total-variance and
+latent-band conventions are followed and cited, not copied, and this script
+makes a single consistent pass over the package decomposition. A mean ± 2 sd
+band was rejected in favour of exact mixture quantiles. Random subsampling of
+draws (the `np.random.choice` convention in the older helpers) was rejected in
+favour of using all 1,000 draws, which removes an RNG dependence from the
+reported numbers. Any Mauna Loa material was excluded by scope.
+
+**Result:** First run kept; no iteration toward better numbers. Diagnostics
+clean: 0 divergences, rank-normalized R-hat at most 1.0025, bulk ESS at least
+602.4, tail ESS at least 502.6, tree-depth saturation rate 0.0, and 1,000 of
+1,000 decompositions successful.
+
+Recovery, with uncertainty layers, all in
+`runs/toy_debias_demo/results.json`:
+- bias-slope posterior mean 0.197, sd 0.072, 95% central interval
+  [0.033, 0.323], which CONTAINS the generating 0.250 (posterior layer);
+- RMSE against sin(x) on a 201-point grid inside the training span: composite
+  posterior mean 1.430, debiased posterior mean 0.403, a reduction of 1.028 or
+  71.9% (between-chain scatter 1.431/1.430 and 0.403/0.402);
+- coverage of sin(x) by the debiased 95% band 0.866 (174 of 201 grid points),
+  i.e. mild UNDERCOVERAGE, reported as it came out;
+- scale references on the same grid: the drift 0.25x has RMS 1.451 and sin(x)
+  has RMS 0.690, so the composite arm's discrepancy essentially reproduces the
+  drift it was fitted to include, and the residual 0.403 is not negligible;
+- mean band width 1.836 debiased versus 1.032 composite, i.e. the data
+  constrain the SUM of the components far more tightly than either component
+  alone. That number is what makes the section 8.5 uncertainty-floor sentence
+  concrete, and section 7 now states the connection.
+
+Determinism: byte-stable. Two consecutive runs reproduced BOTH `results.json`
+and `debias_figure.png` byte for byte (results.json sha256
+`e73f067276e7bd61026dbcde835d9e1461d5dd604a448cd5176e3b0687eaaa3c`, figure
+sha256 `6ebd195f8bf9c224361853ba16b36af1f2e4010ffec912fb6bb44766b5e58907`) on
+python 3.13.11 / torch 2.10.0 / numpy 1.26.4 / arviz 0.23.4. Byte-stability is
+asserted within one environment only; across environments the README pins
+numeric tolerances (recovery 1e-6 absolute, R-hat 1e-3, ESS 1 effective draw).
+Rerun: `python experiments/toy_debias_demo.py` from the repository root, about
+one minute on a laptop CPU, no network and no new dependencies. Figure size
+264 KiB, well under the 2 MB limit.
+
+Scope, stated in the section, the run README, and `results.json`
+(`scope.mauna_loa_contact = "none"`): synthetic toy only; no Mauna Loa script
+or artifact is imported, executed, or cited, so the D58 preregistration
+boundary is untouched, and no real-data number is reported or forecast.
+KERNEL-LABELING CAVEAT: identifying the linear component as bias is a modeling
+CHOICE, licensed here only because the generator produced the drift. The
+decomposition will split an additive posterior whichever way the labels are
+assigned, so in an application the analyst must justify the labeling on
+substantive grounds before a marginalization result means what its name
+suggests.
+
+**Status:** Section 7 fleshed out at `docs/paper-sie-jmp/07-debias-bridge.md`
+with the one figure and evidence-tier footnotes; the derived
+`docs/paper-sie-jmp/tex/sections/07-debias.tex` still holds the old stub text
+and needs regeneration through `docs/paper-sie-jmp/build_tex.py` at assembly
+time. No review round has been run on this case yet (HANDOFF §4 protocol not
+yet applied to Case E). No git mutation was performed by the implementing
+session.
+
+**Review-fix addendum (2026-08-13):** The HANDOFF §4 round-1 review has since
+run against branch tip `8f1326d`, and this pass implements its confirmed queue.
+The body above is left as committed; everything below records what changed.
+
+Round-1 verdicts (`runs/toy_debias_demo/reviews/VERDICTS.md`, raw outputs
+`round1_*.md`, checker notes `check_*.md`): Opus 5 REVISE with 15 findings and
+an independent bit-exact reproduction of every committed number; Gemini
+(`gemini-3.1-pro-preview`, HIGH) APPROVE; Kimi K3
+(`moonshotai/kimi-k3`) APPROVE; Codex GPT 5.6 sol ABSENT and disclosed
+(usage lock to 2026-08-18), so the synthesis-round substitution pattern applies
+and a substitute implementer, not a reviewer, executed the fixes. Verdict
+conflict resolved by rule 3: the queue was non-empty, so REVISE governed. Three
+single-reporter findings were REFUTED by adversarial check and logged with
+their refutations rather than silently dropped: F2 (coverage comparators; the
+sentence makes an absolute claim with a correct caveat, and the omitted numbers
+would favour the debiased arm), F5 ("removes most of it"; true under every
+candidate statistic, both framings already supplied), and F6 (latent-band
+terminology; the convention is disclosed in section, README, and JSON). Two
+items were routed to the assembly ledger on the synthesis branch instead of
+being fixed here: F9, the synthesis 8.6 sentence "All four reviewer rounds are
+recorded for every case", which Case E falsifies once it becomes section 7, and
+the known staleness in the 8.5 footnote wording. F8, the missing
+`build_tex.py` registry entries for section 07 (branch pin, FIGURES and
+FIGURE_PATHS, tier map extension), was fixed driver-side in untracked tooling
+and is therefore not part of this diff.
+
+Twelve queued items were implemented: FIX-1 through FIX-11 in
+`experiments/toy_debias_demo.py`, `docs/paper-sie-jmp/07-debias-bridge.md`, and
+the regenerated `runs/toy_debias_demo/` artifacts, plus this addendum. The
+sampling was NOT touched: same seeds, same budget, same estimators, and every
+number the committed entry reported is bit-identical after the rerun.
+
+INIT-STRATEGY PROVENANCE, CORRECTED (FIX-1, review F1). The claim above that
+"the toy hyperparameter posterior is multi-basin (D12)" misattributes D12. The
+D12 bimodality finding is scoped to the `informative` prior configuration
+(D12 Finding 1: two modes, valley ≈ −43 between them, mass split ~3:1), not to
+the `toy_elicited` configuration this demonstration uses.
+`runs/prior_sensitivity/stage_a_toy_elicited.json` certifies the opposite
+geometry for the configuration actually run: `coherent_geometry` true,
+`valleys` empty, `bimodal` false, and a single mode with
+`verified_local_max` true holding `pooled_is_mass` 1.0, recovered from all 27
+wide starts of the mode hunt (every start converges to log joint −18.913602).
+That mode's converged point agrees with this run's MAP in every hyperparameter:
+the largest absolute discrepancy is 1.69e-8 (SE lengthscale), so the corrected
+artifacts state agreement "to within 2e-8" rather than the review's "~1e-9",
+which the driver's own recomputation does not support. The correction is
+carried in all four places the misattribution appeared: section 07 §7.1, the
+`config.init_strategy` string in the script, the run README via
+`write_readme`, and here. The shared-init disclosure itself is UNCHANGED and
+still stands, on the narrower and correct ground that a common start leaves
+R-hat silent about regions no chain visited. The stage_a artifact is cited
+through the disclosed local-material pattern used by synthesis sections 02 and
+08, since it is not committed in this repository.
+
+NEW DERIVED NUMBERS, all regenerable from the script and recorded in
+`results.json` so no prose number is orphaned:
+- `recovery.bias_band_mean_width` 1.4584026383414934, the linear component's
+  own mixture band (FIX-3, F4). Section 07 now reads "the composite band has
+  mean width 1.032 and the linear component's 1.458", which the previous
+  "either component alone" phrasing asserted without evidence;
+- grid-mean total variances 0.2368453522059466 (SE), 0.17521904311580203
+  (linear), 0.06668550257966654 (composite), and the cross-covariance
+  −0.17268944637104106 with correlation −0.8477010316953286 read off them
+  (FIX-2, F3). Means add across the decomposition and the law of total variance
+  is linear, so the composite total variance equals the two component total
+  variances plus twice their total cross-covariance; inverting that identity
+  introduces no new estimator. These replace the old N-asymptotic sentence
+  ("additional observations sharpen the composite while leaving the attribution
+  comparatively uncertain, and honest inference retains an uncertainty floor
+  that sample size does not remove"), which asserted behaviour in N from a
+  single N=20 run. Section 07 now states only what was measured, and says
+  explicitly that whether the gap persists as N grows is untested here;
+- `decomposition.n_draws_needing_extra_jitter` 0 of 1000 (FIX-7, F12).
+  `compute_cholesky` escalates jitter silently, so each draw is now probed at
+  the base 1e-4 first and the escalations counted; the count came out 0 and is
+  reported as it came out.
+
+CODE HARDENING. FIX-7 also makes an unmatched `apply_hp_value` site raise
+RuntimeError instead of discarding the returned False, which had been a
+silent-wrong-answer path: a site-naming drift would have decomposed a
+prior-initialized model without any error. FIX-8 (F13) adds
+`assert_library_sampler_settings()`, which parses
+`bistar_gp.e1_potential.fit_hmc_e1` and compares the literal `step_size`,
+`target_accept_prob`, `adapt_step_size`, and `sampler_name` it passes to
+`_run_e1_nuts_route` against the constants this script mirrors into
+`results.json`, cross-checks the route's signature defaults, and verifies that
+`bistar_gp.fit.fit_hmc` still routes to `fit_hmc_e1`; any drift now fails the
+run loudly instead of silently falsifying the recorded configuration. FIX-9
+(F14 + Kimi K2) renames `sampler.acceptance_rate_by_chain` to
+`move_fraction_by_chain` and adds `move_fraction_note`, because pyro's
+0.992/0.998 counts post-warmup iterations that moved and is not comparable to
+the targeted mean Metropolis acceptance that `target_accept_prob` 0.8 sets; the
+README diagnostics line states the distinction, and the section prose still
+does not mention acceptance.
+
+FIGURE. FIX-4 (F7) sets `sharey=True` alongside the existing `sharex=True`, so
+the band-width contrast the section's second limit rests on is now visible
+across panels, and annotates panel (a) with mean band width 1.032 and panel (c)
+with 1.836 in the existing annotation style.
+
+PROSE. FIX-5 (F10) opens §7.1 with the evaluation-side cross-link: section 3.4
+grades candidates on this same N=20 seed-42 instance under the same
+data-elicited configuration and places most weight on Sin+Linear at 0.441 under
+pw_kl_vcal at τ=1 on the SIR path, while the demonstration decomposes the
+posterior of that same additive structure on the corrected NUTS path, the two
+estimators reported separately; no other Case A number is re-quoted. FIX-6
+(F11) records that `toy_elicited` sets its lognormal medians from this same
+sample's observable summaries, an empirical-Bayes-style construction, so the
+posterior statements are conditional on that fixed prior rather than
+unqualified full Bayes, and the coverage paragraph now notes that the coverage
+figure inherits the same conditioning. FIX-10 (F15) detaches divergences and
+tree-depth saturation, which are per-trajectory quantities, from the
+per-hyperparameter list. FIX-11 (Kimi K1 + Gemini GE1) removes the role-noun
+constructions from the ancillary text: the README's "thesis ch. 5 is the source
+of the program" becomes "the program originates in thesis ch. 5", and the
+script docstring's "the SE component is the truth candidate, the linear
+component the bias candidate" becomes "serves as ... as"; a sweep of the
+script's remaining strings and comments found one further instance, in the new
+FIX-8 docstring, which was reworded before the run.
+
+DETERMINISM AND ARTIFACT HASHES AFTER THE FIX PASS. Two consecutive reruns of
+`python experiments/toy_debias_demo.py` reproduced all three artifacts byte for
+byte on python 3.13.11 / torch 2.10.0 / numpy 1.26.4 / arviz 0.23.4:
+- `results.json` sha256
+  `65c9ff5f14b9a5f3aca8267745d6b368d95b831e85a610f6844b74e1b33712bb`
+  (was `e73f067276e7bd61026dbcde835d9e1461d5dd604a448cd5176e3b0687eaaa3c`);
+- `debias_figure.png` sha256
+  `c1153549ca55d9d644804790ef9a4627f8d82bedd157ec348ecb519f551a4723`
+  (was `6ebd195f8bf9c224361853ba16b36af1f2e4010ffec912fb6bb44766b5e58907`),
+  271,642 bytes, still far under the 2 MB limit;
+- `README.md` sha256
+  `7096cd6e4d3d02f8971cee294fa3e50a2c7248272320e9cc72cfc45994f889af`.
+
+A field-by-field diff of `results.json` against the committed version shows
+exactly the intended changes and nothing else: nine added keys, the
+`acceptance_rate_by_chain` to `move_fraction_by_chain` rename carrying the same
+0.992/0.998 values, and the rewritten `config.init_strategy` prose. Every
+pre-existing numeric field is bit-identical, including slope 0.197 / sd 0.072 /
+[0.033, 0.323], RMSE 1.430 and 0.403 with reduction 71.9%, coverage 0.866
+(174/201), band widths 1.836 and 1.032, R-hat max 1.0025, bulk ESS 602.4, tail
+ESS 502.6, 0 divergences, tree-depth saturation 0.0, the MAP point, the two
+final step sizes, and the linearity and rank-one structure deviations.
+
+The author-adjudication ledger in `VERDICTS.md` remains open at merge proposal,
+with four items: sign-off on the F1 init-provenance correction and whether
+`runs/prior_sensitivity/stage_a_toy_elicited.json` should be committed as
+evidence rather than cited as local material; sign-off on the F3 floor-sentence
+restriction and whether to commission the optional N-sweep (20/50/200) that
+would test the floor claim outright; the F2 enrichment option, the
+driver-verified composite and bias coverages 0.821 and 1.000, available but not
+required; and ratification of the substitute-implementer and
+driver-verification deviations, or a Codex re-review once the usage lock lifts
+on 2026-08-18. No git mutation was performed by this fix pass.
+
+**Closure addendum (2026-08-13):** §4 protocol complete for Case E. Re-review
+round (changed hunks, by raisers): Opus 5 all ten queue findings RESOLVED
+(repo-verified, including executing the FIX-8 guard with three negative
+controls; its own round-1 "~1e-9" MAP-to-mode figure corrected to the
+committed 1.690e-8 measurement); Kimi K3 both RESOLVED (relabel judged more
+accurate than its own proposal); Gemini GE1 RESOLVED, changed-hunk checklist
+clean. Eight hunk-introduced defects: seven Opus (N1 S3 cross-link conflated
+the parametric Sin+Linear candidate with the GP kernel posterior; N2-N7 S4)
+and one Kimi (jitter-probe claim breadth), resolved as four micro-fixes to
+section 07 by the substitute agent (MF-1 covers N1+N2+N3: grades candidates
+AGAINST the induced posterior, "described below", the pooled-aggregation
+qualifier on 0.441; MF-2 "the band conditions on"; MF-3 caption records the
+shared y axis; MF-4 "grid-averaged correlation"), one correction recorded
+here (N7: the fix-pass addendum's field-count sentence undercounted — the
+results.json delta against 8f1326d is ten added keys, nine in recovery and
+decomposition plus sampler.move_fraction_note, together with the
+acceptance_rate_by_chain/move_fraction_by_chain rename pair and the rewritten
+config.init_strategy), and one refutation on source evidence (Kimi's probe
+finding: decompose_additive_gp performs a single shared Cholesky of the
+summed training matrix, bistar_gp/decompose.py:93, and the demo never calls
+sample_from_component, so the probe covers every factorization executed).
+Review record committed at runs/toy_debias_demo/reviews/ (VERDICTS.md +
+round1/check/rereview raw outputs). Protocol outcome: REVISE resolved —
+branch proposed for merge subject to the five-item author ledger in
+VERDICTS.md (F1 and F3 statistical sign-offs; F2 enrichment option; the
+substitute/driver substitutions to ratify; the two assembly-ledger items F9
+and the 8.5 footnote on the synthesis branch). Nothing merges autonomously.
+
 ## D68: Code review 2026-09 fix pass 1 — nine implementation fixes with pinning tests, four-channel review, pass 1b folds — 2026-09-08
 
 **Problem:** The 2026-09 implementation-correctness review (four channels: Fable, Codex
@@ -5909,6 +6812,84 @@ A3 need goes to `main` as its own PR before the canonical run instead of waiting
 canonical run starts from `main` merged into `paper/case-d-mopen`, with two seeds, strict mode
 and diagnostics; the untracked manuscript sources go to `main` unchanged in a docs-only PR,
 while `tex/` and the Overleaf zip, which `build_tex.py` generates, stay local.
+
+**Update 2026-11-18 (integration started; plan re-cast):** the integration branch
+`paper/integration` was cut from `main` at `f6bd33d` (worktree `bistar_gp_c-integration`) by
+author approval, instead of the `84e9881` that sheet line B9 names, because PRs #45 and #46
+landed after the cast. Its first commit, `f9d3816`, inserts D60-D67 after D58, each copied from
+its owning branch, with per-block hashes checked against a read-only reconciliation; D59 (the
+draft in `stash@{0}`, `5280d1e`) stays out by author decision. An independent plan review
+(Fable 5.1 on the Princeton AI Sandbox) returned ADOPT WITH CHANGES with findings R1-R8. The
+author adopted its amended twelve-step plan on 2026-11-18 and cast its eight recommended
+answers: (1) the six paper branches merge now, ahead of 2b, the Case D canonical run and the E
+and synthesis ledgers, which re-casts the order of sheet line B9 and section 10 step 6, on
+condition that the D64 and D6 addenda land on `paper/case-d-mopen` first; (2) every merge
+resolves `Notes/DECISIONS.md` block by block: an identical block keeps the integration copy, a
+block changed only on the incoming branch takes the branch copy, and a block changed on both
+sides stops the merge for a hand merge recorded here; (3) the Case D canonical run takes place
+on `paper/integration` after the producer PR merges into `main` and `main` merges back, in place
+of `main` merged into `paper/case-d-mopen`; (4) fix pass 2b takes place on `paper/integration`,
+starting with the stage-a fix; (5) numbering: the Case D producer PR on `main` takes D71, the
+integration branch records its changes in place in this entry until `main` merges back, and 2b
+then takes the next free number; (6) `build_tex.py` reads the working tree and stamps
+`git rev-parse HEAD` into each generated header, and the generated tex tree joins the ignore
+file; (7) the branch is pushed only after the post-merge gates pass, the six paper PRs then
+retarget to `paper/integration` (expected to close as merged; GitHub behaviour not yet
+verified), one Draft PR runs from `paper/integration` to `main`, and PR #22 closes unless its
+July CHATLOG lines are wanted; (8) option 2 of review finding F3 (the E7 rerun at 5,000 SIR
+draws) counts as a 2c artifact act with its own re-review, and findings F1, F2, F4 and F5 go to
+the author's cast later without changing the plan. The record of the 2026-11 reviews is stored
+in `runs/project_review_2026_11/` of the main worktree, uncommitted until it lands on `main`:
+`TRIAGE.md`, `fable52_review.md`, `fable52_discussion.md`, and `integration/` with
+`reconcile_report.md` and `plan_review_fable51.md`. Facts changed since the 2026-10-03 cast: the
+dependency-lock drift in the Miniconda base now consists of five packages installed after the
+lock (`brotli` 1.2.0, `curl_cffi` 0.16.3, `imageio-ffmpeg` 0.6.0, `mutagen` 1.48.1,
+`yt-dlp-ejs` 0.8.0) and two upgrades (`gallery_dl` 1.31.10 to 1.32.16, `yt-dlp` 2026.3.17 to
+2026.8.19), on top of `pypdf` 6.14.2 in the user site, so line B1 as cast no longer makes the lock
+test pass and needs a re-cast. Done the same day by author approval: the annotated local tag
+`archive/d59-draft` on the stash commit `5280d1e1`; the checksummed archive of the main
+worktree's untracked, ignored and uncommitted material (1,020 files, 339,726,928 bytes; excludes
+`.venv/`, `__pycache__/` and `poster/`) at `~/Documents/bistar_gp_c_local_archive/2026-11-18/`,
+tarball sha256 `9b1e492ee711189e1db29356cb66c13bd08806196adcc3ce512a8dd0891c8605`, with every
+per-file checksum verified after a full extraction; PR #38 set to Draft and PR #39 retitled (B8).
+B1 re-cast the same day: the media tools move to a new conda environment `media` (`yt-dlp`
+2026.8.19 with `yt-dlp-ejs` 0.8.0, `curl_cffi` 0.16.3, `brotli` 1.2.0, `mutagen` 1.48.1,
+`gallery-dl` 1.32.16, `imageio-ffmpeg` 0.6.0), and the base returns to the locked state: the five
+added packages are uninstalled and `yt-dlp` 2026.3.17 and `gallery_dl` 1.31.10 reinstalled with
+`--no-deps` (the base `pip freeze` from before the change is saved as
+`base_pip_freeze_before_B1.txt` in the archive folder). The lock's distribution list, every
+RECORD hash included, and its binary-extension aggregate now match exactly; the lock test still
+fails on one `pip freeze` line, `pypdf==6.14.2` in the user site, which the 2026-10-03 cast
+already sends to its own environment and which `graphify` (installed in the base) uses for PDF
+input. The author then chose to move it: a new conda environment `pdf-tools` holds `graphifyy`
+0.3.1 with its required packages at the base's versions and `pypdf` 6.14.2 (installed with
+`PYTHONNOUSERSITE=1`, because the user site is shared by every Python 3.13), `pypdf` left the
+user site (now empty), and `~/.local/bin/graphify` links to the new environment's entry point,
+so the graphify skill's interpreter detection resolves to `pdf-tools` (checked in a fresh login
+shell, with `graphify` and `pypdf` importing). The base `graphifyy` stays, since the lock lists
+it. `tests/test_m2cr_environment_freeze.py` now passes (23 passed, 1 skipped). B1 is closed.
+The D64 and D6 addenda were committed on `paper/case-d-mopen` as `6ac1be7`, with wording the
+author approved. The six paper branches were then merged with true merges in the order A
+(`9f3d029`), C (`681f6a5`), B (`3099e49`), D (`c93bd35`), E (`eaab385`) and synthesis
+(`ac1b1f4`). At each merge only `Notes/DECISIONS.md` conflicted and the block rule resolved it
+(Case D's D6 and D64 came from the branch; Case E and the synthesis branch kept the integration
+D6), and every gate passed: no conflict markers, no line of the branch's log lost, the expected
+header count, and every other path the branch changed byte-identical to its tip. Post-merge
+gates, run in a fresh local clone of `paper/integration` with the three `toy_elicited` prior-IS
+pools copied in and checked against the archive hashes: the seven case scripts reproduce their
+committed artifacts (E7 and the van Bork targets identical apart from the generation date; the
+Case B `e6_results.json` and `figure_results.json` identical except 2,815 and 8 ESS fields at
+most 2.1e-14 relative, as D70 recorded, with the figure's optional cross-check against the
+untracked `runs/viz_unification/delta_table.md` reported unavailable; Cases C, D and E
+byte-identical, Case D still from the suspended archive); the full suite passes (1,359 passed,
+5 skipped, 316 s, load average about 5); and the tex built from the merged sections equals the
+last local build file for file. On the author's word the same day, `paper/case-d-mopen` was
+pushed (`6ac1be7`) and `paper/integration` was pushed (`c459dc6`) and opened as Draft PR #47 into
+`main`; PR #22 was closed, its branch kept. Retargeting the six paper PRs to
+`paper/integration`, as decision 7 cast, proved impossible, because GitHub refuses a base branch
+that already contains every commit of the head branch. The author decided instead to leave PRs
+#36-#41 open against `main`, each with a comment pointing to #47, so that they show as merged
+once #47 merges (the expected GitHub behaviour, to be confirmed then).
 
 
 ## D70: Fix pass 2a, decision-free package contracts from the 2026-09-26 review (SYNTHESIS A-1 to A-4, A-6, A-10, A-11 with A-24, A-13 code half, A-23 package half, hardened Case D producer; optional A-5, A-7, A-15, A-18) — 2026-10-03
