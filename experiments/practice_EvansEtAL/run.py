@@ -40,11 +40,19 @@ from kernels import (
 )
 
 # Core bistar_gp imports
+import bistar_gp.metrics_v2  # noqa: F401  registers pw_kl_vcal and the other v2 metrics
 from bistar_gp.model import build_model
 from bistar_gp.fit import fit_map, fit_hmc
 from bistar_gp.bms_star import (
-    extract_gp_predictives, run_bms_star, GPPosteriorSample,
+    METRICS, extract_gp_predictives, hard_win_statistics, run_bms_star, GPPosteriorSample,
 )
+from bistar_gp.config import PRIMARY_METRIC
+
+# Metric roster (decision-sheet line A1a, D71): the three legacy metrics of
+# section 06, with the primary metric appended so that positional uses keep
+# their meaning. --metrics selects another roster.
+LEGACY_METRICS = ("pw_hellinger", "pw_mse", "pw_nll")
+DEFAULT_METRICS = LEGACY_METRICS + (PRIMARY_METRIC,)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -102,6 +110,10 @@ class SubjectResult:
     sampler_records: Dict = field(default_factory=dict)
     hmc_samples: Dict = field(default_factory=dict)
     candidate_failures: Dict = field(default_factory=dict)
+    # Per configuration, metric and tau, each candidate's weight ESS, the
+    # effective number of draws behind its pooled score: a concentration
+    # summary, not an MCMC ESS (decision-sheet line A3, D71).
+    bistar_weight_ess: Dict = field(default_factory=dict)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -273,24 +285,32 @@ def normalize(curve: LearningCurve) -> NormalizedCurve:
 # ═══════════════════════════════════════════════════════════════════
 
 def extract_map_predictives(model, likelihood, x_train, y_train, x_eval,
-                            n_samples=100, perturbation_scale=0.05):
+                            n_samples=100, perturbation_scale=0.05, seed=None):
     """
     MAP + Laplace-style perturbation for fast ψ extraction.
     Perturbs MAP hyperparameters in unconstrained space.
+
+    seed: seeds the perturbations (D71); None keeps the historical seed 42,
+        so a run without --seed draws the perturbations it always drew.
     """
     model.eval(); likelihood.eval()
 
-    # Collect raw params
+    # Collect each raw scalar parameter once. build_model registers the
+    # likelihood inside the model, so both listings contain its raw_noise,
+    # which used to be perturbed twice and recorded under two names, the
+    # first of them never applied (2026-11 triage A3, D71).
     param_refs = []
     raw_params = []
+    seen = set()
     for name, p in list(model.named_parameters()) + list(likelihood.named_parameters()):
-        if p.requires_grad and p.numel() == 1:
+        if p.requires_grad and p.numel() == 1 and id(p) not in seen:
+            seen.add(id(p))
             raw_params.append(p.data.item())
             param_refs.append((name, p))
     raw_params = np.array(raw_params)
 
     samples = []
-    rng = np.random.RandomState(42)
+    rng = np.random.RandomState(42 if seed is None else seed)
 
     for i in range(n_samples):
         perturbed = raw_params if i == 0 else raw_params + perturbation_scale * rng.randn(len(raw_params))
@@ -344,19 +364,21 @@ def run_one(ncurve: NormalizedCurve,
     """Full BI* pipeline for one subject.
 
     seed: passed to every fit_hmc call and, when given, to the predictive
-        subsample (np.random.default_rng(seed)); each subject's result is then
+        subsample (np.random.default_rng(seed)) and the MAP perturbations
+        (extract_map_predictives); each subject's result is then
         reproducible on its own, whatever the order and subset of subjects.
     strict: True (default) raises when any prior configuration fails (MAP
         fit, HMC fit, predictive extraction or BMS* scoring) instead of
         silently dropping it; False keeps going and records the failure in
         sampler_records (fix pass 2a, SYNTHESIS A-23).
+    metrics: the divergence metrics to score; None scores DEFAULT_METRICS.
     """
 
     t0 = time.time()
     if prior_configs is None:
         prior_configs = ["practitioner", "moderate", "agnostic"]
     if metrics is None:
-        metrics = ["pw_hellinger", "pw_mse", "pw_nll"]
+        metrics = list(DEFAULT_METRICS)
     if taus is None:
         taus = np.logspace(-1, 1.5, 15)
 
@@ -406,6 +428,7 @@ def run_one(ncurve: NormalizedCurve,
     bistar_winners = {}
     bistar_probs = {}
     bistar_G_diagnostics = {}
+    bistar_weight_ess = {}
     gp_hp = {}
     n_gp = 0
     sampler_records = {}
@@ -445,6 +468,7 @@ def run_one(ncurve: NormalizedCurve,
             try:
                 gp_samples = extract_map_predictives(
                     model, lik, x_train, y_train, x_eval_norm, n_samples=n_posterior_samples,
+                    seed=seed,
                 )
             except Exception as exc:
                 _missing(cfg_name, "MAP predictive extraction", exc)
@@ -518,16 +542,24 @@ def run_one(ncurve: NormalizedCurve,
         bistar_winners[cfg_name] = {}
         bistar_probs[cfg_name] = {}
         bistar_G_diagnostics[cfg_name] = {}
+        bistar_weight_ess[cfg_name] = {}
 
         for metric_name, tau_results in results.items():
             bistar_winners[cfg_name][metric_name] = {}
             bistar_probs[cfg_name][metric_name] = {}
+            bistar_weight_ess[cfg_name][metric_name] = {}
 
             # G matrix diagnostics (same G for all taus within a metric)
             first_tau = sorted(tau_results.keys())[0]
             G = tau_results[first_tau].G_matrix
             model_names = tau_results[first_tau].instance_names
+            # raw_draw_wins keeps its archived first-index definition, so the
+            # canonical run compares field for field with the suspended
+            # archive; beside it, hard_win_credit splits each draw's unit
+            # equally among its exact co-minimizers (ledger Item 5 tie rule,
+            # decision-sheet line A3, D71).
             raw_winners = np.argmin(G, axis=1)
+            credit, attainment, tie_fraction = hard_win_statistics(G)
             row_deltas = G - G.min(axis=1, keepdims=True)
 
             bistar_G_diagnostics[cfg_name][metric_name] = {
@@ -538,19 +570,26 @@ def run_one(ncurve: NormalizedCurve,
                         "mean_delta_from_best": float(row_deltas[:, m_idx].mean()),
                         "median_delta_from_best": float(np.median(row_deltas[:, m_idx])),
                         "raw_draw_wins": int(np.sum(raw_winners == m_idx)),
+                        "hard_win_credit": float(credit[m_idx]),
+                        "attainment": float(attainment[m_idx]),
                     }
                     for m_idx, name in enumerate(model_names)
                 },
                 "n_draws": int(G.shape[0]),
+                "tie_fraction": tie_fraction,
                 "G_min": float(G.min()),
                 "G_max": float(G.max()),
                 "G_median": float(np.median(G)),
             }
             for tau, bms_r in tau_results.items():
-                winner_idx = np.argmax(bms_r.class_posteriors)
-                bistar_winners[cfg_name][metric_name][float(tau)] = bms_r.instance_names[winner_idx]
-                bistar_probs[cfg_name][metric_name][float(tau)] = {
-                    n: float(p) for n, p in zip(bms_r.instance_names, bms_r.class_posteriors)
+                probs = {n: float(p) for n, p in zip(bms_r.instance_names, bms_r.class_posteriors)}
+                bistar_probs[cfg_name][metric_name][float(tau)] = probs
+                # an exact posterior tie names no winner (D71)
+                top = _winner_credit(probs)
+                bistar_winners[cfg_name][metric_name][float(tau)] = (
+                    next(iter(top)) if len(top) == 1 else None)
+                bistar_weight_ess[cfg_name][metric_name][float(tau)] = {
+                    n: float(e) for n, e in zip(bms_r.instance_names, bms_r.weight_ess)
                 }
 
     return SubjectResult(
@@ -564,7 +603,17 @@ def run_one(ncurve: NormalizedCurve,
         n_gp_samples=n_gp, elapsed_seconds=time.time() - t0,
         seed=seed, strict=strict, sampler_records=sampler_records,
         hmc_samples=hmc_samples, candidate_failures=candidate_failures,
+        bistar_weight_ess=bistar_weight_ess,
     )
+
+
+def _winner_credit(probs):
+    """Equal-split credit among the candidates with the largest posterior,
+    the hard_win_statistics tie rule applied to one subject's winner:
+    candidate order never breaks an exact tie (D71)."""
+    top = max(probs.values())
+    tied = [name for name, p in probs.items() if p == top]
+    return {name: 1.0 / len(tied) for name in tied}
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -587,6 +636,7 @@ def run_all(curves, output_dir, prior_configs=None, mode="map", verbose=True,
     print(f"BMS* for Law of Practice: {n_total} learning curves")
     print(f"Mode: {mode} | Configs: {prior_configs or ['practitioner','moderate','agnostic']}")
     print(f"Seed: {seed} | Strict: {strict}")
+    print(f"Metrics: {list(kwargs.get('metrics') or DEFAULT_METRICS)}")
     print(f"Output: {output_dir}")
     print(f"{'='*60}\n")
 
@@ -630,6 +680,7 @@ def _save_json(result: SubjectResult, path: Path):
         "bistar_winners": _strkeys(result.bistar_winners),
         "bistar_probs": _strkeys(result.bistar_probs),
         "bistar_G_diagnostics": _strkeys(result.bistar_G_diagnostics),
+        "bistar_weight_ess": _strkeys(result.bistar_weight_ess),
         "seed": result.seed,
         "strict": result.strict,
         "sampler_records": _strkeys(result.sampler_records),
@@ -661,18 +712,19 @@ def _print_aggregate(results, output_dir):
     for r in results:
         bic_counts[r.bic_winner] = bic_counts.get(r.bic_winner, 0) + 1
 
-    # BI* at median tau
+    # BI* at median tau; an exact posterior tie splits the subject's unit
+    # equally among the tied candidates (D71)
     bistar_counts = {}
     for r in results:
-        for cfg, metrics_d in r.bistar_winners.items():
+        for cfg, metrics_d in r.bistar_probs.items():
             bistar_counts.setdefault(cfg, {})
             for metric, tau_d in metrics_d.items():
-                bistar_counts[cfg].setdefault(metric, {})
-                taus = sorted(float(t) for t in tau_d.keys())
+                counts = bistar_counts[cfg].setdefault(metric, {})
+                taus = sorted(tau_d, key=float)
                 if taus:
                     ref_tau = taus[len(taus) // 2]
-                    w = tau_d.get(ref_tau, tau_d.get(str(ref_tau), "?"))
-                    bistar_counts[cfg][metric][w] = bistar_counts[cfg][metric].get(w, 0) + 1
+                    for w, share in _winner_credit(tau_d[ref_tau]).items():
+                        counts[w] = counts.get(w, 0) + share
 
     # Robustness
     configs = list(bistar_counts.keys())
@@ -706,7 +758,7 @@ def _print_aggregate(results, output_dir):
         print(f"\n  [{cfg}]")
         for metric, counts in metrics.items():
             total = sum(counts.values())
-            parts = ", ".join(f"{m}:{c}" for m, c in sorted(counts.items(), key=lambda x: -x[1]))
+            parts = ", ".join(f"{m}:{c:g}" for m, c in sorted(counts.items(), key=lambda x: -x[1]))
             print(f"    {metric}: {parts}")
 
     if robustness:
@@ -744,6 +796,10 @@ def main():
     p.add_argument("--allow_missing_configs", action="store_true",
                    help="Record a failing prior configuration and continue "
                         "instead of stopping the run (non-strict)")
+    p.add_argument("--metrics", nargs="+", default=list(DEFAULT_METRICS),
+                   choices=sorted(METRICS), metavar="METRIC",
+                   help="Divergence metrics to score (default: %(default)s, the "
+                        "legacy three plus the primary metric)")
     args = p.parse_args()
 
     curves = generate_demo_data(50) if args.demo else load_data(args.data_dir)
@@ -754,7 +810,7 @@ def main():
     run_all(curves, args.output_dir, prior_configs=args.configs, mode=args.mode,
             n_hmc_samples=args.n_hmc_samples, n_eval=args.n_eval,
             n_posterior_samples=args.n_posterior_samples,
-            normalize_per_draw=args.normalize_per_draw,
+            normalize_per_draw=args.normalize_per_draw, metrics=args.metrics,
             seed=args.seed, strict=not args.allow_missing_configs)
 
 

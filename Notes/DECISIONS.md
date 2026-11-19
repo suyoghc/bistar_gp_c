@@ -6031,3 +6031,107 @@ closeout PR branched from `622c566`. Open for the author
 serialization block; the alias table into `model.py` (R16); D58 cards 7-8 that do not re-render
 from the committed arrays since fix pass 1 (owned by the 2c D58 correction); the grown lock
 drift (sheet B1).
+
+
+## D71: Case D producer PR before the canonical run (sheet lines A1a and A3; 2026-11 triage A3): `pw_kl_vcal` in the default roster with a `--metrics` flag, tie-aware draw wins and winner labels with weight ESS, seeded and deduplicated MAP perturbations, candidate fits that raise instead of returning box midpoints — 2026-11-18
+
+**Problem:** D69's cast of 2026-10-03 found that the Case D producer
+`experiments/practice_EvansEtAL/run.py` still scored only the legacy metrics `pw_hellinger`,
+`pw_mse` and `pw_nll` (`run.py:359` at `f6bd33d`), had no metric flag, and counted draw wins and
+winner labels by first index (`np.argmin` at `:530` for `raw_draw_wins`, `np.argmax` at `:550` for
+`bistar_winners`), so an exact tie went to the candidate listed first. Sheet line A1a adds the
+primary metric `pw_kl_vcal` to the regenerated run, and line A3 commits every soft-transfer table
+to tau-free draw-win credit, attainment and weight ESS under the ledger Item 5 tie rule (equal
+split, never candidate order, new field names rather than a redefined `raw_draw_wins`). The
+2026-11 triage of the Antigravity review (finding A3; `runs/project_review_2026_11/TRIAGE.md` in
+the main worktree, probes in `triage_probes/batch_a/`) added three defects in the same files.
+`CandidateModel._fit_multistart` (`candidates.py:61-103`) returned the box midpoints when
+differential evolution and every L-BFGS-B restart raised, so `PowerModel().fit` on a constant
+series returned a = 0.005, c = 225.0 as a fit; the path never fires on the Case D cohort (0 of 100
+differential-evolution and 0 of 2,000 L-BFGS-B calls raised, and none of the 300 archived fits is a
+midpoint). `extract_map_predictives` collected the likelihood's `raw_noise` twice
+(`run.py:283-290`), because `build_model` registers the likelihood inside the model, so each draw
+perturbed the noise twice and recorded it under two names, the first never applied (the recorded
+pair differed on 99 of 100 draws). It also drew its perturbations from a hard-coded
+`RandomState(42)` (`:293`), so `--seed` never reached MAP mode. D69's update of 2026-11-18 on
+`paper/integration` reserves D71 for this PR, which has to reach `main` before the canonical run
+that D64's suspension addendum specifies (two seeds, strict mode, sampler diagnostics,
+`pw_kl_vcal`, a new output directory, an explicit `--seed`).
+
+**Decision:** Implemented on `fix/case-d-producer-d71` from `origin/main` at `f6bd33d` (worktree
+`bistar_gp_c-d71`). The change touches only `run.py`, `candidates.py`, one new test file and this
+log.
+(1) Metric roster. `DEFAULT_METRICS = LEGACY_METRICS + (PRIMARY_METRIC,)` (`run.py:54-55`), the
+legacy three with `pw_kl_vcal` appended, replaces the hard-coded default of `run_one` (`:381`).
+`run.py` imports `bistar_gp.metrics_v2`, so the v2 names are registered, and the new flag
+`--metrics METRIC [METRIC ...]` (`:799`; default the four, choices every registered metric, so a
+misspelt name stops argparse) reaches `run_all`, whose header now prints the roster.
+(2) Draw wins and winners. `raw_draw_wins` keeps its archived first-index definition, so the
+canonical archive can be compared field for field with the suspended one, as D70's `_sir_bms`
+kept `hard_win_fractions`. Beside it, every `per_model` record of `bistar_G_diagnostics` gains
+`hard_win_credit` (each draw's unit split equally among its exact co-minimizers, summing to one)
+and `attainment`, and every metric record gains `tie_fraction`, all from
+`bistar_gp.bms_star.hard_win_statistics` (`:562`). The per-tau label in `bistar_winners` names the
+unique maximizer of the class posteriors and is null on an exact tie, and the `aggregate.json`
+counts at the median tau split a tied subject's unit equally among the tied candidates
+(`_winner_credit`, `:610`, used at `:588` and `:726`), so those counts are now written as floats.
+The new subject-JSON field `bistar_weight_ess[cfg][metric][tau]` (`:116`, `:591`, `:683`) stores
+each candidate's `BMSStarResult.weight_ess`, the third quantity that line A3 names, documented as
+a concentration summary rather than an MCMC ESS.
+(3) MAP extraction. Each raw scalar parameter is collected once, by object identity (`:306`), so
+a draw perturbs and records three hyperparameters instead of four.
+`extract_map_predictives(..., seed=None)` seeds `RandomState(42 if seed is None else seed)`
+(`:313`) and `run_one` passes its `seed` (`:471`), so `--seed` reaches MAP mode while a run
+without it draws the historical perturbations.
+(4) Candidate fits. `_fit_multistart` keeps a stage's result only when its objective is finite
+and raises `EvaluationFailure` when no stage produced one (`candidates.py:116`; D70's
+`_require_restart` raises the same class for the same contract in the package candidates).
+`run_one`'s candidate path from D70 (review round R3) then raises under strict and records the
+failure in `candidate_failures` otherwise; a subject with no fittable candidate raises in both
+modes. Wherever some stage returns a finite objective, the selected parameters are those selected
+before.
+
+**Alternatives considered:** redefining `raw_draw_wins` as the tie-split count (rejected by the
+ledger Item 5 rule; it would also turn the integer that `regret_curves_mopen.py` reads into a
+fraction) or dropping it (breaks that consumer and the comparison with the suspended archive);
+naming the first maximizer on a posterior tie (the defect) or a list of the tied names (changes
+the field's type); fresh entropy for a MAP run without `--seed` (such a run would stop
+reproducing); raising only when every stage raised (a stage that returns NaN would still pass as a
+fit); a plain `RuntimeError` in `candidates.py` (D70 uses `EvaluationFailure` for the same
+contract); leaving weight ESS to the section 06 rewrite (it would have to be recomputed from the
+saved draws, while the soft transfer already computes it); deduplicating by parameter name (the
+two listings name the shared tensor differently, so only identity finds it).
+
+**Result:** `tests/test_case_d_producer_d71.py`, 5 tests, each failing on `f6bd33d` (no raise; 3
+distinct tensors behind 4 recorded names; no `hard_win_credit`; no `pw_kl_vcal` in the roster; no
+`seed` argument) and passing after the change; together with `tests/test_fix2a_contracts.py`,
+17 passed. Full suite in the worktree (`PYTHONSAFEPATH=1`, `PYTHONPATH` set to the worktree,
+`bistar_gp.__file__` checked): 1,364 passed, 5 skipped, 0 failed, 377 s at a load average of
+about 8 (1,369 collected: the 1,364 of `origin/main` and the 5 new tests). Smoke runs on
+subjects 0 and 25 of the demo cohort (strict, two threads, outputs in a scratch folder and not
+committed): in HMC mode (`nuts_e1`, 200 draws, 100 predictives) with seed 0, every value that
+`origin/main`'s producer writes is unchanged apart from the elapsed time, the sampled draws are
+byte-identical, and the additions are the `pw_kl_vcal` entries, the tie-aware fields and
+`bistar_weight_ess`. `tie_fraction` is 0 for every metric and
+configuration, so `hard_win_credit` times `n_draws` equals `raw_draw_wins`, and each configuration
+records `nuts_e1`, seed 0, 200 of 200 draws and 100 of 100 predictives. A rerun with seed 0
+reproduces every value and draw, and seed 1 changes them. The weight ESS at the median tau 1.778
+is 99.8 to 100 of 100 draws for `pw_hellinger`, `pw_nll` and `pw_kl_vcal`, and 1.0 to 2.2 for
+`pw_mse`. In MAP mode seed 0 reproduces and seed 1 differs. Without a seed, on the whole
+50-subject demo cohort, this branch and `origin/main` agree on every candidate fit and BIC value,
+and the deduplication alone changes 9 of 6,750 winner labels, all for one subject under `pw_mse`
+(8 under `moderate` at tau 0.1 to 1.778, where the weight ESS of the pooled `pw_mse` score is
+one or two draws, and 1 under `agnostic` at tau 9.21); it changes one `aggregate.json` count
+(`moderate`, `pw_mse`: Power 6 of 50 becomes 5) and changes the first-index draw-win counts by
+17, 26 and 5 draws for `pw_hellinger`, `pw_nll` and `pw_mse`, summed over the 150
+subject-configuration pairs (15,000 draws per metric). `origin/main` does not reproduce the committed MAP archive
+`experiments/practice_EvansEtAL/results/` (`3b89bad`) either (12,388 values differ on the same
+cohort), and the HMC path that the canonical run uses does not call `extract_map_predictives`.
+
+**Status:** Committed on `fix/case-d-producer-d71` by author instruction on 2026-11-18, after the
+author kept this version instead of a rewrite, and opened the same day as a Draft PR into `main`;
+the PR number enters the record when `main` merges into `paper/integration`. After the PR
+merges, `main` merges into `paper/integration`, where the canonical run (D64 addendum) passes
+`--seed` once per seed and a new `--output_dir`; `submit_hmc.slurm:20` still writes to
+`results_hmc/` without a seed, so that run needs its own submission script. Under `PYTHONSAFEPATH=1`, `run.py` imports its sibling modules only with
+`experiments/practice_EvansEtAL` on `PYTHONPATH`.
